@@ -410,9 +410,10 @@ ADR-014's snapping guarantees. The two decisions only work together.
 
 **Decision.** The fan wall becomes a pair of patches on the same internal
 faces: `fanIntake` on the gallery side, where air leaves the domain, and
-`fanSupply` on the hall side, where it re-enters at the supply temperature and
-the face velocity implied by the rated airflow. `fanIntake` carries the case's
-only pressure reference, `fixedValue` on `p_rgh` (ADR-012).
+`fanSupply` on the hall side, where it re-enters at the supply temperature.
+Both sides are set by **mass** flow — `flowRateOutletVelocity` and
+`flowRateInletVelocity`, the same `massFlowRate` — and the pressure level,
+which no patch now fixes, is pinned with `pRefCell`/`pRefValue`.
 
 **Why.** The POD recirculates: nothing enters or leaves. A genuinely closed
 domain has no pressure reference and needs the fan modelled as a momentum
@@ -423,6 +424,18 @@ a known pressure — and does it at the one surface where the physical machine
 also adds energy. What is lost is the fan's own curve; what is gained is a
 case that sets up from a nameplate airflow.
 
+Mass rather than volume, because the air leaving is warmer and thinner than
+the air arriving — about 1% at a 10 K rise — and a closed loop has nowhere to
+put the difference. And prescribed rather than pressure-driven, because the
+first version used `pressureInletOutletVelocity` on the intake and let **3.9
+kg/s blow backwards into the gallery against a net of 1.7**: the intake is a
+7,2 m² patch at the end of a 100 m³ gallery, and at a 0,19 m/s mean face
+velocity local eddies reverse it freely. No fan does that. Worse, on every
+reversed face the `inletOutlet` temperature was pinned to the seeded return
+value, so the boundary was *inventing* heat the racks never produced and the
+energy balance could never close. A fan moves its duty regardless of what the
+gallery is doing, and saying so removes both problems at once.
+
 **Consequence.** Which side of the pair `createBaffles` calls master follows
 the mesh's face winding, not anything AICFD writes. Getting it backwards
 builds a POD that supplies cold air into its own return, and it would converge
@@ -430,3 +443,43 @@ and report plausible numbers. So it is measured rather than assumed:
 `aicfd/foam/polymesh.py` reads one face and three points, and
 `podcase.check_fan_orientation` refuses to solve if `fanSupply` is not facing
 the data hall.
+
+The intake's temperature is written as `inletOutlet` even though nothing can
+enter through it, because `zeroGradient` stores no value on the patch and the
+temperature of the air crossing there is exactly what the energy balance is
+built from (ADR-018). Its inlet value is the supply temperature — inert, and
+if it ever were used it would bring back cold air rather than fabricate heat.
+
+---
+
+## ADR-018 — A steady run is judged by its energy balance, not its residuals
+
+**Decision.** `aicfd/podpost.py` computes, from the values on the fan intake
+patch,
+
+    Q = cp * sum over intake faces of  phi_i * (T_i - T_supply)
+
+and fails the run when that misses the installed IT load by more than 10%.
+`convergence()` reports the same number at every written time.
+
+**Why.** Residuals measure how much the last iteration changed the field. They
+say nothing about whether the field means anything. The run that prompted this
+had residuals falling steadily for 300 iterations and was returning air at
+20,5 °C against a design return of 30,8 — the thermal field had simply not
+filled the domain yet, and nothing in the solver log said so. Reading the
+residual plot, the case looked like it was converging nicely.
+
+Every watt installed has to leave as warmer air. That identity cannot be
+satisfied by accident, it needs no reference solution, and a reader who is not
+a CFD engineer can check it: *the racks make 18 kW, the air is carrying 17,6,
+so I am looking at the answer.* Watched across written times it also separates
+the two failure modes — a merely unconverged run climbs towards 100%, a wrong
+one settles somewhere else.
+
+**Consequence.** Every quantity in this module is read from patch values, never
+from the nearest cell centres. Approximating a face flux from cell-centre
+velocity is wrong by tens of percent across a porous zone or a grille jet: it
+is what first made a perfectly sealed POD look like it was losing 37% of its
+air. The cost is that the generator must write a value on every patch the
+balance reads, which is why the intake is `inletOutlet` rather than
+`zeroGradient`.

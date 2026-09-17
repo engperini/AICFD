@@ -27,6 +27,12 @@ _UNIFORM = re.compile(
 )
 _NUMBER = re.compile(r"[-+]?[\d.]+(?:[eE][-+]?\d+)?")
 
+# The same list, but written as a patch's "value" rather than the internalField.
+_PATCH_LIST = re.compile(
+    r"value\s+nonuniform\s+List<(scalar|vector)>\s*\n?\s*(\d+)\s*\n?\s*\(",
+    re.MULTILINE,
+)
+
 
 class FoamParseError(RuntimeError):
     """Raised when a field file does not look like the format we expect."""
@@ -83,6 +89,69 @@ def read_field(path: str | Path, n_cells: int) -> np.ndarray:
             f"{path}: expected {n_cells} cells, got {len(values)}"
         )
     return values
+
+
+def read_patch_field(path: str | Path, patch: str) -> np.ndarray:
+    """The values a field carries on one patch.
+
+    Needed because the quantities that settle an air loop live on its
+    boundaries, not in its cells: what crosses a patch is ``phi`` there, and
+    the temperature of the air crossing it is ``T`` there. Reading them from
+    the nearest cell centres instead is an approximation, and on a porous zone
+    or a jet through a grille it is a bad one.
+
+    Returns shape ``(n,)`` for scalars and ``(n, 3)`` for vectors. A patch
+    whose value is uniform returns a single entry -- callers weight by ``phi``
+    and so never need it materialised.
+    """
+    text = Path(path).read_text()
+    start = text.find("boundaryField")
+    if start < 0:
+        raise FoamParseError(f"{path}: no boundaryField")
+    block = _patch_block(text[start:], patch, path)
+
+    match = _PATCH_LIST.search(block)
+    if match:
+        kind, count = match.group(1), int(match.group(2))
+        body_end = _matching_paren(block, match.end() - 1)
+        values = np.fromstring(
+            block[match.end() : body_end].replace("(", " ").replace(")", " "), sep=" "
+        )
+        return values.reshape(count, 3) if kind == "vector" else values
+
+    match = re.search(r"value\s+uniform\s+(\([^)]*\)|[-\d.eE+]+)\s*;", block)
+    if match:
+        numbers = [float(n) for n in _NUMBER.findall(match.group(1))]
+        return np.array([numbers] if len(numbers) > 1 else numbers)
+
+    # calculated/zeroGradient patches carry no value of their own
+    return np.array([])
+
+
+def _patch_block(text: str, patch: str, path) -> str:
+    """The braces belonging to one patch entry, without the ones nested in it."""
+    match = re.search(rf"^\s*{re.escape(patch)}\s*$", text, re.MULTILINE)
+    if match is None:
+        raise FoamParseError(f"{path}: no patch '{patch}' in boundaryField")
+    open_index = text.index("{", match.end())
+    depth = 0
+    for i in range(open_index, len(text)):
+        if text[i] == "{":
+            depth += 1
+        elif text[i] == "}":
+            depth -= 1
+            if depth == 0:
+                return text[open_index : i + 1]
+    raise FoamParseError(f"{path}: unterminated entry for patch '{patch}'")
+
+
+def patch_names(path: str | Path) -> list[str]:
+    """Every patch a field file carries a boundary condition for."""
+    text = Path(path).read_text()
+    start = text.find("boundaryField")
+    if start < 0:
+        return []
+    return re.findall(r"^    (\w+)$", text[start:], re.MULTILINE)
 
 
 def to_grid(values: np.ndarray, divisions: tuple[int, int, int]) -> np.ndarray:

@@ -109,20 +109,40 @@ class BafflesTest(unittest.TestCase):
         self.assertEqual(self.text.count("patchPairs"), len(podcase.wall_plan(self.model)))
         self.assertEqual(self.text.count("patches\n        {"), 1)
 
-    def test_the_supply_blows_into_the_hall_at_the_face_velocity(self):
-        velocity = self.model.face_velocity("fan")
-        self.assertIn(f"uniform ({velocity:.4g} 0 0)", self.text)
+    def test_both_sides_of_the_fan_move_the_same_mass(self):
+        """Volume would not do: the air leaving is warmer and thinner."""
+        mass = self.model.airflow_m3s * podcase.supply_density(self.model)
+        self.assertEqual(self.text.count(f"massFlowRate {mass:.6g}"), 2)
+        self.assertIn("flowRateInletVelocity", self.text)
+        self.assertIn("flowRateOutletVelocity", self.text)
+
+    def test_nothing_can_blow_backwards_through_the_fan(self):
+        """A pressure-driven intake let 2.3x the net flow reverse through it."""
+        self.assertNotIn("type pressureInletOutletVelocity", self.text)
+        intake = self.text[self.text.index(podcase.FAN_INTAKE) : self.text.index("slave")]
+        self.assertIn("flowRateOutletVelocity", intake)
+        # The patch is written as inletOutlet only so it stores a value the
+        # energy balance can read; what it would admit is supply air, never a
+        # guessed return that would invent heat.
+        supply_k = self.model.supply_temp_c + podcase.KELVIN
+        self.assertIn(f"inletValue uniform {supply_k:.2f}", intake)
+
+    def test_the_supply_density_is_the_one_the_solver_will_compute(self):
+        density = podcase.supply_density(self.model)
+        self.assertAlmostEqual(density, 1.2041, places=3)
 
     def test_the_supply_carries_the_supply_temperature(self):
         supply_k = self.model.supply_temp_c + podcase.KELVIN
         supply = self.text[self.text.index(podcase.FAN_SUPPLY) :]
         self.assertIn(f"uniform {supply_k:.2f}", supply)
 
-    def test_the_intake_is_the_single_pressure_reference(self):
-        """fixedValue on p_rgh, never prghPressure -- see ADR-012."""
+    def test_no_patch_fixes_the_pressure_so_the_solver_is_given_a_reference(self):
+        """Both fan patches fix mass flow, which leaves p_rgh's level free."""
         self.assertNotIn("type prghPressure", self.text)
-        intake = self.text[self.text.index(podcase.FAN_INTAKE) : self.text.index("slave")]
-        self.assertIn("p_rgh   { type fixedValue", intake)
+        self.assertNotIn("p_rgh   { type fixedValue", self.text)
+        solution = podcase.fv_solution(self.model, 1e-4)
+        self.assertIn("pRefCell", solution)
+        self.assertIn("pRefValue       101325", solution)
 
     def test_every_field_the_solver_reads_gets_a_condition(self):
         for name in ("U", "T", "p_rgh", "p", "k", "epsilon", "nut", "alphat"):

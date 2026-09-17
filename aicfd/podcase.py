@@ -43,6 +43,10 @@ KELVIN = 273.15
 C_MU = 0.09
 T_REFERENCE_K = 293.0
 
+#: Specific gas constant for air, J/(kg K), and the pressure the case runs at.
+R_AIR = 287.05
+P_OPERATING = 101325.0
+
 #: Turbulence intensity for a room-scale recirculating flow (see aicfd.case).
 TURBULENCE_INTENSITY = 0.10
 LENGTH_SCALE_FRACTION = 0.1
@@ -124,6 +128,16 @@ def _header(model: Model, cls: str, obj: str, location: str | None = None) -> st
         obj=obj,
         location=f'location    "{location}";\n    ' if location else "",
     )
+
+
+def supply_density(model: Model) -> float:
+    """Air density at the supply temperature, from the ideal gas law.
+
+    The fan is set up by mass flow, and this has to be the density the solver
+    itself computes at the supply patch. A nominal 1.19 would leave a percent
+    of mass imbalance in a domain that has nowhere to put it.
+    """
+    return P_OPERATING / (R_AIR * (model.supply_temp_c + KELVIN))
 
 
 def _v(point) -> str:
@@ -313,8 +327,7 @@ def _wall_patch_fields(k: float, epsilon: float) -> str:
 def create_baffles_dict(model: Model) -> str:
     k, epsilon = turbulence_initial_values(model)
     supply_k = model.supply_temp_c + KELVIN
-    return_k = supply_k + min(max(model.design_delta_t_k, 1.0), 20.0)
-    velocity = model.face_velocity("fan")
+    mass_flow = model.airflow_m3s * supply_density(model)
 
     entries = []
     for name, _panel, _holes in wall_plan(model):
@@ -338,6 +351,10 @@ def create_baffles_dict(model: Model) -> str:
         // the gallery through {FAN_INTAKE} and comes back into the cold aisle
         // through {FAN_SUPPLY} at {model.supply_temp_c:g} degC. That is the fan
         // wall, without modelling a single blade.
+        //
+        // Both sides are set by *mass* flow. Volume would not do: the air
+        // leaving is warmer and thinner than the air arriving, and in a loop
+        // with nowhere to store the difference a 1% mismatch has no way out.
         type        faceZone;
         zoneName    fan;
         patches
@@ -348,22 +365,30 @@ def create_baffles_dict(model: Model) -> str:
                 type    patch;
                 patchFields
                 {{
-                    U       {{ type pressureInletOutletVelocity;
-                              value uniform (0 0 0); }}
+                    // A fan draws its duty whatever the gallery is doing.
+                    // pressureInletOutletVelocity here let 3.9 kg/s blow back
+                    // *into* the gallery against a net of 1.7 -- no fan does
+                    // that -- and on every reversed face T was pinned to a
+                    // guessed return temperature, inventing heat the racks
+                    // never produced and leaving the energy balance open.
+                    U       {{ type flowRateOutletVelocity;
+                              massFlowRate {mass_flow:.6g};
+                              rho rho; value uniform (0 0 0); }}
+                    // A pure outlet in behaviour -- flowRateOutletVelocity
+                    // admits nothing -- but written as inletOutlet because
+                    // zeroGradient stores no value on the patch, and the
+                    // temperature of the air crossing here is the number the
+                    // energy balance is built from. The inlet value is inert;
+                    // it is the supply temperature rather than a guessed
+                    // return so that if anything ever did reverse, it would
+                    // bring back cold air instead of inventing heat.
                     T       {{ type inletOutlet;
-                              inletValue uniform {return_k:.2f};
-                              value uniform {return_k:.2f}; }}
-                    // The case's one pressure reference. fixedValue on p_rgh,
-                    // never prghPressure: p_rgh is p + rho*g*z, so a uniform
-                    // value is the hydrostatic column a real room has, while
-                    // prghPressure would flatten it and drive an artefact
-                    // recirculation (ADR-012).
-                    p_rgh   {{ type fixedValue; value uniform 101325; }}
+                              inletValue uniform {supply_k:.2f};
+                              value uniform {supply_k:.2f}; }}
+                    p_rgh   {{ type fixedFluxPressure; value uniform 101325; }}
                     p       {{ type calculated; value uniform 101325; }}
-                    k       {{ type inletOutlet; inletValue uniform {k:.4g};
-                              value uniform {k:.4g}; }}
-                    epsilon {{ type inletOutlet; inletValue uniform {epsilon:.4g};
-                              value uniform {epsilon:.4g}; }}
+                    k       {{ type zeroGradient; }}
+                    epsilon {{ type zeroGradient; }}
                     nut     {{ type calculated; value uniform 0; }}
                     alphat  {{ type calculated; value uniform 0; }}
                 }}
@@ -374,10 +399,12 @@ def create_baffles_dict(model: Model) -> str:
                 type    patch;
                 patchFields
                 {{
-                    // {model.airflow_m3h:,.0f} m3/h through
-                    // {model.panel("fan").area:.2f} m2, blowing +x into the cold aisle.
-                    U       {{ type fixedValue;
-                              value uniform ({velocity:.4g} 0 0); }}
+                    // {model.airflow_m3h:,.0f} m3/h at {model.supply_temp_c:g} degC is
+                    // {mass_flow:.4g} kg/s through {model.panel("fan").area:.2f} m2,
+                    // blowing into the cold aisle along the patch normal.
+                    U       {{ type flowRateInletVelocity;
+                              massFlowRate {mass_flow:.6g};
+                              rho rho; value uniform (0 0 0); }}
                     T       {{ type fixedValue; value uniform {supply_k:.2f}; }}
                     p_rgh   {{ type fixedFluxPressure; value uniform 101325; }}
                     p       {{ type calculated; value uniform 101325; }}
@@ -576,6 +603,10 @@ SIMPLE
     momentumPredictor yes;
     nNonOrthogonalCorrectors 0;
     consistent      yes;
+    // Both sides of the fan fix their mass flow, so no patch fixes p_rgh and
+    // its level is undetermined. This pins it.
+    pRefCell        0;
+    pRefValue       101325;
     residualControl
     {{
         p_rgh           {tolerance:g};
