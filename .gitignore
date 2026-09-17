@@ -1,0 +1,22 @@
+# Artefatos de execução do OpenFOAM
+log.*
+VTK/
+processor*/
+postProcessing/
+constant/polyMesh/
+**/constant/polyMesh/
+*.foam
+*.OpenFOAM
+
+# Diretórios de tempo gerados pelo solver (o 0/ inicial é versionado)
+[1-9]/
+[1-9][0-9]/
+[1-9][0-9][0-9]/
+[1-9][0-9][0-9][0-9]/
+[0-9]*.[0-9]*/
+
+# Python
+__pycache__/
+*.pyc
+.venv/
+venv/

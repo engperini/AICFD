@@ -1,0 +1,12 @@
+#!/bin/sh
+# Caso de referencia: 1 rack IT (zona porosa + fonte de calor) + 1 fanwall, sala 6x4x3m
+# Requer: apt-get install -y openfoam openfoam-examples
+set -e
+cd "$(dirname "$0")"
+RUN="env -i $(cat foam_env.sh | sed 's/export //') bash -c"
+eval $RUN "'cd $(pwd) && blockMesh'"
+eval $RUN "'cd $(pwd) && topoSet'"
+eval $RUN "'cd $(pwd) && checkMesh'"
+eval $RUN "'cd $(pwd) && buoyantSimpleFoam | tee log.buoyantSimpleFoam'"
+eval $RUN "'cd $(pwd) && foamToVTK -latestTime'"
+echo "Done. Post-process VTK/ with pyvista or ParaView."

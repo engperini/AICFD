@@ -1,0 +1,45 @@
+FoamFile { version 2.0; format ascii; class dictionary; object fvOptions; }
+
+rackPorosity
+{
+    type            explicitPorositySource;
+    active          yes;
+    explicitPorositySourceCoeffs
+    {
+        selectionMode   cellZone;
+        cellZone        rack;
+        type            DarcyForchheimer;
+        DarcyForchheimerCoeffs
+        {
+            d   d [0 -2 0 0 0 0 0] (20 100000 100000);
+            f   f [0 -1 0 0 0 0 0] (2 500 500);
+            coordinateSystem
+            {
+                type        cartesian;
+                origin      (0 0 0);
+                coordinateRotation
+                {
+                    type    axesRotation;
+                    e1      (1 0 0);
+                    e2      (0 1 0);
+                }
+            }
+        }
+    }
+}
+
+rackHeat
+{
+    type            scalarSemiImplicitSource;
+    active          yes;
+    scalarSemiImplicitSourceCoeffs
+    {
+        selectionMode   cellZone;
+        cellZone        rack;
+        volumeMode      absolute;
+        injectionRateSuSp
+        {
+            h           (5000 0);
+        }
+    }
+}
