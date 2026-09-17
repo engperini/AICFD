@@ -75,6 +75,7 @@ OpenFOAM, and uses an AI assistant to cover the remaining gap.
 | `aicfd/spec.py` | Units, validation, defaults, sanity limits | Any OpenFOAM knowledge |
 | `aicfd/model.py` | Spec -> derived geometry, mesh snapping (ADR-014) | Any OpenFOAM knowledge |
 | `aicfd/podcase.py` | Fan-wall POD -> OpenFOAM, via mesh surgery (ADR-016) | Running anything |
+| `aicfd/podpost.py` | POD KPIs, the energy-balance verdict, live sampling (ADR-018) | Rendering |
 | `aicfd/server.py` | Serving the page, the editable-parameter gate (ADR-015) | Physics, geometry |
 | `aicfd/case.py` | The whole OpenFOAM dictionary vocabulary | Running anything |
 | `aicfd/foam/` | Reading a solved case back off disk | Writing one |
@@ -168,13 +169,18 @@ the first realistic generated case gave every rack 21% of the air its load
 required, which over-predicts rack temperatures by tens of degrees. See
 [`experiments/2026-09-17-generated-case-velocities.md`](experiments/2026-09-17-generated-case-velocities.md).
 
-### M4c — The page as the pre-run interface — *drawings done, run not yet wired*
+### M4c — The page as the pre-run interface — **done**
 `aicfd view` opens the model before it is solved: two sections and a plan at one
 shared scale, drawn from the same geometry object the mesher consumes (ADR-014),
 plus a parameter form, the derived face areas and velocities, and the
 convergence chart. Solid where the section cuts, dashed for anything off the
-plane. Done for the fan-wall POD; the Run button is disabled until the case
-generator below lands, and the page says why (ADR-015).
+plane.
+
+A run is then followed rather than waited out: four instrumented places (cold
+aisle, contained hot aisle, ceiling plenum, back of the fan wall), three points
+each, sampled every `solver.sensor_interval` iterations, with the mass and
+energy balances alongside. The sensors are drawn on the sections too, so their
+placement is checked before the run rather than argued about after it.
 
 ### M5 — Real data hall features — *in progress*
 Hot aisle containment and the ceiling-plenum return are modelled in
@@ -183,12 +189,14 @@ into the cold aisle, racks turned 90° to it, a contained hot aisle rising to
 the false ceiling, three ceiling grilles over the racks, a return plenum, and
 the opening back into the mechanical gallery.
 
-Remaining: the generator that turns that model into an OpenFOAM case —
-partial patches for the fan wall and the plenum opening (`topoSet` +
-`createPatch`), the false ceiling and the containment as internal baffles
-(`createBaffles`), and rack porosity oriented along y. Then raised-floor
-plenums with perforated tiles, in-row and downflow CRAC types, and rack-level
-airflow curves.
+The generator is `aicfd/podcase.py`: internal surfaces as baffles, openings
+as holes left in their face zones, rack porosity oriented along y, and the fan
+wall as the one place the air loop is cut (ADR-016, ADR-017).
+`aicfd/podpost.py` judges the result by its energy balance (ADR-018).
+
+Remaining: raised-floor plenums with perforated tiles, in-row and downflow
+CRAC types, rack-level airflow curves, and a leakage path for containment that
+is not perfect — real containment is not.
 
 ### M6 — BIM import
 IFC (exported from federated Revit) -> filtered geometry -> room spec. Only the
