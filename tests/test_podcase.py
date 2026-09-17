@@ -10,7 +10,9 @@ from __future__ import annotations
 
 import copy
 import re
+import tempfile
 import unittest
+from pathlib import Path
 
 import yaml
 
@@ -216,6 +218,33 @@ class BlockMeshTest(unittest.TestCase):
         model = build()
         text = podcase.block_mesh_dict(model)
         self.assertIn(f"({' '.join(str(n) for n in model.divisions)})", text)
+
+
+class CliRoutingTest(unittest.TestCase):
+    """The spec's shape picks the generator, not a flag to remember."""
+
+    def test_a_pod_spec_is_recognised(self):
+        from aicfd.cli import is_pod_spec
+
+        path = Path(tempfile.mkdtemp()) / "pod.yaml"
+        path.write_text(yaml.safe_dump(SPEC))
+        self.assertTrue(is_pod_spec(path))
+
+    def test_an_m2_room_spec_is_not(self):
+        from aicfd.cli import is_pod_spec
+
+        path = Path(tempfile.mkdtemp()) / "room.yaml"
+        path.write_text(
+            yaml.safe_dump({"name": "r", "room": {"size": [8, 5, 3]}, "cracs": []})
+        )
+        self.assertFalse(is_pod_spec(path))
+
+    def test_something_that_is_not_yaml_is_not_a_pod(self):
+        from aicfd.cli import is_pod_spec
+
+        path = Path(tempfile.mkdtemp()) / "nope.yaml"
+        path.write_text(": : not yaml : :")
+        self.assertFalse(is_pod_spec(path))
 
 
 class SummaryTest(unittest.TestCase):

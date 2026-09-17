@@ -28,6 +28,51 @@ Run them as `python -m aicfd <command>` (or `python3` inside Docker).
 A full solve of the 72k-cell reference case takes ~90 s. Run it in the
 background and keep working; do not poll it in a tight loop.
 
+## Two case shapes, and how to tell them apart
+
+There are two generators, and the spec's shape picks one -- there is no flag.
+
+- **A room** (`room:` + `cracs:`) is the M2 shape: supply and return are faces
+  of the domain. `aicfd/case.py` builds it.
+- **A fan-wall POD** (`gallery:` + `fanwall:`) closes its air loop inside one
+  box: fan wall, cold aisle, racks, contained hot aisle, ceiling grilles,
+  return plenum, mechanical gallery. Every surface that matters is internal, so
+  `aicfd/podcase.py` meshes a box and then operates on it with `topoSet` and
+  `createBaffles` (ADR-016). `cases/pod-fanwall.yaml` is the worked example.
+
+Do not mix keys between them. If the user describes a POD -- a fan wall, a
+false ceiling with return grilles, hot-aisle containment, a mechanical gallery
+-- start from `cases/pod-fanwall.yaml` and change the numbers.
+
+## Reading a POD run
+
+`aicfd run cases/<pod>.yaml` samples itself while it solves: the solver writes
+its fields every `solver.sensor_interval` iterations and AICFD records four
+instrumented places (cold aisle, contained hot aisle, ceiling plenum, back of
+the fan wall), three points each, plus the mass and energy balances. The page
+shows the same thing live.
+
+**Judge a POD run by its energy balance, never by its residuals** (ADR-018).
+Every watt installed has to leave through the fan intake as warmer air. The
+report prints it as "the return air carries X kW of the Y kW installed". A run
+whose residuals are falling nicely and whose closure is 5% has converged on
+nothing -- the thermal field has not filled the domain yet. Watch it across
+samples: climbing means unconverged, settling somewhere other than 100% means
+wrong.
+
+Rules that follow from that:
+
+- **Never quote a rack temperature from a run whose energy closure is not
+  within ~10% of the load.** Say the run is still filling and give the closure.
+- **If `no_backflow` fails**, the fan wall boundary is deciding the flow rather
+  than the room. The numbers are not about the POD.
+- **If `sealed_envelope` fails**, the mesh surgery leaked. Re-run
+  `aicfd build` and check the face counts in `log.checkMesh` against the
+  areas the generator printed.
+- `functionObject`s and `postProcess` do not work in this OpenFOAM build (an
+  `OSHA1stream` fault -- see the note in `aicfd/podcase.py`). Do not reach for
+  them; sampling already covers it.
+
 ## Turning a description into a spec
 
 When the user describes a room, write `cases/<name>.yaml` and run it. The spec

@@ -120,7 +120,50 @@ def _new(args) -> int:
     return 0
 
 
+def is_pod_spec(path: str | Path) -> bool:
+    """Whether a spec describes a fan-wall POD rather than an M2 room.
+
+    The two generators build genuinely different things -- a POD's air loop
+    closes inside one box and every surface that matters is internal -- so the
+    spec shape picks the generator rather than a flag the user has to remember.
+    """
+    import yaml
+
+    try:
+        spec = yaml.safe_load(Path(path).read_text())
+    except (OSError, yaml.YAMLError):
+        return False
+    return isinstance(spec, dict) and "fanwall" in spec and "gallery" in spec
+
+
+def _load_pod(path: str | Path):
+    import yaml
+
+    from aicfd.model import build_model
+
+    spec = yaml.safe_load(Path(path).read_text())
+    return build_model(spec), spec.get("solver", {})
+
+
 def _build(args) -> int:
+    if is_pod_spec(args.spec):
+        from aicfd import podcase
+
+        model, solver = _load_pod(args.spec)
+        out = Path(args.out) if args.out else RUNS_DIR / model.name / "case"
+        podcase.build(
+            model,
+            out,
+            max_iterations=int(solver.get("max_iterations", 2000)),
+            residual_tolerance=float(solver.get("residual_tolerance", 1e-4)),
+            sensor_interval=int(solver.get("sensor_interval", 100)),
+        )
+        print(podcase.summary(model))
+        for warning in model.warnings:
+            print(f"  ! {warning}")
+        print(f"Generated {out}")
+        return 0
+
     from aicfd import case as case_builder
     from aicfd.spec import SpecError, load
 
@@ -144,6 +187,9 @@ def _run(args) -> int:
     if not case.exists():
         print(f"error: no such case or spec: {case}", file=sys.stderr)
         return 1
+
+    if case.is_file() and is_pod_spec(case):
+        return _run_pod(case, args)
 
     # A .yaml argument is a room spec: generate the case first (ADR-004).
     if case.is_file():
@@ -182,6 +228,56 @@ def _run(args) -> int:
     return _post(argparse.Namespace(name=name, time=None))
 
 
+def _run_pod(spec_path: Path, args) -> int:
+    """Generate, solve and report a fan-wall POD, sampling as it goes."""
+    from aicfd import podcase, podpost
+    from aicfd.run import FoamCommandFailed, FoamNotInstalled, solve
+
+    model, solver = _load_pod(spec_path)
+    name = args.name or model.name
+    target = RUNS_DIR / name
+
+    print(podcase.summary(model))
+    for warning in model.warnings:
+        print(f"  ! {warning}")
+    podcase.build(
+        model,
+        target,
+        max_iterations=int(solver.get("max_iterations", 2000)),
+        residual_tolerance=float(solver.get("residual_tolerance", 1e-4)),
+        sensor_interval=int(solver.get("sensor_interval", 100)),
+    )
+
+    def step(command: str) -> None:
+        if command == "checkMesh":
+            problems = podcase.check_fan_orientation(target)
+            if problems:
+                raise RuntimeError(problems[0])
+        print(f"  {command} ...", flush=True)
+
+    # Reads each field write as it lands, so a long solve can be followed
+    # rather than waited out.
+    sampler = podpost.Sampler(model, target)
+    sampler.start()
+    try:
+        steps = solve(target, podcase.PIPELINE, on_step=step)
+    except (FoamNotInstalled, FoamCommandFailed) as error:
+        print(f"error: {error}", file=sys.stderr)
+        if isinstance(error, FoamCommandFailed):
+            _tail(error.log)
+        return 1
+    finally:
+        sampler.stop()
+
+    print(f"Solved in {sum(s.seconds for s in steps):.1f}s")
+    if args.no_post:
+        return 0
+    results = podpost.analyse(model, target)
+    print()
+    print(podpost.report(results))
+    return 0 if results.valid else 2
+
+
 def _post(args) -> int:
     from aicfd.post import export
 
@@ -189,6 +285,15 @@ def _post(args) -> int:
     if not case.exists():
         print(f"error: no run named '{args.name}' under {RUNS_DIR}", file=sys.stderr)
         return 1
+
+    spec = CASES_DIR / f"{args.name}.yaml"
+    if spec.exists() and is_pod_spec(spec):
+        from aicfd import podpost
+
+        model, _solver = _load_pod(spec)
+        results = podpost.analyse(model, case, args.time)
+        print(podpost.report(results))
+        return 0 if results.valid else 2
 
     out = RESULTS_DIR / args.name
     results = export(case, out, args.time)
