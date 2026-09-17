@@ -178,12 +178,86 @@ re-establish either way — it dipped to 25,1 before climbing back. The whole
 benefit is in the plenum and the gallery, which is precisely where the cold
 start's cost was.
 
+## Fault 3 — three walls missing, and a factor of five
+
+The rack row delivered 5,3 Pa where its own curve, at the airflow the fan was
+measurably moving, demanded 25,8. Two isolated duct cases reproduced the
+analytic drop to 0,2%, so the porous coefficients were right. The obvious next
+suspect was the blocked-axis coefficients, and testing that first required a
+measurement worth trusting — which is what actually found the fault.
+
+Every reading until then came from cell-centre velocity, which is meaningless
+inside a porous zone and beside a baffle. `aicfd/foam/polymesh.py` now labels
+each internal face by the axis it is normal to, from the offset between its
+owner and neighbour cells on a structured box, which makes `phi` — the exact
+conserved flux — readable through any plane. That capability was needed anyway:
+this OpenFOAM build cannot run the functionObject that would otherwise report
+it.
+
+Through the rack zone's faces, the row as first built:
+
+| face | flow | |
+|---|---|---|
+| front of the racks, y = 1,8 | +1 106 m³/h | **22%** |
+| row end, x = 5,0 | +1 651 m³/h | |
+| row end, x = 6,8 | +1 521 m³/h | |
+| top, z = 2,2 | −781 m³/h | |
+| outlet, y = 3,0 | +5 059 m³/h | the fan's whole duty |
+
+The containment sealed the hot aisle, but the row's own ends and tops were
+open. The cold aisle wrapped around and poured in sideways, which costs a few
+cells of blocked axis against 1,2 m of the flow axis — the short circuit wins
+every time. Reducing the blocked coefficients would have widened exactly the
+path the air was taking.
+
+A rack is a closed box that breathes front to back. Closing the ends took the
+front from 22% to 57%; the air moved upstairs and came down through the tops
+instead. Closing those too:
+
+| | air through the rack fronts | resistance delivered |
+|---|---|---|
+| row open | 22% | 21% |
+| ends closed | 57% | 53% |
+| **box closed** | **100%** | **104%** |
+
+Proportional at every step — the delivered resistance simply tracked the air
+that was actually crossing the racks.
+
+## The result
+
+With the row closed, at iteration 400, **all nine checks pass**:
+
+```
+Fan wall        5 000 m³/h (1,672 kg/s) at 20,0 °C
+Return air      30,8 °C (dT 10,8 K)
+Heat carried    18,17 kW of 18,00 kW installed (101%)
+Fan wall rise   29,0 Pa of the 100 Pa on the datasheet (29%)
+Rack row        26,6 Pa across the row, in the field
+
+Place                  Temp    dP vs intake    Speed
+Corredor frio          20,0            29,0     0,20
+Corredor quente        30,6             2,0     0,43
+Plenum do forro        30,5            -1,0     0,39
+Costas do fan wall     30,8             0,0     0,24
+
+Rack              Load    Inlet   Outlet    Rise   ASHRAE
+R1                6,0 kW   20,6     30,8    10,2 K   ok
+R2                6,0 kW   21,0     30,6     9,7 K   ok
+R3                6,0 kW   20,7     30,8    10,1 K   ok
+```
+
+The design point is 18 kW into 5 000 m³/h — a 10,8 K rise and a 30,8 °C return.
+The solved field gives exactly that. Rack inlets sit 0,6 to 1,0 K above the
+supply, which is the containment doing its job: with the row closed there is no
+path from the hot aisle back to a rack face.
+
 ## Open
 
-- Neither run has settled below the 0,25 K drift threshold yet, so the
-  cold/warm agreement test has no verdict. Until it does, no rack temperature
-  from this case should be quoted.
-- The warm start's plenum is still falling (30,8 → 27,8) as it is flushed by
-  air from a hot aisle that started colder. It is a lagged copy of the hot
-  aisle's trajectory and should turn round; that it does is worth confirming
-  rather than assuming.
+- The cold/warm agreement test (ADR-019) has not been run on the corrected
+  geometry. Until it has, the seeded field is unproven for this case.
+- The ceiling grilles are modelled as fully open holes. A real return grille
+  has a free area around 50% and a loss coefficient, so some of the 71 Pa of
+  headroom against the datasheet is resistance that is simply not in the model
+  yet.
+- `settled` is a speed test and `return_path` a distance test; both pass here,
+  but neither would catch a field drifting as a whole. No check yet does.

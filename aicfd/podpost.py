@@ -149,6 +149,16 @@ def analyse(model: Model, case_dir: str | Path, time: str | None = None) -> PodR
     kpis["racks"] = rack_temperatures(model, grid)
 
     kpis["rack_drop_pa"] = rack_pressure_drop(model, grid)
+    kpis["fan_rise_pa"] = round(
+        float(
+            np.mean(read_patch_field(step / "p_rgh", FAN_SUPPLY))
+            - np.mean(read_patch_field(step / "p_rgh", FAN_INTAKE))
+        ),
+        3,
+    )
+    if model.fan_static_pa:
+        kpis["fan_static_pa"] = model.fan_static_pa
+        kpis["fan_margin"] = round(kpis["fan_rise_pa"] / model.fan_static_pa, 4)
     kpis["drift_k"] = drift(case)
     history = read_history(case)
     kpis["places_now"] = history[-1]["places"] if history else []
@@ -425,6 +435,19 @@ def _checks(model: Model, step: Path, kpis: dict, grid: dict) -> list[Check]:
                     if abs(ratio - 1.0) <= RESISTANCE_TOLERANCE
                     else " -- any fan pressure taken from this field is wrong"
                 ),
+            )
+        )
+
+    rise = kpis.get("fan_rise_pa")
+    available = model.fan_static_pa
+    if rise is not None and available:
+        checks.append(
+            Check(
+                "fan_capacity",
+                rise <= available,
+                f"the POD costs {rise:.1f} Pa and the fan wall's datasheet "
+                f"offers {available:.0f} Pa ({rise / available * 100:.0f}%)"
+                + ("" if rise <= available else " -- the unit cannot deliver this airflow"),
             )
         )
 
@@ -771,7 +794,14 @@ def _resistance_line(kpis: dict, results: "PodResults") -> str:
 
 def _fan_rise_line(kpis: dict) -> str:
     rise = kpis.get("fan_rise_pa")
-    return "-" if rise is None else f"{rise:.1f} Pa across the fan wall"
+    if rise is None:
+        return "-"
+    if not kpis.get("fan_static_pa"):
+        return f"{rise:.1f} Pa across the fan wall"
+    return (
+        f"{rise:.1f} Pa of the {kpis['fan_static_pa']:.0f} Pa on the "
+        f"datasheet ({kpis['fan_margin'] * 100:.0f}%)"
+    )
 
 
 def _path_line(kpis: dict) -> str:

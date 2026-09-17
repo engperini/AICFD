@@ -429,6 +429,34 @@ class RackResistanceTest(unittest.TestCase):
         self.assertLess(podpost.RESISTANCE_TOLERANCE, 0.79)
 
 
+class FanCapacityTest(unittest.TestCase):
+    """The datasheet pressure is a limit, so it is checked against."""
+
+    def test_a_pod_that_fits_the_machine_passes(self):
+        model = M.build_model(
+            dict(SPEC, fanwall={**SPEC["fanwall"], "static_pressure_pa": 100})
+        )
+        self.assertEqual(model.fan_static_pa, 100.0)
+        self.assertLess(model.rack_pressure_drop_pa, model.fan_static_pa)
+
+    def test_a_pod_that_does_not_fit_is_visible_before_the_solve(self):
+        """Quadrupling the airflow puts the racks alone past the machine."""
+        model = M.build_model(
+            dict(
+                SPEC,
+                fanwall={
+                    **SPEC["fanwall"],
+                    "airflow_m3h": 20000,
+                    "static_pressure_pa": 100,
+                },
+            )
+        )
+        self.assertGreater(model.rack_pressure_drop_pa, model.fan_static_pa)
+
+    def test_without_a_datasheet_there_is_nothing_to_check(self):
+        self.assertIsNone(M.build_model(SPEC).fan_static_pa)
+
+
 class CompareTest(unittest.TestCase):
     """Two runs of the same case, from different initial fields, must agree."""
 
