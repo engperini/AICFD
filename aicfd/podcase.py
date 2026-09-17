@@ -212,7 +212,7 @@ def wall_plan(model: Model) -> list[tuple[str, Panel, list[Panel]]]:
     plan.append(("forro", model.panel("ceiling"), grilles))
 
     for panel in model.panels:
-        if panel.name.startswith("containment"):
+        if panel.name.startswith(("containment", "rack_end")):
             plan.append((panel.name, panel, []))
     return plan
 

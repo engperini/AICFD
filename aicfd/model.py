@@ -416,6 +416,25 @@ def build_model(spec: dict) -> Model:
             )
         )
 
+    # The ends of the row. A rack has side panels, and the end of a row is
+    # closed; without them the cold aisle wraps around the row and enters the
+    # porous zone sideways, which costs almost nothing because the air then
+    # only has to cross a few cells of blocked axis instead of 1,2 m of the
+    # flow axis. Measured on the case that lacked them: 63% of the fan's duty
+    # came in through the two ends and only 22% through the rack fronts, so the
+    # row delivered a fifth of its rated pressure drop and the containment was
+    # not doing what the drawing said it was.
+    for edge in row:
+        panels.append(
+            Panel(
+                f"rack_end_{edge:g}".replace(".", "_"),
+                "wall",
+                axis=0,
+                position=edge,
+                extent=((rack_band[0], rack_band[1]), (0.0, rack_dz)),
+            )
+        )
+
     # Hot aisle containment: a chimney from the racks up to the ceiling.
     if spec.get("containment", {}).get("enabled", True):
         panels.append(

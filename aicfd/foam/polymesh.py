@@ -95,3 +95,42 @@ def patch_normal(case_dir: str | Path, patch: str) -> Vector:
     if length == 0:
         raise ValueError(f"degenerate first face on patch '{patch}'")
     return tuple(component / length for component in normal)  # type: ignore[return-value]
+
+
+def read_int_list(case_dir: str | Path, name: str) -> "np.ndarray":
+    """One of polyMesh's plain integer lists (``owner``, ``neighbour``)."""
+    import numpy as np
+
+    text = _body(Path(case_dir) / "constant/polyMesh" / name)
+    open_index = text.index("(")
+    close = text.rindex(")")
+    return np.fromstring(text[open_index + 1 : close], sep=" ", dtype=float).astype(
+        np.int64
+    )
+
+
+def internal_face_axes(case_dir: str | Path, divisions):
+    """Which axis each internal face is normal to, and its owner cell.
+
+    Only valid for a structured blockMesh box, where cell ``c`` sits at
+    ``i + j*nx + k*nx*ny`` and a face joins cells whose indices differ by 1,
+    ``nx`` or ``nx*ny``. That is exactly the mesh AICFD builds, and it is what
+    makes an exact flux through any plane readable without a functionObject --
+    which this OpenFOAM build cannot run.
+
+    Returns ``(axis, owner)``, both length nInternalFaces, with ``axis`` -1
+    where the offset is none of the three (a face left by mesh surgery).
+    """
+    import numpy as np
+
+    nx, ny, _nz = divisions
+    owner = read_int_list(case_dir, "owner")
+    neighbour = read_int_list(case_dir, "neighbour")
+    owner = owner[: len(neighbour)]
+    offset = neighbour - owner
+
+    axis = np.full(len(neighbour), -1, dtype=np.int8)
+    axis[offset == 1] = 0
+    axis[offset == nx] = 1
+    axis[offset == nx * ny] = 2
+    return axis, owner

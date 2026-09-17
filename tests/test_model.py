@@ -94,6 +94,33 @@ class GeometryTest(unittest.TestCase):
         self.assertAlmostEqual(wall.extent[1][0], model.racks[0].box.hi[2])
         self.assertAlmostEqual(wall.extent[1][1], model.ceiling_z)
 
+    def test_the_row_ends_are_closed(self):
+        """A rack has side panels, and an open row end is a short circuit.
+
+        Measured on the case that lacked them: 63% of the fan's duty entered
+        the porous zone sideways through the two ends and only 22% through the
+        rack fronts, because a few cells of blocked axis cost far less than
+        1,2 m of the flow axis. The row then delivered a fifth of its rated
+        pressure drop.
+        """
+        model = build()
+        ends = [p for p in model.panels if p.name.startswith("rack_end")]
+        self.assertEqual(len(ends), 2)
+        row = model.rack_span()
+        for panel, edge in zip(sorted(ends, key=lambda p: p.position), row):
+            self.assertEqual(panel.axis, 0)
+            self.assertAlmostEqual(panel.position, edge)
+            self.assertEqual(panel.extent[0], model.rack_band)
+            self.assertAlmostEqual(panel.extent[1][1], model.racks[0].box.hi[2])
+
+    def test_a_row_end_covers_exactly_the_rack_it_caps(self):
+        model = build()
+        end = model.panel("rack_end_5")
+        rack = model.racks[0]
+        self.assertAlmostEqual(
+            end.area, (rack.box.hi[1] - rack.box.lo[1]) * rack.box.hi[2]
+        )
+
     def test_containment_can_be_turned_off(self):
         model = build(containment={"enabled": False})
         self.assertFalse([p for p in model.panels if p.name.startswith("containment")])

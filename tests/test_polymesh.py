@@ -92,5 +92,60 @@ class ReaderTest(unittest.TestCase):
             polymesh.patch_normal(self.case, "sideways")
 
 
+class FaceAxisTest(unittest.TestCase):
+    """Classifying internal faces is what makes an exact flux readable.
+
+    This build's functionObjects are broken, so a plane's flow rate cannot be
+    asked for directly. On a structured box it can be read off phi instead,
+    once each internal face is labelled with the axis it is normal to -- and
+    getting that labelling wrong is how a cell-centre reading looked plausible
+    for far too long.
+    """
+
+    def setUp(self):
+        self.case = Path(tempfile.mkdtemp())
+        mesh = self.case / "constant/polyMesh"
+        mesh.mkdir(parents=True)
+        # A 3x2x2 box: cell c sits at i + j*3 + k*6.
+        self.divisions = (3, 2, 2)
+        owner, neighbour = [], []
+        for k in range(2):
+            for j in range(2):
+                for i in range(3):
+                    c = i + j * 3 + k * 6
+                    if i < 2:
+                        owner.append(c); neighbour.append(c + 1)
+                    if j < 1:
+                        owner.append(c); neighbour.append(c + 3)
+                    if k < 1:
+                        owner.append(c); neighbour.append(c + 6)
+        for name, values in (("owner", owner), ("neighbour", neighbour)):
+            (mesh / name).write_text(
+                HEADER.format(cls="labelList", obj=name)
+                + f"{len(values)}\n(\n" + "\n".join(str(v) for v in values) + "\n)\n"
+            )
+
+    def test_every_internal_face_gets_an_axis(self):
+        axis, _owner = polymesh.internal_face_axes(self.case, self.divisions)
+        self.assertEqual((axis < 0).sum(), 0)
+
+    def test_the_counts_match_a_structured_box(self):
+        axis, _owner = polymesh.internal_face_axes(self.case, self.divisions)
+        nx, ny, nz = self.divisions
+        self.assertEqual((axis == 0).sum(), (nx - 1) * ny * nz)
+        self.assertEqual((axis == 1).sum(), nx * (ny - 1) * nz)
+        self.assertEqual((axis == 2).sum(), nx * ny * (nz - 1))
+
+    def test_the_owner_is_the_lower_cell_of_each_pair(self):
+        axis, owner = polymesh.internal_face_axes(self.case, self.divisions)
+        neighbour = polymesh.read_int_list(self.case, "neighbour")
+        self.assertTrue((neighbour > owner).all())
+
+    def test_owner_is_trimmed_to_the_internal_faces(self):
+        """owner also lists the boundary faces; phi's internalField does not."""
+        axis, owner = polymesh.internal_face_axes(self.case, self.divisions)
+        self.assertEqual(len(owner), len(axis))
+
+
 if __name__ == "__main__":
     unittest.main()
