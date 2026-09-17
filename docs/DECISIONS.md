@@ -240,3 +240,60 @@ makes recirculation and starvation visible at all.
 not imply otherwise. The spec validator compensates by comparing total rack
 demand against total CRAC supply up front and warning on a shortfall, which
 catches the gross case before a 10-minute solve rather than after it.
+
+---
+
+## ADR-012 — The outlet fixes p_rgh, not the static pressure
+
+**Decision.** The return patch uses `fixedValue` on `p_rgh`. Never
+`prghPressure`.
+
+**Why.** `buoyantSimpleFoam` solves for the modified pressure
+`p_rgh = p - rho*(g.x) = p + rho*g*z`. In a still room the static pressure `p`
+carries a hydrostatic gradient, which is exactly the term `p_rgh` removes — so
+`p_rgh` is the quantity that is uniform, and `fixedValue` says so.
+
+`prghPressure` takes a *static* pressure and converts it, so a uniform `p`
+asserts that the static pressure is identical at floor and ceiling. Over a 3 m
+room that contradicts the hydrostatic column by `rho*g*H ≈ 35 Pa`, and 35 Pa
+across the outlet drives about 7 m/s. The first generated multi-rack case
+recirculated at 29.7 m/s in a room whose buoyant ceiling was 1.7 m/s, entirely
+because of this.
+
+`prghPressure` is correct where the static pressure at a boundary is genuinely
+known — an opening to outdoor air at a stated height. A return grille inside the
+room being modelled is not such a boundary.
+
+**Consequence.** Any future patch type (downflow CRAC returns, plenum
+openings, leakage paths in M5) inherits this question, and the answer is the
+same unless that patch really does connect to a separately-known pressure. Both
+the generator and a test carry the reasoning inline, because the wrong choice
+produces a case that runs, converges and lies.
+
+---
+
+## ADR-013 — Validate that the flow itself is attainable
+
+**Decision.** `aicfd post` checks the peak air speed against five times the
+larger of the supply face velocity and the buoyant velocity scale
+`sqrt(2*g*(dT/T0)*H)`, and fails the run if it exceeds it.
+
+**Why.** The validation layer as first written (ADR-007) checks that individual
+quantities are self-consistent: mass in versus mass out, temperature rising
+along the flow path, residuals small, cell zones populated. Every one of those
+passed on a run whose velocity field was seventeen times above anything the
+physics could drive, because each quantity was unremarkable *in isolation*.
+
+"Could this flow exist at all?" is a different question from "is this number
+consistent with that one", and it needs its own check. It is also the cheapest
+possible diagnostic for the largest class of setup error — a wrong boundary
+condition, a porosity coefficient off by orders of magnitude, a steady solver
+chasing an unsteady flow — all of which show up first as a field that moves too
+fast.
+
+**Consequence.** The margin (5x) is deliberately loose. A jet through a narrow
+gap between racks legitimately runs several times the mean, so this is sized to
+catch an order-of-magnitude artefact, not to police accuracy. When it fires, it
+also warns that the temperatures are unreliable, since they come from the same
+field — a reader who sees only "velocity check failed" might otherwise keep
+trusting the ASHRAE column.

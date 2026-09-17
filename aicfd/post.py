@@ -33,6 +33,12 @@ CP_AIR = 1005.0  # J/(kg K)
 M3H_PER_CFM = 1.69901
 """1 CFM = 1.69901 m3/h."""
 
+#: How far above the driving velocity scales a local peak may sit before the
+#: field stops being believable. Generous: jets through a narrow gap between
+#: racks legitimately run several times the mean, so this is sized to catch an
+#: order-of-magnitude artefact, not to police the last 50%.
+PLAUSIBLE_SPEED_MARGIN = 5.0
+
 # ASHRAE TC 9.9 rack *inlet* envelopes, degrees C dry bulb.
 ASHRAE_RECOMMENDED = (18.0, 27.0)
 ASHRAE_ALLOWABLE = {
@@ -241,7 +247,39 @@ def _evaluate(
                 "chiller energy at no thermal cost."
             )
 
+    # --- is the velocity field physically attainable? -------------------------
+    #
+    # Air in a room is driven by two things: the supply fans, and buoyancy. Both
+    # have a ceiling, and a field far above it is an artefact rather than a
+    # result -- a wrong boundary condition, a bad porosity coefficient, or a
+    # steady solver chasing an unsteady flow. This check exists because a
+    # generated case once produced a 14 m/s recirculation in a room where 2 m/s
+    # was the physical limit, and every other check passed.
     speed = np.linalg.norm(velocity, axis=-1)
+    peak_speed = float(speed.max())
+    span = float(temperature.max() - temperature.min())
+    buoyant_ceiling = float(
+        np.sqrt(2 * 9.81 * (span / 293.0) * room_size[2])
+    )
+    plausible = PLAUSIBLE_SPEED_MARGIN * max(inlet_speed, buoyant_ceiling, 0.05)
+    checks.append(
+        Check(
+            "plausible_velocity",
+            peak_speed <= plausible,
+            f"peak air speed {peak_speed:.2f} m/s against a plausible ceiling of "
+            f"{plausible:.2f} m/s (supply {inlet_speed:.2f} m/s, buoyancy over a "
+            f"{span:.1f} K spread {buoyant_ceiling:.2f} m/s)",
+        )
+    )
+    if peak_speed > plausible:
+        warnings.append(
+            f"The peak air speed of {peak_speed:.1f} m/s is far above what the "
+            "supply fans and buoyancy in this room can drive. Treat every number "
+            "in this report as unreliable: the temperatures come from the same "
+            "field. This usually means a boundary condition or a porosity "
+            "coefficient is wrong, not that the layout is bad."
+        )
+
     kpis = {
         "room_size_m": [round(v, 3) for v in room_size],
         "cells": geometry.n_cells,
@@ -259,7 +297,8 @@ def _evaluate(
         "temp_min_c": round(float(temperature.min() - KELVIN), 2),
         "temp_max_c": round(float(temperature.max() - KELVIN), 2),
         "temp_mean_c": round(float(temperature.mean() - KELVIN), 2),
-        "speed_max_ms": round(float(speed.max()), 3),
+        "speed_max_ms": round(peak_speed, 3),
+        "plausible_speed_ms": round(plausible, 3),
         "zones": zones,
         "iterations": log.completed_iterations,
         "runtime_s": log.execution_time_s,

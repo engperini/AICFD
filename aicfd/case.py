@@ -485,8 +485,14 @@ internalField   uniform 101325;
 
 boundaryField
 {{
+    // fixedValue on p_rgh, not prghPressure. p_rgh is the modified pressure
+    // p + rho*g*z, so a uniform p_rgh is the hydrostatic column a real room
+    // has. prghPressure with a uniform p would instead force the *static*
+    // pressure equal at floor and ceiling, imposing a ~35 Pa jump across a 3 m
+    // room -- enough to drive a 7 m/s recirculation that is pure artefact.
+    // See docs/experiments/2026-09-17-generated-case-velocities.md.
     fanwall    {{ type fixedFluxPressure; value uniform 101325; }}
-    return     {{ type prghPressure; p uniform 101325; value uniform 101325; }}
+    return     {{ type fixedValue; value uniform 101325; }}
     floor      {{ type fixedFluxPressure; value uniform 101325; }}
     ceiling    {{ type fixedFluxPressure; value uniform 101325; }}
     sidewalls  {{ type fixedFluxPressure; value uniform 101325; }}
@@ -545,7 +551,10 @@ internalField   uniform 0;
 boundaryField
 {{
     "(fanwall|return)" {{ type calculated; value uniform 0; }}
-    "(floor|ceiling|sidewalls)" {{ type compressible::alphatWallFunction; Prt 0.85; value uniform 0; }}
+    // Jayatilleke includes the thermal sublayer resistance. It makes no
+    // difference while the walls are adiabatic, but it is the right form once
+    // any of them is not.
+    "(floor|ceiling|sidewalls)" {{ type compressible::alphatJayatillekeWallFunction; Prt 0.85; value uniform 0; }}
 }}
 """,
     }

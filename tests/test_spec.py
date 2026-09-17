@@ -235,6 +235,17 @@ class GeneratorTests(unittest.TestCase):
                 self.assertAlmostEqual(steps, round(steps), places=6)
 
 
+    def test_outlet_fixes_the_modified_pressure_not_the_static_one(self):
+        # p_rgh = p + rho*g*z, so a uniform p_rgh is the hydrostatic column a
+        # real room has. prghPressure with a uniform p asserts equal *static*
+        # pressure floor to ceiling, which over 3 m contradicts that column by
+        # ~35 Pa and drives a ~7 m/s recirculation out of nothing.
+        # See docs/experiments/2026-09-17-generated-case-velocities.md.
+        p_rgh = (self.case / "0/p_rgh").read_text()
+        outlet = re.search(r"return\s+\{([^}]*)\}", p_rgh).group(1)
+        self.assertIn("fixedValue", outlet)
+        self.assertNotIn("prghPressure", outlet)
+
     def test_endtime_and_residual_control_agree_with_the_spec(self):
         control = (self.case / "system/controlDict").read_text()
         solution = (self.case / "system/fvSolution").read_text()

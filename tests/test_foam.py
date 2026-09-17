@@ -179,6 +179,62 @@ class AshraeTests(unittest.TestCase):
         self.assertEqual(verdict["allowable_classes"], [])
 
 
+class PlausibleVelocityTests(unittest.TestCase):
+    """The check that catches a field no amount of fan or buoyancy could drive."""
+
+    def evaluate(self, peak_speed, supply=1.8, spread_k=2.0):
+        import numpy as np
+
+        from aicfd.foam.casedict import Box, CaseGeometry
+        from aicfd.post import KELVIN, _evaluate
+        from aicfd.foam import solverlog
+
+        divisions = (4, 4, 4)
+        geometry = CaseGeometry(
+            room=Box(lo=(0, 0, 0), hi=(6.0, 4.0, 3.0)),
+            divisions=divisions,
+            inlet_velocity=(supply, 0.0, 0.0),
+            inlet_temperature_k=291.0,
+            inlet_patch="fanwall",
+        )
+        shape = (divisions[2], divisions[1], divisions[0])
+        temperature = np.full(shape, 291.0)
+        temperature[-1, -1, -1] = 291.0 + spread_k
+        velocity = np.zeros((*shape, 3))
+        velocity[..., 0] = supply
+        velocity[0, 0, 0, 0] = peak_speed
+        _, checks, warnings = _evaluate(
+            geometry, {"T": temperature, "U": velocity}, solverlog.SolverLog()
+        )
+        check = next(c for c in checks if c.name == "plausible_velocity")
+        return check, warnings
+
+    def test_a_field_within_reach_passes(self):
+        check, _ = self.evaluate(peak_speed=3.0)
+        self.assertTrue(check.passed, check.detail)
+
+    def test_an_impossible_field_fails(self):
+        check, warnings = self.evaluate(peak_speed=14.3)
+        self.assertFalse(check.passed, check.detail)
+        self.assertTrue(
+            any("unreliable" in w for w in warnings),
+            "a failing velocity check must warn that the temperatures are "
+            "from the same field",
+        )
+
+    def test_the_ceiling_follows_buoyancy_when_the_supply_is_slow(self):
+        # A slow supply with a large temperature spread still permits real
+        # motion; the check must not fail that.
+        check, _ = self.evaluate(peak_speed=5.0, supply=0.2, spread_k=20.0)
+        self.assertTrue(check.passed, check.detail)
+
+    def test_a_still_room_still_has_a_floor(self):
+        # With no supply and no spread the ceiling must not collapse to zero,
+        # or every quiet case fails.
+        check, _ = self.evaluate(peak_speed=0.2, supply=0.0, spread_k=0.0)
+        self.assertTrue(check.passed, check.detail)
+
+
 class ReferenceResultsTests(unittest.TestCase):
     """Guards the numbers the reference case is documented to produce."""
 

@@ -112,6 +112,7 @@
   "temp_max_c": 19.5,
   "temp_mean_c": 17.97,
   "speed_max_ms": 2.046,
+  "plausible_speed_ms": 9.0,
   "zones": [
    {
     "name": "rack",
@@ -168,6 +169,12 @@
    "name": "ashrae_rack",
    "passed": true,
    "detail": "rack inlet 17.86 degC -- below recommended (18.0-27.0 degC), still allowable for class A1",
+   "status": "PASS"
+  },
+  {
+   "name": "plausible_velocity",
+   "passed": true,
+   "detail": "peak air speed 2.05 m/s against a plausible ceiling of 9.00 m/s (supply 1.80 m/s, buoyancy over a 1.6 K spread 0.58 m/s)",
    "status": "PASS"
   }
  ],

@@ -1,6 +1,6 @@
 # reference-case -- results at t=800
 
-**Verdict: PASS** (5/5 checks passed)
+**Verdict: PASS** (6/6 checks passed)
 
 ## Operating point
 
@@ -27,6 +27,7 @@
 - **PASS** `residuals` -- worst final initial-residual 1.88e-04 (k)
 - **PASS** `zone_rack_populated` -- cell zone 'rack': 1200 cells
 - **PASS** `ashrae_rack` -- rack inlet 17.86 degC -- below recommended (18.0-27.0 degC), still allowable for class A1
+- **PASS** `plausible_velocity` -- peak air speed 2.05 m/s against a plausible ceiling of 9.00 m/s (supply 1.80 m/s, buoyancy over a 1.6 K spread 0.58 m/s)
 
 ## Warnings
 
