@@ -113,6 +113,26 @@ class GeometryTest(unittest.TestCase):
             self.assertEqual(panel.extent[0], model.rack_band)
             self.assertAlmostEqual(panel.extent[1][1], model.racks[0].box.hi[2])
 
+    def test_the_row_tops_are_closed(self):
+        """A rack has a top. Without one the cold-aisle pocket above the row
+        pours down through the porous zone: 43% of the fan's duty did."""
+        model = build()
+        top = model.panel("rack_top")
+        self.assertEqual(top.axis, 2)
+        self.assertAlmostEqual(top.position, model.racks[0].box.hi[2])
+        self.assertEqual(top.extent[0], model.rack_span())
+        self.assertEqual(top.extent[1], model.rack_band)
+
+    def test_the_row_is_closed_on_every_face_but_front_and_back(self):
+        model = build()
+        row = model.rack_span()
+        depth = model.rack_band[1] - model.rack_band[0]
+        height = model.racks[0].box.hi[2]
+        sealed = sum(
+            p.area for p in model.panels if p.name.startswith(("rack_end", "rack_top"))
+        )
+        self.assertAlmostEqual(sealed, 2 * depth * height + (row[1] - row[0]) * depth)
+
     def test_a_row_end_covers_exactly_the_rack_it_caps(self):
         model = build()
         end = model.panel("rack_end_5")
