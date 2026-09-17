@@ -47,10 +47,10 @@ OpenFOAM, and uses an AI assistant to cover the remaining gap.
                                         │ aicfd build
                                         ▼
    ┌────────────────────────────────────────────────────────────────────┐
-   │  aicfd/spec.py   validated schema (pydantic), engineering units     │
-   │  aicfd/case.py   Jinja2 templates -> OpenFOAM dicts                 │
-   │  aicfd/run.py    clean-env runner (see ADR-002), residual parsing   │
-   │  aicfd/post.py   VTK -> KPIs + slices + downsampled field           │
+   │  aicfd/spec.py   validated schema, engineering units (ADR-010)      │
+   │  aicfd/case.py   spec -> OpenFOAM dictionaries                      │
+   │  aicfd/run.py    clean-env runner (ADR-002), residual parsing       │
+   │  aicfd/post.py   structured-grid fields -> KPIs + web payload       │
    └────────────────────────────────┬───────────────────────────────────┘
                                     │ aicfd run / aicfd post
                                     ▼
@@ -74,6 +74,7 @@ OpenFOAM, and uses an AI assistant to cover the remaining gap.
 |---|---|---|
 | `aicfd/spec.py` | Units, validation, defaults, sanity limits | Any OpenFOAM knowledge |
 | `aicfd/case.py` | The whole OpenFOAM dictionary vocabulary | Running anything |
+| `aicfd/foam/` | Reading a solved case back off disk | Writing one |
 | `aicfd/run.py` | Process execution, environment isolation, log parsing | Interpreting physics |
 | `aicfd/post.py` | Turning a mesh into KPIs and web payloads | Rendering |
 | `web/` | Rendering and interaction | Any physics or unit conversion |
@@ -135,18 +136,24 @@ makes the output readable to someone who is not a CFD engineer.
 Also landed ahead of M3, because M0 needed them: `aicfd run/post/view/doctor`
 and the isolated OpenFOAM runner.
 
-### M2 — Parametric case generation
-`room.yaml` -> validated spec -> generated OpenFOAM case. Multi-rack. Derived fan
-velocities from real airflow. Automatic mesh sizing. This is where AICFD stops being
-"one hardcoded case" and becomes a tool.
+### M2 — Parametric case generation — **done**
+`room.yaml` -> validated spec -> generated OpenFOAM case. Multi-rack. Fan velocity
+derived from real CRAC airflow, rack resistance from a pressure drop at rated flow,
+heat sources from kW, mesh divisions from a target cell size, rack boxes snapped to
+cell boundaries. `aicfd new` and `aicfd build`.
 
-### M3 — CLI + Docker
+This is where AICFD stopped being "one hardcoded case". It is also the fix for the
+52x over-ventilation M0 found: the supply patch velocity is now
+`airflow / wall area` rather than a number chosen for convergence.
+
+### M3 — CLI + Docker — **done**
 `aicfd new | build | run | post | view | doctor`. Dockerfile with OpenFOAM baked in,
 `docker compose up` serving the viewer. Target: a Windows user with Docker Desktop
 goes from clone to a rendered result in under 15 minutes.
 
-### M4 — Assistant skill + engineering KPIs
-A `aicfd` skill teaching Claude Code to drive the CLI end to end. KPIs an electrical
+### M4 — Assistant skill + engineering KPIs — *skill done, KPIs next*
+The `aicfd` skill teaching Claude Code to drive the CLI end to end is in place.
+Remaining: KPIs an electrical
 engineer actually reports: per-rack inlet temperature vs. ASHRAE A1–A4 envelopes,
 RCI (Rack Cooling Index), RTI (Return Temperature Index), recirculation and bypass
 fractions, CRAC redundancy check (N+1 failure scenario).

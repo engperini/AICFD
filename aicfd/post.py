@@ -179,9 +179,10 @@ def _evaluate(
     if log.stopped_on_iteration_limit:
         warnings.append(
             f"The solver stopped at the iteration limit ({log.completed_iterations} "
-            "iterations), not at a convergence tolerance. Residuals were still "
-            f"{worst:.1e}. Set residualControl in system/fvSolution so the run "
-            "stops on physics rather than on a counter."
+            "iterations) without meeting its residualControl tolerance; residuals "
+            f"were still {worst:.1e}. Either raise endTime in system/controlDict so "
+            "it can finish, or accept this tolerance deliberately -- right now the "
+            "run stops on a counter rather than on physics."
         )
 
     # --- per-zone temperatures ------------------------------------------------

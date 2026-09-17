@@ -12,16 +12,59 @@ never invents numbers the tool did not produce.
 ## The loop
 
 ```
-aicfd doctor      # only when something looks broken
-aicfd run [case] [--name NAME]     -> runs/NAME   (solves, then posts)
-aicfd post NAME                    -> results/NAME/{viewer.json,fields.bin,report.md}
-aicfd view --case NAME             -> http://localhost:8000/web/?case=NAME
+aicfd new NAME              -> cases/NAME.yaml   (a starter room spec)
+aicfd build cases/NAME.yaml -> runs/NAME/case    (generate only, no solve)
+aicfd run cases/NAME.yaml   -> runs/NAME         (generate, solve, then post)
+aicfd post NAME             -> results/NAME/{viewer.json,fields.bin,report.md}
+aicfd view --case NAME      -> http://localhost:8000/web/?case=NAME
+aicfd doctor                # only when something looks broken
 ```
+
+`aicfd run` also accepts a case *directory* (that is how the bundled reference
+case runs), but for anything the user describes to you, write a spec.
 
 Run them as `python -m aicfd <command>` (or `python3` inside Docker).
 
 A full solve of the 72k-cell reference case takes ~90 s. Run it in the
 background and keep working; do not poll it in a tight loop.
+
+## Turning a description into a spec
+
+When the user describes a room, write `cases/<name>.yaml` and run it. The spec
+is the deliverable, not the OpenFOAM case -- it is what they can edit, re-run
+and keep (ADR-004).
+
+```yaml
+name: datahall-a
+room:
+  size: [10.0, 8.0, 3.0]      # x along the airflow, y across, z up
+racks:
+  - {id: A1, position: [3.0, 1.0], size: [1.0, 0.6, 2.0], load_kw: 8.0}
+cracs:
+  - {id: CRAC01, airflow_m3h: 25000, supply_temp_c: 18.0}
+mesh: {cell_size: 0.10}
+```
+
+What to ask for, and what not to:
+
+- **CRAC airflow is mandatory and must not be guessed.** It sets the room's
+  temperature rise; a plausible-looking invented number produces a
+  plausible-looking wrong answer. If the user does not know it, say so and ask
+  for the nameplate, or offer to work backwards from a target delta-T and tell
+  them that is what you did.
+- **Rack airflow is optional** and defaults to the load at an 11 K rise. Note
+  that it only sizes the rack's flow resistance -- the air a rack actually gets
+  is a result, not an input (ADR-011).
+- **Rack size defaults to 1.0 x 0.6 x 2.0 m** (a standard 600 mm rack). Use it
+  unless the user gives dimensions.
+- **cell_size 0.10 m** is a good default. Coarsen to 0.15 for a first look at a
+  big hall; the validator refuses anything that will not finish.
+- A row of racks can be one block if the user does not care about
+  rack-by-rack numbers. Say that you did it.
+
+`aicfd build` prints what it derived -- supply velocity, bulk delta-T, per-rack
+face velocity and resistance. Read that before solving: if the bulk delta-T is
+under 2 K or over 20 K, the spec is wrong and a 10-minute solve will not fix it.
 
 ## Rules
 
@@ -35,9 +78,11 @@ background and keep working; do not poll it in a tight loop.
 3. **Warnings are findings, not noise.** The over-ventilation and
    iteration-limit warnings exist because they catch cases that look converged
    and mean nothing. Surface them.
-4. **Never hand-edit a file under `runs/`.** Those are build artefacts. If a
-   case needs to change, change the case under `cases/` (or the template) and
-   re-run. See ADR-004.
+4. **Never hand-edit a file under `runs/`.** Those are build artefacts and the
+   next `aicfd build` overwrites them. Change `cases/<name>.yaml` and re-run.
+   See ADR-004. If the spec cannot express what is needed, say so rather than
+   editing the generated dictionary -- that is a gap in the tool, and silently
+   working around it makes the spec and the result disagree.
 5. **Do not narrate OpenFOAM internals to the user.** They asked about air
    temperature, not about `injectionRateSuSp`. Keep `d`/`f` coefficients,
    `cellZone` names and residual mechanics out of the answer unless they ask.
@@ -80,8 +125,9 @@ field you have not rendered.
 | `Could not find mandatory etc entry 'controlDict'` | An OpenFOAM command was run from an inherited shell | Always go through `aicfd run`; it isolates the environment (ADR-002) |
 | `zone_<name>_populated` FAILS | The rack box misses the mesh, or `topoSet` did not run | Check the box coordinates lie inside the room; `aicfd run` runs `topoSet` for you |
 | Whole room at one temperature | Almost always an empty cell zone — see above | |
+| Bulk delta-T near zero | The CRACs supply far more air than the load needs | Check `airflow_m3h` against the nameplate; `aicfd build` warns about this |
 | Solver diverges early | Porosity coefficients or inlet velocity far from physical | Lower the relaxation factors for U and h to 0.2–0.3 and re-run |
-| `residuals` FAILS | The run hit its iteration limit while still moving | Raise `endTime`, or set `residualControl` so it stops on physics |
+| `residuals` FAILS | The run hit `max_iterations` without meeting its tolerance | Raise `solver.max_iterations` in the spec; generated cases always set `residualControl`, so this means it genuinely had not settled |
 
 For the physics behind any of these — porous media coefficients, boundary
 condition choices, meshing strategy — read the `datacenter-cfd` skill.

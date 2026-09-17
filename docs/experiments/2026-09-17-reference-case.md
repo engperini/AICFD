@@ -73,8 +73,9 @@ warns when supply exceeds it by more than 3×. This case trips it.
 
 ### 2. The run stopped on a counter, not on convergence
 
-`controlDict` sets `endTime 800` and `fvSolution` sets no `residualControl`, so
-the solver ran exactly 800 iterations and stopped. Final initial-residuals:
+`fvSolution` *does* set `residualControl` at 1e-4 on every field — but the run
+never met it. `controlDict` caps the run at `endTime 800`, and the solver hit
+that cap first. Final initial-residuals:
 
 | Field | Final |
 |---|---|
@@ -86,12 +87,18 @@ the solver ran exactly 800 iterations and stopped. Final initial-residuals:
 | k | 1.88e-4 |
 | epsilon | 7.45e-5 |
 
-Acceptable, and the convergence curve is flat by iteration 600 — but the run
-*would not have known* if it were not. "Converged" and "hit the iteration
-limit" are different statements and the tool now distinguishes them:
-`SolverLog.stopped_on_iteration_limit` drives a warning.
+Ux, Uy and k are all still above the 1e-4 they were asked to reach. The curve
+is flat by iteration 600, so the answer is not going to move much — but the run
+ended on a counter, and OpenFOAM never printed "SIMPLE solution converged".
 
-Generated cases (M2) will set `residualControl` so a run stops on physics.
+"Converged" and "hit the iteration limit" are different statements, and the
+distinction is easy to lose because a log that ends at iteration 800 looks the
+same either way. The tool now separates them:
+`SolverLog.stopped_on_iteration_limit` is true only when the solver never
+announced convergence, and it drives a warning naming the worst residual.
+
+Generated cases (M2) get an `endTime` with enough headroom for the tolerance
+they ask for, so this is a real signal rather than the normal state of affairs.
 
 ## Side effects on the code
 

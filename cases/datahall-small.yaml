@@ -1,0 +1,31 @@
+# A small data hall: one cold aisle, six racks, two CRACs.
+#
+# Every number here is in engineering units. AICFD derives the OpenFOAM side
+# (patch velocities, porosity coefficients, enthalpy sources, mesh divisions).
+name: datahall-small
+
+room:
+  size: [8.0, 5.0, 3.0]        # x (along the airflow), y (across), z (height), m
+
+racks:
+  # Row A, facing the supply wall. 600 mm wide, 1000 mm deep, 42U.
+  - {id: A1, position: [3.0, 0.6], size: [1.0, 0.6, 2.0], load_kw: 6.0}
+  - {id: A2, position: [3.0, 1.3], size: [1.0, 0.6, 2.0], load_kw: 8.0}
+  - {id: A3, position: [3.0, 2.0], size: [1.0, 0.6, 2.0], load_kw: 8.0}
+  - {id: A4, position: [3.0, 2.7], size: [1.0, 0.6, 2.0], load_kw: 8.0}
+  - {id: A5, position: [3.0, 3.4], size: [1.0, 0.6, 2.0], load_kw: 6.0}
+  # A denser rack at the end of the row - the one worth watching.
+  - {id: A6, position: [3.0, 4.1], size: [1.0, 0.6, 2.0], load_kw: 12.0}
+
+cracs:
+  # 2 x 6,000 m3/h for 48 kW gives a bulk rise of about 12 K, which is what a
+  # real hall runs at - not the 0.19 K the reference case produces.
+  - {id: CRAC01, airflow_m3h: 6000, supply_temp_c: 20.0}
+  - {id: CRAC02, airflow_m3h: 6000, supply_temp_c: 20.0}
+
+mesh:
+  cell_size: 0.10
+
+solver:
+  max_iterations: 2000
+  residual_tolerance: 1.0e-4

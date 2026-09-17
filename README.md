@@ -32,7 +32,7 @@ Then open <http://localhost:8000/web/?case=reference-case>.
 To solve a case inside the container:
 
 ```bash
-docker compose run --rm aicfd python3 -m aicfd run
+docker compose run --rm aicfd python3 -m aicfd run cases/datahall-small.yaml
 ```
 
 ### Without Docker (Ubuntu / WSL2)
@@ -41,10 +41,45 @@ docker compose run --rm aicfd python3 -m aicfd run
 sudo apt-get install -y openfoam openfoam-examples
 pip install -r requirements.txt
 
-python -m aicfd doctor      # confirm OpenFOAM is usable
-python -m aicfd run         # solve the bundled reference case (~90 s)
-python -m aicfd view        # open the viewer
+python -m aicfd doctor                      # confirm OpenFOAM is usable
+python -m aicfd run cases/datahall-small.yaml   # 6 racks, 48 kW, 2 CRACs
+python -m aicfd view                        # open the viewer
 ```
+
+## Describing a room
+
+A case is one YAML file, in the units you already use:
+
+```yaml
+name: datahall-a
+room:
+  size: [10.0, 8.0, 3.0]        # x (along the airflow), y (across), z (height), m
+racks:
+  - {id: A1, position: [3.0, 1.0], size: [1.0, 0.6, 2.0], load_kw: 8.0}
+  - {id: A2, position: [3.0, 1.7], size: [1.0, 0.6, 2.0], load_kw: 12.0}
+cracs:
+  - {id: CRAC01, airflow_m3h: 6000, supply_temp_c: 20.0}
+mesh: {cell_size: 0.10}
+```
+
+`aicfd new <name>` writes a starter file; `aicfd build` shows you what it derived
+before committing to a solve:
+
+```
+Case 'datahall-small'
+  Room            8 x 5 x 3 m
+  Mesh            80x50x30 = 120,000 cells (0.100 m)
+  IT load         48.0 kW across 6 rack(s)
+  Supply air      12,000 m3/h at 20.0 degC
+  Supply velocity 0.222 m/s (over 15.00 m2)
+  Design bulk dT  12.0 K
+```
+
+You never see an OpenFOAM dictionary. The supply patch velocity, the rack
+resistance coefficients, the enthalpy sources and the mesh divisions are all
+derived from the numbers above — and the spec is validated before anything runs,
+so a rack outside the room or a mesh too fine to finish is caught in
+milliseconds rather than after a ten-minute solve.
 
 ## What you get
 
@@ -67,8 +102,10 @@ speed, a numeric readout under the cursor, and the residual history.
 
 | Command | What it does |
 |---|---|
+| `aicfd new <name>` | Write a starter room spec into `cases/<name>.yaml` |
+| `aicfd build <spec.yaml>` | Generate the OpenFOAM case and print what was derived |
 | `aicfd doctor` | Check that the OpenFOAM utilities are installed and reachable |
-| `aicfd run [case] [--name N]` | Solve a case into `runs/N`, then post-process it |
+| `aicfd run <spec.yaml>` | Generate, solve into `runs/`, then post-process |
 | `aicfd post <name>` | Re-run post-processing on an existing run |
 | `aicfd view [--case N]` | Serve the viewer on <http://localhost:8000> |
 
@@ -89,15 +126,15 @@ and the tool is fully usable without it. No API key, no per-use cost.
 
 ## Status
 
-Working today: the reference case (1 rack + 1 fan wall) solves, validates and
-renders end to end — see
-[`docs/experiments/2026-09-17-reference-case.md`](docs/experiments/2026-09-17-reference-case.md)
-for the measured numbers and an honest read of what that case does and does not
-prove.
+Working today: describe a multi-rack room in YAML, solve it, validate it, and
+read it in the browser. The `docs/experiments/` notes record what was measured,
+including
+[the reference case's 52x over-ventilation](docs/experiments/2026-09-17-reference-case.md)
+— the finding that shaped how airflow is specified.
 
-Next: parametric case generation from a `room.yaml` room spec, which is what
-turns this from one hardcoded case into a tool. Then multi-rack data halls,
-containment, raised-floor plenums, and IFC import from a federated Revit model.
+Next: engineering KPIs (RCI, RTI, recirculation and bypass fractions, N+1
+failure scenarios), then containment, raised-floor plenums and in-row units, then
+IFC import from a federated Revit model.
 
 Full plan: [`docs/ROADMAP.md`](docs/ROADMAP.md).
 Design decisions and their reasons: [`docs/DECISIONS.md`](docs/DECISIONS.md).
@@ -110,6 +147,12 @@ Design decisions and their reasons: [`docs/DECISIONS.md`](docs/DECISIONS.md).
 - **Steady state.** No thermal ride-through or transient failure analysis.
 - **No radiation.** Negligible next to forced convection in a data hall, but
   wrong if you have large glazing or solar gain.
+- **Per-rack airflow is a result, not an input.** A rack is a flow resistance,
+  not a fan, so the air it actually gets falls out of the solution. That is
+  deliberate — it is what makes recirculation and air starvation visible — but it
+  means you cannot pin a rack to its rated CFM.
+- **One CRAC topology.** Today every CRAC is a fan wall on the upstream face.
+  Downflow and in-row units are planned.
 - **A validated run is not a validated model.** The checks confirm the solver
   produced a self-consistent answer to the question you asked. Whether the
   boundary conditions describe your actual room is on you — and the reference
@@ -122,9 +165,10 @@ Design decisions and their reasons: [`docs/DECISIONS.md`](docs/DECISIONS.md).
 python -m unittest discover tests
 ```
 
-Tests are stdlib-only. The suite covers the OpenFOAM readers, the solver-log
-parser and the KPI pass; the cases that need a solved run skip cleanly if you
-have not run one.
+The suite uses only `unittest` plus the project's own two dependencies. It
+covers the spec validation and unit conversions, the case generator (including a
+round trip through the reader), the OpenFOAM field and log parsers, and the KPI
+pass. Cases that need a solved run skip cleanly if you have not run one.
 
 ## License
 

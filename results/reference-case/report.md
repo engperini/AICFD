@@ -30,6 +30,6 @@
 
 ## Warnings
 
-- The solver stopped at the iteration limit (800 iterations), not at a convergence tolerance. Residuals were still 1.9e-04. Set residualControl in system/fvSolution so the run stops on physics rather than on a counter.
+- The solver stopped at the iteration limit (800 iterations) without meeting its residualControl tolerance; residuals were still 1.9e-04. Either raise endTime in system/controlDict so it can finish, or accept this tolerance deliberately -- right now the run stops on a counter rather than on physics.
 - Rack 'rack' is fed at 17.86 degC, below the ASHRAE recommended minimum of 18.0 degC. No equipment risk, but raising the supply setpoint would cut chiller energy at no thermal cost.
 - Supply airflow is 52x what this load needs for a 10 K rise (77,760 m3/h supplied vs 1,505 m3/h required). The room-level temperature rise is therefore near zero and the result says little about real cooling performance.
