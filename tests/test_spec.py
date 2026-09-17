@@ -304,6 +304,81 @@ class SnappingTests(unittest.TestCase):
         self.assertFalse([w for w in spec.warnings if "closes the gap" in w])
 
 
+class TurbulenceInitTests(unittest.TestCase):
+    """Guards the k-epsilon initialisation.
+
+    Getting this wrong does not fail loudly: the case still runs and the
+    residuals still fall, but the turbulent viscosity collapses to roughly
+    molecular and the steady solver never settles, producing velocities far
+    above what buoyancy can drive.
+    """
+
+    C_MU = 0.09
+
+    def values(self, **overrides):
+        from aicfd.case import LENGTH_SCALE_FRACTION, turbulence_initial_values
+
+        spec = from_dict(minimal(**overrides))
+        k, epsilon = turbulence_initial_values(spec)
+        return spec, k, epsilon, LENGTH_SCALE_FRACTION * spec.size[2]
+
+    def test_length_scale_is_the_one_requested(self):
+        # k and epsilon together encode a length scale. Clamping epsilon on its
+        # own silently replaces a room-scale length with a millimetre one.
+        _, k, epsilon, length_scale = self.values()
+        implied = self.C_MU**0.75 * k**1.5 / epsilon
+        self.assertAlmostEqual(implied, length_scale, places=6)
+
+    def test_turbulent_viscosity_is_room_scale_not_molecular(self):
+        _, k, epsilon, _ = self.values()
+        nut = self.C_MU * k**2 / epsilon
+        self.assertGreater(nut, 100 * 1.5e-5, f"nut={nut:.2e} is nearly laminar")
+
+    def test_velocity_scale_is_the_larger_of_supply_and_buoyancy(self):
+        # Whichever of the two dominates has to set k. Note the two move in
+        # opposite directions: more supply air means a smaller temperature rise
+        # and therefore *weaker* buoyancy, so k is not monotonic in airflow --
+        # only the max is.
+        import math
+
+        for airflow in (500, 1800, 12000, 40000):
+            spec, k, _, _ = self.values(cracs=[{"id": "C1", "airflow_m3h": airflow}])
+            buoyant = math.sqrt(
+                9.81
+                * max(min(spec.design_delta_t_k, 30.0), 1.0)
+                / 293.0
+                * spec.size[2]
+            )
+            expected = max(spec.supply_velocity_ms, buoyant)
+            self.assertAlmostEqual(
+                k, 1.5 * (expected * 0.10) ** 2, places=9, msg=str(airflow)
+            )
+
+    def test_k_never_collapses_for_a_slow_supply(self):
+        # The failure this guards: a slow supply used alone gives k ~ 2e-4,
+        # which drives the turbulent viscosity to roughly molecular.
+        _, k, _, _ = self.values(cracs=[{"id": "C1", "airflow_m3h": 1800}])
+        self.assertGreater(k, 1e-3, f"k={k:.2e} is too small to damp anything")
+
+    def test_length_scale_holds_across_supply_rates(self):
+        for airflow in (500, 1800, 12000, 40000):
+            _, k, epsilon, length_scale = self.values(
+                cracs=[{"id": "C1", "airflow_m3h": airflow}]
+            )
+            implied = self.C_MU**0.75 * k**1.5 / epsilon
+            self.assertAlmostEqual(implied, length_scale, places=6, msg=str(airflow))
+
+    def test_written_into_the_case(self):
+        from aicfd.case import build, turbulence_initial_values
+
+        spec = from_dict(minimal())
+        k, epsilon = turbulence_initial_values(spec)
+        with tempfile.TemporaryDirectory() as tmp:
+            case = build(spec, Path(tmp) / "c")
+            self.assertIn(f"uniform {k:.4g}", (case / "0/k").read_text())
+            self.assertIn(f"uniform {epsilon:.4g}", (case / "0/epsilon").read_text())
+
+
 class ExampleCaseTests(unittest.TestCase):
     def test_the_bundled_example_is_valid_and_realistic(self):
         spec = load(EXAMPLE)

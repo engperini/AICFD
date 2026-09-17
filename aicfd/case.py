@@ -13,6 +13,7 @@ The generated case is a build artifact, never edited by hand (ADR-004).
 
 from __future__ import annotations
 
+import math
 import shutil
 from pathlib import Path
 
@@ -392,6 +393,47 @@ relaxationFactors
 
 # --- initial and boundary conditions ------------------------------------------
 
+#: Turbulence intensity for a room-scale recirculating flow. Higher than the
+#: 5% used for duct inlets: a data hall is a stirred box, not a clean channel.
+TURBULENCE_INTENSITY = 0.10
+
+#: Turbulent length scale as a fraction of room height.
+LENGTH_SCALE_FRACTION = 0.1
+
+C_MU = 0.09
+T_REFERENCE_K = 293.0
+
+
+def turbulence_initial_values(spec: RoomSpec) -> tuple[float, float]:
+    """Initial k and epsilon for the whole room.
+
+    Two things matter here, and both were got wrong the first time:
+
+    1. **The velocity scale is buoyant, not the supply.** A data hall's supply
+       face velocity is slow -- a fifth of a metre per second is normal -- while
+       the plume off a rack row runs at ``sqrt(g * dT/T0 * H)``, around 1 m/s.
+       Initialising from the supply velocity alone under-estimates k by the
+       square of that ratio.
+
+    2. **epsilon must be derived from k, never floored separately.** k and
+       epsilon together encode a length scale, ``Cmu^0.75 * k^1.5 / epsilon``.
+       Clamping epsilon on its own silently replaces the room-scale length with
+       a millimetre one, which collapses the turbulent viscosity to roughly
+       molecular. The flow then behaves as if laminar at room scale, and a
+       steady solver has no way to settle: it chases vortices that a real,
+       turbulent room would damp out. That produced a field with velocities an
+       order of magnitude above the buoyant limit.
+    """
+    buoyant = math.sqrt(
+        9.81 * max(min(spec.design_delta_t_k, 30.0), 1.0) / T_REFERENCE_K * spec.size[2]
+    )
+    characteristic = max(spec.supply_velocity_ms, buoyant)
+
+    k = max(1.5 * (characteristic * TURBULENCE_INTENSITY) ** 2, 1e-6)
+    length_scale = LENGTH_SCALE_FRACTION * spec.size[2]
+    epsilon = C_MU**0.75 * k**1.5 / length_scale
+    return k, epsilon
+
 
 def _initial_fields(spec: RoomSpec) -> dict[str, str]:
     velocity = spec.supply_velocity_ms
@@ -400,12 +442,7 @@ def _initial_fields(spec: RoomSpec) -> dict[str, str]:
     # replaces it as soon as flow leaves the domain.
     return_k = supply_k + min(max(spec.design_delta_t_k, 1.0), 20.0)
 
-    # Standard k-epsilon initialisation from the supply velocity: 5% turbulence
-    # intensity, length scale a tenth of the room height.
-    intensity = 0.05
-    k = max(1.5 * (velocity * intensity) ** 2, 1e-4)
-    length_scale = 0.1 * spec.size[2]
-    epsilon = max(0.09**0.75 * k**1.5 / length_scale, 1e-4)
+    k, epsilon = turbulence_initial_values(spec)
 
     return {
         "U": f"""{_header(spec, "volVectorField", "U", "0")}
