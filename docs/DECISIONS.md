@@ -241,6 +241,22 @@ not imply otherwise. The spec validator compensates by comparing total rack
 demand against total CRAC supply up front and warning on a shortfall, which
 catches the gross case before a 10-minute solve rather than after it.
 
+**Measured cost, and a revision.** The first realistic case built on this model
+gave every rack 21% of the air its load needs: 77% of the supply went over the
+top of the rack row instead of through it, and the zones reached 46-62 degC.
+Those temperatures are an artefact of the missing fan, not a prediction — real
+rack fans pull their rated CFM whatever the room does.
+
+So the cost is larger than it looked when this was written. AICFD systematically
+over-predicts rack temperatures in any layout where bypass is easier than
+passing through, which is most of them. Two responses: `rack_throughflow` now
+fails a run where this is happening and says so in those words (ADR-013's
+sibling), and rack fans as momentum sources move ahead of the rest of M5.
+
+Note this does not reverse the decision. A model that forces each rack's rated
+airflow could not show starvation at all; the fan model has to *add* a driving
+pressure to the existing resistance, not replace it.
+
 ---
 
 ## ADR-012 — The outlet fixes p_rgh, not the static pressure

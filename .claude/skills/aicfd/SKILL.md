@@ -88,6 +88,11 @@ under 2 K or over 20 K, the spec is wrong and a 10-minute solve will not fix it.
    `cellZone` names and residual mechanics out of the answer unless they ask.
 6. **State what the model cannot answer.** Rack inlet temperature: yes.
    Component temperature inside a server: no (ADR-003).
+7. **If `rack_throughflow` fails, do not quote the rack temperatures.** A rack
+   drawing a fraction of the air its load needs will read far hotter than
+   reality, because AICFD models a rack as a resistance rather than a fan
+   (ADR-011). Report it as "the layout lets air bypass these racks" and say the
+   temperature is not a prediction. This is a known gap, not a bad room.
 
 ## Explaining a result
 
@@ -107,6 +112,7 @@ Useful quantities and where they come from in `report.md`:
 | "is there enough air?" | `Supply air` vs. the over-ventilation warning |
 | "did it converge?" | `Solver` line + the `residuals` check + warnings |
 | "where is the hot spot?" | open the viewer; slice at rack mid-height |
+| "is each rack getting air?" | the `Air drawn` column + the `rack_throughflow` check |
 
 ## Reading the viewer for the user
 
@@ -126,6 +132,8 @@ field you have not rendered.
 | `zone_<name>_populated` FAILS | The rack box misses the mesh, or `topoSet` did not run | Check the box coordinates lie inside the room; `aicfd run` runs `topoSet` for you |
 | Whole room at one temperature | Almost always an empty cell zone — see above | |
 | Bulk delta-T near zero | The CRACs supply far more air than the load needs | Check `airflow_m3h` against the nameplate; `aicfd build` warns about this |
+| `plausible_velocity` FAILS | The field moves faster than fans or buoyancy can drive it | A setup error, not a layout one. Treat every number in the report as unreliable |
+| `rack_throughflow` FAILS | Air is bypassing the racks; see rule 7 | Not fixable in the spec today — it is the rack model's limit (ADR-011) |
 | Solver diverges early | Porosity coefficients or inlet velocity far from physical | Lower the relaxation factors for U and h to 0.2–0.3 and re-run |
 | `residuals` FAILS | The run hit `max_iterations` without meeting its tolerance | Raise `solver.max_iterations` in the spec; generated cases always set `residualControl`, so this means it genuinely had not settled |
 

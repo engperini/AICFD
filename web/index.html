@@ -191,6 +191,9 @@
   }
   tbody td { font-variant-numeric: tabular-nums; border-bottom: 1px solid var(--grid); }
   tbody tr:last-child td { border-bottom: none; }
+  /* A rack drawing far less air than its load needs is reporting the rack
+     model's limit, not a temperature to act on. */
+  td.starved { color: var(--critical); font-weight: 600; }
 
   .checks { list-style: none; margin: 0; padding: 6px 0; }
   .checks li {
@@ -200,6 +203,8 @@
   .checks .mark { font-weight: 700; font-size: 13px; line-height: 1.45; }
   .checks li[data-state="pass"] .mark { color: var(--good); }
   .checks li[data-state="fail"] .mark { color: var(--critical); }
+  .checks li[data-state="group"] .mark { color: var(--good); }
+  .checks .group-detail { color: var(--text-muted); font-size: 12px; }
   .checks .name { font-weight: 550; }
   .checks .detail { color: var(--text-secondary); font-size: 12px; }
 
@@ -219,7 +224,7 @@
   .swatch {
     width: 10px; height: 10px; border-radius: 3px; display: inline-block; flex: none;
   }
-  #convergence { position: relative; height: 230px; padding: 4px 8px 0; }
+  #convergence { position: relative; height: 280px; padding: 4px 8px 0; }
   .chart-grid { stroke: var(--grid); stroke-width: 1; }
   .chart-axis { stroke: var(--axis); stroke-width: 1; }
   .chart-line { fill: none; stroke-width: 2; stroke-linejoin: round; stroke-linecap: round; }

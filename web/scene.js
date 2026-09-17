@@ -300,16 +300,41 @@ export class RoomScene {
     tick();
   }
 
+  /**
+   * Place rack labels, dropping any that would collide with one already placed.
+   *
+   * A row of racks projects to a tight cluster from most angles, and stacked
+   * labels are worse than missing ones: they hide each other's text and the
+   * geometry behind them. Nearer racks win, since they are the ones the viewer
+   * is looking at, and orbiting reveals the rest.
+   */
   #positionLabels() {
     const { clientWidth: w, clientHeight: h } = this.container;
-    for (const { element, position, offset } of this.labels) {
-      const projected = position.clone().project(this.camera);
-      const visible = projected.z < 1;
-      element.style.display = visible ? 'flex' : 'none';
-      if (!visible) continue;
-      element.style.transform =
-        `translate(-50%, -100%) translate(${((projected.x + 1) / 2) * w}px, ` +
-        `${((1 - projected.y) / 2) * h - offset}px)`;
+    const placed = [];
+
+    const candidates = this.labels
+      .map((label) => ({ label, projected: label.position.clone().project(this.camera) }))
+      .sort((a, b) => a.projected.z - b.projected.z); // nearest first
+
+    for (const { label, projected } of candidates) {
+      const { element, offset } = label;
+      if (projected.z >= 1) {
+        element.style.display = 'none';
+        continue;
+      }
+      const x = ((projected.x + 1) / 2) * w;
+      const y = ((1 - projected.y) / 2) * h - offset;
+      element.style.display = 'flex';
+      element.style.transform = `translate(-50%, -100%) translate(${x}px, ${y}px)`;
+
+      const half = element.offsetWidth / 2 || 32;
+      const height = element.offsetHeight || 30;
+      const box = { x0: x - half, x1: x + half, y0: y - height, y1: y };
+      if (placed.some((other) => overlaps(box, other))) {
+        element.style.display = 'none';
+        continue;
+      }
+      placed.push(box);
     }
   }
 }
@@ -321,6 +346,10 @@ export class RoomScene {
  * because getting that rotation subtly wrong mirrors the field without any
  * visible sign that it happened.
  */
+function overlaps(a, b) {
+  return a.x0 < b.x1 && b.x0 < a.x1 && a.y0 < b.y1 && b.y0 < a.y1;
+}
+
 function quadFor(axis, position, origin, size) {
   const [ox, oy, oz] = origin;
   const [sx, sy, sz] = size;

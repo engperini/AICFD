@@ -117,3 +117,77 @@ setup mistakes (ADR-007) and it caught none of this, because every individual
 quantity was plausible in isolation. A check on whether the *flow itself* is
 attainable is a different kind of question, and it would have failed this run
 on the first solve instead of after an afternoon of bisection.
+
+## After the fix: what the multi-rack case actually says
+
+Re-running `cases/datahall-small.yaml` (6 racks, 48 kW, 12,000 m³/h):
+
+| | Before | After |
+|---|---|---|
+| Peak air speed | 29.67 m/s | **1.49 m/s** |
+| Rack inlets | 30.8–32.3 °C | 23.1–24.7 °C |
+| `plausible_velocity` | — | PASS (1.49 vs a 14.6 m/s ceiling) |
+
+The velocity field is now physical and every rack inlet sits inside the ASHRAE
+recommended band. Two things remain, and they are different in kind.
+
+### The racks are starving, and that is the rack model's limit
+
+Integrating Ux over each rack's mid-depth plane:
+
+| Rack | Load | Air drawn | Needed at 11 K | Ratio |
+|---|---|---|---|---|
+| A1 | 6 kW | 337 m³/h | 1,642 | 21% |
+| A2 | 8 kW | 488 m³/h | 2,189 | 22% |
+| A3 | 8 kW | 482 m³/h | 2,189 | 22% |
+| A4 | 8 kW | 472 m³/h | 2,189 | 22% |
+| A5 | 6 kW | 344 m³/h | 1,642 | 21% |
+| A6 | 12 kW | 675 m³/h | 3,284 | 21% |
+
+Only 23% of the supply passes through the racks; 3,368 m³/h goes over the top
+instead. With one fifth of the air it needs, each rack cooks — peak temperatures
+of 46–62 °C inside the zones.
+
+**That is not a prediction.** It is ADR-011 showing its teeth: a rack modelled
+as a pure flow resistance has no way to pull its rated airflow, so whenever
+bypass is easier than passing through, the air bypasses. A real rack's fans
+would move their rated CFM regardless of what the room does, and the
+temperatures would be far lower.
+
+Two things follow. `rack_throughflow` is now a validation check, so this
+condition fails the run and says in plain terms that the temperatures are a
+statement about bypass, not about the racks. And rack fans as momentum sources
+move from "M5, sometime" to the next thing worth building — without them AICFD
+systematically over-predicts rack temperatures in exactly the layouts an
+engineer would ask about.
+
+### p_rgh does not converge
+
+Every field settles below 1e-3 except pressure, which plateaus around 8e-3 and
+oscillates. The physical reason is visible in the geometry: a 2 m wall of racks
+across a 3 m room forces all the bypass air through the 1 m gap at the ceiling,
+and that shear layer sheds. There is no steady state for a steady solver to
+find.
+
+Options, none of them free: accept a looser tolerance and report the run as
+converged-in-the-mean, switch to a transient solver and average (100x the
+runtime), or treat it as a signal that the *layout* is the problem — which for
+this example it partly is. Left open deliberately; guessing here would be worse
+than the honest FAIL the report currently gives.
+
+## A check that was wrong
+
+`monotonic_heating` — "the cross-section average temperature rises along the
+flow" — failed this run, reporting 5.3 K of "non-physical cooling". It was
+neither non-physical nor a problem: in a room with recirculation, hot air
+travelling back along the ceiling genuinely makes the x-average non-monotonic.
+The check held only for the single-rack, single-pass reference case it was
+written against.
+
+Replaced with `no_air_below_supply`: nothing in the room may be colder than the
+supply, which is the only cold source. That is a true invariant in every
+topology, and it still catches the discretisation undershoots the original
+check was reaching for. The temperature profile is kept as a KPI.
+
+A check that fails correct results is worse than no check — it teaches the user
+to ignore the verdict.

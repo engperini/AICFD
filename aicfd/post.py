@@ -39,6 +39,10 @@ M3H_PER_CFM = 1.69901
 #: order-of-magnitude artefact, not to police the last 50%.
 PLAUSIBLE_SPEED_MARGIN = 5.0
 
+#: Below this fraction of the air its load needs, a rack is starving and its
+#: temperature says more about the model's limits than about the room.
+STARVED_RACK_RATIO = 0.6
+
 # ASHRAE TC 9.9 rack *inlet* envelopes, degrees C dry bulb.
 ASHRAE_RECOMMENDED = (18.0, 27.0)
 ASHRAE_ALLOWABLE = {
@@ -159,15 +163,26 @@ def _evaluate(
         )
     )
 
-    # --- monotonic heating along the flow path --------------------------------
+    # --- no air colder than the coldest thing in the room ---------------------
+    #
+    # The supply is the only cold source, so nothing can sit below it. An
+    # undershoot means the discretisation is overshooting somewhere, which makes
+    # every other number suspect.
+    #
+    # This replaced a "temperature rises monotonically along x" check. That one
+    # held for a single rack in a single-pass room and failed correct results in
+    # any room with recirculation, where hot air travelling back along the
+    # ceiling genuinely makes the cross-section average non-monotonic. A check
+    # that fails good answers is worse than no check.
+    coldest = float(temperature.min() - KELVIN)
     profile = temperature.mean(axis=(0, 1)) - KELVIN
-    drops = float(np.minimum(np.diff(profile), 0).sum())
     checks.append(
         Check(
-            "monotonic_heating",
-            drops > -0.05,
-            f"air warms from {profile[0]:.2f} to {profile[-1]:.2f} degC along x "
-            f"(total non-physical cooling: {abs(drops):.3f} K)",
+            "no_air_below_supply",
+            coldest >= supply_c - 0.25,
+            f"coldest air {coldest:.2f} degC against a {supply_c:.2f} degC supply; "
+            f"cross-section average runs {profile[0]:.2f} to {profile[-1]:.2f} degC "
+            "along the flow",
         )
     )
 
@@ -213,10 +228,19 @@ def _evaluate(
         zone_t = temperature[mask] - KELVIN
         inlet_t = _zone_inlet_temperature(temperature, box, x, y, z) - KELVIN
         watts = sum(s.watts for s in geometry.heat_sources if s.zone == name)
+        throughflow = _zone_throughflow(velocity, box, x, y, z, room_size, geometry)
+        # What this rack would need to carry its own load away at 11 K, which is
+        # what its rated airflow is sized for.
+        needed = watts / (11.0 * RHO_AIR * CP_AIR) * 3600 if watts else 0.0
         zones.append(
             {
                 "name": name,
                 "load_w": watts,
+                "throughflow_m3h": round(throughflow, 1),
+                "needed_m3h": round(needed, 1),
+                "throughflow_ratio": (
+                    round(throughflow / needed, 3) if needed else None
+                ),
                 "cells": cells,
                 "inlet_temp_c": round(float(inlet_t), 2),
                 "mean_temp_c": round(float(zone_t.mean()), 2),
@@ -224,6 +248,40 @@ def _evaluate(
                 "rise_k": round(float(zone_t.mean() - inlet_t), 2),
                 "ashrae": _ashrae_verdict(float(inlet_t)),
             }
+        )
+
+    starved = [
+        z
+        for z in zones
+        if z["throughflow_ratio"] is not None
+        and z["throughflow_ratio"] < STARVED_RACK_RATIO
+    ]
+    checks.append(
+        Check(
+            "rack_throughflow",
+            not starved,
+            (
+                "every rack draws at least "
+                f"{STARVED_RACK_RATIO:.0%} of the air its load needs"
+                if not starved
+                else ", ".join(
+                    f"{z['name']} draws {z['throughflow_m3h']:,.0f} m3/h of the "
+                    f"{z['needed_m3h']:,.0f} m3/h its {z['load_w'] / 1000:.0f} kW "
+                    f"needs ({z['throughflow_ratio']:.0%})"
+                    for z in starved
+                )
+            ),
+        )
+    )
+    if starved:
+        warnings.append(
+            f"{len(starved)} rack(s) are drawing a fraction of the air their load "
+            "needs, because AICFD models a rack as a flow resistance rather than "
+            "a fan (see ADR-011): air that finds an easier path around the rack "
+            "takes it. A real rack's own fans would pull their rated airflow "
+            "regardless. The rack temperatures above are therefore far higher "
+            "than reality -- read this as 'the layout lets air bypass the racks', "
+            "not as a predicted temperature."
         )
 
     for zone in zones:
@@ -299,6 +357,7 @@ def _evaluate(
         "temp_mean_c": round(float(temperature.mean() - KELVIN), 2),
         "speed_max_ms": round(peak_speed, 3),
         "plausible_speed_ms": round(plausible, 3),
+        "temp_profile_c": [round(float(v), 3) for v in profile],
         "zones": zones,
         "iterations": log.completed_iterations,
         "runtime_s": log.execution_time_s,
@@ -322,6 +381,27 @@ def _zone_mask(box: Box, x, y, z) -> np.ndarray:
     mask_y = (y >= box.lo[1]) & (y <= box.hi[1])
     mask_z = (z >= box.lo[2]) & (z <= box.hi[2])
     return mask_z[:, None, None] & mask_y[None, :, None] & mask_x[None, None, :]
+
+
+def _zone_throughflow(velocity, box: Box, x, y, z, room_size, geometry) -> float:
+    """Air actually passing through a rack, in m3/h.
+
+    Measured on the mid-depth plane of the zone rather than at its face, so a
+    recirculating eddy sitting against the front of the rack is not counted as
+    throughflow.
+
+    Racks are always oriented front-to-back along x (the generator has no other
+    orientation yet), so this integrates Ux. Only forward flow counts: air
+    moving backwards through a rack is not cooling it.
+    """
+    cell = [room_size[axis] / geometry.divisions[axis] for axis in range(3)]
+    mid = int(np.argmin(np.abs(x - (box.lo[0] + box.hi[0]) / 2)))
+    rows = np.where((y >= box.lo[1]) & (y <= box.hi[1]))[0]
+    layers = np.where((z >= box.lo[2]) & (z <= box.hi[2]))[0]
+    if not rows.size or not layers.size:
+        return 0.0
+    ux = velocity[np.ix_(layers, rows, [mid])][..., 0]
+    return float(np.clip(ux, 0, None).sum()) * cell[1] * cell[2] * 3600.0
 
 
 def _zone_inlet_temperature(temperature, box: Box, x, y, z) -> float:
@@ -476,14 +556,16 @@ def _report(results: Results) -> str:
         lines += [
             "## Racks",
             "",
-            "| Rack | Load | Inlet | Mean | Peak | Rise | ASHRAE |",
-            "|---|---|---|---|---|---|---|",
+            "| Rack | Load | Inlet | Mean | Peak | Rise | Air drawn | ASHRAE |",
+            "|---|---|---|---|---|---|---|---|",
         ]
         for zone in kpis["zones"]:
             lines.append(
                 f"| {zone['name']} | {zone['load_w'] / 1000:.1f} kW | "
                 f"{zone['inlet_temp_c']} degC | {zone['mean_temp_c']} degC | "
                 f"{zone['peak_temp_c']} degC | {zone['rise_k']} K | "
+                f"{zone['throughflow_m3h']:,.0f} of {zone['needed_m3h']:,.0f} m3/h "
+                f"({zone['throughflow_ratio']:.0%}) | "
                 f"{zone['ashrae']['verdict']} |"
             )
         lines.append("")

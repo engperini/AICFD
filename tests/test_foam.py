@@ -235,6 +235,96 @@ class PlausibleVelocityTests(unittest.TestCase):
         self.assertTrue(check.passed, check.detail)
 
 
+class RackThroughflowTests(unittest.TestCase):
+    """A rack that is not drawing air is reporting the model's limits, not a room."""
+
+    def evaluate(self, through_speed, load_w=6000.0):
+        import numpy as np
+
+        from aicfd.foam import solverlog
+        from aicfd.foam.casedict import Box, CaseGeometry, HeatSource
+        from aicfd.post import _evaluate
+
+        divisions = (8, 8, 8)  # 6 x 4 x 3 m room
+        geometry = CaseGeometry(
+            room=Box(lo=(0, 0, 0), hi=(6.0, 4.0, 3.0)),
+            divisions=divisions,
+            zones={"R": Box(lo=(2.25, 1.0, 0.0), hi=(3.75, 3.0, 2.25))},
+            heat_sources=[HeatSource(zone="R", watts=load_w)],
+            inlet_velocity=(1.0, 0.0, 0.0),
+            inlet_temperature_k=291.0,
+            inlet_patch="fanwall",
+        )
+        shape = (divisions[2], divisions[1], divisions[0])
+        temperature = np.full(shape, 291.0)
+        temperature[2:6, 2:6, 3:5] = 295.0  # the rack is warmer
+        # Set the whole field: only the cells inside the zone are integrated,
+        # so hardcoding slices here would just risk missing the zone.
+        velocity = np.zeros((*shape, 3))
+        velocity[..., 0] = through_speed
+        _, checks, warnings = _evaluate(
+            geometry, {"T": temperature, "U": velocity}, solverlog.SolverLog()
+        )
+        return next(c for c in checks if c.name == "rack_throughflow"), warnings
+
+    def test_a_well_fed_rack_passes(self):
+        check, _ = self.evaluate(through_speed=1.0)
+        self.assertTrue(check.passed, check.detail)
+
+    def test_a_starved_rack_fails_and_names_the_numbers(self):
+        check, warnings = self.evaluate(through_speed=0.02)
+        self.assertFalse(check.passed)
+        self.assertIn("R draws", check.detail)
+        self.assertIn("m3/h", check.detail)
+        self.assertTrue(
+            any("resistance rather than a fan" in w for w in warnings),
+            "a starved rack must explain that this is the rack model's limit",
+        )
+
+    def test_backward_flow_is_not_counted_as_cooling(self):
+        # Air moving backwards through a rack is not cooling it.
+        backwards, _ = self.evaluate(through_speed=-1.0)
+        self.assertFalse(backwards.passed, backwards.detail)
+
+
+class NoAirBelowSupplyTests(unittest.TestCase):
+    def evaluate(self, coldest_k):
+        import numpy as np
+
+        from aicfd.foam import solverlog
+        from aicfd.foam.casedict import Box, CaseGeometry
+        from aicfd.post import _evaluate
+
+        divisions = (4, 4, 4)
+        geometry = CaseGeometry(
+            room=Box(lo=(0, 0, 0), hi=(6.0, 4.0, 3.0)),
+            divisions=divisions,
+            inlet_velocity=(1.0, 0.0, 0.0),
+            inlet_temperature_k=291.0,
+            inlet_patch="fanwall",
+        )
+        shape = (divisions[2], divisions[1], divisions[0])
+        temperature = np.full(shape, 293.0)
+        temperature[0, 0, 0] = coldest_k
+        velocity = np.zeros((*shape, 3))
+        velocity[..., 0] = 1.0
+        _, checks, _ = _evaluate(
+            geometry, {"T": temperature, "U": velocity}, solverlog.SolverLog()
+        )
+        return next(c for c in checks if c.name == "no_air_below_supply")
+
+    def test_air_at_the_supply_temperature_passes(self):
+        self.assertTrue(self.evaluate(291.0).passed)
+
+    def test_an_undershoot_fails(self):
+        self.assertFalse(self.evaluate(288.0).passed)
+
+    def test_recirculation_does_not_fail_the_check(self):
+        # The old monotonic-heating check failed correct recirculating rooms.
+        # Nothing here is below the supply, so this must pass.
+        self.assertTrue(self.evaluate(291.5).passed)
+
+
 class ReferenceResultsTests(unittest.TestCase):
     """Guards the numbers the reference case is documented to produce."""
 

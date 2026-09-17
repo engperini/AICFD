@@ -304,9 +304,10 @@ function layoutHtml(meta) {
     ${
       kpis.zones.length
         ? `<section class="card">
-      <div class="card-head"><span class="card-title">Racks</span></div>
+      <div class="card-head"><span class="card-title">Racks</span>
+        <span class="card-sub">air drawn vs. what the load needs</span></div>
       <table>
-        <thead><tr><th>Rack</th><th>Load</th><th>Inlet</th><th>Peak</th><th>Rise</th></tr></thead>
+        <thead><tr><th>Rack</th><th>Load</th><th>Inlet</th><th>Peak</th><th>Air drawn</th></tr></thead>
         <tbody>${kpis.zones
           .map(
             (zone) => `<tr>
@@ -314,7 +315,15 @@ function layoutHtml(meta) {
               <td>${(zone.load_w / 1000).toFixed(1)} kW</td>
               <td>${zone.inlet_temp_c.toFixed(1)} °C</td>
               <td>${zone.peak_temp_c.toFixed(1)} °C</td>
-              <td>${zone.rise_k.toFixed(2)} K</td>
+              <td${
+                zone.throughflow_ratio != null && zone.throughflow_ratio < 0.6
+                  ? ' class="starved"'
+                  : ''
+              }>${
+                zone.throughflow_ratio == null
+                  ? '—'
+                  : `${(zone.throughflow_ratio * 100).toFixed(0)}%`
+              }</td>
             </tr>`,
           )
           .join('')}</tbody>
@@ -325,17 +334,7 @@ function layoutHtml(meta) {
 
     <section class="card">
       <div class="card-head"><span class="card-title">Physical validation</span></div>
-      <ul class="checks">
-        ${meta.checks
-          .map(
-            (check) => `<li data-state="${check.passed ? 'pass' : 'fail'}">
-              <span class="mark" aria-hidden="true">${check.passed ? '✓' : '✕'}</span>
-              <span><span class="name">${check.status} — ${check.name}</span><br />
-              <span class="detail">${check.detail}</span></span>
-            </li>`,
-          )
-          .join('')}
-      </ul>
+      <ul class="checks">${checksHtml(meta.checks)}</ul>
     </section>
 
     ${
@@ -353,6 +352,44 @@ function layoutHtml(meta) {
     }
   </aside>
 </main>`;
+}
+
+/** Per-rack checks repeat once per rack. Collapse a group when all of it
+ * passes -- six identical PASS rows are noise that buries the one failure. A
+ * group with any failure is listed in full. */
+function checksHtml(checks) {
+  const groups = new Map();
+  for (const check of checks) {
+    const key = groupKeyFor(check.name);
+    if (!groups.has(key)) groups.set(key, []);
+    groups.get(key).push(check);
+  }
+
+  const rows = [];
+  for (const [key, members] of groups) {
+    if (key && members.length > 1 && members.every((c) => c.passed)) {
+      rows.push(`<li data-state="group">
+        <span class="mark" aria-hidden="true">✓</span>
+        <span><span class="name">PASS — ${members.length} ${key}</span><br />
+        <span class="group-detail">${members.map((c) => c.name).join(', ')}</span></span>
+      </li>`);
+      continue;
+    }
+    for (const check of members) {
+      rows.push(`<li data-state="${check.passed ? 'pass' : 'fail'}">
+        <span class="mark" aria-hidden="true">${check.passed ? '✓' : '✕'}</span>
+        <span><span class="name">${check.status} — ${check.name}</span><br />
+        <span class="detail">${check.detail}</span></span>
+      </li>`);
+    }
+  }
+  return rows.join('');
+}
+
+function groupKeyFor(name) {
+  if (/^zone_.+_populated$/.test(name)) return 'rack zones populated';
+  if (/^ashrae_/.test(name)) return 'racks within their ASHRAE envelope';
+  return null;
 }
 
 function tile(label, value, unit) {

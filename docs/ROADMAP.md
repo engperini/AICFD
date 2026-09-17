@@ -158,6 +158,13 @@ engineer actually reports: per-rack inlet temperature vs. ASHRAE A1–A4 envelop
 RCI (Rack Cooling Index), RTI (Return Temperature Index), recirculation and bypass
 fractions, CRAC redundancy check (N+1 failure scenario).
 
+### M4b — Rack fans (moved up from M5)
+Racks as momentum sources on top of their resistance, so a rack draws its rated
+airflow instead of whatever the room happens to push through it. Measured need:
+the first realistic generated case gave every rack 21% of the air its load
+required, which over-predicts rack temperatures by tens of degrees. See
+[`experiments/2026-09-17-generated-case-velocities.md`](experiments/2026-09-17-generated-case-velocities.md).
+
 ### M5 — Real data hall features
 Hot aisle / cold aisle containment, raised-floor plenum with perforated tiles as
 porous patches, in-row and downflow CRAC types, rack-level airflow curves.
