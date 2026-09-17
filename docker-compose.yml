@@ -1,0 +1,12 @@
+services:
+  aicfd:
+    build: .
+    image: aicfd:latest
+    ports:
+      - "8000:8000"
+    volumes:
+      # Cases, runs and results live on the host so nothing is lost when the
+      # container is recreated.
+      - ./cases:/app/cases
+      - ./runs:/app/runs
+      - ./results:/app/results

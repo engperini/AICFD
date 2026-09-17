@@ -1,0 +1,6 @@
+.git
+.venv
+runs
+results
+web/vendor/*.map
+__pycache__
