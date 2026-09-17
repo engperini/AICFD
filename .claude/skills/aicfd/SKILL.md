@@ -52,7 +52,8 @@ instrumented places (cold aisle, contained hot aisle, ceiling plenum, back of
 the fan wall), three points each, plus the mass and energy balances. The page
 shows the same thing live.
 
-**Judge a POD run by its energy balance, never by its residuals** (ADR-018).
+**Judge a POD run by its energy balance and its drift, never by its residuals**
+(ADR-018).
 Every watt installed has to leave through the fan intake as warmer air. The
 report prints it as "the return air carries X kW of the Y kW installed". A run
 whose residuals are falling nicely and whose closure is 5% has converged on
@@ -60,10 +61,18 @@ nothing -- the thermal field has not filled the domain yet. Watch it across
 samples: climbing means unconverged, settling somewhere other than 100% means
 wrong.
 
+A closed balance is necessary but not sufficient. `0/T` is seeded warm
+downstream of the racks, so a fresh run starts with its balance already near
+100% while the field is still moving. The second half of the verdict is
+`settled`: the largest move any instrumented place made since the previous
+sample, which must be under 0,25 K.
+
 Rules that follow from that:
 
 - **Never quote a rack temperature from a run whose energy closure is not
-  within ~10% of the load.** Say the run is still filling and give the closure.
+  within ~10% of the load, or whose `settled` check fails.** Say which one
+  failed and give the number: "closure 4%, still filling" or "closure 99% but
+  the hot aisle moved 1,4 K since the last sample".
 - **If `no_backflow` fails**, the fan wall boundary is deciding the flow rather
   than the room. The numbers are not about the POD.
 - **If `sealed_envelope` fails**, the mesh surgery leaked. Re-run

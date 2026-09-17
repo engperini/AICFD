@@ -51,6 +51,19 @@ BACKFLOW_TOLERANCE = 0.02
 #: velocity and the buoyant velocity scale -- see ADR-013.
 PLAUSIBLE_SPEED_MARGIN = 5.0
 
+#: How much an instrumented place may still be moving between samples before
+#: the run counts as settled, in kelvin.
+#:
+#: Energy closure alone is not enough, and finding that out cost a run. It
+#: works as a verdict from a *cold* start, where it climbs from zero as the
+#: heat works its way round the loop. Seed the field warm -- which is the right
+#: thing to do, the gallery is a third of the domain -- and the balance reads
+#: 101% at iteration 100 because the seed put it there, while the contained hot
+#: aisle is still swinging 27,5 -> 25,1 -> 26,5 degC between samples. A closed
+#: balance says the field is *consistent*; only stillness says it is *settled*,
+#: and a run needs both.
+STEADY_TOLERANCE = 0.25
+
 
 @dataclass
 class PodResults:
@@ -77,6 +90,7 @@ def written_times(case_dir: str | Path) -> list[str]:
 
 def analyse(model: Model, case_dir: str | Path, time: str | None = None) -> PodResults:
     case = Path(case_dir)
+    sample(model, case)  # make sure the latest write has been read
     time = time or (written_times(case)[-1] if written_times(case) else "0")
     step = case / time
 
@@ -103,9 +117,31 @@ def analyse(model: Model, case_dir: str | Path, time: str | None = None) -> PodR
     kpis["peak_air_temp_c"] = round(float(grid["T"].max()), 2)
     kpis["racks"] = rack_temperatures(model, grid)
 
+    kpis["drift_k"] = drift(case)
     return PodResults(
         case_name=model.name, time=time, kpis=kpis, checks=_checks(model, step, kpis, grid)
     )
+
+
+def drift(case_dir: str | Path) -> float | None:
+    """The largest move any instrumented place made between the last two samples.
+
+    None when there is nothing to compare yet. This is what distinguishes a
+    settled field from one that merely satisfies its balances -- see
+    STEADY_TOLERANCE.
+    """
+    history = read_history(case_dir)
+    if len(history) < 2:
+        return None
+    last, previous = history[-1], history[-2]
+    before = {place["name"]: place["temp_c"] for place in previous["places"]}
+    moves = [
+        abs(place["temp_c"] - before[place["name"]])
+        for place in last["places"]
+        if place["name"] in before
+    ]
+    moves.append(abs(last["return_temp_c"] - previous["return_temp_c"]))
+    return round(max(moves), 3) if moves else None
 
 
 # --- the quantities -----------------------------------------------------------
@@ -283,6 +319,18 @@ def _checks(model: Model, step: Path, kpis: dict, grid: dict) -> list[Check]:
             "energy_closure",
             closure is not None and abs(closure - 1.0) <= ENERGY_TOLERANCE,
             detail,
+        )
+    )
+
+    moved = kpis.get("drift_k")
+    checks.append(
+        Check(
+            "settled",
+            moved is not None and moved <= STEADY_TOLERANCE,
+            "not enough samples to tell whether anything is still moving"
+            if moved is None
+            else f"the places moved at most {moved:.2f} K since the previous "
+            f"sample (settled below {STEADY_TOLERANCE:.2f} K)",
         )
     )
 
@@ -534,6 +582,13 @@ def sensor_history(model: Model, case_dir: str | Path) -> dict:
 # --- report -------------------------------------------------------------------
 
 
+def _drift_line(kpis: dict) -> str:
+    moved = kpis.get("drift_k")
+    if moved is None:
+        return "- (only one sample so far)"
+    return f"{moved:.2f} K since the previous sample"
+
+
 def report(results: PodResults) -> str:
     k = results.kpis
     lines = [
@@ -547,6 +602,7 @@ def report(results: PodResults) -> str:
         f"installed ({(k['energy_closure'] or 0) * 100:.0f}%)",
         f"  Peak air        {k['peak_air_temp_c']:.1f} degC, "
         f"{k['peak_speed_ms']:.2f} m/s",
+        f"  Still moving    {_drift_line(k)}",
         "",
         "  Rack              Load    Inlet   Outlet    Rise   ASHRAE",
     ]

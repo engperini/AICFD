@@ -476,6 +476,19 @@ so I am looking at the answer.* Watched across written times it also separates
 the two failure modes — a merely unconverged run climbs towards 100%, a wrong
 one settles somewhere else.
 
+**And it is necessary but not sufficient.** That correction cost a run. The
+balance works as a verdict from a *cold* start, where it climbs from zero as
+the heat works its way round the loop. Seed the field warm — which is the
+right thing to do, the mechanical gallery is a third of the domain — and the
+balance reads 101% at iteration 100 because the seed put it there, while the
+contained hot aisle is still swinging 27,5 → 25,1 → 26,5 °C between samples.
+
+So a run is judged on two things. A closed balance says the field is
+*consistent*; the places holding still between samples says it is *settled*.
+`drift()` reports the largest move any instrumented place made since the
+previous sample, and `settled` fails above 0,25 K. Neither check alone is a
+verdict.
+
 **Consequence.** Every quantity in this module is read from patch values, never
 from the nearest cell centres. Approximating a face flux from cell-centre
 velocity is wrong by tens of percent across a porous zone or a grille jet: it

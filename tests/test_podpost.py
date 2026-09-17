@@ -7,6 +7,7 @@ residual. These check both on hand-written field files.
 
 from __future__ import annotations
 
+import json
 import tempfile
 import unittest
 from pathlib import Path
@@ -270,6 +271,52 @@ class SensorPlacementTest(unittest.TestCase):
         before = next(g for g in self.groups if g.name == "cold_aisle").points[0]
         after = next(g for g in moved if g.name == "cold_aisle").points[0]
         self.assertGreater(after[1], before[1])
+
+
+class DriftTest(unittest.TestCase):
+    """A closed balance says the field is consistent; only stillness says
+    it is settled. A warm start satisfies the first from iteration one."""
+
+    def setUp(self):
+        self.case = Path(tempfile.mkdtemp())
+
+    def history(self, *rows):
+        (self.case / podpost.SENSOR_FILE).write_text(json.dumps(list(rows)))
+
+    def row(self, iteration, cold, hot, ret):
+        return {
+            "iteration": iteration,
+            "return_temp_c": ret,
+            "places": [
+                {"name": "cold_aisle", "temp_c": cold},
+                {"name": "hot_aisle", "temp_c": hot},
+            ],
+        }
+
+    def test_one_sample_cannot_say_anything(self):
+        self.history(self.row(100, 20.0, 27.5, 30.8))
+        self.assertIsNone(podpost.drift(self.case))
+
+    def test_drift_is_the_largest_move_any_place_made(self):
+        self.history(
+            self.row(100, 20.0, 27.5, 30.8), self.row(200, 20.1, 25.1, 30.8)
+        )
+        self.assertAlmostEqual(podpost.drift(self.case), 2.4, places=3)
+
+    def test_the_return_temperature_counts_as_a_place(self):
+        self.history(
+            self.row(100, 20.0, 27.5, 30.8), self.row(200, 20.0, 27.5, 29.0)
+        )
+        self.assertAlmostEqual(podpost.drift(self.case), 1.8, places=3)
+
+    def test_a_settled_field_drifts_below_the_tolerance(self):
+        self.history(
+            self.row(100, 20.0, 30.8, 30.8), self.row(200, 20.0, 30.85, 30.8)
+        )
+        self.assertLess(podpost.drift(self.case), podpost.STEADY_TOLERANCE)
+
+    def test_the_tolerance_is_tighter_than_any_rise_worth_reporting(self):
+        self.assertLessEqual(podpost.STEADY_TOLERANCE, 0.5)
 
 
 class ToleranceTest(unittest.TestCase):
