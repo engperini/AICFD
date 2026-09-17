@@ -655,6 +655,55 @@ relaxationFactors
 # --- initial and boundary conditions ------------------------------------------
 
 
+def warm_start(model: Model) -> str:
+    """The initial temperature field, warm where the return air will be.
+
+    A steady solve converges to the same answer from any initial condition, so
+    the initial condition is free -- and starting the whole box at the supply
+    temperature is the most expensive free choice available. The solver then
+    has to carry heat all the way round the loop before the energy balance can
+    close, and the mechanical gallery alone is a third of the domain's volume.
+    Measured from a cold start: after 600 iterations the contained hot aisle
+    had reached 29,9 degC but the plenum was still at 21,1 and climbing 0,6 K
+    per hundred iterations, with the gallery untouched.
+
+    So the loop is seeded with its own topology: cold upstream of the racks,
+    warm everywhere the air has already passed through them -- the contained
+    hot aisle, the return plenum, and the gallery. That is not an answer being
+    assumed; it is the shape of the answer, and the solver is free to move
+    every number in it.
+    """
+    nx, ny, nz = model.divisions
+    cell = model.cell_size
+    supply_k = model.supply_temp_c + KELVIN
+    warm_k = supply_k + min(max(model.design_delta_t_k, 1.0), 25.0)
+
+    hot_lo, hot_hi = model.hot_aisle
+    row_lo, row_hi = model.rack_span()
+    gallery_x = model.gallery.hi[0]
+
+    values = []
+    for k in range(nz):
+        z = (k + 0.5) * cell
+        for j in range(ny):
+            y = (j + 0.5) * cell
+            for i in range(nx):
+                x = (i + 0.5) * cell
+                downstream = (
+                    x < gallery_x  # the gallery carries return air
+                    or z > model.ceiling_z  # the plenum above the false ceiling
+                    or (hot_lo <= y <= hot_hi and row_lo <= x <= row_hi)
+                )
+                values.append(warm_k if downstream else supply_k)
+
+    body = "\n".join(f"{value:.2f}" for value in values)
+    return f"""nonuniform List<scalar>
+{len(values)}
+(
+{body}
+)"""
+
+
 def initial_fields(model: Model) -> dict[str, str]:
     """The 0/ directory, for the outer walls only.
 
@@ -680,7 +729,9 @@ boundaryField
         "T": f"""{_header(model, "volScalarField", "T", "0")}
 dimensions      [0 0 0 1 0 0 0];
 
-internalField   uniform {supply_k:.2f};
+// Seeded with the loop's topology -- see warm_start. Cold upstream of the
+// racks, warm everywhere the air has already been through them.
+internalField   {warm_start(model)};
 
 boundaryField
 {{

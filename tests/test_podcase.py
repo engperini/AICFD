@@ -207,6 +207,51 @@ class FieldsTest(unittest.TestCase):
         self.assertGreater(k, from_supply * 10)
 
 
+class WarmStartTest(unittest.TestCase):
+    """A steady solve's initial condition is free; a cold one is not cheap."""
+
+    def setUp(self):
+        self.model = build()
+        self.field = podcase.warm_start(self.model)
+        self.values = [
+            float(v) for v in re.findall(r"^\d+\.\d\d$", self.field, re.M)
+        ]
+
+    def test_there_is_one_value_per_cell(self):
+        self.assertIn(f"\n{self.model.n_cells}\n", self.field)
+        self.assertEqual(len(self.values), self.model.n_cells)
+
+    def test_only_two_temperatures_are_seeded(self):
+        """The shape of the answer, not a guess at its numbers."""
+        supply = self.model.supply_temp_c + podcase.KELVIN
+        self.assertEqual(len(set(self.values)), 2)
+        self.assertAlmostEqual(min(self.values), supply, places=1)
+        self.assertGreater(max(self.values), supply)
+
+    def test_the_cold_aisle_starts_cold_and_the_gallery_warm(self):
+        model = self.model
+        nx, ny, _nz = model.divisions
+        cell = model.cell_size
+        supply = model.supply_temp_c + podcase.KELVIN
+
+        def at(x, y, z):
+            i, j, k = (int(v / cell) for v in (x, y, z))
+            return self.values[i + j * nx + k * nx * ny]
+
+        cold_y = (model.cold_aisle[0] + model.cold_aisle[1]) / 2
+        hot_y = (model.hot_aisle[0] + model.hot_aisle[1]) / 2
+        row = model.rack_span()
+        self.assertAlmostEqual(at(6.0, cold_y, 1.0), supply, places=1)
+        self.assertGreater(at((row[0] + row[1]) / 2, hot_y, 1.0), supply)
+        self.assertGreater(at(1.0, cold_y, 1.0), supply)  # the gallery
+        self.assertGreater(at(6.0, cold_y, model.ceiling_z + 0.5), supply)  # plenum
+
+    def test_the_field_is_written_into_the_zero_directory(self):
+        text = podcase.initial_fields(self.model)["T"]
+        self.assertIn("nonuniform List<scalar>", text)
+        self.assertNotIn("internalField   uniform", text)
+
+
 class BlockMeshTest(unittest.TestCase):
     def test_the_box_is_closed(self):
         """A POD's air never leaves the domain: the fan wall is where it cuts."""
