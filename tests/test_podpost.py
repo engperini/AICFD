@@ -384,6 +384,51 @@ class ReturnPathTest(unittest.TestCase):
         self.assertLess(podpost.RETURN_PATH_TOLERANCE, 3.0)
 
 
+class RackResistanceTest(unittest.TestCase):
+    """What the rack curve asks for, against what the field delivers."""
+
+    def setUp(self):
+        self.model = M.build_model(SPEC)
+
+    def test_the_asked_for_drop_comes_from_the_rack_curve(self):
+        """Closed form, because containment makes the throughflow exact."""
+        model = self.model
+        face = sum(r.face_area for r in model.racks)
+        u = model.airflow_m3s / face
+        _d, f = model.racks[0].darcy_forchheimer()
+        expected = 0.5 * M.RHO_AIR * f * u**2 * model.racks[0].depth
+        self.assertAlmostEqual(model.rack_pressure_drop_pa, expected, places=6)
+
+    def test_it_lands_near_the_nominal_drop_when_flow_matches_rating(self):
+        """The fan moves 5 000 m3/h and the racks want 4 926, so ~25 Pa."""
+        self.assertAlmostEqual(self.model.rack_pressure_drop_pa, 25.8, delta=1.0)
+
+    def test_it_scales_with_the_square_of_the_airflow(self):
+        doubled = M.build_model(
+            dict(SPEC, fanwall={**SPEC["fanwall"], "airflow_m3h": 10000})
+        )
+        self.assertAlmostEqual(
+            doubled.rack_pressure_drop_pa / self.model.rack_pressure_drop_pa,
+            4.0,
+            places=3,
+        )
+
+    def test_a_case_with_no_racks_asks_for_nothing(self):
+        model = M.build_model(dict(SPEC, racks={**SPEC["racks"], "count": 0}))
+        self.assertEqual(model.rack_pressure_drop_pa, 0.0)
+
+    def test_the_datasheet_pressure_is_carried_through(self):
+        model = M.build_model(
+            dict(SPEC, fanwall={**SPEC["fanwall"], "static_pressure_pa": 100})
+        )
+        self.assertEqual(model.fan_static_pa, 100.0)
+        self.assertIsNone(self.model.fan_static_pa)
+
+    def test_the_tolerance_would_not_pass_the_gap_we_have(self):
+        """5,3 Pa delivered against 25,8 asked is 21%; this must fail it."""
+        self.assertLess(podpost.RESISTANCE_TOLERANCE, 0.79)
+
+
 class CompareTest(unittest.TestCase):
     """Two runs of the same case, from different initial fields, must agree."""
 

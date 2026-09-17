@@ -170,6 +170,8 @@ class Model:
     airflow_m3h: float
     supply_temp_c: float
     cell_size: float
+    fan_static_pa: float | None = None
+    """External static pressure from the unit's datasheet, if given."""
     warnings: list[str] = field(default_factory=list)
 
     # --- derived quantities ---------------------------------------------------
@@ -213,6 +215,25 @@ class Model:
         """Cross-section of the contained hot aisle, normal to the rise."""
         row = self.rack_span()
         return (row[1] - row[0]) * (self.hot_aisle[1] - self.hot_aisle[0])
+
+    @property
+    def rack_pressure_drop_pa(self) -> float:
+        """What the rack row costs at the airflow actually passing it.
+
+        Computed from the resistance the spec asked for, not read out of the
+        solved field. With hot-aisle containment every cubic metre the fan
+        moves goes through the racks, so the flow is known exactly and this is
+        closed form -- which is what makes it a *check* on the field rather
+        than a repeat of it.
+        """
+        if not self.racks:
+            return 0.0
+        face = sum(rack.face_area for rack in self.racks)
+        if face <= 0:
+            return 0.0
+        velocity = self.airflow_m3s / face
+        _d, f = self.racks[0].darcy_forchheimer()
+        return 0.5 * RHO_AIR * f * velocity**2 * self.racks[0].depth
 
     @property
     def rack_demand_m3s(self) -> float:
@@ -431,6 +452,9 @@ def build_model(spec: dict) -> Model:
         airflow_m3h=float(fan["airflow_m3h"]),
         supply_temp_c=float(fan.get("supply_temp_c", 20.0)),
         cell_size=cell,
+        fan_static_pa=(
+            float(fan["static_pressure_pa"]) if "static_pressure_pa" in fan else None
+        ),
     )
     # Snap to the mesh *before* anyone reads the model. The drawing, the
     # summary table and the solved case then describe the same geometry -- a
@@ -603,6 +627,20 @@ def summary_rows(model: Model) -> list[tuple[str, str, str]]:
             through(model.chimney_area),
         ),
         ("Abertura para a galeria", face(plenum), through(plenum.area)),
+        (
+            "Resistência dos racks",
+            f"{num(model.rack_pressure_drop_pa)} Pa na vazão do fan wall",
+            f"{num(RACK_PRESSURE_DROP, 0)} Pa nominais por rack",
+        ),
+        (
+            "Pressão do fan wall",
+            f"{num(model.fan_static_pa, 0)} Pa de datasheet"
+            if model.fan_static_pa
+            else "não informada",
+            f"racks consomem {num(model.rack_pressure_drop_pa / model.fan_static_pa * 100, 0)}%"
+            if model.fan_static_pa
+            else "-",
+        ),
     ]
 
 

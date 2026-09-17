@@ -27,6 +27,8 @@ fanwall:
   supply_temp_c: 20.0
   height: 4.0
   width: 1.8                  # na largura do corredor frio
+  static_pressure_pa: 100     # pressao estatica externa de datasheet: a
+                              # resistencia do POD tem de caber aqui
 
 grilles:
   size: 0.60                  # 3 grelhas quadradas, adjacentes, sobre os racks

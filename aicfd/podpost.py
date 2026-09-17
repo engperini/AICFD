@@ -63,6 +63,19 @@ RETURN_PATH = ("hot_aisle", "plenum", "fan_back")
 #: to catch a volume still filling.
 RETURN_PATH_TOLERANCE = 1.5
 
+#: How far the pressure drop the solver delivers across the rack row may sit
+#: from the one the spec asked for, as a fraction.
+#:
+#: This is not a convergence check -- it is a check that the *model* is
+#: delivering the resistance it was given. It exists because it currently
+#: fails: the field shows 5,3 Pa across the row where the rack's own curve, at
+#: the airflow the fan is measurably moving, demands 25,8 Pa. An isolated duct
+#: with the same porous coefficients reproduces the analytic drop to 0,2%, so
+#: the coefficients are right and something about the zone in situ is not.
+#: Until that is understood, a fan-pressure number read off this field is too
+#: low and must not be used to size a machine.
+RESISTANCE_TOLERANCE = 0.25
+
 #: How much an instrumented place may still be moving between samples before
 #: the run counts as settled, in kelvin.
 #:
@@ -135,12 +148,46 @@ def analyse(model: Model, case_dir: str | Path, time: str | None = None) -> PodR
     kpis["peak_air_temp_c"] = round(float(grid["T"].max()), 2)
     kpis["racks"] = rack_temperatures(model, grid)
 
+    kpis["rack_drop_pa"] = rack_pressure_drop(model, grid)
     kpis["drift_k"] = drift(case)
     history = read_history(case)
     kpis["places_now"] = history[-1]["places"] if history else []
     return PodResults(
         case_name=model.name, time=time, kpis=kpis, checks=_checks(model, step, kpis, grid)
     )
+
+
+def rack_pressure_drop(model: Model, grid: dict) -> float | None:
+    """The drop the solved field actually shows across the rack row, in Pa.
+
+    Sampled one cell either side of the row, outside the porous cells: the
+    reconstructed velocity inside a porous zone is not trustworthy, but the
+    pressure in free cells on either side of it is.
+    """
+    if not model.racks:
+        return None
+    axis = model.racks[0].airflow_axis
+    lo = model.racks[0].box.lo[axis] - model.cell_size / 2
+    hi = model.racks[0].box.hi[axis] + model.cell_size / 2
+    row = model.rack_span()
+    coords = (grid["x"], grid["y"], grid["z"])
+
+    def plane(position: float) -> float:
+        picks = []
+        for a in range(3):
+            if a == axis:
+                picks.append([int(np.argmin(abs(coords[a] - position)))])
+            elif a == 0:
+                picks.append(
+                    np.where((coords[0] >= row[0]) & (coords[0] <= row[1]))[0]
+                )
+            else:
+                picks.append(
+                    np.where(coords[a] <= model.racks[0].box.hi[a])[0]
+                )
+        return float(grid["p_rgh"][np.ix_(picks[2], picks[1], picks[0])].mean())
+
+    return round(plane(lo) - plane(hi), 3)
 
 
 def drift(case_dir: str | Path) -> float | None:
@@ -359,6 +406,25 @@ def _checks(model: Model, step: Path, kpis: dict, grid: dict) -> list[Check]:
                 + ", ".join(f"{name} {path[name]:.1f}" for name in RETURN_PATH)
                 + f" degC ({spread:.2f} K apart)"
                 + ("" if spread <= RETURN_PATH_TOLERANCE else " -- still filling"),
+            )
+        )
+
+    delivered = kpis.get("rack_drop_pa")
+    asked = model.rack_pressure_drop_pa
+    if delivered is not None and asked > 0:
+        ratio = delivered / asked
+        checks.append(
+            Check(
+                "rack_resistance",
+                abs(ratio - 1.0) <= RESISTANCE_TOLERANCE,
+                f"the field drops {delivered:.1f} Pa across the row where the "
+                f"rack curve at {model.airflow_m3h:,.0f} m3/h asks for "
+                f"{asked:.1f} Pa ({ratio * 100:.0f}%)"
+                + (
+                    ""
+                    if abs(ratio - 1.0) <= RESISTANCE_TOLERANCE
+                    else " -- any fan pressure taken from this field is wrong"
+                ),
             )
         )
 
@@ -698,6 +764,11 @@ def compare(first: str | Path, second: str | Path) -> dict:
 # --- report -------------------------------------------------------------------
 
 
+def _resistance_line(kpis: dict, results: "PodResults") -> str:
+    drop = kpis.get("rack_drop_pa")
+    return "-" if drop is None else f"{drop:.1f} Pa across the row, in the field"
+
+
 def _fan_rise_line(kpis: dict) -> str:
     rise = kpis.get("fan_rise_pa")
     return "-" if rise is None else f"{rise:.1f} Pa across the fan wall"
@@ -742,6 +813,7 @@ def report(results: PodResults) -> str:
         f"  Return path     {_path_line(k)}",
         "",
         f"  Fan wall rise   {_fan_rise_line(k)}",
+        f"  Rack row        {_resistance_line(k, results)}",
         "",
         "  Place                  Temp    dP vs intake    Speed",
     ]

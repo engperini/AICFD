@@ -80,6 +80,15 @@ Three checks carry the verdict and **none of them is sufficient alone**:
   within 1,5 K of each other. Nothing heats or cools the air between them, so
   at steady state they must agree; a spread is a volume still filling.
 
+A fourth check, `rack_resistance`, is not about convergence: it compares the
+pressure drop the field delivers across the rack row against the one the rack's
+own curve demands at the airflow the fan is measurably moving. **It currently
+fails** — 5,3 Pa delivered against 25,8 asked. Until it passes, **never quote a
+fan static pressure from a POD run**, and never compare one against a
+datasheet: the model's system resistance is known to be too low. The rack
+resistance in the summary table is closed form and safe to quote; the fan rise
+in the sensor strip is not.
+
 Rules that follow from that:
 
 - **Never quote a rack temperature unless all three pass.** Say which failed
