@@ -313,3 +313,57 @@ catch an order-of-magnitude artefact, not to police accuracy. When it fires, it
 also warns that the temperatures are unreliable, since they come from the same
 field — a reader who sees only "velocity check failed" might otherwise keep
 trusting the ASHRAE column.
+
+---
+
+## ADR-014 — One geometry module, consumed by both the drawing and the mesh
+
+**Decision.** `aicfd/model.py` turns a spec into the complete derived geometry —
+domain, gallery, hall, racks, and every internal wall and opening as a `Panel` —
+and applies mesh snapping *before* returning. The web page draws from that
+object's JSON and nothing else; the case generator meshes from the same object.
+
+**Why.** The drawings exist so an engineer can catch a wrong dimension before
+paying for a solve. A drawing produced from the spec while the mesh is built
+from something slightly different would defeat that entirely, and the
+divergence would be invisible: both would look right.
+
+Snapping is the specific trap. A 0,61 m grille on a 0,10 m mesh is built at
+0,60 m. If the page quotes the nominal 0,61 m and the summary computes a face
+velocity from it, the number on screen is not the number being solved. So
+`build_model` snaps first and records what it changed, and everything
+downstream — drawing, summary table, velocities, warnings — reads the snapped
+geometry. The page reports the adjustment rather than hiding it.
+
+**Consequence.** `Panel` has to be expressive enough for the mesh surgery it
+drives (`topoSet` + `createPatch` for boundary patches, `createBaffles` for
+internal ones), not just for drawing rectangles. That is why a panel carries an
+axis, a position and an in-plane extent rather than a polygon: those are
+exactly the arguments `boxToFace` and `normalToFace` take.
+
+---
+
+## ADR-015 — The page is the interface before the run, not a report after it
+
+**Decision.** `aicfd view` serves a page that draws the model, takes parameter
+edits against a whitelist, starts the solve, and streams convergence — and it
+is meant to be opened *before* solving. Results rendering (M1's viewer) is a
+second job, not the primary one.
+
+**Why.** A mistake found after a twenty-minute solve has already cost the
+twenty minutes, and the mistakes that matter here are geometric: an aisle on
+the wrong side, a grille over the racks instead of the hot aisle, a fan wall
+opening into the wrong volume. Those are invisible in a YAML file and obvious
+in a section drawing. Two sections and a plan, drawn to one shared scale, catch
+them in seconds.
+
+The parameter form is deliberately a gate rather than a text editor. `EDITABLE`
+in `aicfd/server.py` lists the numbers an engineer iterates on, each with a
+range; anything else needs an edit to the YAML. A form that could put the spec
+into a state the generator has never seen would trade one silent failure for
+another.
+
+**Consequence.** The server is stdlib-only and holds one run at a time, which
+is the right size for a tool run on an engineer's own machine. When the case
+generator for a geometry is missing, the page says so and disables the button
+rather than offering a Run that dies on an import.

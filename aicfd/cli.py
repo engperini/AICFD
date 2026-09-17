@@ -59,7 +59,7 @@ def main(argv: list[str] | None = None) -> int:
 
     view_parser = sub.add_parser("view", help="serve the viewer")
     view_parser.add_argument("--port", type=int, default=8000)
-    view_parser.add_argument("--case", help="case to open (default: the newest result)")
+    view_parser.add_argument("--case", help="case spec to open (default: the newest in cases/)")
     view_parser.add_argument("--no-browser", action="store_true")
 
     args = parser.parse_args(argv)
@@ -199,34 +199,36 @@ def _post(args) -> int:
 
 
 def _view(args) -> int:
-    import http.server
-    import socketserver
+    """Serve the page: check the model, set parameters, run, watch."""
+    import time
 
-    case = args.case or _newest_result()
+    from aicfd.server import serve
+
+    case = args.case or _newest_case()
     if case is None:
         print(
-            f"error: nothing in {RESULTS_DIR}. Run 'aicfd run' first.", file=sys.stderr
+            f"error: no case specs in {CASES_DIR}. Write one with 'aicfd new'.",
+            file=sys.stderr,
         )
         return 1
 
-    url = f"http://localhost:{args.port}/web/?case={case}"
-
-    class Handler(http.server.SimpleHTTPRequestHandler):
-        def __init__(self, *a, **kw):
-            super().__init__(*a, directory=str(REPO_ROOT), **kw)
-
-        def log_message(self, *a):  # keep the console readable
-            pass
-
-    with socketserver.TCPServer(("", args.port), Handler) as server:
-        print(f"Serving {url}\nPress Ctrl+C to stop.")
-        if not args.no_browser:
-            webbrowser.open(url)
-        try:
-            server.serve_forever()
-        except KeyboardInterrupt:
-            print()
+    url = serve(case, args.port)
+    print(f"Serving {url}\nPress Ctrl+C to stop.")
+    if not args.no_browser:
+        webbrowser.open(url)
+    try:
+        while True:
+            time.sleep(1)
+    except KeyboardInterrupt:
+        print()
     return 0
+
+
+def _newest_case() -> str | None:
+    if not CASES_DIR.exists():
+        return None
+    specs = sorted(CASES_DIR.glob("*.yaml"), key=lambda p: p.stat().st_mtime)
+    return specs[-1].stem if specs else None
 
 
 def _newest_result() -> str | None:

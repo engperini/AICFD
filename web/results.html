@@ -1,0 +1,287 @@
+<!doctype html>
+<html lang="en">
+<head>
+<meta charset="utf-8" />
+<meta name="viewport" content="width=device-width, initial-scale=1" />
+<link rel="icon" href="data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 32 32'%3E%3Crect width='32' height='32' rx='7' fill='%232a78d6'/%3E%3Cpath d='M7 21h18M7 16h13M7 11h8' stroke='white' stroke-width='2.6' stroke-linecap='round' fill='none'/%3E%3C/svg%3E" />
+<title>AICFD — resultados</title>
+<style>
+  /* Design tokens. Dark values are selected for the dark surface, not flipped. */
+  :root {
+    color-scheme: light;
+    --page:           #f9f9f7;
+    --surface:        #fcfcfb;
+    --text-primary:   #0b0b0b;
+    --text-secondary: #52514e;
+    --text-muted:     #898781;
+    --grid:           #e1e0d9;
+    --axis:           #c3c2b7;
+    --border:         rgba(11, 11, 11, 0.10);
+    --good:           #0ca30c;
+    --warning:        #fab219;
+    --critical:       #d03b3b;
+    --series-1: #2a78d6; --series-2: #eb6834; --series-3: #1baf7a;
+    --series-4: #eda100; --series-5: #e87ba4; --series-6: #008300;
+    --series-7: #4a3aa7; --series-8: #e34948;
+    --scene-accent:   #2a78d6;
+    --scene-zone:     #52514e;
+    --scene-zone-edge:#0b0b0b;
+  }
+  @media (prefers-color-scheme: dark) {
+    :root:not([data-theme="light"]) {
+      color-scheme: dark;
+      --page:           #0d0d0d;
+      --surface:        #1a1a19;
+      --text-primary:   #ffffff;
+      --text-secondary: #c3c2b7;
+      --text-muted:     #898781;
+      --grid:           #2c2c2a;
+      --axis:           #383835;
+      --border:         rgba(255, 255, 255, 0.10);
+      --series-1: #3987e5; --series-2: #d95926; --series-3: #199e70;
+      --series-4: #c98500; --series-5: #d55181; --series-6: #008300;
+      --series-7: #9085e9; --series-8: #e66767;
+      --scene-accent:   #3987e5;
+      --scene-zone:     #c3c2b7;
+      --scene-zone-edge:#ffffff;
+    }
+  }
+  :root[data-theme="dark"] {
+    color-scheme: dark;
+    --page:           #0d0d0d;
+    --surface:        #1a1a19;
+    --text-primary:   #ffffff;
+    --text-secondary: #c3c2b7;
+    --text-muted:     #898781;
+    --grid:           #2c2c2a;
+    --axis:           #383835;
+    --border:         rgba(255, 255, 255, 0.10);
+    --series-1: #3987e5; --series-2: #d95926; --series-3: #199e70;
+    --series-4: #c98500; --series-5: #d55181; --series-6: #008300;
+    --series-7: #9085e9; --series-8: #e66767;
+    --scene-accent:   #3987e5;
+    --scene-zone:     #c3c2b7;
+    --scene-zone-edge:#ffffff;
+  }
+
+  * { box-sizing: border-box; }
+  body {
+    margin: 0;
+    background: var(--page);
+    color: var(--text-primary);
+    font: 14px/1.5 system-ui, -apple-system, "Segoe UI", sans-serif;
+  }
+
+  /* --- top bar ----------------------------------------------------------- */
+  .topbar {
+    display: flex; align-items: center; gap: 12px; flex-wrap: wrap;
+    padding: 14px 20px; border-bottom: 1px solid var(--border);
+    background: var(--surface);
+  }
+  .brand { font-weight: 650; letter-spacing: -0.01em; }
+  .topbar .case { color: var(--text-secondary); }
+  .topbar .spacer { flex: 1; }
+  .badge {
+    display: inline-flex; align-items: center; gap: 6px;
+    padding: 3px 10px; border-radius: 999px; font-size: 12px; font-weight: 600;
+    border: 1px solid var(--border);
+  }
+  .badge[data-state="pass"] { color: var(--good); }
+  .badge[data-state="fail"] { color: var(--critical); }
+  .ghost-button {
+    padding: 5px 11px; border-radius: 8px; cursor: pointer;
+    border: 1px solid var(--border); background: transparent;
+    color: var(--text-secondary); font: inherit; font-size: 13px;
+  }
+  .ghost-button:hover { color: var(--text-primary); }
+
+  /* --- layout ------------------------------------------------------------ */
+  .layout {
+    display: grid; grid-template-columns: minmax(0, 1fr) 340px;
+    gap: 16px; padding: 16px; align-items: start;
+  }
+  .card {
+    background: var(--surface); border: 1px solid var(--border);
+    border-radius: 12px; overflow: hidden;
+  }
+  .card-head {
+    display: flex; align-items: baseline; gap: 10px; flex-wrap: wrap;
+    padding: 12px 16px; border-bottom: 1px solid var(--border);
+  }
+  .card-title { font-weight: 600; }
+  .card-sub { color: var(--text-muted); font-size: 12.5px; }
+
+  /* --- controls: one row, above everything it scopes --------------------- */
+  .controls {
+    display: flex; gap: 18px; flex-wrap: wrap; align-items: center;
+    padding: 10px 16px; border-bottom: 1px solid var(--border);
+  }
+  .control { display: flex; align-items: center; gap: 8px; }
+  .control > label { color: var(--text-secondary); font-size: 12.5px; }
+  select, input[type="range"] { font: inherit; accent-color: var(--series-1); }
+  select {
+    padding: 4px 8px; border-radius: 8px; background: var(--surface);
+    color: var(--text-primary); border: 1px solid var(--border);
+  }
+  input[type="range"] { width: 150px; }
+  .slice-value {
+    font-variant-numeric: tabular-nums; color: var(--text-secondary);
+    min-width: 76px; font-size: 12.5px;
+  }
+
+  /* --- 3D viewport ------------------------------------------------------- */
+  .viewport-wrap { position: relative; }
+  #viewport { position: relative; height: 460px; touch-action: none; overflow: hidden; }
+  #viewport canvas { display: block; width: 100%; height: 100%; }
+  .scene-overlay {
+    position: absolute; inset: 0; pointer-events: none; overflow: hidden;
+  }
+  .scene-label {
+    position: absolute; top: 0; left: 0; display: flex; flex-direction: column;
+    align-items: center; gap: 1px; padding: 3px 8px; border-radius: 7px;
+    background: var(--surface); border: 1px solid var(--border);
+    font-size: 11.5px; line-height: 1.25; white-space: nowrap;
+  }
+  .scene-label-name { font-weight: 600; }
+  .scene-label-load { color: var(--text-secondary); font-variant-numeric: tabular-nums; }
+
+  .readout {
+    position: absolute; left: 12px; bottom: 12px; padding: 8px 11px;
+    border-radius: 9px; background: var(--surface); border: 1px solid var(--border);
+    font-size: 12px; font-variant-numeric: tabular-nums; pointer-events: none;
+    color: var(--text-secondary);
+  }
+  .readout strong { color: var(--text-primary); font-weight: 600; }
+  .readout[hidden] { display: none; }
+
+  /* --- colorbar: the numeric scale for a continuous color encoding ------- */
+  .colorbar { padding: 12px 16px 14px; border-top: 1px solid var(--border); }
+  .colorbar-label {
+    display: flex; justify-content: space-between; align-items: baseline;
+    gap: 16px; color: var(--text-secondary); font-size: 12.5px; margin-bottom: 6px;
+  }
+  .colorbar-label #colorbar-name { font-weight: 550; color: var(--text-primary); flex: none; }
+  .colorbar-label .card-sub { text-align: right; }
+  .colorbar-ramp { height: 10px; border-radius: 3px; border: 1px solid var(--border); }
+  .colorbar-ticks {
+    display: flex; justify-content: space-between; margin-top: 4px;
+    color: var(--text-muted); font-size: 11.5px; font-variant-numeric: tabular-nums;
+  }
+
+  /* --- side panel -------------------------------------------------------- */
+  .column, .panel { display: flex; flex-direction: column; gap: 16px; min-width: 0; }
+  .hero { padding: 16px; }
+  .hero-label { color: var(--text-secondary); font-size: 13px; }
+  .hero-value { font-size: 48px; font-weight: 600; letter-spacing: -0.02em; line-height: 1.1; }
+  .hero-note { color: var(--text-muted); font-size: 12.5px; margin-top: 2px; }
+
+  .tiles { display: grid; grid-template-columns: 1fr 1fr; }
+  .tile { padding: 12px 16px; border-top: 1px solid var(--border); }
+  .tile:nth-child(odd) { border-right: 1px solid var(--border); }
+  .tile-label { color: var(--text-secondary); font-size: 12px; }
+  .tile-value { font-size: 19px; font-weight: 600; margin-top: 1px; }
+  .tile-unit { font-size: 12.5px; font-weight: 400; color: var(--text-secondary); }
+
+  table { width: 100%; border-collapse: collapse; font-size: 12.5px; }
+  th, td { padding: 7px 16px; text-align: right; }
+  th:first-child, td:first-child { text-align: left; }
+  thead th {
+    color: var(--text-muted); font-weight: 500; font-size: 11.5px;
+    border-bottom: 1px solid var(--border);
+  }
+  tbody td { font-variant-numeric: tabular-nums; border-bottom: 1px solid var(--grid); }
+  tbody tr:last-child td { border-bottom: none; }
+  /* A rack drawing far less air than its load needs is reporting the rack
+     model's limit, not a temperature to act on. */
+  td.starved { color: var(--critical); font-weight: 600; }
+
+  .checks { list-style: none; margin: 0; padding: 6px 0; }
+  .checks li {
+    display: grid; grid-template-columns: 18px 1fr; gap: 9px;
+    padding: 7px 16px; align-items: start;
+  }
+  .checks .mark { font-weight: 700; font-size: 13px; line-height: 1.45; }
+  .checks li[data-state="pass"] .mark { color: var(--good); }
+  .checks li[data-state="fail"] .mark { color: var(--critical); }
+  .checks li[data-state="group"] .mark { color: var(--good); }
+  .checks .group-detail { color: var(--text-muted); font-size: 12px; }
+  .checks .name { font-weight: 550; }
+  .checks .detail { color: var(--text-secondary); font-size: 12px; }
+
+  .notes { list-style: none; margin: 0; padding: 6px 0 10px; }
+  .notes li {
+    display: grid; grid-template-columns: 18px 1fr; gap: 9px;
+    padding: 7px 16px; color: var(--text-secondary); font-size: 12.5px;
+  }
+  .notes .mark { color: var(--warning); font-weight: 700; }
+
+  /* --- convergence chart -------------------------------------------------- */
+  .legend {
+    display: flex; gap: 14px; flex-wrap: wrap; align-items: center;
+    color: var(--text-secondary); font-size: 12.5px;
+  }
+  .legend-item { display: inline-flex; align-items: center; gap: 6px; }
+  .swatch {
+    width: 10px; height: 10px; border-radius: 3px; display: inline-block; flex: none;
+  }
+  #convergence { position: relative; height: 280px; padding: 4px 8px 0; }
+  .chart-grid { stroke: var(--grid); stroke-width: 1; }
+  .chart-axis { stroke: var(--axis); stroke-width: 1; }
+  .chart-line { fill: none; stroke-width: 2; stroke-linejoin: round; stroke-linecap: round; }
+  .chart-tick { fill: var(--text-muted); font-size: 11px; }
+  .chart-tick-y { text-anchor: end; font-variant-numeric: tabular-nums; }
+  .chart-tick-x { text-anchor: middle; font-variant-numeric: tabular-nums; }
+  .chart-axis-title { fill: var(--text-muted); font-size: 11.5px; text-anchor: middle; }
+  .chart-crosshair { stroke: var(--axis); stroke-width: 1; }
+  .chart-hit { cursor: crosshair; }
+  .chart-tooltip {
+    position: absolute; padding: 9px 11px; border-radius: 9px; pointer-events: none;
+    background: var(--surface); border: 1px solid var(--border); font-size: 12px;
+    box-shadow: 0 6px 20px rgba(0, 0, 0, 0.12); min-width: 150px;
+  }
+  .chart-tooltip-title {
+    font-weight: 600; margin-bottom: 5px; font-variant-numeric: tabular-nums;
+  }
+  .chart-tooltip-row {
+    display: grid; grid-template-columns: 10px 1fr auto; gap: 7px; align-items: center;
+    line-height: 1.7;
+  }
+  .chart-tooltip-name { color: var(--text-secondary); }
+  .chart-tooltip-value { font-variant-numeric: tabular-nums; }
+
+  .table-view { border-top: 1px solid var(--border); }
+  .table-view[hidden] { display: none; }
+
+  .error {
+    margin: 32px auto; max-width: 640px; padding: 20px;
+    border: 1px solid var(--border); border-radius: 12px; background: var(--surface);
+  }
+  .error code {
+    display: block; margin-top: 10px; padding: 9px 11px; border-radius: 7px;
+    background: var(--page); font-size: 12.5px; white-space: pre-wrap;
+  }
+
+  @media (max-width: 900px) {
+    .layout { grid-template-columns: minmax(0, 1fr); }
+    #viewport { height: 340px; }
+  }
+</style>
+</head>
+<body>
+<header class="topbar">
+  <span class="brand">AICFD</span>
+  <a class="ghost-button" href="./" style="text-decoration:none">← modelo</a>
+  <span class="case" id="case-name">loading…</span>
+  <span class="badge" id="verdict" hidden></span>
+  <span class="spacer"></span>
+  <button class="ghost-button" id="theme-toggle" type="button">Dark</button>
+</header>
+
+<div id="root"></div>
+
+<script type="importmap">
+{ "imports": { "three": "./vendor/three.module.js" } }
+</script>
+<script type="module" src="./results.js"></script>
+</body>
+</html>

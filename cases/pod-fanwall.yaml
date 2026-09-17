@@ -1,0 +1,39 @@
+# POD fan wall com enclausuramento de corredor quente e retorno por plenum de forro.
+#
+# Circuito do ar:
+#   fan wall -> corredor frio -> racks -> corredor quente enclausurado ->
+#   grelhas do forro -> plenum -> abertura acima da parede -> galeria -> fan wall
+name: pod-fanwall
+
+gallery:
+  depth: 3.0                  # galeria mecanica, sem forro, toda a altura
+
+hall:
+  size: [6.0, 4.2, 8.0]       # comprimento x, largura y, piso->laje z
+  ceiling: 6.5                # forro; acima dele o plenum de retorno
+
+aisles:
+  cold: 1.8
+  hot: 1.2
+
+racks:
+  count: 3
+  load_kw: 6.0
+  size: [0.6, 1.2, 2.2]       # frente(x) x profundidade(y) x altura(z)
+  offset_x: 2.0               # a partir da parede da galeria
+
+fanwall:
+  airflow_m3h: 5000
+  supply_temp_c: 20.0
+  height: 4.0
+  width: 1.8                  # na largura do corredor frio
+
+grilles:
+  size: 0.61                  # 3 grelhas quadradas, adjacentes, sobre os racks
+  count: 3
+
+containment:
+  enabled: true
+
+mesh:
+  cell_size: 0.10
