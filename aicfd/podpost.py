@@ -579,6 +579,54 @@ def sensor_history(model: Model, case_dir: str | Path) -> dict:
     }
 
 
+def compare(first: str | Path, second: str | Path) -> dict:
+    """Do two runs of the same case agree on where they ended up?
+
+    This is what licenses seeding the initial field. A steady problem with a
+    unique solution converges to the same place from anywhere, but a
+    buoyancy-driven room need not have a unique solution, and an initial
+    condition can in principle select between branches. Converging the same
+    case from a seeded field and from a uniform one, and finding they land
+    together, is the evidence that it did not (ADR-019).
+    """
+    ends = []
+    for case in (first, second):
+        history = read_history(case)
+        if not history:
+            return {"agree": None, "reason": f"no samples in {case}"}
+        ends.append(history[-1])
+
+    places = []
+    for place in ends[0]["places"]:
+        other = next(
+            (p for p in ends[1]["places"] if p["name"] == place["name"]), None
+        )
+        if other is None:
+            continue
+        places.append(
+            {
+                "name": place["name"],
+                "label": place["label"],
+                "first_c": place["temp_c"],
+                "second_c": other["temp_c"],
+                "gap_k": round(abs(place["temp_c"] - other["temp_c"]), 3),
+            }
+        )
+    worst = max((p["gap_k"] for p in places), default=None)
+    return {
+        "iterations": [ends[0]["iteration"], ends[1]["iteration"]],
+        "places": places,
+        "return_gap_k": round(
+            abs(ends[0]["return_temp_c"] - ends[1]["return_temp_c"]), 3
+        ),
+        "worst_gap_k": worst,
+        # Loose: two runs stopped at different iterations are being compared,
+        # so this asks whether they are describing the same room, not whether
+        # they agree to the last digit.
+        "agree": worst is not None and worst <= 1.0,
+    }
+
+
 # --- report -------------------------------------------------------------------
 
 

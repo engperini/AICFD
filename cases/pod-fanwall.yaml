@@ -42,3 +42,6 @@ solver:
   max_iterations: 2000        # teto, nao meta: residualControl deve parar antes
   residual_tolerance: 1.0e-4
   sensor_interval: 100        # a cada quantas iteracoes os sensores reportam
+  warm_start: true            # semeia o campo com a topologia do circuito.
+                              # false parte de um campo uniforme -- as duas
+                              # tem de chegar no mesmo lugar (ADR-019).

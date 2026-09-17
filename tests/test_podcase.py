@@ -251,6 +251,12 @@ class WarmStartTest(unittest.TestCase):
         self.assertIn("nonuniform List<scalar>", text)
         self.assertNotIn("internalField   uniform", text)
 
+    def test_the_seed_can_be_turned_off_to_check_it(self):
+        """The same case from a uniform field is what licenses the seed."""
+        text = podcase.initial_fields(self.model, warm=False)["T"]
+        self.assertIn("internalField   uniform", text)
+        self.assertNotIn("nonuniform List<scalar>", text)
+
 
 class BlockMeshTest(unittest.TestCase):
     def test_the_box_is_closed(self):

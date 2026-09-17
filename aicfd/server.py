@@ -45,6 +45,7 @@ EDITABLE = {
     "cell_size": ("mesh", "cell_size", float, (0.02, 0.5)),
     "max_iterations": ("solver", "max_iterations", int, (10, 20_000)),
     "sensor_interval": ("solver", "sensor_interval", int, (10, 5_000)),
+    "warm_start": ("solver", "warm_start", bool, None),
     "containment": ("containment", "enabled", bool, None),
 }
 
@@ -222,6 +223,7 @@ def start_run(name: str) -> None:
                 max_iterations=int(solver.get("max_iterations", 400)),
                 residual_tolerance=float(solver.get("residual_tolerance", 1e-4)),
                 sensor_interval=int(solver.get("sensor_interval", 100)),
+                warm_start_field=bool(solver.get("warm_start", True)),
             )
 
             def step(command: str) -> None:

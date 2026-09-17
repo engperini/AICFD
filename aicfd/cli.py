@@ -157,6 +157,7 @@ def _build(args) -> int:
             max_iterations=int(solver.get("max_iterations", 2000)),
             residual_tolerance=float(solver.get("residual_tolerance", 1e-4)),
             sensor_interval=int(solver.get("sensor_interval", 100)),
+            warm_start_field=bool(solver.get("warm_start", True)),
         )
         print(podcase.summary(model))
         for warning in model.warnings:
@@ -246,6 +247,7 @@ def _run_pod(spec_path: Path, args) -> int:
         max_iterations=int(solver.get("max_iterations", 2000)),
         residual_tolerance=float(solver.get("residual_tolerance", 1e-4)),
         sensor_interval=int(solver.get("sensor_interval", 100)),
+        warm_start_field=bool(solver.get("warm_start", True)),
     )
 
     def step(command: str) -> None:

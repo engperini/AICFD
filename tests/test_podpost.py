@@ -319,6 +319,46 @@ class DriftTest(unittest.TestCase):
         self.assertLessEqual(podpost.STEADY_TOLERANCE, 0.5)
 
 
+class CompareTest(unittest.TestCase):
+    """Two runs of the same case, from different initial fields, must agree."""
+
+    def setUp(self):
+        self.a = Path(tempfile.mkdtemp())
+        self.b = Path(tempfile.mkdtemp())
+
+    def write(self, case, iteration, hot, ret):
+        (case / podpost.SENSOR_FILE).write_text(
+            json.dumps([{
+                "iteration": iteration,
+                "return_temp_c": ret,
+                "places": [
+                    {"name": "hot_aisle", "label": "Corredor quente", "temp_c": hot}
+                ],
+            }])
+        )
+
+    def test_runs_that_land_together_agree(self):
+        self.write(self.a, 800, 30.8, 30.8)
+        self.write(self.b, 1600, 30.9, 30.85)
+        result = podpost.compare(self.a, self.b)
+        self.assertTrue(result["agree"])
+        self.assertLess(result["worst_gap_k"], 1.0)
+
+    def test_runs_that_land_apart_do_not(self):
+        """If the seed chose the answer, this is where it shows."""
+        self.write(self.a, 800, 30.8, 30.8)
+        self.write(self.b, 800, 24.0, 24.0)
+        result = podpost.compare(self.a, self.b)
+        self.assertFalse(result["agree"])
+        self.assertAlmostEqual(result["worst_gap_k"], 6.8, places=2)
+
+    def test_a_run_with_no_samples_gives_no_verdict(self):
+        self.write(self.a, 800, 30.8, 30.8)
+        result = podpost.compare(self.a, self.b)
+        self.assertIsNone(result["agree"])
+        self.assertIn("no samples", result["reason"])
+
+
 class ToleranceTest(unittest.TestCase):
     def test_mass_is_held_tighter_than_energy(self):
         """Mass has nowhere to go; the thermal field merely takes time."""

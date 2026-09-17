@@ -95,7 +95,8 @@ SENSOR_DIR = "sensores"
 
 
 def build(model: Model, destination: str | Path, max_iterations: int = 400,
-          residual_tolerance: float = 1.0e-4, sensor_interval: int = 100) -> Path:
+          residual_tolerance: float = 1.0e-4, sensor_interval: int = 100,
+          warm_start_field: bool = True) -> Path:
     """Write a complete OpenFOAM case for ``model`` into ``destination``."""
     case = Path(destination)
     if case.exists():
@@ -115,7 +116,7 @@ def build(model: Model, destination: str | Path, max_iterations: int = 400,
            control_dict(model, max_iterations, sensor_interval))
     _write(case / "system/fvSolution", fv_solution(model, residual_tolerance))
     _write(case / "constant/fvOptions", fv_options(model))
-    for name, text in initial_fields(model).items():
+    for name, text in initial_fields(model, warm_start_field).items():
         _write(case / "0" / name, text)
     (case / f"{model.name}.model.txt").write_text(summary(model))
     return case
@@ -671,7 +672,15 @@ def warm_start(model: Model) -> str:
     warm everywhere the air has already passed through them -- the contained
     hot aisle, the return plenum, and the gallery. That is not an answer being
     assumed; it is the shape of the answer, and the solver is free to move
-    every number in it.
+    every number in it. It is the same thing `setFields` does, and the same
+    thing every commercial tool's "patch a region" or "hybrid initialisation"
+    does.
+
+    The one thing it can legitimately change is *which* steady state a
+    buoyancy-driven flow settles into, if the problem admits more than one. So
+    it is checked rather than trusted: ``warm_start: false`` in the spec's
+    solver block converges the same case from a uniform field, and the two
+    must agree (ADR-019).
     """
     nx, ny, nz = model.divisions
     cell = model.cell_size
@@ -704,7 +713,7 @@ def warm_start(model: Model) -> str:
 )"""
 
 
-def initial_fields(model: Model) -> dict[str, str]:
+def initial_fields(model: Model, warm: bool = True) -> dict[str, str]:
     """The 0/ directory, for the outer walls only.
 
     The internal patches do not exist yet -- createBaffles adds them, with the
@@ -729,9 +738,10 @@ boundaryField
         "T": f"""{_header(model, "volScalarField", "T", "0")}
 dimensions      [0 0 0 1 0 0 0];
 
-// Seeded with the loop's topology -- see warm_start. Cold upstream of the
-// racks, warm everywhere the air has already been through them.
-internalField   {warm_start(model)};
+// See warm_start. Seeding costs nothing and saves thousands of iterations,
+// but it must be checked, not trusted: converge the same case from a uniform
+// field too and confirm they land in the same place.
+internalField   {warm_start(model) if warm else f"uniform {supply_k:.2f}"};
 
 boundaryField
 {{

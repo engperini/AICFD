@@ -496,3 +496,42 @@ is what first made a perfectly sealed POD look like it was losing 37% of its
 air. The cost is that the generator must write a value on every patch the
 balance reads, which is why the intake is `inletOutlet` rather than
 `zeroGradient`.
+
+---
+
+## ADR-019 — Seed the initial field, then prove the seed did not choose the answer
+
+**Decision.** `0/T` is written non-uniform: supply temperature upstream of the
+racks, supply plus the design rise everywhere the air has already passed
+through them — the contained hot aisle, the return plenum, and the mechanical
+gallery. `solver.warm_start: false` converges the same case from a uniform
+field, and `podpost.compare()` checks the two land in the same place.
+
+**Why seed at all.** A steady solve's initial condition does not appear in its
+converged solution; it only decides how much work getting there costs. Leaving
+the whole box at supply temperature is therefore a free choice made badly. The
+gallery alone is 100 m³ of a 302 m³ domain and sits in the return path, so the
+solver spends thousands of iterations carrying heat round the loop before the
+energy balance can begin to close. Measured: from a uniform field, at iteration
+1100 the contained hot aisle had settled at 31,2 °C while the gallery was still
+at the 20,0 °C it started from.
+
+This is ordinary practice, not a shortcut. OpenFOAM ships `setFields` to do
+exactly this; commercial codes call it patching a region, hybrid or FMG
+initialisation, or mapping from a previous solution. What AICFD does here is
+`setFields` written directly, because the regions are already known — they are
+the model's own volumes.
+
+**Why it still has to be checked.** The argument above assumes the steady
+problem has one solution. A buoyancy-driven room need not: recirculating flows
+can admit more than one steady branch, and then the initial condition selects
+between them. That is the one thing a seed can legitimately change about an
+answer, so it is tested rather than asserted. The two runs must agree on every
+instrumented place to within 1 K; if they do not, the seed is not a shortcut,
+it is a choice, and the disagreement is the finding.
+
+**Consequence.** A seeded run cannot be judged by its energy balance alone —
+the seed satisfies it from iteration one (see ADR-018's second half). The
+`settled` check and the cold/warm comparison are what carry the verdict
+instead. Seeding also makes `aicfd run` twice as expensive when the comparison
+is being done honestly, which is the right price for the claim.
