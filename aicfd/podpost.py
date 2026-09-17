@@ -51,6 +51,18 @@ BACKFLOW_TOLERANCE = 0.02
 #: velocity and the buoyant velocity scale -- see ADR-013.
 PLAUSIBLE_SPEED_MARGIN = 5.0
 
+#: Places on the return path, in the order the air passes through them.
+#: Between the rack outlet and the fan intake nothing adds or removes heat --
+#: every wall is adiabatic and the containment is sealed -- so at steady state
+#: they must all read the same temperature. Any spread between them is air that
+#: has not finished arriving.
+RETURN_PATH = ("hot_aisle", "plenum", "fan_back")
+
+#: How far apart the return path may read before the run is not settled, in
+#: kelvin. Loose enough for real stratification in a 1,5 m plenum, tight enough
+#: to catch a volume still filling.
+RETURN_PATH_TOLERANCE = 1.5
+
 #: How much an instrumented place may still be moving between samples before
 #: the run counts as settled, in kelvin.
 #:
@@ -60,8 +72,14 @@ PLAUSIBLE_SPEED_MARGIN = 5.0
 #: thing to do, the gallery is a third of the domain -- and the balance reads
 #: 101% at iteration 100 because the seed put it there, while the contained hot
 #: aisle is still swinging 27,5 -> 25,1 -> 26,5 degC between samples. A closed
-#: balance says the field is *consistent*; only stillness says it is *settled*,
-#: and a run needs both.
+#: balance says the field is *consistent*; only stillness says it is *settled*.
+#:
+#: And stillness is not enough on its own either, for the opposite reason: it
+#: measures *speed*, not *distance remaining*. A seeded run passed this at
+#: 0,103 K while its return plenum sat 3,2 K below the hot aisle feeding it and
+#: was closing that gap at 0,1 K per hundred iterations -- three thousand
+#: iterations from its answer, and perfectly still by this test. That is what
+#: RETURN_PATH_TOLERANCE catches.
 STEADY_TOLERANCE = 0.25
 
 
@@ -118,6 +136,8 @@ def analyse(model: Model, case_dir: str | Path, time: str | None = None) -> PodR
     kpis["racks"] = rack_temperatures(model, grid)
 
     kpis["drift_k"] = drift(case)
+    history = read_history(case)
+    kpis["places_now"] = history[-1]["places"] if history else []
     return PodResults(
         case_name=model.name, time=time, kpis=kpis, checks=_checks(model, step, kpis, grid)
     )
@@ -321,6 +341,25 @@ def _checks(model: Model, step: Path, kpis: dict, grid: dict) -> list[Check]:
             detail,
         )
     )
+
+    path = {
+        place["name"]: place["temp_c"]
+        for place in kpis.get("places_now", [])
+        if place["name"] in RETURN_PATH
+    }
+    if len(path) == len(RETURN_PATH):
+        spread = max(path.values()) - min(path.values())
+        checks.append(
+            Check(
+                "return_path",
+                spread <= RETURN_PATH_TOLERANCE,
+                "nothing heats or cools the air between the rack outlet and the "
+                "fan intake, so these have to agree: "
+                + ", ".join(f"{name} {path[name]:.1f}" for name in RETURN_PATH)
+                + f" degC ({spread:.2f} K apart)"
+                + ("" if spread <= RETURN_PATH_TOLERANCE else " -- still filling"),
+            )
+        )
 
     moved = kpis.get("drift_k")
     checks.append(
@@ -630,6 +669,21 @@ def compare(first: str | Path, second: str | Path) -> dict:
 # --- report -------------------------------------------------------------------
 
 
+def _path_line(kpis: dict) -> str:
+    path = {
+        place["name"]: place["temp_c"]
+        for place in kpis.get("places_now", [])
+        if place["name"] in RETURN_PATH
+    }
+    if len(path) < len(RETURN_PATH):
+        return "- (no samples yet)"
+    spread = max(path.values()) - min(path.values())
+    return (
+        " -> ".join(f"{path[name]:.1f}" for name in RETURN_PATH)
+        + f" degC, {spread:.2f} K apart"
+    )
+
+
 def _drift_line(kpis: dict) -> str:
     moved = kpis.get("drift_k")
     if moved is None:
@@ -651,6 +705,7 @@ def report(results: PodResults) -> str:
         f"  Peak air        {k['peak_air_temp_c']:.1f} degC, "
         f"{k['peak_speed_ms']:.2f} m/s",
         f"  Still moving    {_drift_line(k)}",
+        f"  Return path     {_path_line(k)}",
         "",
         "  Rack              Load    Inlet   Outlet    Rise   ASHRAE",
     ]

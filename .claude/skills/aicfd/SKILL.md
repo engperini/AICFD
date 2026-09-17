@@ -61,18 +61,22 @@ nothing -- the thermal field has not filled the domain yet. Watch it across
 samples: climbing means unconverged, settling somewhere other than 100% means
 wrong.
 
-A closed balance is necessary but not sufficient. `0/T` is seeded warm
-downstream of the racks, so a fresh run starts with its balance already near
-100% while the field is still moving. The second half of the verdict is
-`settled`: the largest move any instrumented place made since the previous
-sample, which must be under 0,25 K.
+Three checks carry the verdict and **none of them is sufficient alone**:
+
+- `energy_closure` — the return air carries the installed load. A warm-seeded
+  run satisfies this from iteration one, so it proves nothing by itself.
+- `settled` — no instrumented place moved more than 0,25 K since the last
+  sample. Measures speed, not distance: a plenum 3 K from its answer and
+  closing at 0,1 K per hundred iterations passes.
+- `return_path` — the hot aisle, the plenum and the back of the fan wall read
+  within 1,5 K of each other. Nothing heats or cools the air between them, so
+  at steady state they must agree; a spread is a volume still filling.
 
 Rules that follow from that:
 
-- **Never quote a rack temperature from a run whose energy closure is not
-  within ~10% of the load, or whose `settled` check fails.** Say which one
-  failed and give the number: "closure 4%, still filling" or "closure 99% but
-  the hot aisle moved 1,4 K since the last sample".
+- **Never quote a rack temperature unless all three pass.** Say which failed
+  and give the number: "closure 10%, still filling", or "closure 100% and
+  settled, but the plenum is 3,2 K below the hot aisle feeding it".
 - **If `no_backflow` fails**, the fan wall boundary is deciding the flow rather
   than the room. The numbers are not about the POD.
 - **If `sealed_envelope` fails**, the mesh surgery leaked. Re-run

@@ -483,11 +483,31 @@ right thing to do, the mechanical gallery is a third of the domain — and the
 balance reads 101% at iteration 100 because the seed put it there, while the
 contained hot aisle is still swinging 27,5 → 25,1 → 26,5 °C between samples.
 
-So a run is judged on two things. A closed balance says the field is
-*consistent*; the places holding still between samples says it is *settled*.
-`drift()` reports the largest move any instrumented place made since the
-previous sample, and `settled` fails above 0,25 K. Neither check alone is a
-verdict.
+**And stillness is not enough either**, for the opposite reason: it measures
+*speed*, not *distance remaining*. A seeded run passed `settled` at 0,103 K
+while its return plenum sat 3,2 K below the contained hot aisle feeding it,
+closing that gap at 0,1 K per hundred iterations — three thousand iterations
+from its answer, and perfectly still by that test.
+
+What catches it is a physical identity rather than a numerical one. Between the
+rack outlet and the fan intake nothing adds or removes heat: every wall is
+adiabatic and the containment is sealed. So the contained hot aisle, the return
+plenum and the back of the fan wall have to read the *same temperature* at
+steady state, and any spread between them is air that has not finished
+arriving. `return_path` fails above 1,5 K — loose enough for real stratification
+in a 1,5 m plenum, tight enough to catch a volume still filling.
+
+So a run is judged on three things, and none of them is a verdict alone:
+
+| check | what it says | how it fails on its own |
+|---|---|---|
+| `energy_closure` | the field is *consistent* | a warm seed satisfies it from iteration one |
+| `settled` | the field is *still* | still is not the same as arrived |
+| `return_path` | the field is *arrived* | says nothing about a field that is drifting as a whole |
+
+The pattern is worth naming, because it has now repeated three times: each
+check was proposed as sufficient and turned out to be necessary. Convergence in
+a recirculating room is not one number.
 
 **Consequence.** Every quantity in this module is read from patch values, never
 from the nearest cell centres. Approximating a face flux from cell-centre

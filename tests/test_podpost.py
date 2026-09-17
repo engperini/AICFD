@@ -319,6 +319,53 @@ class DriftTest(unittest.TestCase):
         self.assertLessEqual(podpost.STEADY_TOLERANCE, 0.5)
 
 
+class ReturnPathTest(unittest.TestCase):
+    """Nothing heats or cools the air between the racks and the fan intake."""
+
+    def setUp(self):
+        self.model = M.build_model(SPEC)
+        self.case = Path(tempfile.mkdtemp())
+
+    def kpis(self, hot, plenum, fan):
+        return {
+            "places_now": [
+                {"name": "hot_aisle", "temp_c": hot},
+                {"name": "plenum", "temp_c": plenum},
+                {"name": "fan_back", "temp_c": fan},
+                {"name": "cold_aisle", "temp_c": 20.0},
+            ],
+            "drift_k": 0.05,
+        }
+
+    def check(self, kpis):
+        from aicfd.podpost import RETURN_PATH, RETURN_PATH_TOLERANCE
+
+        path = {
+            p["name"]: p["temp_c"]
+            for p in kpis["places_now"]
+            if p["name"] in RETURN_PATH
+        }
+        return max(path.values()) - min(path.values()) <= RETURN_PATH_TOLERANCE
+
+    def test_a_settled_return_path_agrees_with_itself(self):
+        self.assertTrue(self.check(self.kpis(31.0, 30.9, 31.1)))
+
+    def test_a_plenum_still_filling_is_caught(self):
+        """The case that slipped through: settled at 0,1 K, 3,2 K to go."""
+        self.assertFalse(self.check(self.kpis(31.2, 28.0, 30.8)))
+
+    def test_a_gallery_still_filling_is_caught(self):
+        self.assertFalse(self.check(self.kpis(31.4, 28.1, 21.5)))
+
+    def test_the_cold_aisle_is_not_on_the_return_path(self):
+        """It is 11 K colder by design; including it would fail every run."""
+        self.assertNotIn("cold_aisle", podpost.RETURN_PATH)
+
+    def test_the_tolerance_allows_real_stratification_but_not_a_filling_volume(self):
+        self.assertGreater(podpost.RETURN_PATH_TOLERANCE, 1.0)
+        self.assertLess(podpost.RETURN_PATH_TOLERANCE, 3.0)
+
+
 class CompareTest(unittest.TestCase):
     """Two runs of the same case, from different initial fields, must agree."""
 
