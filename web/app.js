@@ -19,6 +19,7 @@ const PARAMS = [
   { key: 'ceiling', label: 'Altura do forro', unit: 'm', step: 0.1 },
   { key: 'gallery_depth', label: 'Profundidade da galeria', unit: 'm', step: 0.1 },
   { key: 'cell_size', label: 'Tamanho de célula', unit: 'm', step: 0.01 },
+  { key: 'max_iterations', label: 'Iterações (teto)', unit: 'un', step: 50 },
 ];
 
 const SPEC_PATH = {
@@ -32,6 +33,7 @@ const SPEC_PATH = {
   ceiling: ['hall', 'ceiling'],
   gallery_depth: ['gallery', 'depth'],
   cell_size: ['mesh', 'cell_size'],
+  max_iterations: ['solver', 'max_iterations'],
   containment: ['containment', 'enabled'],
 };
 

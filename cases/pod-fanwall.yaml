@@ -29,7 +29,7 @@ fanwall:
   width: 1.8                  # na largura do corredor frio
 
 grilles:
-  size: 0.61                  # 3 grelhas quadradas, adjacentes, sobre os racks
+  size: 0.60                  # 3 grelhas quadradas, adjacentes, sobre os racks
   count: 3
 
 containment:
@@ -37,3 +37,8 @@ containment:
 
 mesh:
   cell_size: 0.10
+
+solver:
+  max_iterations: 300         # teto, nao meta: residualControl deve parar antes
+  residual_tolerance: 1.0e-4
+  write_interval: 100

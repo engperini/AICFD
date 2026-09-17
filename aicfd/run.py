@@ -120,13 +120,20 @@ def prepare(source: str | Path, destination: str | Path) -> Path:
 
 def solve(
     case_dir: str | Path,
-    pipeline: tuple[str, ...] = DEFAULT_PIPELINE,
+    pipeline: tuple = DEFAULT_PIPELINE,
     on_step=None,
 ) -> list[StepResult]:
-    """Run the full meshing and solving pipeline for a case."""
+    """Run the full meshing and solving pipeline for a case.
+
+    A pipeline entry is a command name, or a ``(name, [args])`` pair where the
+    utility needs them -- ``createBaffles`` has to be told ``-overwrite``, or it
+    writes the modified mesh into a new time directory and everything after it
+    reads the mesh it was supposed to replace.
+    """
     results = []
-    for command in pipeline:
+    for entry in pipeline:
+        command, args = entry if isinstance(entry, tuple) else (entry, None)
         if on_step:
             on_step(command)
-        results.append(run_command(case_dir, command))
+        results.append(run_command(case_dir, command, args=args))
     return results

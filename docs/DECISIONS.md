@@ -367,3 +367,66 @@ another.
 is the right size for a tool run on an engineer's own machine. When the case
 generator for a geometry is missing, the page says so and disables the button
 rather than offering a Run that dies on an import.
+
+---
+
+## ADR-016 — A POD is meshed as one box and then operated on
+
+**Decision.** `aicfd/podcase.py` builds a fan-wall POD with `blockMesh` →
+`topoSet` → `createBaffles -overwrite` → `checkMesh` → `buoyantSimpleFoam`.
+Every internal surface — the gallery/hall dividing wall, the false ceiling, the
+hot-aisle containment — is a two-sided baffle patch created from a face zone.
+The openings are not built; they are holes *left* in those face zones.
+
+**Why.** The M2 generator (ADR-004's `aicfd/case.py`) describes a room whose
+supply and return are faces of the domain. A POD's air loop is closed inside
+one box, so none of its surfaces are on the boundary and `blockMesh` alone can
+express none of them. Multi-block meshing could carve the volumes, but every
+opening would become a block boundary and the block count would track the
+geometry rather than the physics.
+
+Building the holes as absences is what makes the geometry cheap to change. A
+grille is not a thing to mesh; it is three `topoSet` lines removing faces from
+the ceiling's face zone. Moving it costs nothing.
+
+Two traps are load-bearing here and both are enforced in code:
+
+* **`boxToFace` selects by face centre, whatever the face's orientation.** A
+  thin box around a plane also catches every face running perpendicular
+  through it — 2218 faces where 540 were wanted, the first time. Every
+  selection is narrowed with `normalToFace`.
+* **`createBaffles` without `-overwrite` writes the modified mesh into a new
+  time directory** and leaves `constant/polyMesh` untouched. `checkMesh` and
+  the solver then both read the mesh that was supposed to be replaced, and
+  neither complains: the run succeeds, on a mesh with no internal walls at all.
+
+**Consequence.** The mesh must be orthogonal for this to stay cheap, which
+means every plane in the geometry has to land on a cell face — which is what
+ADR-014's snapping guarantees. The two decisions only work together.
+
+---
+
+## ADR-017 — The fan wall is where the air loop is cut
+
+**Decision.** The fan wall becomes a pair of patches on the same internal
+faces: `fanIntake` on the gallery side, where air leaves the domain, and
+`fanSupply` on the hall side, where it re-enters at the supply temperature and
+the face velocity implied by the rated airflow. `fanIntake` carries the case's
+only pressure reference, `fixedValue` on `p_rgh` (ADR-012).
+
+**Why.** The POD recirculates: nothing enters or leaves. A genuinely closed
+domain has no pressure reference and needs the fan modelled as a momentum
+source or a pressure jump, both of which need tuning against a fan curve
+nobody has. Cutting the loop at the fan turns the problem back into the one
+the solver is good at — an inlet at a known temperature and flow, an outlet at
+a known pressure — and does it at the one surface where the physical machine
+also adds energy. What is lost is the fan's own curve; what is gained is a
+case that sets up from a nameplate airflow.
+
+**Consequence.** Which side of the pair `createBaffles` calls master follows
+the mesh's face winding, not anything AICFD writes. Getting it backwards
+builds a POD that supplies cold air into its own return, and it would converge
+and report plausible numbers. So it is measured rather than assumed:
+`aicfd/foam/polymesh.py` reads one face and three points, and
+`podcase.check_fan_orientation` refuses to solve if `fanSupply` is not facing
+the data hall.

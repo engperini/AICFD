@@ -29,6 +29,14 @@ from dataclasses import dataclass, field
 RHO_AIR = 1.19
 CP_AIR = 1005.0
 
+#: Temperature rise used to size a rack's own airflow when none is given.
+#: 11 K is typical of enterprise IT at the rack outlet.
+RACK_DELTA_T = 11.0
+
+#: Pressure drop across a populated rack at its rated airflow, in Pa.
+#: Manufacturer data ranges roughly 15-40 Pa; 25 is a reasonable middle.
+RACK_PRESSURE_DROP = 25.0
+
 
 @dataclass(frozen=True)
 class Box:
@@ -45,6 +53,18 @@ class Box:
     def volume(self) -> float:
         dx, dy, dz = self.size
         return dx * dy * dz
+
+
+#: Darcy-Forchheimer resistance across a rack's blocked axes. Large enough to
+#: force air front-to-back as a real rack does, small enough not to wreck the
+#: pressure solve.
+BLOCKED_D = 1.0e5
+BLOCKED_F = 500.0
+
+#: Viscous (Darcy) term on the flow axis. Small and fixed: at rack face
+#: velocities the drop is inertial, and a non-zero d keeps the source
+#: well-behaved as velocity approaches zero.
+FLOW_AXIS_D = 20.0
 
 
 @dataclass(frozen=True)
@@ -98,6 +118,39 @@ class Rack:
         """Area presented to the airflow."""
         size = self.box.size
         return math.prod(size[a] for a in range(3) if a != self.airflow_axis)
+
+    @property
+    def depth(self) -> float:
+        """How far the air travels inside the rack -- the porous path length."""
+        return self.box.size[self.airflow_axis]
+
+    @property
+    def rated_airflow_m3s(self) -> float:
+        """What the rack's own fans would move, from its load and RACK_DELTA_T.
+
+        This sizes the flow *resistance*, not the flow. A rack modelled as a
+        porous block is a resistance, not a fan (ADR-011): what actually passes
+        through it is an outcome of the room's pressure field.
+        """
+        return self.load_w / (RACK_DELTA_T * RHO_AIR * CP_AIR)
+
+    @property
+    def face_velocity_ms(self) -> float:
+        return self.rated_airflow_m3s / self.face_area if self.face_area else 0.0
+
+    def darcy_forchheimer(self, pressure_drop_pa: float = RACK_PRESSURE_DROP):
+        """Resistance coefficients (d, f) along the rack's flow axis.
+
+        The drop through a populated rack at its rated airflow is dominated by
+        the inertial term, so the whole of it is assigned there:
+
+            dp = 0.5 * rho * f * u^2 * L   ->   f = 2 * dp / (rho * u^2 * L)
+        """
+        velocity = self.face_velocity_ms
+        if velocity <= 0 or self.depth <= 0:
+            return FLOW_AXIS_D, 0.0
+        f = 2.0 * pressure_drop_pa / (RHO_AIR * velocity**2 * self.depth)
+        return FLOW_AXIS_D, f
 
 
 @dataclass
@@ -160,6 +213,11 @@ class Model:
         """Cross-section of the contained hot aisle, normal to the rise."""
         row = self.rack_span()
         return (row[1] - row[0]) * (self.hot_aisle[1] - self.hot_aisle[0])
+
+    @property
+    def rack_demand_m3s(self) -> float:
+        """What the racks would draw at their rated airflow, all together."""
+        return sum(rack.rated_airflow_m3s for rack in self.racks)
 
     def rack_span(self) -> tuple[float, float]:
         return (

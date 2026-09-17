@@ -74,6 +74,7 @@ OpenFOAM, and uses an AI assistant to cover the remaining gap.
 |---|---|---|
 | `aicfd/spec.py` | Units, validation, defaults, sanity limits | Any OpenFOAM knowledge |
 | `aicfd/model.py` | Spec -> derived geometry, mesh snapping (ADR-014) | Any OpenFOAM knowledge |
+| `aicfd/podcase.py` | Fan-wall POD -> OpenFOAM, via mesh surgery (ADR-016) | Running anything |
 | `aicfd/server.py` | Serving the page, the editable-parameter gate (ADR-015) | Physics, geometry |
 | `aicfd/case.py` | The whole OpenFOAM dictionary vocabulary | Running anything |
 | `aicfd/foam/` | Reading a solved case back off disk | Writing one |

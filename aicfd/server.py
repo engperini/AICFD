@@ -43,6 +43,7 @@ EDITABLE = {
     "ceiling": ("hall", "ceiling", float, (2.0, 20.0)),
     "gallery_depth": ("gallery", "depth", float, (0.5, 20.0)),
     "cell_size": ("mesh", "cell_size", float, (0.02, 0.5)),
+    "max_iterations": ("solver", "max_iterations", int, (10, 20_000)),
     "containment": ("containment", "enabled", bool, None),
 }
 
@@ -152,23 +153,32 @@ def apply_changes(spec: dict, changes: dict) -> tuple[dict, list[str]]:
 
 
 def solver_available() -> str | None:
-    """Why this model cannot be solved yet, or None if it can.
+    """Why this model cannot be solved here, or None if it can.
 
     The page asks before offering the button. A Run that dies on a missing
-    function tells the engineer nothing; a button that says what is missing
-    tells them exactly where the tool stands.
+    binary tells the engineer nothing; a button that says what is missing
+    tells them exactly where they stand.
     """
-    from aicfd import case as case_builder
-    from aicfd import run as run_module
+    from aicfd.run import check_install
 
-    missing = [
-        name
-        for module, name in ((case_builder, "build_model_case"), (run_module, "solve_model"))
-        if not hasattr(module, name)
+    from aicfd import podcase
+
+    needed = [
+        entry[0] if isinstance(entry, tuple) else entry for entry in podcase.PIPELINE
     ]
+    found = check_install()
+    missing = [name for name in needed if not found.get(name, _which(name))]
     if missing:
-        return "o gerador de caso desta geometria ainda não está pronto"
+        return f"OpenFOAM não está completo aqui (falta {', '.join(missing)})"
     return None
+
+
+def _which(name: str) -> str | None:
+    import shutil
+
+    from aicfd.run import FOAM_ENV
+
+    return shutil.which(name, path=FOAM_ENV["PATH"])
 
 
 def build_payload(name: str) -> dict:
@@ -184,23 +194,38 @@ def build_payload(name: str) -> dict:
 
 def start_run(name: str) -> None:
     """Solve in a worker thread so the page stays responsive."""
-    from aicfd import case as case_builder
-    from aicfd.run import FoamCommandFailed, solve_model
+    from aicfd import podcase
+    from aicfd.run import FoamCommandFailed, solve
 
     def worker() -> None:
         try:
             spec = load_spec(name)
             model = model_module.build_model(spec)
+            solver = spec.get("solver", {})
             STATE.set(stage="meshing", step="build", message="", case=name)
             target = RUNS_DIR / name
-            case_builder.build_model_case(model, target)
-            solve_model(
+            podcase.build(
+                model,
                 target,
-                on_step=lambda step: STATE.set(
-                    stage="solving" if step.endswith("Foam") else "meshing",
-                    step=step,
-                ),
+                max_iterations=int(solver.get("max_iterations", 400)),
+                residual_tolerance=float(solver.get("residual_tolerance", 1e-4)),
+                write_interval=int(solver.get("write_interval", 100)),
             )
+
+            def step(command: str) -> None:
+                # The orientation of the fan wall pair is only knowable once
+                # createBaffles has run, and it is not worth a solve to find
+                # out afterwards.
+                if command == "checkMesh":
+                    problems = podcase.check_fan_orientation(target)
+                    if problems:
+                        raise RuntimeError(problems[0])
+                STATE.set(
+                    stage="solving" if command.endswith("Foam") else "meshing",
+                    step=command,
+                )
+
+            solve(target, podcase.PIPELINE, on_step=step)
             STATE.set(stage="done", step="", message="solved")
         except FoamCommandFailed as error:
             STATE.set(stage="failed", message=str(error))
