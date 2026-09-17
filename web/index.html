@@ -106,6 +106,9 @@
   .dw-edge{stroke-width:4.5;stroke-linecap:butt}
   .dw-edge-beyond{stroke-width:2;stroke-dasharray:5 3;opacity:.55}
   .dw-edge-label{font-size:9px;font-weight:650;text-anchor:middle;stroke:none}
+  .dw-sensor{stroke:var(--series-4);stroke-width:1.4;fill:none}
+  .dw-sensor-dot{fill:var(--surface);stroke-width:1.2}
+  .dw-sensor-far{opacity:.4}
   .dw-ceiling{stroke:var(--solid);stroke-width:2.6}
   .dw-divider{stroke:var(--solid);stroke-width:2.6}
   .dw-note{fill:var(--text-secondary);font-size:10px;text-anchor:middle;font-weight:600}
@@ -137,6 +140,29 @@
     border:1px solid var(--border);font-variant-numeric:tabular-nums}
   input[type="checkbox"]{width:16px;height:16px;accent-color:var(--series-1)}
   .actions{display:flex;gap:8px;padding:0 16px 14px}
+
+  .balance{display:flex;flex-wrap:wrap;gap:6px 26px;padding:12px 16px;
+    border-bottom:1px solid var(--border)}
+  .balance-item{display:flex;flex-direction:column;gap:1px}
+  .balance-item b{font-size:17px;font-weight:650;font-variant-numeric:tabular-nums}
+  .balance-item i{font-style:normal;font-size:11.5px;color:var(--text-muted)}
+  .balance-item[data-state="good"] b{color:var(--good)}
+  .balance-item[data-state="warn"] b{color:var(--warning)}
+
+  table.sensors{width:100%;border-collapse:collapse;font-size:12.5px}
+  table.sensors th,table.sensors td{padding:7px 16px;text-align:right}
+  table.sensors th:first-child,table.sensors td:first-child{text-align:left}
+  table.sensors thead th{color:var(--text-muted);font-weight:500;font-size:11.5px;
+    border-bottom:1px solid var(--border)}
+  table.sensors tbody td{font-variant-numeric:tabular-nums;
+    border-bottom:1px solid var(--grid)}
+  table.sensors tbody tr:last-child td{border-bottom:none}
+  table.sensors .muted{color:var(--text-muted)}
+  .sensor-label{display:block}
+  .sensor-note{display:block;color:var(--text-muted);font-size:11px}
+  .sensor-chart{display:block;width:100%;height:auto;padding:8px 8px 0}
+  .empty{margin:0;padding:18px 16px;color:var(--text-muted);font-size:12.5px;
+    text-align:center}
 
   .fact{display:grid;grid-template-columns:auto 1fr;gap:1px 12px;
     padding:8px 16px;border-bottom:1px solid var(--grid)}

@@ -290,7 +290,23 @@ export function drawView(model, view, scale) {
     }
   }
 
-  // 8 — annotation
+  // 8 — sensors, as the small crosses a drawing uses for an instrument.
+  // Drawn so the placement can be checked before the run rather than argued
+  // about after it.
+  for (const group of model.sensors || []) {
+    for (const point of group.points) {
+      const near = Math.abs(point[view.normal] - at) < 0.75;
+      const cx = X(point[view.h]);
+      const cy = Y(point[view.v]);
+      const r = 3.5;
+      const cls = `dw-sensor${near ? '' : ' dw-sensor-far'}`;
+      line(cx - r, cy, cx + r, cy, cls);
+      line(cx, cy - r, cx, cy + r, cls);
+      svg.append(el('circle', { cx, cy, r: r - 1.2, class: `${cls} dw-sensor-dot` }));
+    }
+  }
+
+  // 9 — annotation
   const bounds = { left: PAD.left - 26, right: width - 6 };
   annotate(svg, model, view, X, Y, bounds);
   dimensions(svg, model, view, X, Y, width, height, hSpan);

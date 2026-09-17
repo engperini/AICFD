@@ -86,8 +86,18 @@ function render() {
         <span><i class="swatch" style="background:var(--hot)"></i>grelhas e retorno</span>
         <span><i class="swatch" style="background:var(--containment)"></i>enclausuramento</span>
         <span><i class="swatch" style="background:var(--rack);border:1px solid var(--text-primary)"></i>racks</span>
+        <span><i class="swatch" style="background:var(--series-4)"></i>sensores</span>
         <span>tracejado = além do plano de corte</span>
       </div>
+    </section>
+
+    <section class="card" id="sensors-card">
+      <div class="card-head">
+        <span class="card-title">Sensores</span>
+        <span class="card-sub">média de 3 pontos por local, a cada
+          ${model.spec?.solver?.sensor_interval ?? 100} iterações</span>
+      </div>
+      <div id="sensors"></div>
     </section>
 
     <section class="card">
@@ -132,6 +142,7 @@ function render() {
 </main>`;
 
   drawViews();
+  renderSensors(null);
   renderParams();
   renderSummary();
   renderWarnings();
@@ -207,6 +218,121 @@ function renderWarnings() {
     .join('');
 }
 
+function renderSensors(history) {
+  const host = document.getElementById('sensors');
+  if (!host) return;
+  const groups = history?.groups?.length ? history.groups : null;
+  const iterations = history?.iterations || [];
+  const last = iterations.length - 1;
+
+  const placed = (model.sensors || []).map((group) => {
+    const live = groups?.find((g) => g.name === group.name);
+    return { ...group, live };
+  });
+
+  const balance = history?.balance?.length
+    ? history.balance[history.balance.length - 1]
+    : null;
+
+  host.innerHTML = `${balance ? balanceStrip(balance) : ''}
+  <table class="sensors">
+    <thead><tr>
+      <th>Local</th><th>Temp.</th><th>Δ entre pontos</th><th>Velocidade</th>
+    </tr></thead>
+    <tbody>${placed
+      .map(({ label, note, live }) => {
+        const t = live?.temp_c?.[last];
+        const spread = live?.spread_k?.[last];
+        const v = live?.speed_ms?.[last];
+        return `<tr>
+          <td><span class="sensor-label">${label}</span>
+              <span class="sensor-note">${note}</span></td>
+          <td>${t == null ? '—' : `${fmt(t, 1)} °C`}</td>
+          <td class="muted">${spread == null ? '—' : `${fmt(spread, 1)} K`}</td>
+          <td>${v == null ? '—' : `${fmt(v, 2)} m/s`}</td>
+        </tr>`;
+      })
+      .join('')}</tbody></table>
+    ${iterations.length ? drawSensorChart(history) :
+      `<p class="empty">as medidas aparecem a partir da primeira leitura</p>`}`;
+}
+
+/**
+ * The two numbers that say whether the run means anything yet.
+ *
+ * Energy closure first, because it is the one that cannot be satisfied by
+ * accident: every watt installed has to leave as warmer air. A run still
+ * filling shows it climbing; residuals show nothing at all.
+ */
+function balanceStrip(b) {
+  const closure = b.closure == null ? null : b.closure * 100;
+  const state =
+    closure == null ? '' : closure >= 90 && closure <= 110 ? 'good' : 'warn';
+  return `<div class="balance">
+    <span class="balance-item" data-state="${state}">
+      <b>${closure == null ? '—' : `${fmt(closure, 0)}%`}</b>
+      <i>da carga no ar de retorno</i></span>
+    <span class="balance-item"><b>${fmt(b.return_temp_c, 1)} °C</b>
+      <i>retorno no fan wall</i></span>
+    <span class="balance-item"><b>${fmt(b.peak_speed_ms, 2)} m/s</b>
+      <i>velocidade máxima</i></span>
+    <span class="balance-item" data-state="${b.backflow_kg_s > 0.01 ? 'warn' : ''}">
+      <b>${fmt(b.backflow_kg_s, 3)} kg/s</b><i>refluxo na tomada</i></span>
+  </div>`;
+}
+
+/** Temperature at each place, against iteration. Linear -- these are degrees. */
+function drawSensorChart(history) {
+  const W = 640;
+  const H = 180;
+  const pad = { left: 44, right: 96, top: 10, bottom: 26 };
+  const its = history.iterations;
+  const series = history.groups.filter((g) => g.temp_c?.length);
+  if (!series.length || its.length < 2) return '';
+
+  const values = series.flatMap((g) => g.temp_c).filter((v) => Number.isFinite(v));
+  const lo = Math.floor(Math.min(...values) - 0.5);
+  const hi = Math.ceil(Math.max(...values) + 0.5);
+  const X = (i) => pad.left + (i / (its.length - 1)) * (W - pad.left - pad.right);
+  const Y = (v) => pad.top + (1 - (v - lo) / (hi - lo || 1)) * (H - pad.top - pad.bottom);
+
+  const ticks = [lo, (lo + hi) / 2, hi];
+  const grid = ticks
+    .map(
+      (v) => `<line class="chart-grid" x1="${pad.left}" x2="${W - pad.right}"
+                y1="${Y(v)}" y2="${Y(v)}"/>
+              <text class="chart-tick" x="${pad.left - 6}" y="${Y(v) + 4}"
+                text-anchor="end">${fmt(v, 0)}</text>`,
+    )
+    .join('');
+
+  const lines = series
+    .map((g, i) => {
+      const d = g.temp_c
+        .map((v, k) => `${k ? 'L' : 'M'}${X(k).toFixed(1)},${Y(v).toFixed(1)}`)
+        .join('');
+      const colour = `var(--series-${(i % 8) + 1})`;
+      const end = g.temp_c.length - 1;
+      return `<path class="chart-line" d="${d}" stroke="${colour}"/>
+        <text class="chart-tick" x="${X(end) + 6}" y="${Y(g.temp_c[end]) + 4}"
+          fill="${colour}">${g.label}</text>`;
+    })
+    .join('');
+
+  return `<svg class="sensor-chart" viewBox="0 0 ${W} ${H}" role="img"
+      aria-label="temperatura por local ao longo das iterações">
+    ${grid}${lines}
+    <text class="chart-tick" x="${(pad.left + W - pad.right) / 2}" y="${H - 6}"
+      text-anchor="middle">iteração ${its[its.length - 1]}</text>
+  </svg>`;
+}
+
+const fmt = (v, places) =>
+  Number(v).toLocaleString('pt-BR', {
+    minimumFractionDigits: places,
+    maximumFractionDigits: places,
+  });
+
 // --- actions -----------------------------------------------------------------
 
 async function applyChanges() {
@@ -277,6 +403,7 @@ async function poll() {
     const status = await fetchJson('/api/progress');
     setStage(status.run);
     drawProgress(status.residuals);
+    renderSensors(status.sensors);
     const note = document.getElementById('progress-note');
     if (note && !model.blocked && status.residuals.total) {
       note.textContent = `${status.residuals.total.toLocaleString('pt-BR')} iterações`;

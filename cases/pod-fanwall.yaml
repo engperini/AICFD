@@ -39,6 +39,6 @@ mesh:
   cell_size: 0.10
 
 solver:
-  max_iterations: 300         # teto, nao meta: residualControl deve parar antes
+  max_iterations: 2000        # teto, nao meta: residualControl deve parar antes
   residual_tolerance: 1.0e-4
-  write_interval: 100
+  sensor_interval: 100        # a cada quantas iteracoes os sensores reportam

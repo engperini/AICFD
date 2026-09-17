@@ -24,6 +24,8 @@ is how a perfectly sealed POD first looked like it was leaking 37% of its air.
 
 from __future__ import annotations
 
+import json
+import threading
 from dataclasses import dataclass
 from pathlib import Path
 
@@ -327,6 +329,206 @@ def _is_number(text: str) -> bool:
     except ValueError:
         return False
     return True
+
+
+# --- sensors ------------------------------------------------------------------
+
+#: Where a running solve records what its instrumented places are doing. Kept
+#: beside the case rather than in memory so a sample survives the page being
+#: closed, the server restarting, and purgeWrite deleting the fields it came
+#: from.
+SENSOR_FILE = "sensors.json"
+
+#: A time directory is only sampled once it is complete. OpenFOAM closes every
+#: field file with its own footer, so this is a reliable end-of-write marker --
+#: sampling a half-written field would record numbers that never existed.
+FOOTER = "// *****"
+
+
+def sample(model: Model, case_dir: str | Path) -> list[dict]:
+    """Record any time directories that have appeared since the last call.
+
+    Returns the whole history, oldest first. Idempotent: a time already
+    recorded is not read again, which is what makes this safe to call from a
+    poller as often as it likes.
+    """
+    case = Path(case_dir)
+    history = read_history(case)
+    seen = {row["iteration"] for row in history}
+
+    for time in written_times(case):
+        iteration = int(float(time))
+        if iteration in seen or not _complete(case / time):
+            continue
+        try:
+            history.append(measure(model, case / time, iteration))
+        except (OSError, ValueError):
+            continue  # the solver was still writing; it will be caught next time
+
+    history.sort(key=lambda row: row["iteration"])
+    (case / SENSOR_FILE).write_text(json.dumps(history))
+    return history
+
+
+def read_history(case_dir: str | Path) -> list[dict]:
+    path = Path(case_dir) / SENSOR_FILE
+    if not path.exists():
+        return []
+    try:
+        return json.loads(path.read_text())
+    except json.JSONDecodeError:
+        return []
+
+
+def measure(model: Model, step: str | Path, iteration: int) -> dict:
+    """One reading: every instrumented place, plus the two balances.
+
+    The places come from the cells the probes sit in; the balances come from
+    the patch values, because what crosses a patch is phi on that patch.
+    """
+    from aicfd.model import sensors
+
+    step = Path(step)
+    grid = read_grid(model, step)
+    flows = patch_flows(step)
+    supply = -flows.get(FAN_SUPPLY, 0.0)
+    intake = flows.get(FAN_INTAKE, 0.0)
+    recovered = recovered_load_w(step, model)
+
+    places = []
+    for group in sensors(model):
+        temperatures = [_at(grid, "T", point) for point in group.points]
+        speeds = [float(np.linalg.norm(_at(grid, "U", point))) for point in group.points]
+        places.append(
+            {
+                "name": group.name,
+                "label": group.label,
+                "note": group.note,
+                "temp_c": round(float(np.mean(temperatures)), 3),
+                # How much the three points disagree. A place whose probes are
+                # kelvin apart is not one place, and its mean should not be
+                # read as if it were.
+                "spread_k": round(float(max(temperatures) - min(temperatures)), 3),
+                "speed_ms": round(float(np.mean(speeds)), 4),
+                "points_c": [round(t, 2) for t in temperatures],
+            }
+        )
+
+    return {
+        "iteration": iteration,
+        "places": places,
+        "supply_kg_s": round(supply, 5),
+        "intake_kg_s": round(intake, 5),
+        "backflow_kg_s": round(backflow(step, FAN_INTAKE), 5),
+        "return_temp_c": round(return_temperature(step) - KELVIN, 2),
+        "recovered_kw": round(recovered / 1000, 3),
+        "closure": round(recovered / model.total_load_w, 4)
+        if model.total_load_w
+        else None,
+        "peak_speed_ms": round(float(np.linalg.norm(grid["U"], axis=0).max()), 3),
+        "peak_temp_c": round(float(grid["T"].max()), 2),
+    }
+
+
+def _at(grid: dict, field: str, point) -> float:
+    """The field value in the cell containing ``point``."""
+    i = int(np.argmin(abs(grid["x"] - point[0])))
+    j = int(np.argmin(abs(grid["y"] - point[1])))
+    k = int(np.argmin(abs(grid["z"] - point[2])))
+    values = grid[field]
+    return values[..., k, j, i] if values.ndim == 4 else values[k, j, i]
+
+
+def _complete(step: Path) -> bool:
+    for name in ("T", "U", "phi"):
+        path = step / name
+        if not path.exists():
+            return False
+        try:
+            with path.open("rb") as handle:
+                handle.seek(max(0, path.stat().st_size - 200))
+                if FOOTER.encode() not in handle.read():
+                    return False
+        except OSError:
+            return False
+    return True
+
+
+class Sampler(threading.Thread):
+    """Reads each new time directory while the solver is still running.
+
+    A steady run that takes half an hour is not worth watching through its
+    residuals -- they say how much the last iteration moved, not whether the
+    cold aisle is cold. This turns every field write into a reading, and
+    because the reading is stored, purgeWrite is free to delete the fields
+    behind it.
+    """
+
+    def __init__(self, model: Model, case_dir: str | Path, every: float = 5.0):
+        super().__init__(daemon=True)
+        self.model = model
+        self.case = Path(case_dir)
+        self.every = every
+        self._stop = threading.Event()
+
+    def run(self) -> None:
+        while not self._stop.wait(self.every):
+            try:
+                sample(self.model, self.case)
+            except Exception:  # a sampler must never take the run down with it
+                pass
+
+    def stop(self) -> None:
+        """Stop, after one last pass so the final write is not lost."""
+        self._stop.set()
+        try:
+            sample(self.model, self.case)
+        except Exception:
+            pass
+
+
+def sensor_history(model: Model, case_dir: str | Path) -> dict:
+    """The recorded history, shaped for a chart: one series per place."""
+    from aicfd.model import sensors
+
+    history = sample(model, case_dir)
+    groups = sensors(model)
+    if not history:
+        return {"iterations": [], "groups": [], "balance": []}
+
+    series = []
+    for group in groups:
+        readings = [
+            next((p for p in row["places"] if p["name"] == group.name), None)
+            for row in history
+        ]
+        series.append(
+            {
+                "name": group.name,
+                "label": group.label,
+                "note": group.note,
+                "points": [list(point) for point in group.points],
+                "temp_c": [r["temp_c"] if r else None for r in readings],
+                "spread_k": [r["spread_k"] if r else None for r in readings],
+                "speed_ms": [r["speed_ms"] if r else None for r in readings],
+            }
+        )
+
+    return {
+        "iterations": [row["iteration"] for row in history],
+        "groups": series,
+        "balance": [
+            {
+                "iteration": row["iteration"],
+                "closure": row["closure"],
+                "return_temp_c": row["return_temp_c"],
+                "recovered_kw": row["recovered_kw"],
+                "backflow_kg_s": row["backflow_kg_s"],
+                "peak_speed_ms": row["peak_speed_ms"],
+            }
+            for row in history
+        ],
+    }
 
 
 # --- report -------------------------------------------------------------------

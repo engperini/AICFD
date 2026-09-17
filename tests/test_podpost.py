@@ -139,6 +139,139 @@ class PatchReadingTest(unittest.TestCase):
         )
 
 
+class SamplerTest(unittest.TestCase):
+    """The sampler has to be safe to call while the solver is still writing."""
+
+    def setUp(self):
+        self.model = M.build_model(SPEC)
+        self.case = Path(tempfile.mkdtemp())
+
+    def write_step(self, iteration: int, complete: bool = True):
+        """A time directory shaped like one buoyantSimpleFoam writes."""
+        step = self.case / str(iteration)
+        step.mkdir(exist_ok=True)
+        supply = 20.0 + KELVIN
+        rise = self.model.total_load_w / 1005.0  # 1 kg/s carries the whole load
+        field(step / "phi", "phi", "0", {
+            FAN_INTAKE: [0.25] * 4,
+            FAN_SUPPLY: [-0.5, -0.5],
+            "forro_master": [0.0],
+        })
+        field(step / "T", "T", f"{supply}", {
+            FAN_INTAKE: [supply + rise] * 4,
+            FAN_SUPPLY: [supply, supply],
+            "forro_master": [supply],
+        })
+        field(step / "U", "U", "(0.2 0 0)", {
+            FAN_INTAKE: [0.0], FAN_SUPPLY: [0.0], "forro_master": [0.0],
+        })
+        if complete:
+            for name in ("phi", "T", "U"):
+                path = step / name
+                path.write_text(path.read_text() + "\n// ***** //\n")
+        return step
+
+    def test_a_half_written_step_is_not_sampled(self):
+        """Sampling mid-write records numbers that never existed."""
+        self.write_step(100, complete=False)
+        self.assertEqual(podpost.sample(self.model, self.case), [])
+
+    def test_a_complete_step_is_sampled_once(self):
+        self.write_step(100)
+        first = podpost.sample(self.model, self.case)
+        self.assertEqual(len(first), 1)
+        self.assertEqual(first[0]["iteration"], 100)
+        self.assertEqual(podpost.sample(self.model, self.case), first)
+
+    def test_the_history_survives_the_fields_being_purged(self):
+        """purgeWrite deletes the time directory; the reading has to stay."""
+        step = self.write_step(100)
+        podpost.sample(self.model, self.case)
+        for entry in step.iterdir():
+            entry.unlink()
+        step.rmdir()
+        self.assertEqual(len(podpost.read_history(self.case)), 1)
+
+    def test_every_place_is_measured_and_its_spread_reported(self):
+        self.write_step(100)
+        row = podpost.sample(self.model, self.case)[0]
+        names = {place["name"] for place in row["places"]}
+        self.assertEqual(
+            names, {"cold_aisle", "hot_aisle", "plenum", "fan_back"}
+        )
+        for place in row["places"]:
+            self.assertIn("spread_k", place)
+            self.assertEqual(len(place["points_c"]), 3)
+
+    def test_readings_come_back_in_iteration_order(self):
+        for iteration in (300, 100, 200):
+            self.write_step(iteration)
+        history = podpost.sample(self.model, self.case)
+        self.assertEqual([r["iteration"] for r in history], [100, 200, 300])
+
+    def test_the_history_is_shaped_for_a_chart(self):
+        self.write_step(100)
+        self.write_step(200)
+        shaped = podpost.sensor_history(self.model, self.case)
+        self.assertEqual(shaped["iterations"], [100, 200])
+        self.assertEqual(len(shaped["groups"]), 4)
+        for group in shaped["groups"]:
+            self.assertEqual(len(group["temp_c"]), 2)
+        self.assertEqual(len(shaped["balance"]), 2)
+
+
+class SensorPlacementTest(unittest.TestCase):
+    def setUp(self):
+        self.model = M.build_model(SPEC)
+        self.groups = M.sensors(self.model)
+
+    def test_there_are_three_points_in_each_of_the_four_places(self):
+        self.assertEqual(len(self.groups), 4)
+        for group in self.groups:
+            self.assertEqual(len(group.points), 3)
+
+    def test_the_aisle_probes_sit_at_rack_height_in_the_aisle(self):
+        rack_mid = self.model.racks[0].box.hi[2] / 2
+        for name, band in (
+            ("cold_aisle", self.model.cold_aisle),
+            ("hot_aisle", self.model.hot_aisle),
+        ):
+            group = next(g for g in self.groups if g.name == name)
+            for x, y, z in group.points:
+                self.assertAlmostEqual(z, rack_mid)
+                self.assertGreater(y, band[0])
+                self.assertLess(y, band[1])
+
+    def test_the_plenum_probes_sit_above_the_false_ceiling(self):
+        group = next(g for g in self.groups if g.name == "plenum")
+        for _x, _y, z in group.points:
+            self.assertGreater(z, self.model.ceiling_z)
+            self.assertLess(z, self.model.domain.hi[2])
+
+    def test_the_fan_back_probes_sit_in_the_gallery(self):
+        group = next(g for g in self.groups if g.name == "fan_back")
+        for x, _y, _z in group.points:
+            self.assertLess(x, self.model.hall.lo[0])
+            self.assertGreater(x, 0)
+
+    def test_no_probe_sits_inside_a_rack(self):
+        for group in self.groups:
+            for point in group.points:
+                for rack in self.model.racks:
+                    inside = all(
+                        rack.box.lo[a] <= point[a] <= rack.box.hi[a] for a in range(3)
+                    )
+                    self.assertFalse(inside, f"{group.name} probe inside {rack.id}")
+
+    def test_the_probes_travel_with_the_geometry(self):
+        """Move the aisle and the sensors move with it, or they measure nothing."""
+        wider = dict(SPEC, aisles={"cold": 3.0, "hot": 1.2})
+        moved = M.sensors(M.build_model(wider))
+        before = next(g for g in self.groups if g.name == "cold_aisle").points[0]
+        after = next(g for g in moved if g.name == "cold_aisle").points[0]
+        self.assertGreater(after[1], before[1])
+
+
 class ToleranceTest(unittest.TestCase):
     def test_mass_is_held_tighter_than_energy(self):
         """Mass has nowhere to go; the thermal field merely takes time."""

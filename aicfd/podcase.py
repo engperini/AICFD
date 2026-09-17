@@ -90,8 +90,12 @@ FoamFile
 """
 
 
+#: Where the probes functionObject writes, and so where podpost reads.
+SENSOR_DIR = "sensores"
+
+
 def build(model: Model, destination: str | Path, max_iterations: int = 400,
-          residual_tolerance: float = 1.0e-4, write_interval: int = 100) -> Path:
+          residual_tolerance: float = 1.0e-4, sensor_interval: int = 100) -> Path:
     """Write a complete OpenFOAM case for ``model`` into ``destination``."""
     case = Path(destination)
     if case.exists():
@@ -108,7 +112,7 @@ def build(model: Model, destination: str | Path, max_iterations: int = 400,
     _write(case / "system/topoSetDict", topo_set_dict(model))
     _write(case / "system/createBafflesDict", create_baffles_dict(model))
     _write(case / "system/controlDict",
-           control_dict(model, max_iterations, write_interval))
+           control_dict(model, max_iterations, sensor_interval))
     _write(case / "system/fvSolution", fv_solution(model, residual_tolerance))
     _write(case / "constant/fvOptions", fv_options(model))
     for name, text in initial_fields(model).items():
@@ -556,7 +560,22 @@ def turbulence_initial_values(model: Model) -> tuple[float, float]:
 # --- control ------------------------------------------------------------------
 
 
-def control_dict(model: Model, max_iterations: int, write_interval: int) -> str:
+# Partial results do not come from a functionObject. `probes` -- and every
+# other functionObject, and `postProcess` -- dies in this OpenFOAM build with
+#
+#     error in IOstream "sha1" for operation operator<<(Ostream&, const word&)
+#
+# which is OSHA1stream failing inside functionObjectList's dictionary digest.
+# It is a fault in the packaged library, not in any dictionary: a probes entry
+# with one point and one field kills the solver at "Starting time loop" just as
+# surely as a full one.
+#
+# So the solver writes its fields often instead, and aicfd.podpost samples them
+# as they land (see Sampler). The measurement is identical -- the same cells at
+# the same iterations -- and it costs one extra field write per sample.
+
+
+def control_dict(model: Model, max_iterations: int, sensor_interval: int = 100) -> str:
     return f"""{_header(model, "dictionary", "controlDict")}
 application     buoyantSimpleFoam;
 startFrom       startTime;
@@ -567,8 +586,12 @@ stopAt          endTime;
 endTime         {max_iterations};
 deltaT          1;
 writeControl    timeStep;
-writeInterval   {write_interval};
-purgeWrite      2;
+// How often the run reports. Every write is a sample: the places, the mass
+// balance and the energy balance all come off these fields.
+writeInterval   {sensor_interval};
+// Three kept, so a sampler that falls a step behind still catches up, and a
+// finished run leaves the last state to look at.
+purgeWrite      3;
 writeFormat     ascii;
 writePrecision  6;
 writeCompression off;

@@ -44,6 +44,7 @@ EDITABLE = {
     "gallery_depth": ("gallery", "depth", float, (0.5, 20.0)),
     "cell_size": ("mesh", "cell_size", float, (0.02, 0.5)),
     "max_iterations": ("solver", "max_iterations", int, (10, 20_000)),
+    "sensor_interval": ("solver", "sensor_interval", int, (10, 5_000)),
     "containment": ("containment", "enabled", bool, None),
 }
 
@@ -115,6 +116,17 @@ def read_progress(case_name: str, max_points: int = 400) -> dict:
         },
         "total": len(marks),
     }
+
+
+def read_sensors(case_name: str) -> dict:
+    """What each instrumented place is doing, straight off the running solve."""
+    from aicfd import podpost
+
+    case = RUNS_DIR / case_name
+    if not case.exists():
+        return {"iterations": [], "groups": []}
+    model = model_module.build_model(load_spec(case_name))
+    return podpost.sensor_history(model, case)
 
 
 def load_spec(name: str) -> dict:
@@ -194,7 +206,7 @@ def build_payload(name: str) -> dict:
 
 def start_run(name: str) -> None:
     """Solve in a worker thread so the page stays responsive."""
-    from aicfd import podcase
+    from aicfd import podcase, podpost
     from aicfd.run import FoamCommandFailed, solve
 
     def worker() -> None:
@@ -209,7 +221,7 @@ def start_run(name: str) -> None:
                 target,
                 max_iterations=int(solver.get("max_iterations", 400)),
                 residual_tolerance=float(solver.get("residual_tolerance", 1e-4)),
-                write_interval=int(solver.get("write_interval", 100)),
+                sensor_interval=int(solver.get("sensor_interval", 100)),
             )
 
             def step(command: str) -> None:
@@ -225,7 +237,15 @@ def start_run(name: str) -> None:
                     step=command,
                 )
 
-            solve(target, podcase.PIPELINE, on_step=step)
+            # Read each field write as it lands, so the run can be watched
+            # rather than waited out -- and so purgeWrite is free to delete
+            # the fields once they have been measured.
+            sampler = podpost.Sampler(model, target)
+            sampler.start()
+            try:
+                solve(target, podcase.PIPELINE, on_step=step)
+            finally:
+                sampler.stop()
             STATE.set(stage="done", step="", message="solved")
         except FoamCommandFailed as error:
             STATE.set(stage="failed", message=str(error))
@@ -257,6 +277,7 @@ class Handler(SimpleHTTPRequestHandler):
                 {
                     "run": STATE.snapshot(),
                     "residuals": read_progress(self.case_name),
+                    "sensors": self._safely(read_sensors, self.case_name),
                 }
             )
         return super().do_GET()

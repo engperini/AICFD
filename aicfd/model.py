@@ -226,6 +226,83 @@ class Model:
         )
 
 
+@dataclass(frozen=True)
+class SensorGroup:
+    """A handful of points whose average stands for one place in the POD.
+
+    A single probe in a recirculating room reports the eddy it happens to sit
+    in. Three points spread across the place being asked about report the
+    place. Each group is averaged before anything is shown, so what the page
+    plots is "the cold aisle", not "cell 143 872".
+    """
+
+    name: str
+    label: str
+    points: tuple[tuple[float, float, float], ...]
+    note: str = ""
+
+
+def sensors(model: Model) -> list[SensorGroup]:
+    """Where to measure, in the places an engineer would put a data logger.
+
+    The heights and offsets mirror how a real POD is instrumented: rack
+    mid-height in the aisles, inside the plenum above the grilles, and on the
+    back of the fan wall where the return air arrives.
+    """
+    if not model.racks:
+        return []
+
+    rack_mid_z = model.racks[0].box.hi[2] / 2
+    columns = tuple(
+        (rack.box.lo[0] + rack.box.hi[0]) / 2 for rack in model.racks[:3]
+    ) or (model.hall.lo[0] + 1.0,)
+    # Fewer than three racks still gets three columns, spread along the row.
+    if len(columns) < 3:
+        lo, hi = model.rack_span()
+        columns = tuple(lo + (hi - lo) * f for f in (0.2, 0.5, 0.8))
+
+    mid = lambda band: (band[0] + band[1]) / 2  # noqa: E731
+    fan = model.panel("fan")
+    fan_top = fan.extent[1][1]
+
+    return [
+        SensorGroup(
+            "cold_aisle",
+            "Corredor frio",
+            tuple((x, mid(model.cold_aisle), rack_mid_z) for x in columns),
+            "no meio do corredor, à altura dos racks",
+        ),
+        SensorGroup(
+            "hot_aisle",
+            "Corredor quente",
+            tuple((x, mid(model.hot_aisle), rack_mid_z) for x in columns),
+            "dentro do enclausuramento, à altura dos racks",
+        ),
+        SensorGroup(
+            "plenum",
+            "Plenum do forro",
+            tuple(
+                (x, mid(model.hot_aisle), (model.ceiling_z + model.domain.hi[2]) / 2)
+                for x in columns
+            ),
+            "acima das grelhas de retorno",
+        ),
+        SensorGroup(
+            "fan_back",
+            "Costas do fan wall",
+            tuple(
+                (
+                    max(model.hall.lo[0] - 0.3, model.cell_size),
+                    mid(fan.extent[0]),
+                    fan_top * fraction,
+                )
+                for fraction in (0.25, 0.5, 0.75)
+            ),
+            "na galeria, onde o ar de retorno chega ao fan wall",
+        ),
+    ]
+
+
 def build_model(spec: dict) -> Model:
     """Derive the geometry from a spec mapping (already validated upstream)."""
     name = spec.get("name", "case")
@@ -593,6 +670,15 @@ def to_dict(model: Model, spec: dict) -> dict:
                 model.airflow_m3s / model.chimney_area, 3
             ) if model.chimney_area else None,
         },
+        "sensors": [
+            {
+                "name": group.name,
+                "label": group.label,
+                "note": group.note,
+                "points": [list(point) for point in group.points],
+            }
+            for group in sensors(model)
+        ],
         "summary": [list(row) for row in summary_rows(model)],
         "warnings": model.warnings,
         "spec": spec,
