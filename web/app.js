@@ -237,22 +237,28 @@ function renderSensors(history) {
   host.innerHTML = `${balance ? balanceStrip(balance) : ''}
   <table class="sensors">
     <thead><tr>
-      <th>Local</th><th>Temp.</th><th>Δ entre pontos</th><th>Velocidade</th>
+      <th>Local</th><th>Temp.</th><th>Δ entre pontos</th>
+      <th>Pressão</th><th>Velocidade</th>
     </tr></thead>
     <tbody>${placed
       .map(({ label, note, live }) => {
         const t = live?.temp_c?.[last];
         const spread = live?.spread_k?.[last];
+        const dp = live?.pressure_pa?.[last];
         const v = live?.speed_ms?.[last];
         return `<tr>
           <td><span class="sensor-label">${label}</span>
               <span class="sensor-note">${note}</span></td>
           <td>${t == null ? '—' : `${fmt(t, 1)} °C`}</td>
           <td class="muted">${spread == null ? '—' : `${fmt(spread, 1)} K`}</td>
+          <td>${dp == null ? '—' : `${dp > 0 ? '+' : ''}${fmt(dp, 1)} Pa`}</td>
           <td>${v == null ? '—' : `${fmt(v, 2)} m/s`}</td>
         </tr>`;
       })
       .join('')}</tbody></table>
+    <p class="sensor-foot">Pressão relativa à tomada do fan wall, com a coluna
+      hidrostática removida — é a diferença que um manômetro leria e que empurra
+      o ar pelo circuito.</p>
     ${iterations.length ? drawSensorChart(history) :
       `<p class="empty">as medidas aparecem a partir da primeira leitura</p>`}`;
 }
@@ -276,6 +282,8 @@ function balanceStrip(b) {
       <i>retorno no fan wall</i></span>
     <span class="balance-item"><b>${fmt(b.peak_speed_ms, 2)} m/s</b>
       <i>velocidade máxima</i></span>
+    ${b.fan_rise_pa == null ? '' : `<span class="balance-item">
+      <b>${fmt(b.fan_rise_pa, 1)} Pa</b><i>pressão do fan wall</i></span>`}
     <span class="balance-item" data-state="${b.backflow_kg_s > 0.01 ? 'warn' : ''}">
       <b>${fmt(b.backflow_kg_s, 3)} kg/s</b><i>refluxo na tomada</i></span>
   </div>`;

@@ -166,8 +166,13 @@ class SamplerTest(unittest.TestCase):
         field(step / "U", "U", "(0.2 0 0)", {
             FAN_INTAKE: [0.0], FAN_SUPPLY: [0.0], "forro_master": [0.0],
         })
+        field(step / "p_rgh", "p_rgh", "101325", {
+            FAN_INTAKE: [101325.0] * 4,
+            FAN_SUPPLY: [101333.0, 101333.0],
+            "forro_master": [101325.0],
+        })
         if complete:
-            for name in ("phi", "T", "U"):
+            for name in ("phi", "T", "U", "p_rgh"):
                 path = step / name
                 path.write_text(path.read_text() + "\n// ***** //\n")
         return step
@@ -202,7 +207,20 @@ class SamplerTest(unittest.TestCase):
         )
         for place in row["places"]:
             self.assertIn("spread_k", place)
+            self.assertIn("pressure_pa", place)
             self.assertEqual(len(place["points_c"]), 3)
+
+    def test_pressure_is_reported_against_the_fan_intake(self):
+        """Absolute pressure is 101 325 Pa everywhere and says nothing."""
+        self.write_step(100)
+        row = podpost.sample(self.model, self.case)[0]
+        for place in row["places"]:
+            self.assertAlmostEqual(place["pressure_pa"], 0.0, places=3)
+
+    def test_the_fan_wall_rise_is_the_jump_across_the_pair(self):
+        self.write_step(100)
+        row = podpost.sample(self.model, self.case)[0]
+        self.assertAlmostEqual(row["fan_rise_pa"], 8.0, places=2)
 
     def test_readings_come_back_in_iteration_order(self):
         for iteration in (300, 100, 200):

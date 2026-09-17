@@ -226,6 +226,7 @@ def read_grid(model: Model, step: str | Path) -> dict:
     n, divisions, cell = model.n_cells, model.divisions, model.cell_size
     return {
         "T": to_grid(read_field(step / "T", n), divisions) - KELVIN,
+        "p_rgh": to_grid(read_field(step / "p_rgh", n), divisions),
         "U": np.stack(
             [to_grid(read_field(step / "U", n)[:, axis], divisions) for axis in range(3)]
         ),
@@ -482,16 +483,30 @@ def measure(model: Model, step: str | Path, iteration: int) -> dict:
     intake = flows.get(FAN_INTAKE, 0.0)
     recovered = recovered_load_w(step, model)
 
+    # Pressure is reported against the fan intake, so it reads as what a
+    # manometer in the room would show: how many pascals above the machine's
+    # suction each place sits. The absolute value is 101 325 Pa everywhere and
+    # says nothing. p_rgh rather than p because it has the hydrostatic column
+    # removed -- comparing a point at 1 m with one at 7 m on static pressure
+    # alone would just measure the height difference.
+    reference = float(np.mean(read_patch_field(step / "p_rgh", FAN_INTAKE)))
+
     places = []
     for group in sensors(model):
         temperatures = [_at(grid, "T", point) for point in group.points]
         speeds = [float(np.linalg.norm(_at(grid, "U", point))) for point in group.points]
+        pressures = [_at(grid, "p_rgh", point) - reference for point in group.points]
         places.append(
             {
                 "name": group.name,
                 "label": group.label,
                 "note": group.note,
                 "temp_c": round(float(np.mean(temperatures)), 3),
+                "pressure_pa": round(float(np.mean(pressures)), 3),
+                "pressure_spread_pa": round(
+                    float(max(pressures) - min(pressures)), 3
+                ),
+                "speed_spread_ms": round(float(max(speeds) - min(speeds)), 4),
                 # How much the three points disagree. A place whose probes are
                 # kelvin apart is not one place, and its mean should not be
                 # read as if it were.
@@ -514,6 +529,16 @@ def measure(model: Model, step: str | Path, iteration: int) -> dict:
         else None,
         "peak_speed_ms": round(float(np.linalg.norm(grid["U"], axis=0).max()), 3),
         "peak_temp_c": round(float(grid["T"].max()), 2),
+        # What the fan wall has to produce: the static rise across it. This is
+        # the number that sizes the machine, and it is not something the user
+        # gave -- it is what the POD's own resistance turned out to be.
+        "fan_rise_pa": round(
+            float(
+                np.mean(read_patch_field(step / "p_rgh", FAN_SUPPLY))
+                - np.mean(read_patch_field(step / "p_rgh", FAN_INTAKE))
+            ),
+            3,
+        ),
     }
 
 
@@ -527,7 +552,7 @@ def _at(grid: dict, field: str, point) -> float:
 
 
 def _complete(step: Path) -> bool:
-    for name in ("T", "U", "phi"):
+    for name in ("T", "U", "phi", "p_rgh"):
         path = step / name
         if not path.exists():
             return False
@@ -598,6 +623,9 @@ def sensor_history(model: Model, case_dir: str | Path) -> dict:
                 "temp_c": [r["temp_c"] if r else None for r in readings],
                 "spread_k": [r["spread_k"] if r else None for r in readings],
                 "speed_ms": [r["speed_ms"] if r else None for r in readings],
+                "pressure_pa": [
+                    r.get("pressure_pa") if r else None for r in readings
+                ],
             }
         )
 
@@ -612,6 +640,7 @@ def sensor_history(model: Model, case_dir: str | Path) -> dict:
                 "recovered_kw": row["recovered_kw"],
                 "backflow_kg_s": row["backflow_kg_s"],
                 "peak_speed_ms": row["peak_speed_ms"],
+                "fan_rise_pa": row.get("fan_rise_pa"),
             }
             for row in history
         ],
@@ -669,6 +698,11 @@ def compare(first: str | Path, second: str | Path) -> dict:
 # --- report -------------------------------------------------------------------
 
 
+def _fan_rise_line(kpis: dict) -> str:
+    rise = kpis.get("fan_rise_pa")
+    return "-" if rise is None else f"{rise:.1f} Pa across the fan wall"
+
+
 def _path_line(kpis: dict) -> str:
     path = {
         place["name"]: place["temp_c"]
@@ -707,8 +741,18 @@ def report(results: PodResults) -> str:
         f"  Still moving    {_drift_line(k)}",
         f"  Return path     {_path_line(k)}",
         "",
-        "  Rack              Load    Inlet   Outlet    Rise   ASHRAE",
+        f"  Fan wall rise   {_fan_rise_line(k)}",
+        "",
+        "  Place                  Temp    dP vs intake    Speed",
     ]
+    for place in k.get("places_now", []):
+        pressure = place.get("pressure_pa")
+        lines.append(
+            f"  {place['label']:<22}{place['temp_c']:>6.1f}"
+            + (f"{pressure:>16.1f}" if pressure is not None else f"{'-':>16}")
+            + f"{place['speed_ms']:>9.2f}"
+        )
+    lines += ["", "  Rack              Load    Inlet   Outlet    Rise   ASHRAE"]
     for rack in k["racks"]:
         inside = "ok" if rack["ashrae"]["within_recommended"] else "!"
         lines.append(

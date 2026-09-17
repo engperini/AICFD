@@ -52,6 +52,14 @@ instrumented places (cold aisle, contained hot aisle, ceiling plenum, back of
 the fan wall), three points each, plus the mass and energy balances. The page
 shows the same thing live.
 
+Each place reports temperature, **static pressure relative to the fan intake**,
+and speed. The pressure is `p_rgh`, so the hydrostatic column is out of it and
+the numbers are what a manometer would read. Their differences are the POD's
+pressure budget and they must sum to the fan wall's rise — cold aisle to hot
+aisle is the drop across the racks, hot aisle to plenum is the grilles, plenum
+to intake is the return path. That budget closing is another independent check
+on the geometry, and `fan_rise_pa` is what sizes the machine.
+
 **Judge a POD run by its energy balance and its drift, never by its residuals**
 (ADR-018).
 Every watt installed has to leave through the fan intake as warmer air. The
