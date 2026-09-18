@@ -16,7 +16,8 @@
  */
 
 import { viewsFor, drawView, sheetScale, viewTransform } from './drawing.js';
-import { Scale, buildLut } from './colormaps.js';
+import { Scale, buildLut, niceStep } from './colormaps.js';
+import { renderScaleBar } from './maps.js';
 
 const METRICS = {
   inlet_top_c: { label: 'Topo do rack (pior ponto)', short: 'topo' },
@@ -66,8 +67,10 @@ export class RackInlets {
       <div class="racks-stage"><div class="wrap" id="rack-stage"></div></div>
       <div class="colorbar">
         <div class="colorbar-label"><span id="rack-colorbar-name"></span></div>
-        <div class="colorbar-ramp" id="rack-colorbar-ramp"></div>
-        <div class="colorbar-ticks" id="rack-colorbar-ticks"></div>
+        <div class="scale-bar">
+          <div class="colorbar-ramp" id="rack-colorbar-ramp"></div>
+          <div class="scale-ticks" id="rack-colorbar-ticks"></div>
+        </div>
       </div>
       <div class="racks-table" id="rack-table"></div>
       <div class="racks-note" id="rack-note"></div>
@@ -83,10 +86,20 @@ export class RackInlets {
   }
 
   get scale() {
+    // Fitted, not fixed: this card's job is to rank racks whose inlets can
+    // differ by less than a kelvin, and the fixed band the field maps use
+    // (ADR-024) would paint all of them one colour. Banded on a round step
+    // all the same, so the legend can be read as numbers.
     const values = this.racks.map((r) => r[this.metric]);
-    const min = Math.min(...values);
-    const max = Math.max(Math.max(...values), min + 0.5);
-    return new Scale({ kind: 'sequential', min, max });
+    const low = Math.min(...values);
+    const high = Math.max(Math.max(...values), low + 0.5);
+    const step = niceStep(high - low, 8);
+    return new Scale({
+      kind: 'sequential',
+      min: Math.floor(low / step) * step,
+      max: Math.ceil(high / step) * step,
+      step,
+    });
   }
 
   render() {
@@ -165,19 +178,19 @@ export class RackInlets {
   }
 
   #colorbar(lut, scale, metric) {
-    const stops = [];
-    for (let i = 0; i <= 16; i += 1) {
-      const k = Math.round((i / 16) * 255) * 3;
-      stops.push(`rgb(${lut[k]},${lut[k + 1]},${lut[k + 2]}) ${(i / 16) * 100}%`);
-    }
-    this.host.querySelector('#rack-colorbar-ramp').style.background =
-      `linear-gradient(90deg, ${stops.join(', ')})`;
-    this.host.querySelector('#rack-colorbar-name').textContent =
-      `Entrada do rack, ${metric.short} (°C)`;
-    this.host.querySelector('#rack-colorbar-ticks').innerHTML = scale
-      .ticks(5)
-      .map(({ value }) => `<span>${fmt(value, 1)}</span>`)
-      .join('');
+    const values = this.racks.map((r) => r[this.metric]);
+    renderScaleBar({
+      host: this.host,
+      prefix: 'rack-colorbar',
+      scale,
+      lut,
+      field: { min: Math.min(...values), max: Math.max(...values) },
+      spec: {
+        label: `Entrada do rack, ${metric.short}`,
+        units: '°C',
+        decimals: 1,
+      },
+    });
   }
 
   #table() {

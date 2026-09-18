@@ -725,33 +725,45 @@ rule-of-thumb checks belong in front of the solve where they cost nothing.
 
 ---
 
-## ADR-024 — Air temperature is coloured against a fixed band, not against each run's own extremes
+## ADR-024 — Field maps are contour legends: fixed band for temperature, round bands everywhere, thresholds drawn on the bar
 
-**Decision.** The temperature map uses a fixed domain of 10 to 40 °C with the
-neutral on the middle of the ASHRAE recommended band (22,5 °C). Air outside
-the band saturates at the end of the ramp; the colourbar marks the saturating
-end and states what the field actually spans. Speed and pressure keep their
-fitted scales.
+**Decision.** The field maps are presented the way a post-processor an
+engineer already trusts presents them:
+
+- **Discrete contour bands, not a smooth wash.** Temperature runs in 2,5 K
+  bands, and speed and pressure in a round step chosen near sixteen bands
+  (1 m/s and 10 Pa on the worked hall). A colour can be read back as a number
+  off the legend without hunting for a cursor.
+- **A fixed band for temperature**, 10 to 40 °C, whatever the run. Air outside
+  it saturates at the end of the ramp; the legend marks the saturating end and
+  states what the field actually spans.
+- **The judgement thresholds are drawn on the bar**: ASHRAE's recommended
+  18 and 27 °C and allowable A1 32 °C for the air a rack breathes in.
+- **Round edges.** Band edges are 1, 2, 2,5 or 5 times a power of ten, never
+  the 9,74 that fitting to a field's extremes produces.
 
 **Why.** A scale fitted to each field answers a different question every time
 it is drawn. In the 10 MW hall one rack starved at the mouth of an aisle
 reached 55 °C, and colouring against that left a 22 °C cold aisle and a 36 °C
-hot aisle both washed out to nearly the same pale tone — the reader could not
-see the 14 K that the whole design is about. Fixed limits also make two runs
-comparable: the hall before and after a change are the same colours for the
-same air, which is the comparison a conceptual study is for.
+hot aisle both washed out to nearly the same pale tone: the reader could not
+see the 14 K the whole design is about. Fixed limits also make two runs
+comparable, which is what a conceptual study is for.
 
-**Consequence.** The diverging ramp gained independent arms
-(`arms: 'independent'`): with the neutral at 22,5 °C the cold arm spans 12,5 K
-and the warm arm 17,5 K, so the bar starts and ends exactly on the band that
-was chosen rather than on a symmetric ±17,5 K. The cost is that a kelvin below
-the centre is not the same number of pixels as a kelvin above it. That is
-acceptable here because the question is "how hot is this air against the
-envelope", not "how far from the centre in either direction" — and it is
-stated on the bar, whose ticks are the honest values of each position. The
-default stays symmetric, which is what pressure uses, where the sign and the
-magnitude either side of zero are both meaningful.
+The bands matter for a second reason. A continuous ramp cannot be read
+quantitatively: nobody tells 31 °C from 34 °C by matching two shades of red
+against a gradient. Bands turn the picture back into numbers, and putting the
+standard's own limits on the bar puts the judgement where the reading
+happens.
 
-The per-rack inlet map keeps an auto-fitted sequential scale: its job is to
-rank 768 racks whose inlets differ by less than a kelvin, and a fixed 30 K
-band would paint all of them the same colour.
+**Consequence.** `Scale` gained an optional `step`: with one, a value takes
+its band's colour, and `bands()` gives the legend its blocks. `niceStep`
+picks the round width. The midpoint of the temperature ramp now means nothing
+in particular, which is how a thermometer legend should read -- the earlier
+version anchored the neutral on the middle of the ASHRAE band and then had to
+explain what that meant, which is a legend explaining itself rather than the
+data.
+
+The per-rack inlet map keeps fitted limits: its job is to rank 768 racks whose
+inlets differ by less than a kelvin, and the fixed 30 K band would paint all
+of them one colour. It is banded on a round step all the same (0,1 K on the
+worked hall), so it reads as numbers too.

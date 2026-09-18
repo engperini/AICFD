@@ -133,53 +133,68 @@ export class Scale {
    * @param {number} options.min domain minimum
    * @param {number} options.max domain maximum
    * @param {number} [options.center] value pinned to the ramp midpoint (diverging only)
-   * @param {'symmetric'|'independent'} [options.arms] how a diverging domain is
-   *   spread over the two arms. `symmetric` (the default) gives both arms the
-   *   same span, so equal colour distance is equal value distance and the ends
-   *   may reach past the domain that was asked for. `independent` stretches
-   *   each arm over its own half of the domain, so the bar starts and ends
-   *   exactly on `min` and `max` -- the right choice when the domain is a band
-   *   an engineer chose (ADR-024) rather than the range a field happened to
-   *   have, at the cost that a kelvin below the centre is not the same number
-   *   of pixels as a kelvin above it.
+   * @param {number} [options.step] band width, in the field's own units. With
+   *   a step the scale is a *contour* scale: every value in a band gets that
+   *   band's colour, so a colour can be read back as a number without a
+   *   cursor. That is how a thermal plot is presented in any post-processor an
+   *   engineer already trusts, and it is what a smooth wash cannot do
+   *   (ADR-024). Without a step the ramp stays continuous.
    */
-  constructor({ kind, min, max, center, arms = 'symmetric' }) {
+  constructor({ kind, min, max, center, step }) {
     this.kind = kind;
     this.min = min;
     this.max = max;
     this.center = center;
-    this.arms = arms;
+    this.step = step;
     if (kind === 'diverging') {
-      // A floor on each arm so a nearly-uniform field does not blow up into
-      // full saturation.
-      if (arms === 'independent') {
-        this.cold = Math.max(center - min, 0.5);
-        this.warm = Math.max(max - center, 0.5);
-      } else {
-        this.cold = this.warm = Math.max(
-          Math.abs(max - center),
-          Math.abs(center - min),
-          0.5,
-        );
-      }
-      this.half = this.warm; // kept for callers that read it
+      // Symmetric half-width so the neutral really sits on `center`, and a
+      // floor so a nearly-uniform field does not blow up into full saturation.
+      this.half = Math.max(Math.abs(max - center), Math.abs(center - min), 0.5);
     }
+  }
+
+  /** The value a band holds, for `value`: its own midpoint. */
+  banded(value) {
+    if (!this.step) return value;
+    const lo = this.min;
+    const index = Math.floor((value - lo) / this.step);
+    const count = Math.max(1, Math.round((this.max - lo) / this.step));
+    const clamped = Math.min(Math.max(index, 0), count - 1);
+    return lo + (clamped + 0.5) * this.step;
   }
 
   /** Position of `value` on the ramp, in [0, 1]. */
   position(value) {
+    const v = this.banded(value);
     if (this.kind === 'diverging') {
-      const arm = value < this.center ? this.cold : this.warm;
-      return clamp01(0.5 + (value - this.center) / (2 * arm));
+      return clamp01(0.5 + (v - this.center) / (2 * this.half));
     }
-    return clamp01((value - this.min) / (this.max - this.min || 1));
+    return clamp01((v - this.min) / (this.max - this.min || 1));
   }
 
   /** The value at ramp position `t` -- used to label the colorbar. */
   valueAt(t) {
-    if (this.kind !== 'diverging') return this.min + t * (this.max - this.min);
-    const arm = t < 0.5 ? this.cold : this.warm;
-    return this.center + (t - 0.5) * 2 * arm;
+    return this.kind === 'diverging'
+      ? this.center + (t - 0.5) * 2 * this.half
+      : this.min + t * (this.max - this.min);
+  }
+
+  /** Where `value` sits along the bar, in [0, 1], ignoring the banding. */
+  positionOf(value) {
+    return this.kind === 'diverging'
+      ? clamp01(0.5 + (value - this.center) / (2 * this.half))
+      : clamp01((value - this.min) / (this.max - this.min || 1));
+  }
+
+  /** The bands, low to high: their edges in value and along the bar. */
+  bands() {
+    if (!this.step) return [];
+    const count = Math.max(1, Math.round((this.max - this.min) / this.step));
+    return Array.from({ length: count }, (_, i) => {
+      const lo = this.min + i * this.step;
+      const hi = lo + this.step;
+      return { lo, hi, t0: this.positionOf(lo), t1: this.positionOf(hi) };
+    });
   }
 
   ticks(count = 5) {
@@ -188,4 +203,16 @@ export class Scale {
       return { t, value: this.valueAt(t) };
     });
   }
+}
+
+/**
+ * A round band width, close to `span / target`: 1, 2, 2.5 or 5 times a power
+ * of ten. Contour levels an engineer reads off a legend are round numbers --
+ * 10 Pa, 0,5 m/s -- never 9,74.
+ */
+export function niceStep(span, target = 16) {
+  if (!(span > 0)) return 1;
+  const raw = span / target;
+  const pow = 10 ** Math.floor(Math.log10(raw));
+  return [1, 2, 2.5, 5, 10].map((m) => m * pow).find((c) => c >= raw - 1e-12) ?? raw;
 }

@@ -9,32 +9,51 @@
  * colour scale for all three views, because three colourbars is three chances
  * to misread which is which.
  *
- * Colour follows the job of the data (see colormaps.js): temperature diverges
- * about the middle of the ASHRAE recommended band, pressure diverges about the
- * fan intake, speed is a single hue from still to fast.
+ * Colour follows the job of the data (see colormaps.js): temperature and
+ * pressure diverge (cool/warm, below/above the fan intake), speed is a single
+ * hue from still to fast. Every field is drawn in discrete contour bands with
+ * round edges, so a colour can be read back as a number off the legend rather
+ * than only under the cursor -- and temperature is judged against a fixed
+ * band with the ASHRAE limits marked on it (ADR-024).
  */
 
 import { viewsFor, drawView, defaultCut, sheetScale, viewTransform } from './drawing.js';
-import { Scale, buildLut } from './colormaps.js';
-
-const ASHRAE_MID = (18 + 27) / 2;
+import { Scale, buildLut, niceStep } from './colormaps.js';
 
 /**
- * The band every air temperature is coloured against, whatever the run.
+ * The band every air temperature is coloured against, whatever the run, and
+ * the contour interval inside it.
  *
  * Fixed rather than fitted to each field, because the reader's question is
  * "how hot is this air" and the answer has to mean the same thing from one
  * run to the next and from one view to the next. A scale stretched to the
  * field's own extremes answers a different question every time: one rack
  * starved at the mouth of an aisle reached 55 °C, and colouring against that
- * left a 22 °C cold aisle and a 36 °C hot aisle both washed out.
+ * left a 22 °C cold aisle and a 36 °C hot aisle both washed out to the same
+ * pale tone.
  *
  * 10 °C is below any supply anyone would design; 40 °C is above the hot aisle
  * of a 14 K rise. Air outside the band saturates at the end of the ramp and
  * the colourbar says so, so nothing is hidden -- only compressed, and the
  * numeric readout under the cursor is exact either way.
  */
-export const TEMPERATURE_BAND = { min: 10, max: 40 };
+export const TEMPERATURE_BAND = { min: 10, max: 40, step: 2.5 };
+
+/**
+ * ASHRAE's thermal guidelines for the air a rack breathes in, drawn on the
+ * temperature bar. They are where the judgement happens, so they are marked
+ * on the scale itself rather than left to the reader's memory -- and marking
+ * them is also what lets the ramp's midpoint go back to meaning nothing in
+ * particular, which is how a thermometer legend should read.
+ */
+const ASHRAE_MARKS = [
+  { value: 18, label: '18' },
+  { value: 27, label: '27' },
+  { value: 32, label: '32' },
+];
+
+/** How many contour bands a fitted scale aims for. */
+const TARGET_BANDS = 16;
 
 export const FIELDS = {
   temperature: {
@@ -43,14 +62,15 @@ export const FIELDS = {
     kind: 'diverging',
     units: '°C',
     decimals: 1,
+    marks: ASHRAE_MARKS,
     scaleFor: () =>
       new Scale({
         kind: 'diverging',
         ...TEMPERATURE_BAND,
-        center: ASHRAE_MID,
-        arms: 'independent',
+        center: (TEMPERATURE_BAND.min + TEMPERATURE_BAND.max) / 2,
       }),
-    caption: 'Azul: abaixo do meio da faixa ASHRAE (22,5 °C). Vermelho: acima.',
+    caption:
+      'Limites ASHRAE na entrada do rack marcados na barra: recomendado 18 a 27 °C, permitido A1 até 32 °C.',
   },
   speed: {
     label: 'Velocidade',
@@ -58,8 +78,15 @@ export const FIELDS = {
     kind: 'sequential',
     units: 'm/s',
     decimals: 2,
-    scaleFor: (results) =>
-      new Scale({ kind: 'sequential', min: 0, max: results.fields.speed.max }),
+    scaleFor: (results) => {
+      const step = niceStep(results.fields.speed.max, TARGET_BANDS);
+      return new Scale({
+        kind: 'sequential',
+        min: 0,
+        max: Math.ceil(results.fields.speed.max / step) * step,
+        step,
+      });
+    },
     caption: 'Ar parado ao lado de um rack é onde o calor acumula.',
   },
   pressure: {
@@ -70,7 +97,10 @@ export const FIELDS = {
     decimals: 1,
     scaleFor: (results) => {
       const { min, max } = results.fields.P;
-      return new Scale({ kind: 'diverging', min, max, center: 0 });
+      const reach = Math.max(Math.abs(max), Math.abs(min), 0.5);
+      const step = niceStep(2 * reach, TARGET_BANDS);
+      const half = Math.ceil(reach / step) * step;
+      return new Scale({ kind: 'diverging', min: -half, max: half, center: 0, step });
     },
     caption:
       'Relativa à tomada do fan wall, sem a coluna hidrostática — o que um manômetro leria.',
@@ -117,8 +147,11 @@ export class FieldMaps {
         <div class="colorbar-label">
           <span id="map-colorbar-name"></span>
         </div>
-        <div class="colorbar-ramp" id="map-colorbar-ramp"></div>
-        <div class="colorbar-ticks" id="map-colorbar-ticks"></div>
+        <div class="scale-bar">
+          <div class="scale-marks" id="map-colorbar-marks"></div>
+          <div class="colorbar-ramp" id="map-colorbar-ramp"></div>
+          <div class="scale-ticks" id="map-colorbar-ticks"></div>
+        </div>
       </div>
       <div class="readout" id="map-probe" hidden></div>`;
 
@@ -263,36 +296,79 @@ export class FieldMaps {
   }
 
   #renderColorbar(spec) {
-    const ramp = this.host.querySelector('#map-colorbar-ramp');
-    const stops = [];
-    for (let i = 0; i <= 16; i += 1) {
-      const k = Math.round((i / 16) * 255) * 3;
-      stops.push(`rgb(${this.lut[k]},${this.lut[k + 1]},${this.lut[k + 2]}) ${(i / 16) * 100}%`);
-    }
-    ramp.style.background = `linear-gradient(90deg, ${stops.join(', ')})`;
-    // The bar and the field are two different ranges and both have to be
-    // legible. A ramp fitted to the data can still reach past it (a symmetric
-    // diverging one does), and a fixed band can stop short of it -- so the
-    // caption always states what the air actually spans, and a tick the field
-    // runs past is marked as the saturating end rather than read as a limit.
     const field = this.results.fields[spec.field];
-    const ticks = this.scale.ticks(5);
-    const low = ticks[0].value;
-    const high = ticks[ticks.length - 1].value;
-    const beyond = field.min < low - 1e-9 || field.max > high + 1e-9;
-    this.host.querySelector('#map-colorbar-name').textContent =
-      `${spec.label} (${spec.units}) — ` +
-      (beyond ? 'escala fixa, ' : '') +
-      `campo de ${fmt(field.min, spec.decimals)} a ${fmt(field.max, spec.decimals)}` +
-      (beyond ? ' (as pontas saturam)' : '');
-    this.host.querySelector('#map-colorbar-ticks').innerHTML = ticks
-      .map(({ value }, i) => {
-        const saturates =
-          (i === 0 && field.min < low - 1e-9) ||
-          (i === ticks.length - 1 && field.max > high + 1e-9);
-        const mark = saturates ? (i === 0 ? '−' : '+') : '';
-        return `<span>${fmt(value, spec.decimals)}${mark}</span>`;
+    renderScaleBar({
+      host: this.host,
+      prefix: 'map-colorbar',
+      scale: this.scale,
+      lut: this.lut,
+      field,
+      spec,
+    });
+  }
+}
+
+/**
+ * Draw a contour legend: the bands as flat blocks, the band edges labelled,
+ * and any threshold the field is judged against marked on the bar.
+ *
+ * Shared by the field maps and the per-rack map so both read the same way.
+ */
+export function renderScaleBar({ host, prefix, scale, lut, field, spec }) {
+  const colour = (t) => {
+    const k = Math.min(255, Math.max(0, Math.round(t * 255))) * 3;
+    return `rgb(${lut[k]},${lut[k + 1]},${lut[k + 2]})`;
+  };
+
+  const bands = scale.bands();
+  const stops = bands.length
+    ? bands.flatMap(({ lo, hi, t0, t1 }) => {
+        const c = colour(scale.position((lo + hi) / 2));
+        return [`${c} ${t0 * 100}%`, `${c} ${t1 * 100}%`];
       })
+    : Array.from({ length: 17 }, (_, i) => `${colour(i / 16)} ${(i / 16) * 100}%`);
+  host.querySelector(`#${prefix}-ramp`).style.background =
+    `linear-gradient(90deg, ${stops.join(', ')})`;
+
+  // The bar and the field are two different ranges and both have to be
+  // legible. A fixed band can stop short of the data and a symmetric ramp can
+  // reach past it, so the caption always states what the field actually
+  // spans, and an end the field runs past is marked as saturating.
+  const low = scale.valueAt(0);
+  const high = scale.valueAt(1);
+  const under = field.min < low - 1e-9;
+  const over = field.max > high + 1e-9;
+  host.querySelector(`#${prefix}-name`).textContent =
+    `${spec.label} (${spec.units})` +
+    (scale.step ? ` · faixas de ${fmt(scale.step, spec.decimals)}` : '') +
+    ` · campo de ${fmt(field.min, spec.decimals)} a ${fmt(field.max, spec.decimals)}` +
+    (under || over ? ' (as pontas saturam)' : '');
+
+  // Label the band edges, thinning them out so nothing collides.
+  const edges = bands.length
+    ? [...bands.map((b) => ({ value: b.lo, t: b.t0 })), {
+        value: bands[bands.length - 1].hi,
+        t: bands[bands.length - 1].t1,
+      }]
+    : scale.ticks(5).map(({ t, value }) => ({ value, t }));
+  const stride = Math.ceil(edges.length / 9);
+  host.querySelector(`#${prefix}-ticks`).innerHTML = edges
+    .map((edge, i) => {
+      const last = i === edges.length - 1;
+      if (i % stride !== 0 && !last) return '';
+      const mark = (i === 0 && under) || (last && over) ? (i === 0 ? '−' : '+') : '';
+      return `<span style="left:${edge.t * 100}%">${fmt(edge.value, spec.decimals)}${mark}</span>`;
+    })
+    .join('');
+
+  const marks = host.querySelector(`#${prefix}-marks`);
+  if (marks) {
+    marks.innerHTML = (spec.marks || [])
+      .filter((m) => m.value > low && m.value < high)
+      .map(
+        (m) =>
+          `<span style="left:${scale.positionOf(m.value) * 100}%">${m.label}</span>`,
+      )
       .join('');
   }
 }
