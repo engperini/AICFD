@@ -1228,3 +1228,43 @@ the README says which changes need a rebuild.
 **Why `reference/` is mounted read-only.** So that "the tool never writes to
 the reference results" (ADR-032) is enforced by the filesystem rather than
 promised by the code.
+
+---
+
+## ADR-035 — Zoom, because fitting is not seeing
+
+**Decision.** Each drawing on the results page carries its own magnification:
+`−` and `+` step it through 1×, 1,5×, 2×, 3×, 4×, 6×, 8×, the drawing overflows
+into a scroller, and the label says `fit` or `4×` so a magnified drawing never
+passes for the fitted one. At `fit` the three still share a scale, so a metre is
+the same length in all of them.
+
+**Why layout could not fix this.** The drawings were made full width and given a
+generous height cap (ADR-033), and the sections were still too small to analyse.
+They always will be: a data hall in section is 51 m long and 7,5 m tall. Fitted
+to any page at any width, that is a strip about 160 px high. The aspect ratio is
+the aspect ratio, and no column, cap or grid changes it.
+
+So the question is not how to fit more in. It is that **fitting and examining
+are different jobs**, and a page that only fits can only ever answer the first.
+Fitted, you see the arrangement — five chimneys, two galleries, one plenum.
+Magnified, you see the thing you came for: the gradient across a single rack,
+the air between two rows, where a plume actually reaches. Every post-processor
+an engineer already uses works this way, and it is why they all scroll.
+
+**Per drawing, not per page.** The reader magnifies the section they are
+studying and leaves the plan fitted beside it. A single page-wide zoom would
+make that impossible, and the shared scale — worth keeping, since it is what
+lets a length be compared between drawings — survives at `fit`, where the
+comparison is actually made.
+
+**The zoom holds the centre.** Magnifying to a corner loses whatever the reader
+was looking at, which makes the control useless for following something across
+scales.
+
+**Two things it broke, and they were both real.** A grid item's default
+`min-width: auto` let a magnified drawing widen its card instead of scrolling
+inside it, so the whole page scrolled sideways. And rack labels were drawn
+whenever the rack cleared 26 px, which at 3× is true of a 0,6 m rack whose own
+id needs 50 — so the ids ran into each other along the row. The threshold is now
+the width of the text itself.

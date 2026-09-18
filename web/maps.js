@@ -52,6 +52,12 @@ const ASHRAE_MARKS = [
   { value: 32, label: '32' },
 ];
 
+/**
+ * Magnification steps offered per drawing. `1` is the fitted sheet, shared by
+ * all three; above it the drawing overflows and scrolls.
+ */
+const ZOOM_STEPS = [1, 1.5, 2, 3, 4, 6, 8];
+
 /** How many contour bands a fitted scale aims for. */
 const TARGET_BANDS = 16;
 
@@ -125,6 +131,8 @@ export class FieldMaps {
     // A hall's plan runs across the page and each view takes a full row.
     this.views = viewsFor(model);
     this.cuts = Object.fromEntries(this.views.map((v) => [v.id, defaultCut(model, v)]));
+    //: Magnification per drawing, 1 being the fitted sheet the three share.
+    this.zoom = Object.fromEntries(this.views.map((v) => [v.id, 1]));
     this.cells = [];
     this.#build();
     window.addEventListener('resize', debounce(() => this.render(), 150));
@@ -173,17 +181,63 @@ export class FieldMaps {
           <div><h3>${view.title}</h3><p class="map-cut" data-role="cut"></p></div>
           <input type="range" data-role="slider" min="${lo + step / 2}" max="${hi - step / 2}"
                  step="${step}" value="${this.cuts[view.id]}" aria-label="cut position" />
+          <div class="map-zoom">
+            <button type="button" data-role="out" aria-label="zoom out">−</button>
+            <span data-role="zoom">fit</span>
+            <button type="button" data-role="in" aria-label="zoom in">+</button>
+          </div>
         </div>
-        <div class="map-stage" data-role="stage"></div>`;
+        <div class="map-scroll" data-role="scroll">
+          <div class="map-stage" data-role="stage"></div>
+        </div>`;
       viewsHost.append(cell);
       const slider = cell.querySelector('[data-role="slider"]');
       slider.addEventListener('input', () => {
         this.cuts[view.id] = Number(slider.value);
         this.renderView(view, cell);
       });
+      for (const [role, factor] of [['in', 1], ['out', -1]]) {
+        cell.querySelector(`[data-role="${role}"]`).addEventListener('click', () => {
+          this.#setZoom(view, cell, factor);
+        });
+      }
       this.cells.push({ view, cell });
     }
     this.render();
+  }
+
+  /**
+   * Zoom one drawing, keeping the middle of what is on screen in the middle.
+   *
+   * A data hall in section is 51 m long and 7,5 m tall. Fitted to the page it
+   * is 160 px high whatever the column is doing, and no amount of layout
+   * changes that -- the aspect ratio is the aspect ratio. To actually look at
+   * a plume or the stratification in a chimney you have to magnify and scroll,
+   * which is what every post-processor does and what fitting alone cannot
+   * replace (ADR-035).
+   *
+   * Zoom is per drawing: the fitted state is shared, so at "fit" the three
+   * still share a scale and a metre is the same length in all of them. The
+   * label says which state it is in, so a magnified drawing never passes for
+   * the fitted one.
+   */
+  #setZoom(view, cell, direction) {
+    const steps = ZOOM_STEPS;
+    const current = this.zoom[view.id] ?? 1;
+    const index = steps.indexOf(current);
+    const next = steps[Math.min(steps.length - 1, Math.max(0, index + direction))];
+    if (next === current) return;
+    const scroll = cell.querySelector('[data-role="scroll"]');
+    // Hold the centre of the visible area: zooming that jumps to a corner
+    // loses the thing the reader was looking at.
+    const anchor = {
+      x: (scroll.scrollLeft + scroll.clientWidth / 2) / Math.max(scroll.scrollWidth, 1),
+      y: (scroll.scrollTop + scroll.clientHeight / 2) / Math.max(scroll.scrollHeight, 1),
+    };
+    this.zoom[view.id] = next;
+    this.renderView(view, cell);
+    scroll.scrollLeft = anchor.x * scroll.scrollWidth - scroll.clientWidth / 2;
+    scroll.scrollTop = anchor.y * scroll.scrollHeight - scroll.clientHeight / 2;
   }
 
   render() {
@@ -207,7 +261,14 @@ export class FieldMaps {
     cell.querySelector('[data-role="cut"]').textContent =
       `cut at ${axisName} = ${fmt(at, 2)} m`;
 
-    const { width, height, X, Y } = viewTransform(this.model, view, this.sheet);
+    const zoom = this.zoom[view.id] ?? 1;
+    const sheet = this.sheet * zoom;
+    const label = cell.querySelector('[data-role="zoom"]');
+    if (label) {
+      label.textContent = zoom === 1 ? 'fit' : `${zoom}×`;
+      label.title = `${Math.round(sheet)} px per metre`;
+    }
+    const { width, height, X, Y } = viewTransform(this.model, view, sheet);
     const canvas = document.createElement('canvas');
     const dpr = window.devicePixelRatio || 1;
     canvas.width = Math.round(width * dpr);
@@ -252,7 +313,7 @@ export class FieldMaps {
       }
     }
 
-    const svg = drawView(this.model, view, this.sheet, { at, transparent: true });
+    const svg = drawView(this.model, view, sheet, { at, transparent: true });
     stage.replaceChildren(canvas, svg);
     stage.style.width = `${width}px`;
     stage.style.height = `${height}px`;

@@ -246,7 +246,11 @@ export function drawView(model, view, scale, options = {}) {
         class: cls,
       }),
     );
-    if (label && x1 - x0 > 26 && y1 - y0 > 13) {
+    // Wide enough for THIS text, not for a nominal 26 px: at 9.5 px bold a
+    // character is about 5.8 px, so "F10B1-12" needs 50. Magnify a hall and a
+    // 0,6 m rack passes 26 px long before its own id fits, and the labels run
+    // into each other across the whole row.
+    if (label && x1 - x0 > Math.max(26, label.length * 5.8 + 4) && y1 - y0 > 13) {
       svg.append(
         el('text', { x: (x0 + x1) / 2, y: (y0 + y1) / 2 + 3.5, class: 'dw-label' }, label),
       );
