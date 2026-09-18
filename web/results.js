@@ -9,6 +9,7 @@ import { RoomScene } from './scene.js';
 import { Scale, buildLut } from './colormaps.js';
 import { ConvergenceChart } from './convergence.js';
 import { FieldMaps } from './maps.js';
+import { RackInlets } from './racks.js';
 
 const ASHRAE_RECOMMENDED = [18, 27];
 
@@ -95,10 +96,17 @@ async function main() {
   // same drawings that were checked before the run. The 3-D scene stays
   // available below for anyone who wants to orbit it.
   let maps = null;
+  let racks = null;
   if (meta.model) {
     maps = new FieldMaps(document.getElementById('maps'), results, meta.model, currentMode);
+    if (meta.kpis.zones.length) {
+      racks = new RackInlets(document.getElementById('racks'), meta, meta.model, currentMode);
+    } else {
+      document.getElementById('racks-card').hidden = true;
+    }
   } else {
     document.getElementById('maps-card').hidden = true;
+    document.getElementById('racks-card').hidden = true;
     document.getElementById('scene-details').open = true;
   }
   const scene = new RoomScene(document.getElementById('viewport'), results);
@@ -109,7 +117,7 @@ async function main() {
   document.getElementById('legend').innerHTML = chart.legendHtml();
   document.getElementById('residual-table').innerHTML = residualTableHtml(chart);
 
-  setupTheme(scene, maps);
+  setupTheme(scene, maps, racks);
   setupControls(scene, results, meta);
   setupReadout(scene);
 
@@ -183,13 +191,14 @@ function setupReadout(scene) {
   };
 }
 
-function setupTheme(scene, maps) {
+function setupTheme(scene, maps, racks) {
   const button = document.getElementById('theme-toggle');
   const apply = () => {
     const mode = currentMode();
     button.textContent = mode === 'dark' ? 'Light' : 'Dark';
     // Dark mode is its own ramp, not a flipped one -- repaint the maps.
     maps?.render();
+    racks?.render();
     const styles = getComputedStyle(document.documentElement);
     scene.applyTheme(mode, {
       axis: styles.getPropertyValue('--axis').trim(),
@@ -241,9 +250,13 @@ function renderColorbar(view, scale, mode) {
 
 function layoutHtml(meta) {
   const kpis = meta.kpis;
+  // Judged at the top of the rack when the export carries it -- the worst
+  // point -- and at the face mean otherwise (older exports).
+  const worst = (z) => z.inlet_top_c ?? z.inlet_temp_c;
   const warmest = kpis.zones.length
-    ? kpis.zones.reduce((a, b) => (a.inlet_temp_c > b.inlet_temp_c ? a : b))
+    ? kpis.zones.reduce((a, b) => (worst(a) > worst(b) ? a : b))
     : null;
+  const over = kpis.zones.filter((z) => z.ashrae.above_recommended).length;
 
   return `
 <main class="layout">
@@ -254,6 +267,13 @@ function layoutHtml(meta) {
       <span class="card-sub">o campo resolvido sob os mesmos desenhos conferidos antes da rodada; arraste o corte</span>
     </div>
     <div id="maps"></div>
+  </section>
+  <section class="card" id="racks-card">
+    <div class="card-head">
+      <span class="card-title">Entrada dos racks</span>
+      <span class="card-sub">cada rack pela temperatura do ar que recebe; o pior rack é o que decide o conceito</span>
+    </div>
+    <div id="racks"></div>
   </section>
   <details class="card" id="scene-details">
   <summary class="card-head" style="cursor:pointer"><span class="card-title">Vista 3D</span>
@@ -318,11 +338,14 @@ function layoutHtml(meta) {
       <div class="hero">
         <div class="hero-label">Warmest rack inlet</div>
         <div class="hero-value">${
-          warmest ? `${warmest.inlet_temp_c.toFixed(1)} °C` : '—'
+          warmest ? `${worst(warmest).toFixed(1)} °C` : '—'
         }</div>
         <div class="hero-note">${
           warmest
-            ? `${warmest.name} · ${warmest.ashrae.verdict}`
+            ? `${warmest.name}${warmest.inlet_top_c != null ? ', topo do rack' : ''} · ${warmest.ashrae.verdict}` +
+              (kpis.zones.length > 1
+                ? ` · ${over} de ${kpis.zones.length} racks acima do recomendado`
+                : '')
             : 'no rack zones in this case'
         }</div>
       </div>
@@ -356,37 +379,6 @@ function layoutHtml(meta) {
         }
       </div>
     </section>
-
-    ${
-      kpis.zones.length
-        ? `<section class="card">
-      <div class="card-head"><span class="card-title">Racks</span>
-        <span class="card-sub">air drawn vs. what the load needs</span></div>
-      <table>
-        <thead><tr><th>Rack</th><th>Load</th><th>Inlet</th><th>Peak</th><th>Air drawn</th></tr></thead>
-        <tbody>${kpis.zones
-          .map(
-            (zone) => `<tr>
-              <td>${zone.name}</td>
-              <td>${(zone.load_w / 1000).toFixed(1)} kW</td>
-              <td>${zone.inlet_temp_c.toFixed(1)} °C</td>
-              <td>${zone.peak_temp_c.toFixed(1)} °C</td>
-              <td${
-                zone.throughflow_ratio != null && zone.throughflow_ratio < 0.6
-                  ? ' class="starved"'
-                  : ''
-              }>${
-                zone.throughflow_ratio == null
-                  ? '—'
-                  : `${(zone.throughflow_ratio * 100).toFixed(0)}%`
-              }</td>
-            </tr>`,
-          )
-          .join('')}</tbody>
-      </table>
-    </section>`
-        : ''
-    }
 
     <section class="card">
       <div class="card-head"><span class="card-title">Physical validation</span></div>

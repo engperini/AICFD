@@ -23,6 +23,9 @@ FOAM_ENV = {
     "WM_PROJECT": "OpenFOAM",
     "WM_PROJECT_VERSION": "v1912",
     "PATH": "/usr/bin:/bin:/usr/local/bin",
+    # A container runs as root, and Open MPI refuses that unless told twice.
+    "OMPI_ALLOW_RUN_AS_ROOT": "1",
+    "OMPI_ALLOW_RUN_AS_ROOT_CONFIRM": "1",
 }
 
 #: The standard pipeline for a blockMesh case, in order.
@@ -62,8 +65,14 @@ def run_command(
     *,
     args: list[str] | None = None,
     check: bool = True,
+    log_name: str | None = None,
 ) -> StepResult:
-    """Run one OpenFOAM utility in ``case_dir``, teeing its output to ``log.<cmd>``."""
+    """Run one OpenFOAM utility in ``case_dir``, teeing its output to ``log.<cmd>``.
+
+    ``log_name`` names the log after the program that matters when ``command``
+    is only a launcher: ``mpirun ... buoyantSimpleFoam`` logs to
+    ``log.buoyantSimpleFoam``, where everything that reads a solver log looks.
+    """
     import time
 
     case = Path(case_dir).resolve()
@@ -73,7 +82,7 @@ def run_command(
             "apt-get install -y openfoam openfoam-examples"
         )
 
-    log_path = case / f"log.{command}"
+    log_path = case / f"log.{log_name or command}"
     started = time.monotonic()
     with log_path.open("w") as log:
         process = subprocess.run(
@@ -125,15 +134,28 @@ def solve(
 ) -> list[StepResult]:
     """Run the full meshing and solving pipeline for a case.
 
-    A pipeline entry is a command name, or a ``(name, [args])`` pair where the
+    A pipeline entry is a command name, a ``(name, [args])`` pair where the
     utility needs them -- ``createBaffles`` has to be told ``-overwrite``, or it
     writes the modified mesh into a new time directory and everything after it
-    reads the mesh it was supposed to replace.
+    reads the mesh it was supposed to replace -- or ``(name, [args], log)`` to
+    name the log after something other than the command.
     """
     results = []
     for entry in pipeline:
-        command, args = entry if isinstance(entry, tuple) else (entry, None)
+        command, args, log_name = _entry(entry)
         if on_step:
-            on_step(command)
-        results.append(run_command(case_dir, command, args=args))
+            on_step(log_name or command)
+        results.append(run_command(case_dir, command, args=args, log_name=log_name))
     return results
+
+
+def _entry(entry) -> tuple[str, list[str] | None, str | None]:
+    if isinstance(entry, tuple):
+        command, args, *rest = entry
+        return command, args, (rest[0] if rest else None)
+    return entry, None, None
+
+
+def commands(pipeline: tuple) -> list[str]:
+    """The programs a pipeline needs on PATH."""
+    return [_entry(entry)[0] for entry in pipeline]

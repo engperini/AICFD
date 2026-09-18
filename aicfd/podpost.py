@@ -25,6 +25,8 @@ is how a perfectly sealed POD first looked like it was leaking 37% of its air.
 from __future__ import annotations
 
 import json
+import re
+import shutil
 import threading
 from dataclasses import dataclass
 from pathlib import Path
@@ -35,6 +37,14 @@ from aicfd.foam.fields import patch_names, read_field, read_patch_field, to_grid
 from aicfd.model import CP_AIR, Model
 from aicfd.podcase import FAN_INTAKE, FAN_SUPPLY, KELVIN
 from aicfd.post import ASHRAE_RECOMMENDED, Check, _ashrae_verdict
+
+#: The patches a fan wall pair is made of: ``fanIntake``/``fanSupply`` for a
+#: POD's one unit, ``fan3Intake``/``fan3Supply`` for a hall's third.
+FAN_PATCH = re.compile(r"^(fan\d*)(Intake|Supply)$")
+
+#: How many racks the text report lists in full before it lists the warmest
+#: few and sums up the rest.
+REPORT_RACKS = 24
 
 #: How far the energy balance may miss before the run is not to be believed.
 #: Loose, because it is catching "the field never filled", not modelling error.
@@ -108,6 +118,34 @@ class PodResults:
         return all(check.passed for check in self.checks)
 
 
+def fan_pairs(step: str | Path) -> list[tuple[str, str]]:
+    """(intake, supply) for every fan wall the solved step has, in unit order.
+
+    Read off the field files rather than the model so that a result can be
+    analysed with nothing but the run directory.
+    """
+    names = patch_names(Path(step) / "phi")
+    intakes = [n for n in names if FAN_PATCH.match(n) and n.endswith("Intake")]
+    intakes.sort(key=_fan_order)
+    return [(n, n[: -len("Intake")] + "Supply") for n in intakes]
+
+
+def _fan_order(name: str) -> int:
+    digits = FAN_PATCH.match(name).group(1)[len("fan"):]
+    return int(digits) if digits else 0
+
+
+def _is_fan_patch(name: str) -> bool:
+    return FAN_PATCH.match(name) is not None
+
+
+def _intakes(step: str | Path, field: str) -> np.ndarray:
+    """One array of the patch values across every fan intake."""
+    step = Path(step)
+    parts = [read_patch_field(step / field, intake) for intake, _ in fan_pairs(step)]
+    return np.concatenate(parts) if parts else np.zeros(0)
+
+
 def written_times(case_dir: str | Path) -> list[str]:
     """Time directories that hold a solved field, oldest first."""
     case = Path(case_dir)
@@ -126,17 +164,19 @@ def analyse(model: Model, case_dir: str | Path, time: str | None = None) -> PodR
     step = case / time
 
     flows = patch_flows(step)
-    supply = -flows[FAN_SUPPLY]  # negative into the domain; state it as positive
-    intake = flows[FAN_INTAKE]
+    fans = fan_flows(step, flows)
+    supply = sum(f["supply_kg_s"] for f in fans)  # stated positive, into the hall
+    intake = sum(f["intake_kg_s"] for f in fans)
 
     kpis = {
         "supply_kg_s": round(supply, 5),
         "intake_kg_s": round(intake, 5),
         "supply_m3h": round(supply / _density(model) * 3600, 0),
-        "backflow_kg_s": round(backflow(step, FAN_INTAKE), 5),
+        "backflow_kg_s": round(sum(f["backflow_kg_s"] for f in fans), 5),
         "supply_temp_c": model.supply_temp_c,
         "return_temp_c": round(return_temperature(step) - KELVIN, 2),
         "load_kw": round(model.total_load_w / 1000, 2),
+        "fans": fans,
     }
     kpis["delta_t_k"] = round(kpis["return_temp_c"] - kpis["supply_temp_c"], 2)
     recovered = recovered_load_w(step, model)
@@ -148,19 +188,18 @@ def analyse(model: Model, case_dir: str | Path, time: str | None = None) -> PodR
     kpis["peak_air_temp_c"] = round(float(grid["T"].max()), 2)
     kpis["racks"] = rack_temperatures(model, grid)
 
-    kpis["rack_drop_pa"] = rack_pressure_drop(model, grid)
+    kpis["rack_drop_pa"], kpis["rows"] = rack_pressure_drop(model, grid)
     kpis["grille_drop_pa"] = grille_pressure_drop(step)
     kpis["grille_drop_asked_pa"] = round(model.grille_pressure_drop_pa, 3)
-    operating = model.fan_operating_point(kpis.get("fan_rise_pa") or 0.0)
+    # The rise that sizes the machine is the one the most loaded unit has to
+    # produce; a hall's units do not all see the same resistance.
+    rises = [f["rise_pa"] for f in fans]
+    kpis["fan_rise_pa"] = round(max(rises), 3) if rises else None
+    kpis["fan_rise_min_pa"] = round(min(rises), 3) if rises else None
+    kpis["fan_rise_mean_pa"] = round(float(np.mean(rises)), 3) if rises else None
+    operating = model.fan_operating_point(kpis["fan_rise_pa"] or 0.0)
     if operating:
         kpis["fan_operating_m3h"], kpis["fan_operating_pa"] = operating
-    kpis["fan_rise_pa"] = round(
-        float(
-            np.mean(read_patch_field(step / "p_rgh", FAN_SUPPLY))
-            - np.mean(read_patch_field(step / "p_rgh", FAN_INTAKE))
-        ),
-        3,
-    )
     available = model.fan_available_pa()
     if available:
         kpis["fan_static_pa"] = available
@@ -196,37 +235,57 @@ def grille_pressure_drop(step: str | Path) -> float | None:
     return round(weighted / total_flow, 3) if total_flow else None
 
 
-def rack_pressure_drop(model: Model, grid: dict) -> float | None:
-    """The drop the solved field actually shows across the rack row, in Pa.
+def fan_flows(step: str | Path, flows: dict[str, float] | None = None) -> list[dict]:
+    """What each fan wall moves and has to push against, from its own patches."""
+    step = Path(step)
+    flows = flows or patch_flows(step)
+    units = []
+    for intake, supply in fan_pairs(step):
+        rise = float(
+            np.mean(read_patch_field(step / "p_rgh", supply))
+            - np.mean(read_patch_field(step / "p_rgh", intake))
+        )
+        units.append(
+            {
+                "name": intake[: -len("Intake")],
+                "supply_kg_s": round(-flows.get(supply, 0.0), 5),
+                "intake_kg_s": round(flows.get(intake, 0.0), 5),
+                "backflow_kg_s": round(backflow(step, intake), 5),
+                "rise_pa": round(rise, 3),
+            }
+        )
+    return units
+
+
+def rack_pressure_drop(model: Model, grid: dict) -> tuple[float | None, list[dict]]:
+    """The drop the solved field shows across each rack row, in Pa.
 
     Sampled one cell either side of the row, outside the porous cells: the
     reconstructed velocity inside a porous zone is not trustworthy, but the
-    pressure in free cells on either side of it is.
+    pressure in free cells on either side of it is. Returns the mean over the
+    rows and the rows themselves.
     """
-    if not model.racks:
-        return None
-    axis = model.racks[0].airflow_axis
-    lo = model.racks[0].box.lo[axis] - model.cell(axis) / 2
-    hi = model.racks[0].box.hi[axis] + model.cell(axis) / 2
-    row = model.rack_span()
+    if not model.rows:
+        return None, []
     coords = (grid["x"], grid["y"], grid["z"])
+    rack_top = model.racks[0].box.hi[2]
 
-    def plane(position: float) -> float:
-        picks = []
-        for a in range(3):
-            if a == axis:
-                picks.append([int(np.argmin(abs(coords[a] - position)))])
-            elif a == 0:
-                picks.append(
-                    np.where((coords[0] >= row[0]) & (coords[0] <= row[1]))[0]
-                )
-            else:
-                picks.append(
-                    np.where(coords[a] <= model.racks[0].box.hi[a])[0]
-                )
+    def plane(position: float, span: tuple[float, float]) -> float:
+        picks = [
+            np.where((coords[0] >= span[0]) & (coords[0] <= span[1]))[0],
+            [int(np.argmin(abs(coords[1] - position)))],
+            np.where(coords[2] <= rack_top)[0],
+        ]
         return float(grid["p_rgh"][np.ix_(picks[2], picks[1], picks[0])].mean())
 
-    return round(plane(lo) - plane(hi), 3)
+    half = model.cell(1) / 2
+    rows = []
+    for row in model.rows:
+        front = plane(row.front_y - row.front_sign * half, row.span)
+        back = plane(row.back_y + row.front_sign * half, row.span)
+        rows.append({"id": row.id, "drop_pa": round(front - back, 3)})
+    mean = float(np.mean([r["drop_pa"] for r in rows]))
+    return round(mean, 3), rows
 
 
 def drift(case_dir: str | Path) -> float | None:
@@ -272,17 +331,17 @@ def backflow(step: str | Path, patch: str) -> float:
 
 
 def return_temperature(step: str | Path) -> float:
-    """Mixed-mean temperature of the air leaving through the fan intake, in K.
+    """Mixed-mean temperature of the air leaving through the fan intakes, in K.
 
     Flow-weighted, not area-averaged: a patch where half the area carries most
     of the flow has an area average that describes no air that ever existed.
     """
     step = Path(step)
-    phi = read_patch_field(step / "phi", FAN_INTAKE)
-    temperature = read_patch_field(step / "T", FAN_INTAKE)
+    phi = _intakes(step, "phi")
+    temperature = _intakes(step, "T")
     if temperature.size == 0:
         raise ValueError(
-            f"{step}/T carries no value on '{FAN_INTAKE}'. A zeroGradient "
+            f"{step}/T carries no value on the fan intake. A zeroGradient "
             "outlet stores nothing, and the temperature of the air crossing "
             "that patch is what the energy balance is built from -- the "
             "generator has to write it as inletOutlet."
@@ -298,8 +357,8 @@ def return_temperature(step: str | Path) -> float:
 def recovered_load_w(step: str | Path, model: Model) -> float:
     """The IT load the air is actually carrying out, in watts."""
     step = Path(step)
-    phi = read_patch_field(step / "phi", FAN_INTAKE)
-    temperature = read_patch_field(step / "T", FAN_INTAKE)
+    phi = _intakes(step, "phi")
+    temperature = _intakes(step, "T")
     if phi.size == 0 or temperature.size <= 1:
         return 0.0  # a uniform patch value cannot resolve a mixed-mean rise
     supply_k = model.supply_temp_c + KELVIN
@@ -330,18 +389,27 @@ def rack_temperatures(model: Model, grid: dict) -> list[dict]:
     row inside it: inside the porous zone the air has already started heating.
     """
     x, y, z = grid["x"], grid["y"], grid["z"]
+    where = {
+        rack.id: (row.id, position + 1)
+        for row in model.rows
+        for position, rack in enumerate(row.racks)
+    }
     rows = []
     for rack in model.racks:
         axis = rack.airflow_axis
-        before = rack.box.lo[axis] - model.cell(axis) / 2
-        after = rack.box.hi[axis] + model.cell(axis) / 2
+        half = model.cell(axis) / 2
+        # Air enters at the low face when it travels +, at the high face when -.
+        entry = rack.box.lo[axis] - half if rack.airflow_sign > 0 else rack.box.hi[axis] + half
+        exit_ = rack.box.hi[axis] + half if rack.airflow_sign > 0 else rack.box.lo[axis] - half
         span = {
             other: (rack.box.lo[other], rack.box.hi[other])
             for other in range(3)
             if other != axis
         }
 
-        def face(position: float) -> float:
+        def face(position: float) -> np.ndarray:
+            """The face's cells as [k, j, i] -- z kept separate so the top
+            of the rack can be read on its own."""
             picks = []
             for a, coords in ((0, x), (1, y), (2, z)):
                 if a == axis:
@@ -349,17 +417,26 @@ def rack_temperatures(model: Model, grid: dict) -> list[dict]:
                 else:
                     lo, hi = span[a]
                     picks.append(np.where((coords >= lo) & (coords <= hi))[0])
-            return float(grid["T"][np.ix_(picks[2], picks[1], picks[0])].mean())
+            return grid["T"][np.ix_(picks[2], picks[1], picks[0])]
 
-        inlet, outlet = face(before), face(after)
+        inlet_face, outlet_face = face(entry), face(exit_)
+        inlet = float(inlet_face.mean())
+        # The top of the rack is where recirculating or leaking hot air
+        # arrives first, so it is the worst point and the one to judge by.
+        top = float(inlet_face[-1].mean())
+        outlet = float(outlet_face.mean())
+        row_id, position = where.get(rack.id, ("", 0))
         rows.append(
             {
                 "id": rack.id,
+                "row": row_id,
+                "position": position,
                 "load_kw": rack.load_kw,
                 "inlet_c": round(inlet, 2),
+                "inlet_top_c": round(top, 2),
                 "outlet_c": round(outlet, 2),
                 "rise_k": round(outlet - inlet, 2),
-                "ashrae": _ashrae_verdict(inlet),
+                "ashrae": _ashrae_verdict(top),
             }
         )
     return rows
@@ -386,7 +463,7 @@ def _checks(model: Model, step: Path, kpis: dict, grid: dict) -> list[Check]:
     leaks = {
         name: flow
         for name, flow in flows.items()
-        if name not in {FAN_INTAKE, FAN_SUPPLY}
+        if not _is_fan_patch(name)
         and not name.startswith("grille")
         and abs(flow) > MASS_TOLERANCE * supply
     }
@@ -402,12 +479,14 @@ def _checks(model: Model, step: Path, kpis: dict, grid: dict) -> list[Check]:
     )
 
     reverse = kpis["backflow_kg_s"]
+    units = len(kpis.get("fans", [])) or 1
     checks.append(
         Check(
             "no_backflow",
             reverse <= BACKFLOW_TOLERANCE * intake,
-            f"{reverse:.5f} kg/s reverses through {FAN_INTAKE}, "
-            f"{reverse / intake * 100:.1f}% of the {intake:.3f} kg/s it moves"
+            f"{reverse:.5f} kg/s reverses through the fan intake"
+            + (f"s ({units} units)" if units > 1 else "")
+            + f", {reverse / intake * 100:.1f}% of the {intake:.3f} kg/s they move"
             if intake
             else "no flow through the fan",
         )
@@ -454,13 +533,20 @@ def _checks(model: Model, step: Path, kpis: dict, grid: dict) -> list[Check]:
     asked = model.rack_pressure_drop_pa
     if delivered is not None and asked > 0:
         ratio = delivered / asked
+        rows = kpis.get("rows") or []
+        spread = (
+            f" (rows {min(r['drop_pa'] for r in rows):.1f} to "
+            f"{max(r['drop_pa'] for r in rows):.1f} Pa)"
+            if len(rows) > 1
+            else ""
+        )
         checks.append(
             Check(
                 "rack_resistance",
                 abs(ratio - 1.0) <= RESISTANCE_TOLERANCE,
-                f"the field drops {delivered:.1f} Pa across the row where the "
-                f"rack curve at {model.airflow_m3h:,.0f} m3/h asks for "
-                f"{asked:.1f} Pa ({ratio * 100:.0f}%)"
+                f"the field drops {delivered:.1f} Pa across the row{'s' if len(rows) > 1 else ''} "
+                f"where the rack curve at {model.airflow_m3h:,.0f} m3/h asks for "
+                f"{asked:.1f} Pa ({ratio * 100:.0f}%){spread}"
                 + (
                     ""
                     if abs(ratio - 1.0) <= RESISTANCE_TOLERANCE
@@ -485,13 +571,20 @@ def _checks(model: Model, step: Path, kpis: dict, grid: dict) -> list[Check]:
     rise = kpis.get("fan_rise_pa")
     available = model.fan_available_pa()
     if rise is not None and available:
+        fans = kpis.get("fans") or []
+        loaded = max(fans, key=lambda f: f["rise_pa"])["name"] if len(fans) > 1 else None
         checks.append(
             Check(
                 "fan_capacity",
                 rise <= available,
-                f"the POD costs {rise:.1f} Pa and the fan wall's datasheet "
-                f"offers {available:.0f} Pa at {model.airflow_m3h:,.0f} m3/h "
-                f"({rise / available * 100:.0f}%)"
+                (
+                    f"the most loaded unit ({loaded}) costs {rise:.1f} Pa, the least "
+                    f"{kpis['fan_rise_min_pa']:.1f} Pa, "
+                    if loaded
+                    else f"the POD costs {rise:.1f} Pa "
+                )
+                + f"and the fan wall's datasheet offers {available:.0f} Pa at "
+                f"{model.unit_airflow_m3h:,.0f} m3/h per unit ({rise / available * 100:.0f}%)"
                 + (
                     f"; uncontrolled at full speed it would run at "
                     f"{kpis['fan_operating_m3h']:,.0f} m3/h and {kpis['fan_operating_pa']:.1f} Pa"
@@ -515,19 +608,23 @@ def _checks(model: Model, step: Path, kpis: dict, grid: dict) -> list[Check]:
     )
 
     hottest = max(grid["T"].max(), 0)
-    inlets = [rack["inlet_c"] for rack in kpis["racks"]]
-    worst = max(inlets) if inlets else model.supply_temp_c
+    racks = kpis["racks"]
+    worst_rack = max(racks, key=lambda r: r["inlet_top_c"]) if racks else None
+    worst = worst_rack["inlet_top_c"] if worst_rack else model.supply_temp_c
     verdict = _ashrae_verdict(worst)
+    over = sum(1 for r in racks if r["ashrae"]["above_recommended"])
     checks.append(
         Check(
             "ashrae_inlet",
             not verdict["above_recommended"],
-            f"warmest rack inlet {worst:.1f} degC -- {verdict['verdict']}",
+            f"warmest rack inlet {worst:.1f} degC at the top of "
+            f"{worst_rack['id'] if worst_rack else 'the racks'} -- {verdict['verdict']}"
+            + (f"; {over} of {len(racks)} racks above recommended" if over else ""),
         )
     )
 
     limit = PLAUSIBLE_SPEED_MARGIN * max(
-        model.face_velocity("fan"), _buoyant_velocity(model)
+        model.fan_face_velocity_ms, _buoyant_velocity(model)
     )
     checks.append(
         Check(
@@ -581,6 +678,7 @@ def sample(model: Model, case_dir: str | Path) -> list[dict]:
     poller as often as it likes.
     """
     case = Path(case_dir)
+    reconstruct_new_times(case)
     history = read_history(case)
     seen = {row["iteration"] for row in history}
 
@@ -596,6 +694,46 @@ def sample(model: Model, case_dir: str | Path) -> list[dict]:
     history.sort(key=lambda row: row["iteration"])
     (case / SENSOR_FILE).write_text(json.dumps(history))
     return history
+
+
+def reconstruct_new_times(case: Path, keep: int = 3) -> list[str]:
+    """Stitch together any time a parallel run has finished writing.
+
+    The processors write their own pieces under ``processor*/``; the sampler
+    needs the whole field, so each complete write is run through
+    reconstructPar as it lands. Older reconstructed times are dropped the way
+    purgeWrite drops the pieces, keeping the last ``keep``.
+    """
+    processors = sorted(case.glob("processor[0-9]*"))
+    if not processors:
+        return []
+    from aicfd.run import FoamCommandFailed, run_command
+
+    done = []
+    for entry in sorted(processors[0].iterdir(), key=lambda e: _sort_key(e.name)):
+        if not entry.is_dir() or not _is_number(entry.name) or float(entry.name) == 0:
+            continue
+        if (case / entry.name / "phi").exists() and _complete(case / entry.name):
+            continue
+        if not all(_complete(p / entry.name) for p in processors):
+            continue  # still being written
+        try:
+            run_command(case, "reconstructPar", args=["-time", entry.name])
+        except FoamCommandFailed:
+            continue
+        done.append(entry.name)
+
+    stitched = [t for t in written_times(case) if float(t) > 0]
+    for old in stitched[:-keep]:
+        shutil.rmtree(case / old, ignore_errors=True)
+    return done
+
+
+def _sort_key(name: str) -> float:
+    try:
+        return float(name)
+    except ValueError:
+        return float("inf")
 
 
 def read_history(case_dir: str | Path) -> list[dict]:
@@ -619,8 +757,9 @@ def measure(model: Model, step: str | Path, iteration: int) -> dict:
     step = Path(step)
     grid = read_grid(model, step)
     flows = patch_flows(step)
-    supply = -flows.get(FAN_SUPPLY, 0.0)
-    intake = flows.get(FAN_INTAKE, 0.0)
+    fans = fan_flows(step, flows)
+    supply = sum(f["supply_kg_s"] for f in fans)
+    intake = sum(f["intake_kg_s"] for f in fans)
     recovered = recovered_load_w(step, model)
 
     # Pressure is reported against the fan intake, so it reads as what a
@@ -629,7 +768,7 @@ def measure(model: Model, step: str | Path, iteration: int) -> dict:
     # says nothing. p_rgh rather than p because it has the hydrostatic column
     # removed -- comparing a point at 1 m with one at 7 m on static pressure
     # alone would just measure the height difference.
-    reference = float(np.mean(read_patch_field(step / "p_rgh", FAN_INTAKE)))
+    reference = float(np.mean(_intakes(step, "p_rgh")))
 
     places = []
     for group in sensors(model):
@@ -661,7 +800,7 @@ def measure(model: Model, step: str | Path, iteration: int) -> dict:
         "places": places,
         "supply_kg_s": round(supply, 5),
         "intake_kg_s": round(intake, 5),
-        "backflow_kg_s": round(backflow(step, FAN_INTAKE), 5),
+        "backflow_kg_s": round(sum(f["backflow_kg_s"] for f in fans), 5),
         "return_temp_c": round(return_temperature(step) - KELVIN, 2),
         "recovered_kw": round(recovered / 1000, 3),
         "closure": round(recovered / model.total_load_w, 4)
@@ -671,14 +810,10 @@ def measure(model: Model, step: str | Path, iteration: int) -> dict:
         "peak_temp_c": round(float(grid["T"].max()), 2),
         # What the fan wall has to produce: the static rise across it. This is
         # the number that sizes the machine, and it is not something the user
-        # gave -- it is what the POD's own resistance turned out to be.
-        "fan_rise_pa": round(
-            float(
-                np.mean(read_patch_field(step / "p_rgh", FAN_SUPPLY))
-                - np.mean(read_patch_field(step / "p_rgh", FAN_INTAKE))
-            ),
-            3,
-        ),
+        # gave -- it is what the POD's own resistance turned out to be. With
+        # several units it is the most loaded one.
+        "fan_rise_pa": round(max(f["rise_pa"] for f in fans), 3) if fans else None,
+        "fans": [{"name": f["name"], "rise_pa": f["rise_pa"]} for f in fans],
     }
 
 
@@ -847,11 +982,17 @@ def _fan_rise_line(kpis: dict) -> str:
     rise = kpis.get("fan_rise_pa")
     if rise is None:
         return "-"
+    units = len(kpis.get("fans", []))
+    span = (
+        f" on the most loaded of {units} units ({kpis['fan_rise_min_pa']:.1f} on the least)"
+        if units > 1
+        else ""
+    )
     if not kpis.get("fan_static_pa"):
-        return f"{rise:.1f} Pa across the fan wall"
+        return f"{rise:.1f} Pa across the fan wall{span}"
     return (
         f"{rise:.1f} Pa of the {kpis['fan_static_pa']:.0f} Pa on the "
-        f"datasheet ({kpis['fan_margin'] * 100:.0f}%)"
+        f"datasheet ({kpis['fan_margin'] * 100:.0f}%){span}"
     )
 
 
@@ -911,12 +1052,28 @@ def report(results: PodResults) -> str:
             + (f"{pressure:>16.1f}" if pressure is not None else f"{'-':>16}")
             + f"{place['speed_ms']:>9.2f}"
         )
-    lines += ["", "  Rack              Load    Inlet   Outlet    Rise   ASHRAE"]
-    for rack in k["racks"]:
+    fans = k.get("fans", [])
+    if len(fans) > 1:
+        lines += ["", "  Fan wall     Supply kg/s   Rise Pa"]
+        for fan in fans:
+            lines.append(f"  {fan['name']:<12}{fan['supply_kg_s']:>13.3f}{fan['rise_pa']:>10.1f}")
+    racks = k["racks"]
+    listed = racks
+    if len(racks) > REPORT_RACKS:
+        listed = sorted(racks, key=lambda r: -r["inlet_top_c"])[:10]
+        tops = [r["inlet_top_c"] for r in racks]
+        over = sum(1 for r in racks if r["ashrae"]["above_recommended"])
+        lines += [
+            "",
+            f"  {len(racks)} racks: inlet at the top {min(tops):.1f} to {max(tops):.1f} degC, "
+            f"{over} above ASHRAE recommended. The ten warmest:",
+        ]
+    lines += ["", "  Rack              Load    Inlet      Top   Outlet    Rise   ASHRAE"]
+    for rack in listed:
         inside = "ok" if rack["ashrae"]["within_recommended"] else "!"
         lines.append(
             f"  {rack['id']:<16}{rack['load_kw']:>5.1f} kW"
-            f"{rack['inlet_c']:>9.1f}{rack['outlet_c']:>9.1f}"
+            f"{rack['inlet_c']:>9.1f}{rack['inlet_top_c']:>9.1f}{rack['outlet_c']:>9.1f}"
             f"{rack['rise_k']:>8.1f} K   {inside}"
         )
     lines += ["", "  Validation"]
@@ -979,7 +1136,7 @@ def export(
 
     # Pressure ships relative to the fan intake, with the hydrostatic column
     # out of it: what a manometer would read against the machine's suction.
-    reference = float(np.mean(read_patch_field(step / "p_rgh", FAN_INTAKE)))
+    reference = float(np.mean(_intakes(step, "p_rgh")))
     layers = {
         "T": grid["T"],
         "Ux": grid["U"][0],
@@ -1061,7 +1218,7 @@ def export(
                 if model.racks
                 else model.divisions[2] // 2,
             },
-            "patches": [FAN_SUPPLY, FAN_INTAKE],
+            "patches": [name for pair in fan_pairs(step) for name in pair],
             "inlet_patch": None,  # the fan wall is internal, not a domain face
         },
         "fields": descriptors,
@@ -1110,12 +1267,18 @@ def _viewer_kpis(model: Model, results: PodResults) -> dict:
         "grille_drop_pa": k.get("grille_drop_pa"),
         "fan_operating_m3h": k.get("fan_operating_m3h"),
         "fan_operating_pa": k.get("fan_operating_pa"),
+        "fan_rise_min_pa": k.get("fan_rise_min_pa"),
+        "fans": k.get("fans", []),
+        "rows": k.get("rows", []),
         "energy_closure": k["energy_closure"],
         "zones": [
             {
                 "name": rack["id"],
+                "row": rack["row"],
+                "position": rack["position"],
                 "load_w": rack["load_kw"] * 1000,
                 "inlet_temp_c": rack["inlet_c"],
+                "inlet_top_c": rack["inlet_top_c"],
                 "peak_temp_c": rack["outlet_c"],
                 # With the row closed every cubic metre the fan moves crosses
                 # the racks, so there is no starvation ratio to report: it is

@@ -157,20 +157,60 @@ class Rack:
 
 
 @dataclass
+class Row:
+    """A row of racks across the hall, all breathing the same way.
+
+    ``front_sign`` is the direction the air travels through the racks along
+    y: +1 when the cold aisle is at lower y and the air moves towards higher
+    y, -1 when the row faces the other way. A POD's two rows face each other
+    across the contained hot aisle, so one is +1 and the other -1.
+    """
+
+    id: str
+    band: tuple[float, float]
+    front_sign: int
+    racks: list[Rack]
+
+    @property
+    def front_y(self) -> float:
+        return self.band[0] if self.front_sign > 0 else self.band[1]
+
+    @property
+    def back_y(self) -> float:
+        return self.band[1] if self.front_sign > 0 else self.band[0]
+
+    @property
+    def span(self) -> tuple[float, float]:
+        return (
+            min(r.box.lo[0] for r in self.racks),
+            max(r.box.hi[0] for r in self.racks),
+        )
+
+
+@dataclass
 class Model:
-    """The complete derived geometry, ready to mesh or to draw."""
+    """The complete derived geometry, ready to mesh or to draw.
+
+    A fan-wall POD is one row, one contained hot aisle against the far wall
+    and one fan wall. A data hall is the same parts repeated across y: rows in
+    pairs facing a contained hot aisle, cold aisles between the pairs, and a
+    fan wall in the dividing wall in front of each cold aisle. So everything
+    that a POD has one of, the model holds a list of, and the POD is the list
+    of length one.
+    """
 
     name: str
     domain: Box
     gallery: Box
     hall: Box
     ceiling_z: float
-    cold_aisle: tuple[float, float]
-    rack_band: tuple[float, float]
-    hot_aisle: tuple[float, float]
+    cold_aisles: list[tuple[float, float]]
+    hot_aisles: list[tuple[float, float]]
+    rows: list[Row]
     racks: list[Rack]
     panels: list[Panel]
     airflow_m3h: float
+    """Total supply, all fan walls together."""
     supply_temp_c: float
     cell_size: tuple[float, float, float]
     """Cell edge along x, y, z. A fan-wall POD wants finer cells in z than in
@@ -183,6 +223,42 @@ class Model:
     grille_free_area: float | None = None
     """Free-area ratio of the return grilles, from their datasheet."""
     warnings: list[str] = field(default_factory=list)
+
+    # --- the POD's singular names, for the one-row case -------------------------
+
+    @property
+    def cold_aisle(self) -> tuple[float, float]:
+        return self.cold_aisles[0]
+
+    @property
+    def hot_aisle(self) -> tuple[float, float]:
+        return self.hot_aisles[0]
+
+    @property
+    def rack_band(self) -> tuple[float, float]:
+        return self.rows[0].band
+
+    # --- fan walls --------------------------------------------------------------
+
+    @property
+    def fans(self) -> list[Panel]:
+        return [p for p in self.panels if p.kind == "fan"]
+
+    @property
+    def fan_count(self) -> int:
+        return max(1, len(self.fans))
+
+    @property
+    def unit_airflow_m3h(self) -> float:
+        """What each fan wall moves. The datasheet speaks per unit."""
+        return self.airflow_m3h / self.fan_count
+
+    @property
+    def fan_face_velocity_ms(self) -> float:
+        fans = self.fans
+        if not fans or fans[0].area <= 0:
+            return float("inf")
+        return self.unit_airflow_m3h / 3600.0 / fans[0].area
 
     # --- derived quantities ---------------------------------------------------
 
@@ -222,14 +298,18 @@ class Model:
         raise KeyError(name)
 
     def face_velocity(self, panel_name: str) -> float:
+        """Flow over area. A fan wall passes its own share, everything else the lot."""
         panel = self.panel(panel_name)
-        return self.airflow_m3s / panel.area if panel.area else float("inf")
+        if not panel.area:
+            return float("inf")
+        flow = self.unit_airflow_m3h / 3600.0 if panel.kind == "fan" else self.airflow_m3s
+        return flow / panel.area
 
     @property
     def chimney_area(self) -> float:
-        """Cross-section of the contained hot aisle, normal to the rise."""
+        """Cross-section of the contained hot aisles together, normal to the rise."""
         row = self.rack_span()
-        return (row[1] - row[0]) * (self.hot_aisle[1] - self.hot_aisle[0])
+        return sum((row[1] - row[0]) * (hi - lo) for lo, hi in self.hot_aisles)
 
     @property
     def rack_pressure_drop_pa(self) -> float:
@@ -272,7 +352,7 @@ class Model:
         curve it is interpolated. Beyond the curve's last point it is zero --
         the fan cannot deliver more than free-delivery flow.
         """
-        flow = self.airflow_m3h if flow_m3h is None else flow_m3h
+        flow = self.unit_airflow_m3h if flow_m3h is None else flow_m3h
         if self.fan_curve:
             points = self.fan_curve
             if flow <= points[0][0]:
@@ -293,9 +373,10 @@ class Model:
         under flow control holds the rated flow instead, which is what the
         solve assumes -- this number says how much margin that control has.
         """
-        if not self.fan_curve or system_rise_pa <= 0 or self.airflow_m3h <= 0:
+        unit = self.unit_airflow_m3h
+        if not self.fan_curve or system_rise_pa <= 0 or unit <= 0:
             return None
-        system = lambda q: system_rise_pa * (q / self.airflow_m3h) ** 2  # noqa: E731
+        system = lambda q: system_rise_pa * (q / unit) ** 2  # noqa: E731
         lo, hi = 0.0, self.fan_curve[-1][0]
         for _ in range(60):
             mid = (lo + hi) / 2
@@ -346,68 +427,245 @@ def sensors(model: Model) -> list[SensorGroup]:
         return []
 
     rack_mid_z = model.racks[0].box.hi[2] / 2
-    columns = tuple(
-        (rack.box.lo[0] + rack.box.hi[0]) / 2 for rack in model.racks[:3]
-    ) or (model.hall.lo[0] + 1.0,)
-    # Fewer than three racks still gets three columns, spread along the row.
-    if len(columns) < 3:
-        lo, hi = model.rack_span()
-        columns = tuple(lo + (hi - lo) * f for f in (0.2, 0.5, 0.8))
-
     mid = lambda band: (band[0] + band[1]) / 2  # noqa: E731
-    fan = model.panel("fan")
-    fan_top = fan.extent[1][1]
+    lo, hi = model.rack_span()
+    columns = tuple(lo + (hi - lo) * f for f in (0.2, 0.5, 0.8))
+
+    def spread(bands: list[tuple[float, float]], z: float) -> tuple:
+        """Three points: across three aisles when there are that many, else
+        along the one aisle. A hall's three probes sit in its first, middle
+        and last aisle so the mean stands for the hall, not for one corner."""
+        if len(bands) >= 3:
+            picked = (bands[0], bands[len(bands) // 2], bands[-1])
+            return tuple((mid((lo, hi)), mid(band), z) for band in picked)
+        return tuple((x, mid(bands[0]), z) for x in columns)
+
+    plenum_z = (model.ceiling_z + model.domain.hi[2]) / 2
+    fans = model.fans
+    behind_x = max(model.hall.lo[0] - 0.3, model.cell(0))
+    if len(fans) >= 3:
+        picked = (fans[0], fans[len(fans) // 2], fans[-1])
+        fan_points = tuple(
+            (behind_x, mid(fan.extent[0]), fan.extent[1][1] * 0.5) for fan in picked
+        )
+    else:
+        fan = fans[0]
+        fan_points = tuple(
+            (behind_x, mid(fan.extent[0]), fan.extent[1][1] * fraction)
+            for fraction in (0.25, 0.5, 0.75)
+        )
 
     return [
         SensorGroup(
             "cold_aisle",
             "Corredor frio",
-            tuple((x, mid(model.cold_aisle), rack_mid_z) for x in columns),
+            spread(model.cold_aisles, rack_mid_z),
             "no meio do corredor, à altura dos racks",
         ),
         SensorGroup(
             "hot_aisle",
             "Corredor quente",
-            tuple((x, mid(model.hot_aisle), rack_mid_z) for x in columns),
+            spread(model.hot_aisles, rack_mid_z),
             "dentro do enclausuramento, à altura dos racks",
         ),
         SensorGroup(
             "plenum",
             "Plenum do forro",
-            tuple(
-                (x, mid(model.hot_aisle), (model.ceiling_z + model.domain.hi[2]) / 2)
-                for x in columns
-            ),
+            spread(model.hot_aisles, plenum_z),
             "acima das grelhas de retorno",
         ),
         SensorGroup(
             "fan_back",
             "Costas do fan wall",
-            tuple(
-                (
-                    max(model.hall.lo[0] - 0.3, model.cell(0)),
-                    mid(fan.extent[0]),
-                    fan_top * fraction,
-                )
-                for fraction in (0.25, 0.5, 0.75)
-            ),
+            fan_points,
             "na galeria, onde o ar de retorno chega ao fan wall",
         ),
     ]
 
 
+@dataclass
+class _Layout:
+    """What a layout hands the model: where everything is, before snapping."""
+
+    domain: Box
+    gallery: Box
+    hall: Box
+    rows: list[Row]
+    cold_aisles: list[tuple[float, float]]
+    hot_aisles: list[tuple[float, float]]
+    fans: list[Panel]
+    grilles: list[Panel]
+    walls: list[Panel]
+
+
 def build_model(spec: dict) -> Model:
-    """Derive the geometry from a spec mapping (already validated upstream)."""
+    """Derive the geometry from a spec mapping (already validated upstream).
+
+    Two layouts share everything after the boxes are placed:
+
+    * a POD -- ``racks.count`` racks in one row, the hot aisle contained
+      against the far wall, one fan wall on the cold aisle;
+    * a data hall -- ``pods`` pairs of rows of ``racks.per_row`` racks facing a
+      contained hot aisle, cold aisles between the pairs and round the edge,
+      and one fan wall in front of every cold aisle.
+    """
     name = spec.get("name", "case")
     cell = parse_cell_size(spec.get("mesh", {}).get("cell_size", 0.10))
+    ceiling = float(spec["hall"]["ceiling"])
+    fan = spec["fanwall"]
 
+    layout = _hall_layout(spec, cell) if "pods" in spec else _pod_layout(spec, cell)
+    racks = [rack for row in layout.rows for rack in row.racks]
+
+    panels: list[Panel] = list(layout.fans)
+    # The wall between gallery and hall is pierced by the fan walls and, above
+    # the false ceiling, by the return opening along the whole width.
+    panels.append(
+        Panel(
+            "plenum_opening",
+            "opening",
+            axis=0,
+            position=layout.hall.lo[0],
+            extent=((0.0, layout.domain.hi[1]), (ceiling, layout.domain.hi[2])),
+        )
+    )
+    panels.append(
+        Panel(
+            "ceiling",
+            "wall",
+            axis=2,
+            position=ceiling,
+            extent=((layout.hall.lo[0], layout.domain.hi[0]), (0.0, layout.domain.hi[1])),
+        )
+    )
+    panels.extend(layout.grilles)
+    panels.extend(layout.walls)
+
+    model = Model(
+        name=name,
+        domain=layout.domain,
+        gallery=layout.gallery,
+        hall=layout.hall,
+        ceiling_z=ceiling,
+        cold_aisles=layout.cold_aisles,
+        hot_aisles=layout.hot_aisles,
+        rows=layout.rows,
+        racks=racks,
+        panels=panels,
+        # The spec's airflow is per unit, as the datasheet gives it.
+        airflow_m3h=float(fan["airflow_m3h"]) * max(1, len(layout.fans)),
+        supply_temp_c=float(fan.get("supply_temp_c", 20.0)),
+        cell_size=cell,
+        fan_static_pa=(
+            float(fan["static_pressure_pa"]) if "static_pressure_pa" in fan else None
+        ),
+        fan_curve=parse_fan_curve(fan.get("curve")),
+        grille_free_area=_grille_free_area(spec),
+    )
+    # Snap to the mesh *before* anyone reads the model. The drawing, the
+    # summary table and the solved case then describe the same geometry -- a
+    # table that quotes the nominal area while the mesh builds another one is
+    # exactly the kind of quiet disagreement this module exists to prevent.
+    model.warnings = check_mesh_alignment(model)
+    return snap_to_mesh(model)
+
+
+def _grille_free_area(spec: dict) -> float | None:
+    free_area = spec["grilles"].get("free_area")
+    return float(free_area) if free_area is not None else None
+
+
+def _grille_k(spec: dict) -> float | None:
+    if "loss_coefficient" in spec["grilles"]:
+        return float(spec["grilles"]["loss_coefficient"])
+    free_area = _grille_free_area(spec)
+    return grille_loss_coefficient(free_area) if free_area is not None else None
+
+
+def _make_row(row_id: str, band: tuple[float, float], sign: int, x0: float,
+              count: int, size: tuple[float, float, float], load_kw: float,
+              rack_ids) -> Row:
+    dx, _dy, dz = size
+    racks = [
+        Rack(
+            id=rack_ids(i),
+            box=Box((x0 + i * dx, band[0], 0.0), (x0 + (i + 1) * dx, band[1], dz)),
+            load_kw=load_kw,
+            airflow_axis=1,
+            airflow_sign=sign,
+        )
+        for i in range(count)
+    ]
+    return Row(row_id, band, sign, racks)
+
+
+def _row_walls(row: Row, span: tuple[float, float], rack_dz: float, suffix: str = "") -> list[Panel]:
+    """A rack is a closed box that breathes front to back, so every face of the
+    row except those two is a wall. Leaving any of them open lets the cold
+    aisle into the porous zone sideways, and that path is almost free: a few
+    cells of blocked axis against 1,2 m of the flow axis. Measured, in order,
+    as each was closed -- share of the fan's duty entering through the rack
+    fronts: 22% with the row open, 57% with the ends closed, and the rest
+    pouring in through the tops. The row delivered a fifth, then half, of its
+    rated pressure drop, and the containment was not doing what the drawing
+    said it was.
+    """
+    walls = [
+        Panel(
+            f"rack_top{suffix}",
+            "wall",
+            axis=2,
+            position=rack_dz,
+            extent=((span[0], span[1]), (row.band[0], row.band[1])),
+        )
+    ]
+    for edge in span:
+        walls.append(
+            Panel(
+                f"rack_end{suffix}_{edge:g}".replace(".", "_"),
+                "wall",
+                axis=0,
+                position=edge,
+                extent=((row.band[0], row.band[1]), (0.0, rack_dz)),
+            )
+        )
+    return walls
+
+
+def _containment(hot: tuple[float, float], span: tuple[float, float], rack_dz: float,
+                 ceiling: float, sides: tuple[float, ...], suffix: str = "") -> list[Panel]:
+    """Hot aisle containment: a chimney from the racks up to the ceiling.
+
+    ``sides`` are the y positions that need a wall above the racks -- a POD's
+    hot aisle has the room wall on one side, a hall's has racks on both.
+    """
+    panels = []
+    for i, y in enumerate(sides):
+        name = "containment_roofwall" if not suffix and len(sides) == 1 else f"containment_wall{suffix}_{'ab'[i]}"
+        panels.append(
+            Panel(name, "wall", axis=1, position=y, extent=((span[0], span[1]), (rack_dz, ceiling)))
+        )
+    for edge in span:
+        panels.append(
+            Panel(
+                f"containment_door{suffix}_{edge:g}".replace(".", "_"),
+                "wall",
+                axis=0,
+                position=edge,
+                extent=((hot[0], hot[1]), (0.0, ceiling)),
+            )
+        )
+    return panels
+
+
+def _pod_layout(spec: dict, cell) -> _Layout:
     gallery_depth = float(spec["gallery"]["depth"])
     hall_length, hall_width, height = (float(v) for v in spec["hall"]["size"])
     ceiling = float(spec["hall"]["ceiling"])
-
     cold = float(spec["aisles"]["cold"])
     hot = float(spec["aisles"]["hot"])
-    rack_dx, rack_dy, rack_dz = (float(v) for v in spec["racks"]["size"])
+    size = tuple(float(v) for v in spec["racks"]["size"])
+    rack_dz = size[2]
     count = int(spec["racks"]["count"])
     load_kw = float(spec["racks"]["load_kw"])
     start_x = gallery_depth + float(spec["racks"]["offset_x"])
@@ -417,163 +675,154 @@ def build_model(spec: dict) -> Model:
     gallery = Box((0.0, 0.0, 0.0), (gallery_depth, hall_width, height))
     hall = Box((gallery_depth, 0.0, 0.0), (total_x, hall_width, height))
 
-    cold_aisle = (0.0, cold)
-    rack_band = (cold, cold + rack_dy)
-    hot_aisle = (cold + rack_dy, hall_width)
-
-    racks = [
-        Rack(
-            id=f"R{i + 1}",
-            box=Box(
-                (start_x + i * rack_dx, rack_band[0], 0.0),
-                (start_x + (i + 1) * rack_dx, rack_band[1], rack_dz),
-            ),
-            load_kw=load_kw,
-            airflow_axis=1,
-            airflow_sign=1,
-        )
-        for i in range(count)
-    ]
-    row = (start_x, start_x + count * rack_dx)
+    band = (cold, cold + size[1])
+    hot_aisle = (cold + size[1], hall_width)
+    row = _make_row("F1", band, +1, start_x, count, size, load_kw, lambda i: f"R{i + 1}")
+    span = (start_x, start_x + count * size[0])
 
     fan = spec["fanwall"]
-    fan_height = float(fan["height"])
-    fan_width = (0.0, float(fan.get("width", cold)))
-
-    panels: list[Panel] = []
-
-    # The wall between gallery and hall, and the two things that pierce it.
-    panels.append(
+    fans = [
         Panel(
             "fan",
             "fan",
             axis=0,
             position=gallery_depth,
-            extent=(fan_width, (0.0, fan_height)),
+            extent=((0.0, float(fan.get("width", cold))), (0.0, float(fan["height"]))),
         )
-    )
-    panels.append(
-        Panel(
-            "plenum_opening",
-            "opening",
-            axis=0,
-            position=gallery_depth,
-            extent=((0.0, hall_width), (ceiling, height)),
-        )
-    )
+    ]
 
-    # The false ceiling, and the grilles that pierce it.
-    panels.append(
-        Panel(
-            "ceiling",
-            "wall",
-            axis=2,
-            position=ceiling,
-            extent=((gallery_depth, total_x), (0.0, hall_width)),
-        )
-    )
     grille = float(spec["grilles"]["size"])
     grille_count = int(spec["grilles"].get("count", count))
-    free_area = spec["grilles"].get("free_area")
-    free_area = float(free_area) if free_area is not None else None
-    if "loss_coefficient" in spec["grilles"]:
-        grille_k: float | None = float(spec["grilles"]["loss_coefficient"])
-    elif free_area is not None:
-        grille_k = grille_loss_coefficient(free_area)
-    else:
-        grille_k = None
-    for i in range(grille_count):
-        panels.append(
+    grilles = [
+        Panel(
+            f"grille{i + 1}",
+            "opening",
+            axis=2,
+            position=ceiling,
+            extent=(
+                (span[0] + i * grille, span[0] + (i + 1) * grille),
+                (hot_aisle[0], hot_aisle[0] + grille),
+            ),
+            resistance=_grille_k(spec),
+        )
+        for i in range(grille_count)
+    ]
+
+    walls = _row_walls(row, span, rack_dz)
+    if spec.get("containment", {}).get("enabled", True):
+        walls += _containment(hot_aisle, span, rack_dz, ceiling, (band[1],))
+
+    return _Layout(domain, gallery, hall, [row], [(0.0, cold)], [hot_aisle], fans, grilles, walls)
+
+
+def _hall_layout(spec: dict, cell) -> _Layout:
+    """``pods`` pairs of rows across y, a fan wall in front of every cold aisle.
+
+    Along x: the gallery, the dividing wall, a perimeter aisle, the rows, a
+    perimeter aisle. Along y: a perimeter aisle (the first cold aisle), then
+    for each POD a row, the contained hot aisle, a row, and a cold aisle to
+    the next POD; the last cold aisle is the far perimeter. Fan walls sit in
+    the dividing wall centred on their cold aisle as far as the corners and
+    their neighbours allow, never overlapping.
+    """
+    gallery_depth = float(spec["gallery"]["depth"])
+    height = float(spec["hall"]["height"])
+    ceiling = float(spec["hall"]["ceiling"])
+    cold = float(spec["aisles"]["cold"])
+    hot = float(spec["aisles"]["hot"])
+    perimeter = float(spec["aisles"].get("perimeter", cold))
+    size = tuple(float(v) for v in spec["racks"]["size"])
+    rack_dx, rack_dy, rack_dz = size
+    per_row = int(spec["racks"]["per_row"])
+    load_kw = float(spec["racks"]["load_kw"])
+    pods = int(spec["pods"])
+
+    row_length = per_row * rack_dx
+    hall_length = perimeter + row_length + perimeter
+    total_x = gallery_depth + hall_length
+    width = 2 * perimeter + pods * (2 * rack_dy + hot) + (pods - 1) * cold
+    domain = Box((0.0, 0.0, 0.0), (total_x, width, height))
+    gallery = Box((0.0, 0.0, 0.0), (gallery_depth, width, height))
+    hall = Box((gallery_depth, 0.0, 0.0), (total_x, width, height))
+    x0 = gallery_depth + perimeter
+    span = (x0, x0 + row_length)
+
+    rows: list[Row] = []
+    hot_aisles: list[tuple[float, float]] = []
+    cold_aisles: list[tuple[float, float]] = [(0.0, perimeter)]
+    walls: list[Panel] = []
+    grilles: list[Panel] = []
+    coverage = float(spec["grilles"].get("coverage", 1.0))
+    strip = (
+        (span[0] + span[1]) / 2 - coverage * row_length / 2,
+        (span[0] + span[1]) / 2 + coverage * row_length / 2,
+    )
+
+    y = perimeter
+    for k in range(pods):
+        a = (y, y + rack_dy)
+        hot_aisle = (a[1], a[1] + hot)
+        b = (hot_aisle[1], hot_aisle[1] + rack_dy)
+        n = 2 * k
+        row_a = _make_row(f"F{n + 1}", a, +1, x0, per_row, size, load_kw,
+                          lambda i, n=n: f"F{n + 1}-{i + 1:02d}")
+        row_b = _make_row(f"F{n + 2}", b, -1, x0, per_row, size, load_kw,
+                          lambda i, n=n: f"F{n + 2}-{i + 1:02d}")
+        rows += [row_a, row_b]
+        hot_aisles.append(hot_aisle)
+        for row in (row_a, row_b):
+            walls += _row_walls(row, span, rack_dz, suffix=f"_{row.id}")
+        walls += _containment(hot_aisle, span, rack_dz, ceiling, (a[1], b[0]), suffix=f"_{k + 1}")
+        grilles.append(
             Panel(
-                f"grille{i + 1}",
+                f"grille{k + 1}",
                 "opening",
                 axis=2,
                 position=ceiling,
-                extent=(
-                    (row[0] + i * grille, row[0] + (i + 1) * grille),
-                    (hot_aisle[0], hot_aisle[0] + grille),
-                ),
-                resistance=grille_k,
+                extent=(strip, hot_aisle),
+                resistance=_grille_k(spec),
             )
         )
+        y = b[1]
+        if k < pods - 1:
+            cold_aisles.append((y, y + cold))
+            y += cold
+    cold_aisles.append((width - perimeter, width))
 
-    # A rack is a closed box that breathes front to back, so every face of the
-    # row except those two is a wall. Leaving any of them open lets the cold
-    # aisle into the porous zone sideways, and that path is almost free: a few
-    # cells of blocked axis against 1,2 m of the flow axis. Measured, in order,
-    # as each was closed -- share of the fan's duty entering through the rack
-    # fronts: 22% with the row open, 57% with the ends closed, and the rest
-    # pouring in through the tops. The row delivered a fifth, then half, of its
-    # rated pressure drop, and the containment was not doing what the drawing
-    # said it was.
-    panels.append(
-        Panel(
-            "rack_top",
-            "wall",
-            axis=2,
-            position=rack_dz,
-            extent=((row[0], row[1]), (rack_band[0], rack_band[1])),
-        )
-    )
-    for edge in row:
-        panels.append(
-            Panel(
-                f"rack_end_{edge:g}".replace(".", "_"),
-                "wall",
-                axis=0,
-                position=edge,
-                extent=((rack_band[0], rack_band[1]), (0.0, rack_dz)),
-            )
-        )
+    fan = spec["fanwall"]
+    fan_width = float(fan["width"])
+    fans = [
+        Panel(f"fan{i + 1}", "fan", axis=0, position=gallery_depth,
+              extent=(extent, (0.0, float(fan["height"]))))
+        for i, extent in enumerate(place_fans(cold_aisles, fan_width, width, cell[1]))
+    ]
+    return _Layout(domain, gallery, hall, rows, cold_aisles, hot_aisles, fans, grilles, walls)
 
-    # Hot aisle containment: a chimney from the racks up to the ceiling.
-    if spec.get("containment", {}).get("enabled", True):
-        panels.append(
-            Panel(
-                "containment_roofwall",
-                "wall",
-                axis=1,
-                position=rack_band[1],
-                extent=((row[0], row[1]), (rack_dz, ceiling)),
-            )
-        )
-        for edge in row:
-            panels.append(
-                Panel(
-                    f"containment_door_{edge:g}".replace(".", "_"),
-                    "wall",
-                    axis=0,
-                    position=edge,
-                    extent=((hot_aisle[0], hot_aisle[1]), (0.0, ceiling)),
-                )
-            )
 
-    model = Model(
-        name=name,
-        domain=domain,
-        gallery=gallery,
-        hall=hall,
-        ceiling_z=ceiling,
-        cold_aisle=cold_aisle,
-        rack_band=rack_band,
-        hot_aisle=hot_aisle,
-        racks=racks,
-        panels=panels,
-        airflow_m3h=float(fan["airflow_m3h"]),
-        supply_temp_c=float(fan.get("supply_temp_c", 20.0)),
-        cell_size=cell,
-        fan_static_pa=(
-            float(fan["static_pressure_pa"]) if "static_pressure_pa" in fan else None
-        ),
-        fan_curve=parse_fan_curve(fan.get("curve")),
-        grille_free_area=free_area,
-    )
-    # Snap to the mesh *before* anyone reads the model. The drawing, the
-    # summary table and the solved case then describe the same geometry -- a
-    # table that quotes the nominal area while the mesh builds another one is
-    # exactly the kind of quiet disagreement this module exists to prevent.
-    model.warnings = check_mesh_alignment(model)
-    return snap_to_mesh(model)
+def place_fans(aisles: list[tuple[float, float]], width: float, wall: float,
+               cell: float) -> list[tuple[float, float]]:
+    """One fan wall per cold aisle, centred on it where the wall allows.
+
+    A 4,5 m unit in front of a 1,8 m aisle overhangs the racks either side, so
+    the units at the two corners cannot be centred -- they sit flush with the
+    corner -- and a neighbour that would then overlap is pushed along by one
+    cell. Every edge lands on the mesh so the snapping later changes nothing.
+    """
+    snap = lambda v: round(v / cell) * cell  # noqa: E731
+    starts = []
+    for lo, hi in aisles:
+        start = snap((lo + hi) / 2 - width / 2)
+        starts.append(min(max(start, 0.0), snap(wall - width)))
+    for i in range(1, len(starts)):  # push right off the previous unit
+        starts[i] = max(starts[i], starts[i - 1] + width + cell)
+    starts[-1] = min(starts[-1], snap(wall - width))  # back inside the far corner
+    for i in range(len(starts) - 2, -1, -1):  # and left off the next one
+        starts[i] = min(starts[i], starts[i + 1] - width - cell)
+    if starts[0] < -1e-9:
+        raise ValueError(
+            f"{len(aisles)} fan walls of {width:g} m do not fit a {wall:g} m wall"
+        )
+    return [(round(s, 6), round(s + width, 6)) for s in starts]
 
 
 def snap_to_mesh(model: Model) -> Model:
@@ -589,10 +838,17 @@ def snap_to_mesh(model: Model) -> Model:
             tuple(snap(v, a) for a, v in enumerate(box.hi)),  # type: ignore[arg-type]
         )
 
-    model.racks = [
-        Rack(r.id, snap_box(r.box), r.load_kw, r.airflow_axis, r.airflow_sign)
-        for r in model.racks
+    def snap_band(band: tuple[float, float]) -> tuple[float, float]:
+        return (snap(band[0], 1), snap(band[1], 1))
+
+    def snap_rack(r: Rack) -> Rack:
+        return Rack(r.id, snap_box(r.box), r.load_kw, r.airflow_axis, r.airflow_sign)
+
+    model.rows = [
+        Row(row.id, snap_band(row.band), row.front_sign, [snap_rack(r) for r in row.racks])
+        for row in model.rows
     ]
+    model.racks = [rack for row in model.rows for rack in row.racks]
     model.panels = [
         Panel(
             p.name,
@@ -607,9 +863,8 @@ def snap_to_mesh(model: Model) -> Model:
         )
         for p in model.panels
     ]
-    model.cold_aisle = (snap(model.cold_aisle[0], 1), snap(model.cold_aisle[1], 1))
-    model.rack_band = (snap(model.rack_band[0], 1), snap(model.rack_band[1], 1))
-    model.hot_aisle = (snap(model.hot_aisle[0], 1), snap(model.hot_aisle[1], 1))
+    model.cold_aisles = [snap_band(band) for band in model.cold_aisles]
+    model.hot_aisles = [snap_band(band) for band in model.hot_aisles]
     model.ceiling_z = snap(model.ceiling_z, 2)
     return model
 
@@ -629,16 +884,20 @@ def check_mesh_alignment(model: Model) -> list[str]:
         steps = value / model.cell(axis)
         return abs(steps - round(steps)) > 1e-9
 
-    checked: list[tuple[str, float, int]] = [
-        ("altura do forro", model.ceiling_z, 2),
-        ("corredor frio", model.cold_aisle[1], 1),
-        ("profundidade do rack", model.rack_band[1], 1),
-    ]
+    checked: list[tuple[str, float, int]] = [("altura do forro", model.ceiling_z, 2)]
+    for band in model.cold_aisles:
+        checked.append(("corredor frio", band[1], 1))
+    for band in model.hot_aisles:
+        checked.append(("corredor quente", band[1], 1))
+    for row in model.rows:
+        checked.append((f"profundidade do rack (fileira {row.id})", row.band[1], 1))
     for axis, label in enumerate(("comprimento", "largura", "altura")):
         checked.append((f"{label} do domínio", model.domain.size[axis], axis))
+    # Racks share a size, so one warning stands for all of them; a hall has
+    # hundreds and a list that long says nothing a list of one does not.
     for rack in model.racks:
-        for axis, label in enumerate(("x", "y", "z")):
-            checked.append((f"rack {rack.id} em {label}", rack.box.hi[axis], axis))
+        for axis, label in enumerate(("largura", "profundidade", "altura")):
+            checked.append((f"{label} dos racks", rack.box.hi[axis], axis))
     for panel in model.panels:
         checked.append((f"posição d{article(panel)}", panel.position, panel.axis))
         for axis, (a0, a1) in zip(panel.in_plane_axes, panel.extent):
@@ -672,10 +931,16 @@ def article(panel: Panel) -> str:
     """The panel's name in Portuguese, with its article, for a warning."""
     if panel.name in PANEL_PT:
         return PANEL_PT[panel.name]
-    if panel.name.startswith("grille"):
-        return f"a grelha {panel.name.removeprefix('grille')}"
-    if panel.name.startswith("containment_door"):
-        return "a porta do enclausuramento"
+    for prefix, name in (
+        ("grille", "a grelha"),
+        ("containment_door", "a porta do enclausuramento"),
+        ("containment_wall", "a parede do enclausuramento"),
+        ("rack_top", "o topo dos racks"),
+        ("rack_end", "a lateral da fileira"),
+        ("fan", "o fan wall"),
+    ):
+        if panel.name.startswith(prefix):
+            return name
     return f"o painel {panel.name}"
 
 
@@ -723,7 +988,8 @@ def summary_rows(model: Model) -> list[tuple[str, str, str]]:
     recomputed from the geometry.
     """
     row = model.rack_span()
-    fan = model.panel("fan")
+    fans = model.fans
+    fan = fans[0]
     grilles = [p for p in model.panels if p.name.startswith("grille")]
     grille_area = sum(p.area for p in grilles)
     plenum = model.panel("plenum_opening")
@@ -752,20 +1018,36 @@ def summary_rows(model: Model) -> list[tuple[str, str, str]]:
         ),
         (
             "Carga de TI",
-            f"{len(model.racks)} x {model.racks[0].load_kw:g} kW"
+            (
+                f"{len(model.racks)} x {model.racks[0].load_kw:g} kW"
+                + (f" em {len(model.rows)} fileiras" if len(model.rows) > 1 else "")
+            )
             if model.racks
             else "-",
             f"{num(model.total_load_w / 1000, 1)} kW no total",
         ),
         (
             "Vazão",
-            f"{num(model.airflow_m3h, 0)} m³/h a {num(model.supply_temp_c, 1)} °C",
+            (
+                f"{len(fans)} x {num(model.unit_airflow_m3h, 0)} = "
+                if len(fans) > 1
+                else ""
+            )
+            + f"{num(model.airflow_m3h, 0)} m³/h a {num(model.supply_temp_c, 1)} °C",
             f"ΔT de projeto {num(model.design_delta_t_k, 1)} K",
         ),
-        ("Face do fan wall", face(fan), through(fan.area)),
+        (
+            f"Face do fan wall" + (f" ({len(fans)} unidades)" if len(fans) > 1 else ""),
+            face(fan),
+            f"{num(fan.area)} m² · {num(model.fan_face_velocity_ms)} m/s por unidade",
+        ),
         (
             f"Grelhas do forro ({len(grilles)})",
-            f"{num(grilles[0].extent[0][1] - grilles[0].extent[0][0])} m quadradas"
+            (
+                f"{num(grilles[0].extent[0][1] - grilles[0].extent[0][0])} m quadradas"
+                if len(model.rows) == 1
+                else f"faixas de {face(grilles[0])} sobre cada corredor quente"
+            )
             + (
                 f", {num(model.grille_free_area * 100, 0)}% de área livre"
                 if model.grille_free_area
@@ -781,7 +1063,8 @@ def summary_rows(model: Model) -> list[tuple[str, str, str]]:
             ),
         ),
         (
-            "Chaminé do corredor quente",
+            "Chaminé do corredor quente"
+            + (f" ({len(model.hot_aisles)})" if len(model.hot_aisles) > 1 else ""),
             f"{num(row[1] - row[0])} x "
             f"{num(model.hot_aisle[1] - model.hot_aisle[0])} x {num(model.ceiling_z)} m",
             through(model.chimney_area),
@@ -796,7 +1079,7 @@ def summary_rows(model: Model) -> list[tuple[str, str, str]]:
             "Pressão do fan wall",
             (
                 f"{num(model.fan_available_pa() or 0, 0)} Pa disponíveis a "
-                f"{num(model.airflow_m3h, 0)} m³/h"
+                f"{num(model.unit_airflow_m3h, 0)} m³/h por unidade"
                 + (" (curva)" if model.fan_curve else " (datasheet)")
             )
             if model.fan_available_pa()
@@ -846,6 +1129,18 @@ def to_dict(model: Model, spec: dict) -> dict:
             "racks": list(model.rack_band),
             "hot": list(model.hot_aisle),
         },
+        "cold_aisles": [list(band) for band in model.cold_aisles],
+        "hot_aisles": [list(band) for band in model.hot_aisles],
+        "rows": [
+            {
+                "id": row.id,
+                "band": list(row.band),
+                "front_sign": row.front_sign,
+                "racks": [r.id for r in row.racks],
+            }
+            for row in model.rows
+        ],
+        "fans": [p.name for p in model.fans],
         "racks": [
             {
                 "id": r.id,
@@ -853,6 +1148,7 @@ def to_dict(model: Model, spec: dict) -> dict:
                 "hi": list(r.box.hi),
                 "load_kw": r.load_kw,
                 "airflow_axis": r.airflow_axis,
+                "airflow_sign": r.airflow_sign,
             }
             for r in model.racks
         ],
@@ -870,6 +1166,9 @@ def to_dict(model: Model, spec: dict) -> dict:
         ],
         "operating": {
             "airflow_m3h": model.airflow_m3h,
+            "unit_airflow_m3h": model.unit_airflow_m3h,
+            "fan_count": model.fan_count,
+            "fan_face_velocity_ms": round(model.fan_face_velocity_ms, 3),
             "supply_temp_c": model.supply_temp_c,
             "load_kw": model.total_load_w / 1000.0,
             "design_delta_t_k": round(model.design_delta_t_k, 2),

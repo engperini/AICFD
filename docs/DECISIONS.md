@@ -626,3 +626,56 @@ the answer holds to 0,2 K and 3% across that range.
 snapping, alignment warnings, the face-selection box thickness, the seeded
 field, the readers — now asks for the cell along its own axis. The page's
 cell-size field accepts "0,2" or "0,2, 0,2, 0,1".
+
+---
+
+## ADR-022 — A data hall is a POD's parts in lists
+
+**Decision.** The geometry model holds lists where a POD had one thing: rows,
+cold aisles, hot aisles, fan walls. A spec with `pods:` lays out that many
+row–HAC–row pairs across y, a cold aisle between pairs and a perimeter aisle
+round the edge, and one fan wall in the dividing wall in front of every cold
+aisle. The POD spec builds the same model with lists of length one, and
+nothing downstream distinguishes the two.
+
+**Why.** The user's conceptual work is a whole hall of 10 MW, judged by the
+inlet of its worst rack. Everything the POD taught — the closed loop, the
+sealed rack boxes, the grille jump, the fan pair set by mass flow, the
+energy and return-path checks — carries over unchanged, and the only new
+physics is that there are more of each. Writing a second generator would
+have duplicated ~2 000 lines and, worse, let the two drift.
+
+**Consequences.**
+
+- *Fan walls.* The spec's `airflow_m3h` is per unit, as datasheets speak;
+  each unit is its own baffle pair `fan{k}Intake`/`fan{k}Supply` moving its
+  own mass flow, and the datasheet pressure is compared against the most
+  loaded unit. Units are centred on their aisle as far as the corners allow
+  and never overlap; the placement is a small greedy sweep, refused when
+  they cannot fit.
+- *Rows.* Each row knows which way its racks breathe (`front_sign`), so the
+  two rows of a POD face each other across the contained aisle and the rack
+  readers take the inlet on the correct side. Every rack is still its own
+  porous zone and heat source, so loads can differ per rack later.
+- *Zones.* Walls of a kind share one face zone (`rack_top`, `rack_end`,
+  `containment_wall`, `containment_door`): 195 panels become 6 wall patches
+  plus one pair per fan and per grille strip. The leak check still names the
+  kind of surface that leaks.
+- *Grilles.* A hall's return grilles are one strip per hot aisle covering its
+  ceiling (`grilles.coverage` shortens it), one cyclic pair each.
+- *Parallel.* `solver.processors` above one adds `decomposePar` (slabs across
+  the longest axis; the packaged scotch is a stub) and runs the solver under
+  `mpirun`, logging as `log.buoyantSimpleFoam` so nothing that reads a solver
+  log changes. The sampler reconstructs each processor write as it lands,
+  so a parallel run is watched the same way as a serial one. Measured on
+  the POD: 3,6× on 4 cores.
+- *Per-rack inlet.* The rack readers report the face mean and the top layer
+  of the inlet face, and the ASHRAE verdict is taken at the top — where
+  recirculating or leaking hot air arrives first. The results page paints
+  every rack by that number over the plan and lists the warmest.
+- *Drawings.* A hall is many times wider than deep, so its plan turns to run
+  across the page and each view takes a full row. Aisle tints, captions and
+  levels are placed in room coordinates and mapped through the view.
+
+What did not change: the checks. A hall passes or fails on the same eleven
+identities as a POD, now summed over units and rows.

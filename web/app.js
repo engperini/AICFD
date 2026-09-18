@@ -6,7 +6,7 @@
  * twenty-minute solve has already cost the twenty minutes.
  */
 
-import { VIEWS, drawView, sheetScale } from './drawing.js';
+import { viewsFor, drawView, sheetScale } from './drawing.js';
 
 const PARAMS = [
   { key: 'rack_count', label: 'Racks', unit: 'un', step: 1 },
@@ -158,17 +158,19 @@ function drawViews() {
   const host = document.getElementById('views');
   if (!host) return;
   host.replaceChildren();
+  const views = viewsFor(model);
+  host.classList.toggle('long', Boolean(views[0].long));
   // Lay the cells out first, then pick one scale they can all live with: the
   // three views are meant to be read against each other.
-  const cells = VIEWS.map((view) => {
+  const cells = views.map((view) => {
     const cell = document.createElement('div');
     cell.className = 'view';
     cell.innerHTML = `<h3>${view.title}</h3><p>${view.subtitle}</p>`;
     host.append(cell);
     return cell;
   });
-  const scale = sheetScale(model, VIEWS, cells.map((c) => c.clientWidth - 24));
-  VIEWS.forEach((view, i) => cells[i].append(drawView(model, view, scale)));
+  const scale = sheetScale(model, views, cells.map((c) => c.clientWidth - 24));
+  views.forEach((view, i) => cells[i].append(drawView(model, view, scale)));
 }
 
 function renderParams() {

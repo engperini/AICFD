@@ -1,0 +1,69 @@
+# Data hall conceitual de 10 MW: PODs de fileira + HAC + fileira, repetidos,
+# com um fan wall na frente de cada corredor frio. Malha grossa de projeto
+# conceitual: um rack e uma celula em planta, nove celulas em altura.
+#
+# Circuito do ar, o mesmo da POD, N vezes:
+#   fan walls -> corredores frios -> racks -> corredores quentes enclausurados ->
+#   grelhas do forro -> plenum -> abertura acima da parede -> galeria -> fan walls
+name: hall-10mw
+
+gallery:
+  depth: 3.0                  # galeria mecanica dos fan walls, sem forro
+
+hall:
+  height: 8.0                 # piso -> laje
+  ceiling: 6.5                # forro; acima dele o plenum de retorno
+  # comprimento e largura saem do arranjo: perimetro + fileira + perimetro em
+  # x; perimetro + N x (fileira + HAC + fileira) + corredores frios em y.
+
+pods: 16                      # cada POD = fileira + corredor quente + fileira
+                              # 16 x 48 racks x 13 kW = 9,98 MW
+
+aisles:
+  cold: 1.8                   # entre PODs; um fan wall na frente de cada um
+  hot: 1.2                    # enclausurado (HAC), chamine ate o forro
+  perimeter: 1.8              # ao redor de todas as fileiras (>= 1,8)
+
+racks:
+  per_row: 24
+  load_kw: 13.0
+  size: [0.6, 1.2, 2.2]       # frente x profundidade x altura; a altura cai
+                              # em 2,25 m na malha de 0,25 m (aviso do modelo)
+
+fanwall:
+  width: 4.5                  # largura da unidade
+  height: 4.0
+  airflow_m3h: 160000         # POR UNIDADE. 17 unidades x 160.000 = 2,72 M m3/h:
+                              # o que 768 racks de 13 kW pedem a 11 K. Confira
+                              # com a vazao nominal do datasheet da unidade.
+  supply_temp_c: 20.0
+  static_pressure_pa: 100     # datasheet, na vazao nominal
+  curve:                      # representativa -- substitua pela do datasheet
+    - [0, 250]
+    - [80000, 200]
+    - [160000, 100]
+    - [208000, 40]
+    - [240000, 0]
+
+grilles:
+  size: 0.60
+  coverage: 1.0               # o forro sobre cada corredor quente e todo grelha
+  free_area: 0.80
+  loss_coefficient: 2.4       # Koolair serie 20.2, ver cases/pod-fanwall.yaml
+
+containment:
+  enabled: true
+
+mesh:
+  # x 0,60: um rack por celula ao longo da fileira; y 0,30: rack de 1,2 m,
+  # corredores de 1,2 e 1,8 m e fan wall de 4,5 m caem em faces de celula;
+  # z 0,25: forro (6,5), fan wall (4,0) e laje (8,0) alinhados, 9 celulas
+  # por rack para separar topo de base. 35 x 294 x 32 = 329.280 celulas.
+  cell_size: [0.60, 0.30, 0.25]
+
+solver:
+  max_iterations: 3000
+  residual_tolerance: 1.0e-4
+  sensor_interval: 100
+  warm_start: true
+  processors: 4               # decomposePar + mpirun; 1 roda em serie

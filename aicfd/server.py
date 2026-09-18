@@ -46,6 +46,8 @@ EDITABLE = {
     "max_iterations": ("solver", "max_iterations", int, (10, 20_000)),
     "sensor_interval": ("solver", "sensor_interval", int, (10, 5_000)),
     "warm_start": ("solver", "warm_start", bool, None),
+    "processors": ("solver", "processors", int, (1, 64)),
+    "racks_per_row": ("racks", "per_row", int, (1, 60)),
     "containment": ("containment", "enabled", bool, None),
 }
 
@@ -180,7 +182,16 @@ def apply_changes(spec: dict, changes: dict) -> tuple[dict, list[str]]:
     return spec, rejected
 
 
-def solver_available() -> str | None:
+def _processors(name: str | None) -> int:
+    if not name:
+        return 1
+    try:
+        return int(load_spec(name).get("solver", {}).get("processors", 1))
+    except Exception:
+        return 1
+
+
+def solver_available(name: str | None = None) -> str | None:
     """Why this model cannot be solved here, or None if it can.
 
     The page asks before offering the button. A Run that dies on a missing
@@ -191,9 +202,9 @@ def solver_available() -> str | None:
 
     from aicfd import podcase
 
-    needed = [
-        entry[0] if isinstance(entry, tuple) else entry for entry in podcase.PIPELINE
-    ]
+    from aicfd.run import commands
+
+    needed = commands(podcase.pipeline(_processors(name)))
     found = check_install()
     missing = [name for name in needed if not found.get(name, _which(name))]
     if missing:
@@ -216,7 +227,7 @@ def build_payload(name: str) -> dict:
     payload["editable"] = sorted(EDITABLE)
     payload["run"] = STATE.snapshot()
     payload["has_results"] = (RESULTS_DIR / name / "viewer.json").exists()
-    payload["blocked"] = solver_available()
+    payload["blocked"] = solver_available(name)
     return payload
 
 
@@ -232,6 +243,7 @@ def start_run(name: str) -> None:
             solver = spec.get("solver", {})
             STATE.set(stage="meshing", step="build", message="", case=name)
             target = RUNS_DIR / name
+            processors = int(solver.get("processors", 1))
             podcase.build(
                 model,
                 target,
@@ -239,6 +251,7 @@ def start_run(name: str) -> None:
                 residual_tolerance=float(solver.get("residual_tolerance", 1e-4)),
                 sensor_interval=int(solver.get("sensor_interval", 100)),
                 warm_start_field=bool(solver.get("warm_start", True)),
+                processors=processors,
             )
 
             def step(command: str) -> None:
@@ -246,7 +259,7 @@ def start_run(name: str) -> None:
                 # createBaffles has run, and it is not worth a solve to find
                 # out afterwards.
                 if command == "checkMesh":
-                    problems = podcase.check_fan_orientation(target)
+                    problems = podcase.check_fan_orientation(target, model)
                     if problems:
                         raise RuntimeError(problems[0])
                 STATE.set(
@@ -260,7 +273,7 @@ def start_run(name: str) -> None:
             sampler = podpost.Sampler(model, target)
             sampler.start()
             try:
-                solve(target, podcase.PIPELINE, on_step=step)
+                solve(target, podcase.pipeline(processors), on_step=step)
             finally:
                 sampler.stop()
             STATE.set(stage="done", step="", message="solved")

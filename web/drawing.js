@@ -48,17 +48,52 @@ export const VIEWS = [
   },
 ];
 
+/**
+ * The views for a given model. A hall is many times longer across (y) than
+ * along the rows (x), so its plan is turned to run across the page and every
+ * view takes a full row; the POD keeps the three-up sheet.
+ */
+export function viewsFor(model) {
+  const d = model.domain;
+  const long = isLong(model);
+  return VIEWS.map((view) => {
+    if (view.id !== 'plan' || !long) return { ...view, long };
+    return {
+      ...view,
+      h: 1,
+      v: 0,
+      hLabel: 'y (m) — largura do data hall',
+      height: Math.max(320, (d.hi[0] - d.lo[0]) * 22),
+      long,
+    };
+  });
+}
+
+export function isLong(model) {
+  const d = model.domain;
+  return d.hi[1] - d.lo[1] > 1.5 * (d.hi[0] - d.lo[0]);
+}
+
 /** Panels worth naming, seen face-on -- there is room for a full caption. */
 const PANEL_LABEL = {
-  fan: 'fan wall',
   plenum_opening: 'abertura p/ galeria',
 };
 
 /** The same panels seen edge-on, where the caption has to fit on a line. */
 const EDGE_LABEL = {
-  fan: 'fan wall',
   plenum_opening: 'retorno',
 };
+
+/** A fan wall is named once: seventeen captions reading "fan wall" say less
+ * than one, and the rest are the same blue rectangle in the same wall. */
+const fanLabel = (panel, seen) => {
+  if (panel.kind !== 'fan' || seen.fan) return null;
+  seen.fan = true;
+  return 'fan wall';
+};
+
+const coldAisles = (model) => model.cold_aisles || [model.aisles.cold];
+const hotAisles = (model) => model.hot_aisles || [model.aisles.hot];
 
 /** Colour class for a panel, by what it is. */
 const klass = (panel) =>
@@ -78,7 +113,9 @@ function sectionAt(model, view) {
     return (lo + hi) / 2; // through the middle of the row
   }
   if (view.normal === 1) {
-    return (model.aisles.hot[0] + model.aisles.hot[1]) / 2; // the hot aisle
+    const hot = hotAisles(model);
+    const aisle = hot[Math.floor(hot.length / 2)]; // a hot aisle, the middle one
+    return (aisle[0] + aisle[1]) / 2;
   }
   return model.racks.length ? model.racks[0].hi[2] / 2 : 1.0; // rack mid-height
 }
@@ -214,10 +251,11 @@ export function drawView(model, view, scale, options = {}) {
 
   // 2 — aisle tints, only where the y axis is on screen, and only in the hall
   if (view.h === 1 || view.v === 1) {
-    for (const [band, cls] of [
-      [model.aisles.cold, 'dw-cold'],
-      [model.aisles.hot, 'dw-hot'],
-    ]) {
+    const bands = [
+      ...coldAisles(model).map((band) => [band, 'dw-cold']),
+      ...hotAisles(model).map((band) => [band, 'dw-hot']),
+    ];
+    for (const [band, cls] of bands) {
       const lo = [model.hall.lo[0], band[0], model.domain.lo[2]];
       const hi = [
         model.hall.hi[0],
@@ -243,13 +281,14 @@ export function drawView(model, view, scale, options = {}) {
   // dashed outline. Filling a panel the section misses reads as though the
   // section went through it, which is the one thing these drawings exist to
   // make unambiguous.
+  const seen = {};
   for (const panel of model.panels) {
     if (panel.name === 'ceiling') continue; // drawn as the heavy line below
     if (panel.axis !== view.normal) continue;
     const { lo, hi } = panelBounds(panel);
     const cut = Math.abs(panel.position - at) < 1e-6;
     paint(lo, hi, cut ? klass(panel) : `${klass(panel)} dw-beyond`,
-      cut ? null : PANEL_LABEL[panel.name]);
+      cut ? null : PANEL_LABEL[panel.name] ?? fanLabel(panel, seen));
   }
 
   // 5 — racks
@@ -278,6 +317,7 @@ export function drawView(model, view, scale, options = {}) {
   // sits in -- which is exactly where the fan wall and the plenum opening
   // live. Drawn last, as heavy strokes, so an opening reads as a gap punched
   // through the wall line underneath it.
+  const seenEdge = {};
   for (const panel of model.panels) {
     if (panel.name === 'ceiling' || panel.axis === view.normal) continue;
     const { lo, hi } = panelBounds(panel);
@@ -292,7 +332,7 @@ export function drawView(model, view, scale, options = {}) {
     // Only name what this section actually cuts, and only when the caption
     // fits along the line: a label spilling past its own opening is worse
     // than no label at all.
-    const label = cut ? EDGE_LABEL[panel.name] : null;
+    const label = cut ? EDGE_LABEL[panel.name] ?? fanLabel(panel, seenEdge) : null;
     const long = Math.abs(a[2] - a[0]) + Math.abs(a[3] - a[1]);
     if (label && long > label.length * 6) {
       const tx = (a[0] + a[2]) / 2;
@@ -335,30 +375,34 @@ export function drawView(model, view, scale, options = {}) {
 }
 
 function annotate(svg, model, view, X, Y, bounds) {
-  // Anchored at the centre, so keep half the string inside the drawing.
-  const put = (hx, vy, label, cls = 'dw-note') => {
+  // Notes are placed in room coordinates and mapped through the view, so a
+  // plan turned on its side keeps its captions where they belong. Anchored
+  // at the centre, so keep half the string inside the drawing.
+  const put = (point, label, cls = 'dw-note') => {
     const half = label.length * 2.9;
     const x = Math.min(
-      Math.max(X(hx), bounds.left + half),
+      Math.max(X(point[view.h]), bounds.left + half),
       bounds.right - half,
     );
-    svg.append(el('text', { x, y: Y(vy), class: cls }, label));
+    svg.append(el('text', { x, y: Y(point[view.v]), class: cls }, label));
   };
   const mid = (a) => (a[0] + a[1]) / 2;
+  const cold = coldAisles(model)[0];
+  const hot = hotAisles(model)[0];
+  const hallMidX = mid([model.hall.lo[0], model.hall.hi[0]]);
+  const galleryMidX = model.gallery.hi[0] / 2;
 
   if (view.id === 'section-a') {
-    put(mid(model.aisles.cold), 0.45, 'corredor frio', 'dw-note dw-cold-t');
-    put(mid(model.aisles.hot), model.ceiling_z - 1.1, 'chaminé', 'dw-note dw-hot-t');
+    put([hallMidX, mid(cold), 0.45], 'corredor frio', 'dw-note dw-cold-t');
+    put([hallMidX, mid(hot), model.ceiling_z - 1.1], 'chaminé', 'dw-note dw-hot-t');
   }
   if (view.id === 'section-b') {
-    put(model.gallery.hi[0] / 2, model.domain.hi[2] - 0.55, 'galeria mecânica');
-    put(mid([model.hall.lo[0], model.hall.hi[0]]), model.ceiling_z + 0.6,
-      'plenum de retorno', 'dw-note dw-hot-t');
+    put([galleryMidX, 0, model.domain.hi[2] - 0.55], 'galeria mecânica');
+    put([hallMidX, 0, model.ceiling_z + 0.6], 'plenum de retorno', 'dw-note dw-hot-t');
   }
   if (view.id === 'plan') {
-    put(model.gallery.hi[0] / 2, model.domain.hi[1] - 0.35, 'galeria');
-    put(mid([model.hall.lo[0], model.hall.hi[0]]), mid(model.aisles.cold),
-      'corredor frio', 'dw-note dw-cold-t');
+    put([galleryMidX, model.domain.hi[1] - 0.35, 0], 'galeria');
+    put([hallMidX, mid(cold), 0], 'corredor frio', 'dw-note dw-cold-t');
   }
 }
 
@@ -380,6 +424,7 @@ function dimensions(svg, model, view, X, Y, width, height, hSpan) {
 
   // Levels, in the left margin, each with a leader out to the geometry so the
   // label cannot be mistaken for the one above or below it.
+  const [spanLo, spanHi] = rackSpan(model);
   const levels =
     view.v === 2
       ? [
@@ -387,10 +432,15 @@ function dimensions(svg, model, view, X, Y, width, height, hSpan) {
           [model.ceiling_z, 'forro'],
           ...(model.racks.length ? [[model.racks[0].hi[2], 'topo rack']] : []),
         ]
-      : [
-          [model.aisles.cold[1], 'frente'],
-          [model.aisles.racks[1], 'costas'],
-        ];
+      : view.v === 1
+        ? [
+            [model.aisles.cold[1], 'frente'],
+            [model.aisles.racks[1], 'costas'],
+          ]
+        : [
+            [spanLo, 'fileiras'],
+            [spanHi, ''],
+          ];
   for (const [value, label] of levels) {
     const ly = Y(value);
     svg.append(

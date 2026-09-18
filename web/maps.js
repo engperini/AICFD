@@ -14,7 +14,7 @@
  * fan intake, speed is a single hue from still to fast.
  */
 
-import { VIEWS, drawView, defaultCut, sheetScale, viewTransform } from './drawing.js';
+import { viewsFor, drawView, defaultCut, sheetScale, viewTransform } from './drawing.js';
 import { Scale, buildLut } from './colormaps.js';
 
 const ASHRAE_MID = (18 + 27) / 2;
@@ -72,7 +72,9 @@ export class FieldMaps {
     this.model = model;
     this.currentMode = currentMode;
     this.fieldKey = 'temperature';
-    this.cuts = Object.fromEntries(VIEWS.map((v) => [v.id, defaultCut(model, v)]));
+    // A hall's plan runs across the page and each view takes a full row.
+    this.views = viewsFor(model);
+    this.cuts = Object.fromEntries(this.views.map((v) => [v.id, defaultCut(model, v)]));
     this.cells = [];
     this.#build();
     window.addEventListener('resize', debounce(() => this.render(), 150));
@@ -90,7 +92,7 @@ export class FieldMaps {
         </div>
         <span class="card-sub" id="map-caption"></span>
       </div>
-      <div class="views maps" id="map-views"></div>
+      <div class="views maps${this.views[0].long ? ' long' : ''}" id="map-views"></div>
       <div class="colorbar">
         <div class="colorbar-label">
           <span id="map-colorbar-name"></span>
@@ -106,7 +108,7 @@ export class FieldMaps {
     });
 
     const viewsHost = this.host.querySelector('#map-views');
-    for (const view of VIEWS) {
+    for (const view of this.views) {
       const cell = document.createElement('div');
       cell.className = 'view map-view';
       const d = this.model.domain;
@@ -140,7 +142,7 @@ export class FieldMaps {
     this.#renderColorbar(spec);
 
     const widths = this.cells.map(({ cell }) => cell.clientWidth - 24);
-    this.sheet = sheetScale(this.model, VIEWS, widths);
+    this.sheet = sheetScale(this.model, this.views, widths);
     for (const entry of this.cells) this.renderView(entry.view, entry.cell);
   }
 

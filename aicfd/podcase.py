@@ -68,6 +68,24 @@ PIPELINE = (
 #: Everything up to the solver, for checking the mesh without paying for a run.
 MESH_PIPELINE = PIPELINE[:-1]
 
+
+def pipeline(processors: int = 1) -> tuple:
+    """The pipeline for ``processors`` cores.
+
+    Past one core the solver runs under mpirun on a decomposed mesh, and the
+    fields are stitched back together at the end. The sampler reconstructs
+    each intermediate write itself (see podpost.sample), so the run can still
+    be watched. Logs keep the solver's name whichever way it is launched.
+    """
+    if processors <= 1:
+        return PIPELINE
+    return MESH_PIPELINE + (
+        ("decomposePar", ["-force"]),
+        ("mpirun", ["-np", str(processors), "buoyantSimpleFoam", "-parallel"],
+         "buoyantSimpleFoam"),
+        ("reconstructPar", ["-latestTime"]),
+    )
+
 #: The outer box. Every one of these is a wall: a POD's air never leaves it.
 OUTER_PATCHES = ("galleryBack", "hallEnd", "coldWall", "hotWall", "floor", "slab")
 
@@ -96,7 +114,7 @@ SENSOR_DIR = "sensores"
 
 def build(model: Model, destination: str | Path, max_iterations: int = 400,
           residual_tolerance: float = 1.0e-4, sensor_interval: int = 100,
-          warm_start_field: bool = True) -> Path:
+          warm_start_field: bool = True, processors: int = 1) -> Path:
     """Write a complete OpenFOAM case for ``model`` into ``destination``."""
     case = Path(destination)
     if case.exists():
@@ -116,6 +134,8 @@ def build(model: Model, destination: str | Path, max_iterations: int = 400,
            control_dict(model, max_iterations, sensor_interval))
     _write(case / "system/fvSolution", fv_solution(model, residual_tolerance))
     _write(case / "constant/fvOptions", fv_options(model))
+    if processors > 1:
+        _write(case / "system/decomposeParDict", decompose_par_dict(model, processors))
     for name, text in initial_fields(model, warm_start_field).items():
         _write(case / "0" / name, text)
     (case / f"{model.name}.model.txt").write_text(summary(model))
@@ -190,12 +210,26 @@ mergePatchPairs ();
 """
 
 
+#: Which panels share one face zone, and so one two-sided patch. A hall has
+#: thirty-two rack tops; giving each its own patch would multiply the boundary
+#: file for nothing, since they are all the same adiabatic wall. Grouping by
+#: what a surface *is* keeps the patch list readable and the leak check (which
+#: reports per zone) still says which kind of surface leaks.
+WALL_GROUPS = (
+    ("rack_top", "rack_top"),
+    ("rack_end", "rack_end"),
+    ("containment_wall", "containment_roofwall"),
+    ("containment_wall", "containment_wall"),
+    ("containment_door", "containment_door"),
+)
+
+
 #: Panels that become one two-sided internal wall each, and the holes punched
-#: through them. A hole is another panel: the fan wall and the plenum opening
+#: through them. A hole is another panel: the fan walls and the plenum opening
 #: are holes in the dividing wall, the grilles are holes in the false ceiling.
-def wall_plan(model: Model) -> list[tuple[str, Panel, list[Panel]]]:
-    """(zone name, the surface, the panels that are holes in it)."""
-    plan: list[tuple[str, Panel, list[Panel]]] = []
+def wall_plan(model: Model) -> list[tuple[str, list[Panel], list[Panel]]]:
+    """(zone name, the surfaces in it, the panels that are holes in them)."""
+    plan: list[tuple[str, list[Panel], list[Panel]]] = []
 
     divider = Panel(
         "divider",
@@ -204,49 +238,58 @@ def wall_plan(model: Model) -> list[tuple[str, Panel, list[Panel]]]:
         position=model.hall.lo[0],
         extent=((0.0, model.domain.hi[1]), (0.0, model.domain.hi[2])),
     )
-    plan.append(
-        ("divider", divider, [model.panel("fan"), model.panel("plenum_opening")])
-    )
+    plan.append(("divider", [divider], [*model.fans, model.panel("plenum_opening")]))
 
     grilles = [p for p in model.panels if p.name.startswith("grille")]
-    plan.append(("forro", model.panel("ceiling"), grilles))
+    plan.append(("forro", [model.panel("ceiling")], grilles))
 
-    for panel in model.panels:
-        if panel.name.startswith(("containment", "rack_end", "rack_top")):
-            plan.append((panel.name, panel, []))
+    for zone in dict.fromkeys(group for group, _prefix in WALL_GROUPS):
+        prefixes = tuple(prefix for group, prefix in WALL_GROUPS if group == zone)
+        members = [p for p in model.panels if p.name.startswith(prefixes)]
+        if members:
+            plan.append((zone, members, []))
     return plan
 
 
-def _face_selection(name: str, panel: Panel, holes: list[Panel], cell) -> str:
-    """topoSet actions that leave ``name`` holding exactly this panel's faces."""
+def _face_selection(name: str, panels: list[Panel], holes: list[Panel], cell) -> str:
+    """topoSet actions that leave ``name`` holding exactly these panels' faces.
+
+    Every panel in a zone shares a normal, so one normalToFace narrows them
+    all; the boxes are added one by one before it.
+    """
+    axis = panels[0].axis
+    assert all(p.axis == axis for p in panels), name
     # thin enough that only faces *on* the plane qualify -- a quarter of the
     # cell along the panel's own normal, which is the axis that matters
-    half = cell[panel.axis] * 0.25
+    half = cell[axis] * 0.25
     eps = 1e-6
     normal = [0, 0, 0]
-    normal[panel.axis] = 1
+    normal[axis] = 1
 
     def box(target: Panel) -> str:
         lo = [0.0, 0.0, 0.0]
         hi = [0.0, 0.0, 0.0]
-        lo[panel.axis] = target.position - half
-        hi[panel.axis] = target.position + half
-        for axis, (a0, a1) in zip(target.in_plane_axes, target.extent):
-            lo[axis], hi[axis] = a0 - eps, a1 + eps
+        lo[axis] = target.position - half
+        hi[axis] = target.position + half
+        for in_plane, (a0, a1) in zip(target.in_plane_axes, target.extent):
+            lo[in_plane], hi[in_plane] = a0 - eps, a1 + eps
         return f"({_v(lo)}) ({_v(hi)})"
 
     actions = [
         f"""    {{
         name    {name}Faces;
         type    faceSet;
-        action  new;
+        action  {"new" if i == 0 else "add"};
         source  boxToFace;
         box     {box(panel)};
-    }}
-    {{
+    }}"""
+        for i, panel in enumerate(panels)
+    ]
+    actions.append(
+        f"""    {{
         // boxToFace takes any face whose centre is in the box, including the
         // ones running perpendicular through it. Only faces normal to
-        // {"xyz"[panel.axis]} belong to this surface.
+        // {"xyz"[axis]} belong to this surface.
         name    {name}Faces;
         type    faceSet;
         action  subset;
@@ -254,7 +297,7 @@ def _face_selection(name: str, panel: Panel, holes: list[Panel], cell) -> str:
         normal  ({_v(normal)});
         cos     0.01;
     }}"""
-    ]
+    )
     for hole in holes:
         actions.append(
             f"""    {{
@@ -284,12 +327,13 @@ def topo_set_dict(model: Model) -> str:
         _face_selection(name, panel, holes, cell)
         for name, panel, holes in wall_plan(model)
     ]
-    actions.append(_face_selection("fan", model.panel("fan"), [], cell))
+    for fan in model.fans:
+        actions.append(_face_selection(fan.name, [fan], [], cell))
     # Each grille is its own zone: it becomes a cyclic pair carrying the
     # datasheet's pressure loss, not a hole. The forro zone above already has
     # these faces removed, so nothing is claimed twice.
     for grille in grilles(model):
-        actions.append(_face_selection(grille.name, grille, [], cell))
+        actions.append(_face_selection(grille.name, [grille], [], cell))
 
     for rack in model.racks:
         actions.append(
@@ -387,13 +431,20 @@ def _grille_baffle(grille: Panel) -> str:
     }}"""
 
 
+def fan_patches(model: Model) -> list[tuple[str, str]]:
+    """(intake, supply) patch names for every fan wall, in order.
+
+    A POD's single unit keeps the names ``fanIntake``/``fanSupply``; a hall's
+    units are ``fan1Intake``, ``fan2Supply`` and so on, after their panels.
+    """
+    return [(f"{fan.name}Intake", f"{fan.name}Supply") for fan in model.fans]
+
+
 def create_baffles_dict(model: Model) -> str:
     k, epsilon = turbulence_initial_values(model)
-    supply_k = model.supply_temp_c + KELVIN
-    mass_flow = model.airflow_m3s * supply_density(model)
 
     entries = [_grille_baffle(g) for g in grilles(model) if g.resistance is not None]
-    for name, _panel, _holes in wall_plan(model):
+    for name, _panels, _holes in wall_plan(model):
         entries.append(
             f"""    {name}
     {{
@@ -407,24 +458,43 @@ def create_baffles_dict(model: Model) -> str:
     }}"""
         )
 
-    entries.append(
-        f"""    fan
+    for fan in model.fans:
+        entries.append(_fan_baffle(model, fan, k, epsilon))
+
+    return f"""{_header(model, "dictionary", "createBafflesDict")}
+// Turn internal faces into real two-sided patches. Everything here is inside
+// the box, so nothing may touch the outer boundary.
+internalFacesOnly true;
+
+baffles
+{{
+{chr(10).join(entries)}
+}}
+"""
+
+
+def _fan_baffle(model: Model, fan: Panel, k: float, epsilon: float) -> str:
+    supply_k = model.supply_temp_c + KELVIN
+    # Each unit moves its share of the total, set by mass (see below).
+    mass_flow = model.unit_airflow_m3h / 3600.0 * supply_density(model)
+    intake, supply = f"{fan.name}Intake", f"{fan.name}Supply"
+    return f"""    {fan.name}
     {{
-        // The one place the loop is cut. Same faces, two patches: air leaves
-        // the gallery through {FAN_INTAKE} and comes back into the cold aisle
-        // through {FAN_SUPPLY} at {model.supply_temp_c:g} degC. That is the fan
+        // Where the loop is cut. Same faces, two patches: air leaves
+        // the gallery through {intake} and comes back into the cold aisle
+        // through {supply} at {model.supply_temp_c:g} degC. That is the fan
         // wall, without modelling a single blade.
         //
         // Both sides are set by *mass* flow. Volume would not do: the air
         // leaving is warmer and thinner than the air arriving, and in a loop
         // with nowhere to store the difference a 1% mismatch has no way out.
         type        faceZone;
-        zoneName    fan;
+        zoneName    {fan.name};
         patches
         {{
             master
             {{
-                name    {FAN_INTAKE};
+                name    {intake};
                 type    patch;
                 patchFields
                 {{
@@ -458,12 +528,12 @@ def create_baffles_dict(model: Model) -> str:
             }}
             slave
             {{
-                name    {FAN_SUPPLY};
+                name    {supply};
                 type    patch;
                 patchFields
                 {{
-                    // {model.airflow_m3h:,.0f} m3/h at {model.supply_temp_c:g} degC is
-                    // {mass_flow:.4g} kg/s through {model.panel("fan").area:.2f} m2,
+                    // {model.unit_airflow_m3h:,.0f} m3/h at {model.supply_temp_c:g} degC is
+                    // {mass_flow:.4g} kg/s through {fan.area:.2f} m2,
                     // blowing into the cold aisle along the patch normal.
                     U       {{ type flowRateInletVelocity;
                               massFlowRate {mass_flow:.6g};
@@ -479,21 +549,30 @@ def create_baffles_dict(model: Model) -> str:
             }}
         }}
     }}"""
-    )
 
-    return f"""{_header(model, "dictionary", "createBafflesDict")}
-// Turn internal faces into real two-sided patches. Everything here is inside
-// the box, so nothing may touch the outer boundary.
-internalFacesOnly true;
 
-baffles
+def decompose_par_dict(model: Model, processors: int) -> str:
+    """Split the box into slabs across its longest axis.
+
+    ``simple`` rather than scotch because the packaged build ships scotch as a
+    stub, and for a box slabs are as good: fewest shared faces, and every
+    processor gets the same number of cells. Cyclic grille pairs and baffles
+    cut by a slab boundary are handled by OpenFOAM's processorCyclic patches.
+    """
+    longest = max(range(3), key=lambda a: model.domain.size[a])
+    n = [1, 1, 1]
+    n[longest] = processors
+    return f"""{_header(model, "dictionary", "decomposeParDict")}
+numberOfSubdomains {processors};
+method          simple;
+coeffs
 {{
-{chr(10).join(entries)}
+    n           ({n[0]} {n[1]} {n[2]});
 }}
 """
 
 
-def check_fan_orientation(case_dir: str | Path) -> list[str]:
+def check_fan_orientation(case_dir: str | Path, model: Model | None = None) -> list[str]:
     """Confirm createBaffles put the supply on the hall side.
 
     ``createBaffles`` gives the master patch the faces' original orientation
@@ -508,19 +587,21 @@ def check_fan_orientation(case_dir: str | Path) -> list[str]:
     """
     from aicfd.foam.polymesh import patch_normal
 
+    pairs = fan_patches(model) if model is not None else [(FAN_INTAKE, FAN_SUPPLY)]
     problems = []
-    for patch, expected, side in (
-        (FAN_INTAKE, 1.0, "mechanical gallery"),
-        (FAN_SUPPLY, -1.0, "data hall"),
-    ):
-        normal = patch_normal(case_dir, patch)
-        if normal[0] * expected < 0.5:
-            problems.append(
-                f"{patch} should open onto the {side} (outward normal "
-                f"x = {expected:+.0f}) but its normal is "
-                f"({', '.join(f'{v:+.2f}' for v in normal)}). The fan wall "
-                "pair is reversed: air would be supplied into the return."
-            )
+    for intake, supply in pairs:
+        for patch, expected, side in (
+            (intake, 1.0, "mechanical gallery"),
+            (supply, -1.0, "data hall"),
+        ):
+            normal = patch_normal(case_dir, patch)
+            if normal[0] * expected < 0.5:
+                problems.append(
+                    f"{patch} should open onto the {side} (outward normal "
+                    f"x = {expected:+.0f}) but its normal is "
+                    f"({', '.join(f'{v:+.2f}' for v in normal)}). The fan wall "
+                    "pair is reversed: air would be supplied into the return."
+                )
     return problems
 
 
@@ -610,7 +691,7 @@ def turbulence_initial_values(model: Model) -> tuple[float, float]:
         / T_REFERENCE_K
         * model.domain.size[2]
     )
-    characteristic = max(model.face_velocity("fan"), buoyant)
+    characteristic = max(model.fan_face_velocity_ms, buoyant)
     k = max(1.5 * (characteristic * TURBULENCE_INTENSITY) ** 2, 1e-6)
     length_scale = LENGTH_SCALE_FRACTION * model.domain.size[2]
     return k, C_MU**0.75 * k**1.5 / length_scale
@@ -749,21 +830,23 @@ def warm_start(model: Model) -> str:
     supply_k = model.supply_temp_c + KELVIN
     warm_k = supply_k + min(max(model.design_delta_t_k, 1.0), 25.0)
 
-    hot_lo, hot_hi = model.hot_aisle
     row_lo, row_hi = model.rack_span()
     gallery_x = model.gallery.hi[0]
 
+    def in_hot_aisle(y: float) -> bool:
+        return any(lo <= y <= hi for lo, hi in model.hot_aisles)
+
+    hot_rows = [in_hot_aisle((j + 0.5) * cy) for j in range(ny)]
     values = []
     for k in range(nz):
         z = (k + 0.5) * cz
         for j in range(ny):
-            y = (j + 0.5) * cy
             for i in range(nx):
                 x = (i + 0.5) * cx
                 downstream = (
                     x < gallery_x  # the gallery carries return air
                     or z > model.ceiling_z  # the plenum above the false ceiling
-                    or (hot_lo <= y <= hot_hi and row_lo <= x <= row_hi)
+                    or (hot_rows[j] and row_lo <= x <= row_hi)
                 )
                 values.append(warm_k if downstream else supply_k)
 
@@ -891,10 +974,16 @@ def summary(model: Model) -> str:
         + " m)",
         f"  IT load         {model.total_load_w / 1000:.1f} kW across "
         f"{len(model.racks)} rack(s)",
+        f"  Fan wall{'s' if model.fan_count > 1 else ' '}       "
+        + (f"{model.fan_count} x " if model.fan_count > 1 else "")
+        + f"{model.unit_airflow_m3h:,.0f} m3/h at "
+        f"{model.supply_temp_c:.1f} degC, "
+        f"{model.fan_face_velocity_ms:.2f} m/s through "
+        f"{model.fans[0].area:.2f} m2 each" if model.fan_count > 1 else
         f"  Fan wall        {model.airflow_m3h:,.0f} m3/h at "
         f"{model.supply_temp_c:.1f} degC, "
-        f"{model.face_velocity('fan'):.2f} m/s through "
-        f"{model.panel('fan').area:.2f} m2",
+        f"{model.fan_face_velocity_ms:.2f} m/s through "
+        f"{model.fans[0].area:.2f} m2",
         f"  Rack demand     {model.rack_demand_m3s * 3600:,.0f} m3/h "
         f"({model.rack_demand_m3s * 3600 / model.airflow_m3h * 100:.0f}% of supply)",
         f"  Design bulk dT  {model.design_delta_t_k:.1f} K",
@@ -902,14 +991,22 @@ def summary(model: Model) -> str:
         "",
         "  Internal surfaces built by createBaffles:",
     ]
-    for name, panel, holes in wall_plan(model):
+    for name, panels, holes in wall_plan(model):
         holed = f", less {len(holes)} opening(s)" if holes else ""
-        lines.append(
-            f"    {name:<22} normal {'xyz'[panel.axis]} at "
-            f"{panel.position:g} m, {panel.area:.2f} m2{holed}"
+        area = sum(p.area for p in panels)
+        where = (
+            f"at {panels[0].position:g} m"
+            if len(panels) == 1
+            else f"{len(panels)} panels"
         )
-    lines.append(
-        f"    {'fan (' + FAN_INTAKE + '/' + FAN_SUPPLY + ')':<22} normal x at "
-        f"{model.panel('fan').position:g} m, {model.panel('fan').area:.2f} m2"
-    )
+        lines.append(
+            f"    {name:<22} normal {'xyz'[panels[0].axis]} {where}, "
+            f"{area:.2f} m2{holed}"
+        )
+    for fan, (intake, supply) in zip(model.fans, fan_patches(model)):
+        lines.append(
+            f"    {fan.name + ' (' + intake + '/' + supply + ')':<22} normal x at "
+            f"{fan.position:g} m, y {fan.extent[0][0]:g}-{fan.extent[0][1]:g}, "
+            f"{fan.area:.2f} m2"
+        )
     return "\n".join(lines) + "\n"

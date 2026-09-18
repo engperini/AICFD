@@ -154,6 +154,7 @@ def _build(args) -> int:
         podcase.build(
             model,
             out,
+            processors=int(solver.get("processors", 1)),
             max_iterations=int(solver.get("max_iterations", 2000)),
             residual_tolerance=float(solver.get("residual_tolerance", 1e-4)),
             sensor_interval=int(solver.get("sensor_interval", 100)),
@@ -241,6 +242,7 @@ def _run_pod(spec_path: Path, args) -> int:
     print(podcase.summary(model))
     for warning in model.warnings:
         print(f"  ! {warning}")
+    processors = int(solver.get("processors", 1))
     podcase.build(
         model,
         target,
@@ -248,11 +250,12 @@ def _run_pod(spec_path: Path, args) -> int:
         residual_tolerance=float(solver.get("residual_tolerance", 1e-4)),
         sensor_interval=int(solver.get("sensor_interval", 100)),
         warm_start_field=bool(solver.get("warm_start", True)),
+        processors=processors,
     )
 
     def step(command: str) -> None:
         if command == "checkMesh":
-            problems = podcase.check_fan_orientation(target)
+            problems = podcase.check_fan_orientation(target, model)
             if problems:
                 raise RuntimeError(problems[0])
         print(f"  {command} ...", flush=True)
@@ -262,7 +265,7 @@ def _run_pod(spec_path: Path, args) -> int:
     sampler = podpost.Sampler(model, target)
     sampler.start()
     try:
-        steps = solve(target, podcase.PIPELINE, on_step=step)
+        steps = solve(target, podcase.pipeline(processors), on_step=step)
     except (FoamNotInstalled, FoamCommandFailed) as error:
         print(f"error: {error}", file=sys.stderr)
         if isinstance(error, FoamCommandFailed):
