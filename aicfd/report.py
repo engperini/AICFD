@@ -343,8 +343,14 @@ def _summary(doc, export: Export) -> None:
         ("Electrical input per unit",
          f"{_num(fan.get('unit_power_kw'), 1)} kW"
          if fan.get("unit_power_kw") else "not given"),
-        ("External static pressure",
-         f"{_num(kpis.get('fan_static_pa'), 0)} Pa" if kpis.get("fan_static_pa") else "not given"),
+        ("External static pressure, at the rated airflow",
+         f"{_num(fan.get('fan_static_pa'), 0)} Pa"
+         if fan.get("fan_static_pa") else "not given"),
+        ("Static pressure available at the modelled airflow",
+         f"{_num(kpis.get('fan_static_pa'), 0)} Pa"
+         + (" (interpolated on the unit's P-Q curve)"
+            if fan.get("fan_curve") else " (the datasheet point)")
+         if kpis.get("fan_static_pa") else "not given"),
         ("Site elevation", f"{_num(site.get('altitude_m'), 0)} m"),
         ("Operating pressure",
          f"{_num(site['pressure_pa'] / 1000, 1)} kPa" if "pressure_pa" in site else "—"),
@@ -362,7 +368,8 @@ def _summary(doc, export: Export) -> None:
         ("Energy closure", f"{_num((kpis['energy_closure'] or 0) * 100, 1)} %",
          "heat carried out by the return air, against the installed load"),
         ("Rise across the most loaded unit", f"{_num(kpis.get('fan_rise_pa'), 1)} Pa",
-         f"of {_num(kpis.get('fan_static_pa'), 0)} Pa available"
+         f"of the {_num(kpis.get('fan_static_pa'), 0)} Pa the unit can produce at "
+         "this airflow"
          if kpis.get("fan_static_pa") else "no datasheet pressure given"),
     ]
     if hvac:
@@ -695,9 +702,13 @@ def _conclusions(doc, export: Export) -> None:
     if kpis.get("fan_rise_pa") and kpis.get("fan_static_pa"):
         findings.append(
             f"The room costs the most loaded unit {_num(kpis['fan_rise_pa'], 1)} Pa "
-            f"of the {_num(kpis['fan_static_pa'], 0)} Pa its datasheet offers "
+            f"of the {_num(kpis['fan_static_pa'], 0)} Pa the unit can produce at "
+            f"the airflow it is moving "
             f"({_num(kpis['fan_rise_pa'] / kpis['fan_static_pa'] * 100, 0)} %), "
-            f"and the least loaded {_num(kpis.get('fan_rise_min_pa'), 1)} Pa."
+            f"and the least loaded {_num(kpis.get('fan_rise_min_pa'), 1)} Pa. "
+            "That is the resistance of the room, not of the coil and filters "
+            "inside the machine, which the unit's external static pressure "
+            "already accounts for."
         )
     findings.append(
         f"The energy balance closes at "

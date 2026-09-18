@@ -668,8 +668,12 @@ def _checks(model: Model, step: Path, kpis: dict, grid: dict) -> list[Check]:
                     if loaded
                     else f"the POD costs {rise:.1f} Pa "
                 )
-                + f"and the fan wall's datasheet offers {available:.0f} Pa at "
-                f"{model.unit_airflow_m3h:,.0f} m3/h per unit ({rise / available * 100:.0f}%)"
+                + (
+                    f"and the unit's P-Q curve offers {available:.0f} Pa at "
+                    if model.fan_curve
+                    else f"and the unit's datasheet offers {available:.0f} Pa at "
+                )
+                + f"{model.unit_airflow_m3h:,.0f} m3/h per unit ({rise / available * 100:.0f}%)"
                 + (
                     f"; uncontrolled at full speed it would run at "
                     f"{kpis['fan_operating_m3h']:,.0f} m3/h and {kpis['fan_operating_pa']:.1f} Pa"
