@@ -1,5 +1,10 @@
 # 2026-09-17 — Reproducing the reference case (M0)
 
+> **Historical.** The hand-built OpenFOAM case this reproduces is the M0
+> ground truth: it is why this project trusts `buoyantSimpleFoam` here at
+> all. The case itself lives on under `.claude/skills/datacenter-cfd/`; the
+> M1 tooling that post-processed it was removed in ADR-025.
+
 **Question.** The reference case arrived from the `datacenter-cfd` skill with
 validation numbers attached. Do they reproduce, and is the case physically
 representative of a data hall?

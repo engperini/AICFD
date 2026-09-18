@@ -128,13 +128,13 @@ def read_progress(case_name: str, max_points: int = 400) -> dict:
 
 def read_sensors(case_name: str) -> dict:
     """What each instrumented place is doing, straight off the running solve."""
-    from aicfd import podpost
+    from aicfd import post
 
     case = RUNS_DIR / case_name
     if not case.exists():
         return {"iterations": [], "groups": []}
     model = model_module.build_model(load_spec(case_name))
-    return podpost.sensor_history(model, case)
+    return post.sensor_history(model, case)
 
 
 def load_spec(name: str) -> dict:
@@ -205,11 +205,11 @@ def solver_available(name: str | None = None) -> str | None:
     """
     from aicfd.run import check_install
 
-    from aicfd import podcase
+    from aicfd import case
 
     from aicfd.run import commands
 
-    needed = commands(podcase.pipeline(_processors(name)))
+    needed = commands(case.pipeline(_processors(name)))
     found = check_install()
     missing = [name for name in needed if not found.get(name, _which(name))]
     if missing:
@@ -238,7 +238,7 @@ def build_payload(name: str) -> dict:
 
 def start_run(name: str) -> None:
     """Solve in a worker thread so the page stays responsive."""
-    from aicfd import podcase, podpost
+    from aicfd import case, post
     from aicfd.run import FoamCommandFailed, solve
 
     def worker() -> None:
@@ -249,7 +249,7 @@ def start_run(name: str) -> None:
             STATE.set(stage="meshing", step="build", message="", case=name)
             target = RUNS_DIR / name
             processors = int(solver.get("processors", 1))
-            podcase.build(
+            case.build(
                 model,
                 target,
                 max_iterations=int(solver.get("max_iterations", 400)),
@@ -264,7 +264,7 @@ def start_run(name: str) -> None:
                 # createBaffles has run, and it is not worth a solve to find
                 # out afterwards.
                 if command == "checkMesh":
-                    problems = podcase.check_fan_orientation(target, model)
+                    problems = case.check_fan_orientation(target, model)
                     if problems:
                         raise RuntimeError(problems[0])
                 STATE.set(
@@ -275,10 +275,10 @@ def start_run(name: str) -> None:
             # Read each field write as it lands, so the run can be watched
             # rather than waited out -- and so purgeWrite is free to delete
             # the fields once they have been measured.
-            sampler = podpost.Sampler(model, target)
+            sampler = post.Sampler(model, target)
             sampler.start()
             try:
-                solve(target, podcase.pipeline(processors), on_step=step)
+                solve(target, case.pipeline(processors), on_step=step)
             finally:
                 sampler.stop()
             STATE.set(stage="done", step="", message="solved")

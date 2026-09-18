@@ -15,8 +15,8 @@ from pathlib import Path
 import yaml
 
 from aicfd import model as M
-from aicfd import podpost
-from aicfd.podcase import FAN_INTAKE, FAN_SUPPLY, KELVIN
+from aicfd import post
+from aicfd.case import FAN_INTAKE, FAN_SUPPLY, KELVIN
 
 SPEC = yaml.safe_load(
     """
@@ -83,7 +83,7 @@ class PatchReadingTest(unittest.TestCase):
         self.step = step
 
     def test_patch_flows_sum_each_patch(self):
-        flows = podpost.patch_flows(self.step)
+        flows = post.patch_flows(self.step)
         self.assertAlmostEqual(flows[FAN_INTAKE], 1.0)
         self.assertAlmostEqual(flows[FAN_SUPPLY], -1.0)
         self.assertAlmostEqual(flows["forro_master"], 0.0)
@@ -91,11 +91,11 @@ class PatchReadingTest(unittest.TestCase):
     def test_the_return_temperature_is_flow_weighted(self):
         rise = self.model.total_load_w / 1005.0
         self.assertAlmostEqual(
-            podpost.return_temperature(self.step), 20.0 + KELVIN + rise, places=3
+            post.return_temperature(self.step), 20.0 + KELVIN + rise, places=3
         )
 
     def test_a_closed_balance_recovers_the_whole_load(self):
-        recovered = podpost.recovered_load_w(self.step, self.model)
+        recovered = post.recovered_load_w(self.step, self.model)
         # 1 W of slack: the fixture writes its temperatures at six figures.
         self.assertAlmostEqual(recovered, self.model.total_load_w, delta=1.0)
 
@@ -109,7 +109,7 @@ class PatchReadingTest(unittest.TestCase):
             "forro_master": [supply, supply],
             "floor": [supply],
         })
-        recovered = podpost.recovered_load_w(self.step, self.model)
+        recovered = post.recovered_load_w(self.step, self.model)
         self.assertAlmostEqual(recovered / self.model.total_load_w, 0.5, places=3)
 
     def test_backflow_is_the_mass_going_the_wrong_way(self):
@@ -117,8 +117,8 @@ class PatchReadingTest(unittest.TestCase):
             FAN_INTAKE: [0.8, 0.8, -0.3, -0.3],
             FAN_SUPPLY: [-0.5, -0.5],
         })
-        self.assertAlmostEqual(podpost.backflow(self.step, FAN_INTAKE), 0.6)
-        self.assertAlmostEqual(podpost.backflow(self.step, FAN_SUPPLY), 0.0)
+        self.assertAlmostEqual(post.backflow(self.step, FAN_INTAKE), 0.6)
+        self.assertAlmostEqual(post.backflow(self.step, FAN_SUPPLY), 0.0)
 
     def test_an_outlet_that_stores_no_value_says_so(self):
         """zeroGradient writes no value, and nan would hide it."""
@@ -127,7 +127,7 @@ class PatchReadingTest(unittest.TestCase):
             + f"    {FAN_INTAKE}\n    {{\n        type zeroGradient;\n    }}\n}}\n"
         )
         with self.assertRaises(ValueError) as caught:
-            podpost.return_temperature(self.step)
+            post.return_temperature(self.step)
         self.assertIn("inletOutlet", str(caught.exception))
 
     def test_written_times_are_ordered_numerically(self):
@@ -136,7 +136,7 @@ class PatchReadingTest(unittest.TestCase):
             d.mkdir(exist_ok=True)
             (d / "phi").write_text("x")
         self.assertEqual(
-            podpost.written_times(self.case), ["50", "100", "200", "1000"]
+            post.written_times(self.case), ["50", "100", "200", "1000"]
         )
 
 
@@ -180,27 +180,27 @@ class SamplerTest(unittest.TestCase):
     def test_a_half_written_step_is_not_sampled(self):
         """Sampling mid-write records numbers that never existed."""
         self.write_step(100, complete=False)
-        self.assertEqual(podpost.sample(self.model, self.case), [])
+        self.assertEqual(post.sample(self.model, self.case), [])
 
     def test_a_complete_step_is_sampled_once(self):
         self.write_step(100)
-        first = podpost.sample(self.model, self.case)
+        first = post.sample(self.model, self.case)
         self.assertEqual(len(first), 1)
         self.assertEqual(first[0]["iteration"], 100)
-        self.assertEqual(podpost.sample(self.model, self.case), first)
+        self.assertEqual(post.sample(self.model, self.case), first)
 
     def test_the_history_survives_the_fields_being_purged(self):
         """purgeWrite deletes the time directory; the reading has to stay."""
         step = self.write_step(100)
-        podpost.sample(self.model, self.case)
+        post.sample(self.model, self.case)
         for entry in step.iterdir():
             entry.unlink()
         step.rmdir()
-        self.assertEqual(len(podpost.read_history(self.case)), 1)
+        self.assertEqual(len(post.read_history(self.case)), 1)
 
     def test_every_place_is_measured_and_its_spread_reported(self):
         self.write_step(100)
-        row = podpost.sample(self.model, self.case)[0]
+        row = post.sample(self.model, self.case)[0]
         names = {place["name"] for place in row["places"]}
         self.assertEqual(
             names, {"cold_aisle", "hot_aisle", "plenum", "fan_back"}
@@ -213,25 +213,25 @@ class SamplerTest(unittest.TestCase):
     def test_pressure_is_reported_against_the_fan_intake(self):
         """Absolute pressure is 101 325 Pa everywhere and says nothing."""
         self.write_step(100)
-        row = podpost.sample(self.model, self.case)[0]
+        row = post.sample(self.model, self.case)[0]
         for place in row["places"]:
             self.assertAlmostEqual(place["pressure_pa"], 0.0, places=3)
 
     def test_the_fan_wall_rise_is_the_jump_across_the_pair(self):
         self.write_step(100)
-        row = podpost.sample(self.model, self.case)[0]
+        row = post.sample(self.model, self.case)[0]
         self.assertAlmostEqual(row["fan_rise_pa"], 8.0, places=2)
 
     def test_readings_come_back_in_iteration_order(self):
         for iteration in (300, 100, 200):
             self.write_step(iteration)
-        history = podpost.sample(self.model, self.case)
+        history = post.sample(self.model, self.case)
         self.assertEqual([r["iteration"] for r in history], [100, 200, 300])
 
     def test_the_history_is_shaped_for_a_chart(self):
         self.write_step(100)
         self.write_step(200)
-        shaped = podpost.sensor_history(self.model, self.case)
+        shaped = post.sensor_history(self.model, self.case)
         self.assertEqual(shaped["iterations"], [100, 200])
         self.assertEqual(len(shaped["groups"]), 4)
         for group in shaped["groups"]:
@@ -299,7 +299,7 @@ class DriftTest(unittest.TestCase):
         self.case = Path(tempfile.mkdtemp())
 
     def history(self, *rows):
-        (self.case / podpost.SENSOR_FILE).write_text(json.dumps(list(rows)))
+        (self.case / post.SENSOR_FILE).write_text(json.dumps(list(rows)))
 
     def row(self, iteration, cold, hot, ret):
         return {
@@ -313,28 +313,28 @@ class DriftTest(unittest.TestCase):
 
     def test_one_sample_cannot_say_anything(self):
         self.history(self.row(100, 20.0, 27.5, 30.8))
-        self.assertIsNone(podpost.drift(self.case))
+        self.assertIsNone(post.drift(self.case))
 
     def test_drift_is_the_largest_move_any_place_made(self):
         self.history(
             self.row(100, 20.0, 27.5, 30.8), self.row(200, 20.1, 25.1, 30.8)
         )
-        self.assertAlmostEqual(podpost.drift(self.case), 2.4, places=3)
+        self.assertAlmostEqual(post.drift(self.case), 2.4, places=3)
 
     def test_the_return_temperature_counts_as_a_place(self):
         self.history(
             self.row(100, 20.0, 27.5, 30.8), self.row(200, 20.0, 27.5, 29.0)
         )
-        self.assertAlmostEqual(podpost.drift(self.case), 1.8, places=3)
+        self.assertAlmostEqual(post.drift(self.case), 1.8, places=3)
 
     def test_a_settled_field_drifts_below_the_tolerance(self):
         self.history(
             self.row(100, 20.0, 30.8, 30.8), self.row(200, 20.0, 30.85, 30.8)
         )
-        self.assertLess(podpost.drift(self.case), podpost.STEADY_TOLERANCE)
+        self.assertLess(post.drift(self.case), post.STEADY_TOLERANCE)
 
     def test_the_tolerance_is_tighter_than_any_rise_worth_reporting(self):
-        self.assertLessEqual(podpost.STEADY_TOLERANCE, 0.5)
+        self.assertLessEqual(post.STEADY_TOLERANCE, 0.5)
 
 
 class ReturnPathTest(unittest.TestCase):
@@ -356,7 +356,7 @@ class ReturnPathTest(unittest.TestCase):
         }
 
     def check(self, kpis):
-        from aicfd.podpost import RETURN_PATH, RETURN_PATH_TOLERANCE
+        from aicfd.post import RETURN_PATH, RETURN_PATH_TOLERANCE
 
         path = {
             p["name"]: p["temp_c"]
@@ -377,11 +377,11 @@ class ReturnPathTest(unittest.TestCase):
 
     def test_the_cold_aisle_is_not_on_the_return_path(self):
         """It is 11 K colder by design; including it would fail every run."""
-        self.assertNotIn("cold_aisle", podpost.RETURN_PATH)
+        self.assertNotIn("cold_aisle", post.RETURN_PATH)
 
     def test_the_tolerance_allows_real_stratification_but_not_a_filling_volume(self):
-        self.assertGreater(podpost.RETURN_PATH_TOLERANCE, 1.0)
-        self.assertLess(podpost.RETURN_PATH_TOLERANCE, 3.0)
+        self.assertGreater(post.RETURN_PATH_TOLERANCE, 1.0)
+        self.assertLess(post.RETURN_PATH_TOLERANCE, 3.0)
 
 
 class RackResistanceTest(unittest.TestCase):
@@ -430,7 +430,7 @@ class RackResistanceTest(unittest.TestCase):
 
     def test_the_tolerance_would_not_pass_the_gap_we_have(self):
         """5,3 Pa delivered against 25,8 asked is 21%; this must fail it."""
-        self.assertLess(podpost.RESISTANCE_TOLERANCE, 0.79)
+        self.assertLess(post.RESISTANCE_TOLERANCE, 0.79)
 
 
 class FanCapacityTest(unittest.TestCase):
@@ -494,19 +494,19 @@ class GrilleAndFanBudgetTest(unittest.TestCase):
             "grille2_below": [101329.0] * 9, "grille2_above": [101325.0] * 9,
         })
         # (0.9*2 + 2.7*4) / 3.6 = 3.5
-        self.assertAlmostEqual(podpost.grille_pressure_drop(step), 3.5, places=3)
+        self.assertAlmostEqual(post.grille_pressure_drop(step), 3.5, places=3)
 
     def test_no_grille_pairs_means_no_measurement(self):
         step = self.case / "100"
         step.mkdir()
         field(step / "phi", "phi", "0", {FAN_INTAKE: [1.0], FAN_SUPPLY: [-1.0]})
-        self.assertIsNone(podpost.grille_pressure_drop(step))
+        self.assertIsNone(post.grille_pressure_drop(step))
 
     def test_grille_pairs_are_not_leaks(self):
         """A cyclic pair carries the return flow by design."""
         import inspect
 
-        source = inspect.getsource(podpost._checks)
+        source = inspect.getsource(post._checks)
         self.assertIn('not name.startswith("grille")', source)
 
     def test_the_fan_capacity_check_reads_the_curve_at_the_rated_flow(self):
@@ -518,7 +518,7 @@ class GrilleAndFanBudgetTest(unittest.TestCase):
     def test_the_viewer_gets_pressure_and_the_model(self):
         import inspect
 
-        source = inspect.getsource(podpost.export)
+        source = inspect.getsource(post.export)
         self.assertIn('"P": grid["p_rgh"] - reference', source)
         self.assertIn('payload["model"]', source)
 
@@ -531,7 +531,7 @@ class CompareTest(unittest.TestCase):
         self.b = Path(tempfile.mkdtemp())
 
     def write(self, case, iteration, hot, ret):
-        (case / podpost.SENSOR_FILE).write_text(
+        (case / post.SENSOR_FILE).write_text(
             json.dumps([{
                 "iteration": iteration,
                 "return_temp_c": ret,
@@ -544,7 +544,7 @@ class CompareTest(unittest.TestCase):
     def test_runs_that_land_together_agree(self):
         self.write(self.a, 800, 30.8, 30.8)
         self.write(self.b, 1600, 30.9, 30.85)
-        result = podpost.compare(self.a, self.b)
+        result = post.compare(self.a, self.b)
         self.assertTrue(result["agree"])
         self.assertLess(result["worst_gap_k"], 1.0)
 
@@ -552,13 +552,13 @@ class CompareTest(unittest.TestCase):
         """If the seed chose the answer, this is where it shows."""
         self.write(self.a, 800, 30.8, 30.8)
         self.write(self.b, 800, 24.0, 24.0)
-        result = podpost.compare(self.a, self.b)
+        result = post.compare(self.a, self.b)
         self.assertFalse(result["agree"])
         self.assertAlmostEqual(result["worst_gap_k"], 6.8, places=2)
 
     def test_a_run_with_no_samples_gives_no_verdict(self):
         self.write(self.a, 800, 30.8, 30.8)
-        result = podpost.compare(self.a, self.b)
+        result = post.compare(self.a, self.b)
         self.assertIsNone(result["agree"])
         self.assertIn("no samples", result["reason"])
 
@@ -592,7 +592,7 @@ class ExportTest(unittest.TestCase):
         """It is 100% by construction; quoting it would suggest a measurement."""
         import inspect
 
-        from aicfd import podpost as pp
+        from aicfd import post as pp
 
         source = inspect.getsource(pp._viewer_kpis)
         self.assertIn('"throughflow_ratio": None', source)
@@ -601,10 +601,10 @@ class ExportTest(unittest.TestCase):
 class ToleranceTest(unittest.TestCase):
     def test_mass_is_held_tighter_than_energy(self):
         """Mass has nowhere to go; the thermal field merely takes time."""
-        self.assertLess(podpost.MASS_TOLERANCE, podpost.ENERGY_TOLERANCE)
+        self.assertLess(post.MASS_TOLERANCE, post.ENERGY_TOLERANCE)
 
     def test_any_real_backflow_through_a_fan_is_a_failure(self):
-        self.assertLessEqual(podpost.BACKFLOW_TOLERANCE, 0.05)
+        self.assertLessEqual(post.BACKFLOW_TOLERANCE, 0.05)
 
 
 if __name__ == "__main__":

@@ -17,7 +17,7 @@ from pathlib import Path
 import yaml
 
 from aicfd import model as m
-from aicfd import podcase
+from aicfd import case
 
 SPEC = yaml.safe_load(
     """
@@ -43,24 +43,24 @@ def build(**overrides) -> m.Model:
 class PipelineTest(unittest.TestCase):
     def test_createbaffles_is_told_to_overwrite(self):
         """Without -overwrite it writes the new mesh where nothing reads it."""
-        entry = next(e for e in podcase.PIPELINE if "createBaffles" in str(e))
+        entry = next(e for e in case.PIPELINE if "createBaffles" in str(e))
         self.assertEqual(entry, ("createBaffles", ["-overwrite"]))
 
     def test_the_order_is_mesh_then_surgery_then_check_then_solve(self):
-        names = [e[0] if isinstance(e, tuple) else e for e in podcase.PIPELINE]
+        names = [e[0] if isinstance(e, tuple) else e for e in case.PIPELINE]
         self.assertEqual(
             names,
             ["blockMesh", "topoSet", "createBaffles", "checkMesh", "buoyantSimpleFoam"],
         )
 
     def test_the_mesh_pipeline_stops_before_the_solver(self):
-        self.assertNotIn("buoyantSimpleFoam", str(podcase.MESH_PIPELINE))
+        self.assertNotIn("buoyantSimpleFoam", str(case.MESH_PIPELINE))
 
 
 class TopoSetTest(unittest.TestCase):
     def setUp(self):
         self.model = build()
-        self.text = podcase.topo_set_dict(self.model)
+        self.text = case.topo_set_dict(self.model)
 
     def test_every_face_selection_is_narrowed_by_normal(self):
         """boxToFace takes any face whose centre is in the box, including the
@@ -95,26 +95,26 @@ class TopoSetTest(unittest.TestCase):
 
     def test_each_rack_gets_its_own_cell_zone(self):
         for rack in self.model.racks:
-            self.assertIn(f"cellZone        {rack.id}", podcase.fv_options(self.model))
+            self.assertIn(f"cellZone        {rack.id}", case.fv_options(self.model))
             self.assertIn(f"name    {rack.id}", self.text)
 
 
 class BafflesTest(unittest.TestCase):
     def setUp(self):
         self.model = build()
-        self.text = podcase.create_baffles_dict(self.model)
+        self.text = case.create_baffles_dict(self.model)
 
     def test_nothing_may_reach_the_outer_boundary(self):
         self.assertIn("internalFacesOnly true", self.text)
 
     def test_walls_are_patch_pairs_and_the_fan_is_explicit(self):
-        self.assertEqual(self.text.count("patchPairs"), len(podcase.wall_plan(self.model)))
+        self.assertEqual(self.text.count("patchPairs"), len(case.wall_plan(self.model)))
         # the fan; grilles only join when they carry a resistance
         self.assertEqual(self.text.count("patches\n        {"), 1)
 
     def test_a_grille_with_free_area_becomes_a_cyclic_pair_with_a_pressure_jump(self):
         model = build(grilles={"size": 0.6, "count": 3, "free_area": 0.8})
-        text = podcase.create_baffles_dict(model)
+        text = case.create_baffles_dict(model)
         self.assertEqual(text.count("porousBafflePressure"), 6)  # 3 grilles x 2 sides
         self.assertIn("neighbourPatch  grille1_above", text)
         k = model.panel("grille1").resistance
@@ -124,12 +124,12 @@ class BafflesTest(unittest.TestCase):
 
     def test_grilles_get_their_own_face_zones(self):
         model = build(grilles={"size": 0.6, "count": 3, "free_area": 0.8})
-        text = podcase.topo_set_dict(model)
+        text = case.topo_set_dict(model)
         self.assertIn("name    grille1;\n        type    faceZoneSet;", text)
 
     def test_both_sides_of_the_fan_move_the_same_mass(self):
         """Volume would not do: the air leaving is warmer and thinner."""
-        mass = self.model.airflow_m3s * podcase.supply_density(self.model)
+        mass = self.model.airflow_m3s * case.supply_density(self.model)
         self.assertEqual(self.text.count(f"massFlowRate {mass:.6g}"), 2)
         self.assertIn("flowRateInletVelocity", self.text)
         self.assertIn("flowRateOutletVelocity", self.text)
@@ -137,28 +137,28 @@ class BafflesTest(unittest.TestCase):
     def test_nothing_can_blow_backwards_through_the_fan(self):
         """A pressure-driven intake let 2.3x the net flow reverse through it."""
         self.assertNotIn("type pressureInletOutletVelocity", self.text)
-        intake = self.text[self.text.index(podcase.FAN_INTAKE) : self.text.index("slave")]
+        intake = self.text[self.text.index(case.FAN_INTAKE) : self.text.index("slave")]
         self.assertIn("flowRateOutletVelocity", intake)
         # The patch is written as inletOutlet only so it stores a value the
         # energy balance can read; what it would admit is supply air, never a
         # guessed return that would invent heat.
-        supply_k = self.model.supply_temp_c + podcase.KELVIN
+        supply_k = self.model.supply_temp_c + case.KELVIN
         self.assertIn(f"inletValue uniform {supply_k:.2f}", intake)
 
     def test_the_supply_density_is_the_one_the_solver_will_compute(self):
-        density = podcase.supply_density(self.model)
+        density = case.supply_density(self.model)
         self.assertAlmostEqual(density, 1.2041, places=3)
 
     def test_the_supply_carries_the_supply_temperature(self):
-        supply_k = self.model.supply_temp_c + podcase.KELVIN
-        supply = self.text[self.text.index(podcase.FAN_SUPPLY) :]
+        supply_k = self.model.supply_temp_c + case.KELVIN
+        supply = self.text[self.text.index(case.FAN_SUPPLY) :]
         self.assertIn(f"uniform {supply_k:.2f}", supply)
 
     def test_no_patch_fixes_the_pressure_so_the_solver_is_given_a_reference(self):
         """Both fan patches fix mass flow, which leaves p_rgh's level free."""
         self.assertNotIn("type prghPressure", self.text)
         self.assertNotIn("p_rgh   { type fixedValue", self.text)
-        solution = podcase.fv_solution(self.model, 1e-4)
+        solution = case.fv_solution(self.model, 1e-4)
         self.assertIn("pRefCell", solution)
         self.assertIn("pRefValue       101325", solution)
 
@@ -170,7 +170,7 @@ class BafflesTest(unittest.TestCase):
 class PorosityTest(unittest.TestCase):
     def test_the_rack_passes_the_axis_it_breathes_along(self):
         """The row is turned 90 degrees to the aisle, so the flow axis is y."""
-        text = podcase.fv_options(build())
+        text = case.fv_options(build())
         self.assertIn("e1      (0 1 0)", text)
         self.assertNotIn("e1      (1 0 0)", text)
 
@@ -190,7 +190,7 @@ class PorosityTest(unittest.TestCase):
 
     def test_the_whole_load_becomes_a_heat_source(self):
         model = build()
-        text = podcase.fv_options(model)
+        text = case.fv_options(model)
         self.assertEqual(text.count("scalarSemiImplicitSource;"), len(model.racks))
         self.assertIn(f"h           ({model.racks[0].load_w:g} 0)", text)
 
@@ -198,12 +198,12 @@ class PorosityTest(unittest.TestCase):
 class FieldsTest(unittest.TestCase):
     def test_the_zero_directory_covers_the_outer_walls_only(self):
         """The baffle patches do not exist yet; createBafflesDict declares them."""
-        fields = podcase.initial_fields(build())
+        fields = case.initial_fields(build())
         for name, text in fields.items():
-            self.assertNotIn(podcase.FAN_SUPPLY, text, name)
+            self.assertNotIn(case.FAN_SUPPLY, text, name)
 
     def test_every_field_the_solver_needs_is_written(self):
-        fields = podcase.initial_fields(build())
+        fields = case.initial_fields(build())
         self.assertEqual(
             set(fields),
             {"U", "T", "p_rgh", "p", "k", "epsilon", "nut", "alphat"},
@@ -211,15 +211,15 @@ class FieldsTest(unittest.TestCase):
 
     def test_epsilon_is_derived_from_k_and_a_room_scale_length(self):
         model = build()
-        k, epsilon = podcase.turbulence_initial_values(model)
-        length = podcase.LENGTH_SCALE_FRACTION * model.domain.size[2]
-        self.assertAlmostEqual(epsilon, podcase.C_MU**0.75 * k**1.5 / length)
+        k, epsilon = case.turbulence_initial_values(model)
+        length = case.LENGTH_SCALE_FRACTION * model.domain.size[2]
+        self.assertAlmostEqual(epsilon, case.C_MU**0.75 * k**1.5 / length)
 
     def test_the_velocity_scale_is_buoyant_when_the_supply_is_slower(self):
         """A 0,19 m/s supply face does not set the turbulence of a 8 m room."""
         model = build()
-        k, _ = podcase.turbulence_initial_values(model)
-        from_supply = 1.5 * (model.face_velocity("fan") * podcase.TURBULENCE_INTENSITY) ** 2
+        k, _ = case.turbulence_initial_values(model)
+        from_supply = 1.5 * (model.face_velocity("fan") * case.TURBULENCE_INTENSITY) ** 2
         self.assertGreater(k, from_supply * 10)
 
 
@@ -228,7 +228,7 @@ class WarmStartTest(unittest.TestCase):
 
     def setUp(self):
         self.model = build()
-        self.field = podcase.warm_start(self.model)
+        self.field = case.warm_start(self.model)
         self.values = [
             float(v) for v in re.findall(r"^\d+\.\d\d$", self.field, re.M)
         ]
@@ -239,7 +239,7 @@ class WarmStartTest(unittest.TestCase):
 
     def test_only_two_temperatures_are_seeded(self):
         """The shape of the answer, not a guess at its numbers."""
-        supply = self.model.supply_temp_c + podcase.KELVIN
+        supply = self.model.supply_temp_c + case.KELVIN
         self.assertEqual(len(set(self.values)), 2)
         self.assertAlmostEqual(min(self.values), supply, places=1)
         self.assertGreater(max(self.values), supply)
@@ -248,7 +248,7 @@ class WarmStartTest(unittest.TestCase):
         model = self.model
         nx, ny, _nz = model.divisions
         cx, cy, cz = model.cell_size
-        supply = model.supply_temp_c + podcase.KELVIN
+        supply = model.supply_temp_c + case.KELVIN
 
         def at(x, y, z):
             i, j, k = int(x / cx), int(y / cy), int(z / cz)
@@ -263,13 +263,13 @@ class WarmStartTest(unittest.TestCase):
         self.assertGreater(at(6.0, cold_y, model.ceiling_z + 0.5), supply)  # plenum
 
     def test_the_field_is_written_into_the_zero_directory(self):
-        text = podcase.initial_fields(self.model)["T"]
+        text = case.initial_fields(self.model)["T"]
         self.assertIn("nonuniform List<scalar>", text)
         self.assertNotIn("internalField   uniform", text)
 
     def test_the_seed_can_be_turned_off_to_check_it(self):
         """The same case from a uniform field is what licenses the seed."""
-        text = podcase.initial_fields(self.model, warm=False)["T"]
+        text = case.initial_fields(self.model, warm=False)["T"]
         self.assertIn("internalField   uniform", text)
         self.assertNotIn("nonuniform List<scalar>", text)
 
@@ -277,50 +277,23 @@ class WarmStartTest(unittest.TestCase):
 class BlockMeshTest(unittest.TestCase):
     def test_the_box_is_closed(self):
         """A POD's air never leaves the domain: the fan wall is where it cuts."""
-        text = podcase.block_mesh_dict(build())
-        self.assertEqual(text.count("type wall"), len(podcase.OUTER_PATCHES))
+        text = case.block_mesh_dict(build())
+        self.assertEqual(text.count("type wall"), len(case.OUTER_PATCHES))
         self.assertNotIn("type patch", text)
 
     def test_the_divisions_follow_the_model(self):
         model = build()
-        text = podcase.block_mesh_dict(model)
+        text = case.block_mesh_dict(model)
         self.assertIn(f"({' '.join(str(n) for n in model.divisions)})", text)
-
-
-class CliRoutingTest(unittest.TestCase):
-    """The spec's shape picks the generator, not a flag to remember."""
-
-    def test_a_pod_spec_is_recognised(self):
-        from aicfd.cli import is_pod_spec
-
-        path = Path(tempfile.mkdtemp()) / "pod.yaml"
-        path.write_text(yaml.safe_dump(SPEC))
-        self.assertTrue(is_pod_spec(path))
-
-    def test_an_m2_room_spec_is_not(self):
-        from aicfd.cli import is_pod_spec
-
-        path = Path(tempfile.mkdtemp()) / "room.yaml"
-        path.write_text(
-            yaml.safe_dump({"name": "r", "room": {"size": [8, 5, 3]}, "cracs": []})
-        )
-        self.assertFalse(is_pod_spec(path))
-
-    def test_something_that_is_not_yaml_is_not_a_pod(self):
-        from aicfd.cli import is_pod_spec
-
-        path = Path(tempfile.mkdtemp()) / "nope.yaml"
-        path.write_text(": : not yaml : :")
-        self.assertFalse(is_pod_spec(path))
 
 
 class SummaryTest(unittest.TestCase):
     def test_it_names_every_surface_the_surgery_builds(self):
         model = build()
-        text = podcase.summary(model)
-        for name, _panel, _holes in podcase.wall_plan(model):
+        text = case.summary(model)
+        for name, _panel, _holes in case.wall_plan(model):
             self.assertIn(name, text)
-        self.assertIn(podcase.FAN_SUPPLY, text)
+        self.assertIn(case.FAN_SUPPLY, text)
 
 
 if __name__ == "__main__":

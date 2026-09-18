@@ -1,4 +1,8 @@
-"""Tests for the OpenFOAM readers and the KPI pass.
+"""Tests for the OpenFOAM readers and the ASHRAE verdict.
+
+The readers are the only place AICFD parses OpenFOAM's own file formats, so a
+change in them is a change in every number downstream. The verdict is the one
+piece of the standard the tool asserts on its own.
 
 Run with: python -m unittest discover tests
 """
@@ -10,14 +14,8 @@ from pathlib import Path
 import numpy as np
 
 from aicfd.foam import solverlog
-from aicfd.foam.casedict import read_case
 from aicfd.foam.fields import FoamParseError, read_field, to_grid
-from aicfd.post import _ashrae_verdict, analyse
-
-REPO_ROOT = Path(__file__).resolve().parents[1]
-REFERENCE_CASE = REPO_ROOT / ".claude/skills/datacenter-cfd/reference-case"
-#: `aicfd run` solves into runs/, leaving the template untouched.
-SOLVED_CASE = REPO_ROOT / "runs" / "reference-case"
+from aicfd.post import _ashrae_verdict
 
 HEADER = """FoamFile { version 2.0; format ascii; class %s; object f; }
 dimensions      [0 0 0 1 0 0 0];
@@ -87,33 +85,6 @@ class FieldReaderTests(unittest.TestCase):
             to_grid(np.arange(10), (2, 3, 4))
 
 
-class CaseReaderTests(unittest.TestCase):
-    def setUp(self):
-        if not REFERENCE_CASE.exists():
-            self.skipTest("reference case not present")
-        self.geometry = read_case(REFERENCE_CASE)
-
-    def test_reads_room_and_mesh(self):
-        self.assertEqual(self.geometry.room.size, (6.0, 4.0, 3.0))
-        self.assertEqual(self.geometry.divisions, (60, 40, 30))
-        self.assertEqual(self.geometry.n_cells, 72000)
-
-    def test_reads_patches(self):
-        self.assertEqual(self.geometry.patches["fanwall"], "patch")
-        self.assertEqual(self.geometry.patches["floor"], "wall")
-
-    def test_reads_rack_zone_and_load(self):
-        self.assertEqual(self.geometry.zones["rack"].lo, (3.0, 1.5, 0.0))
-        self.assertEqual(self.geometry.zones["rack"].hi, (3.6, 2.5, 2.0))
-        self.assertEqual(self.geometry.total_load_w, 5000.0)
-
-    def test_finds_the_supply_patch_not_a_wall(self):
-        # noSlip walls are also fixed-value; only a non-zero one is a supply.
-        self.assertEqual(self.geometry.inlet_patch, "fanwall")
-        self.assertEqual(self.geometry.inlet_velocity, (1.8, 0.0, 0.0))
-        self.assertEqual(self.geometry.inlet_temperature_k, 291.0)
-
-
 class SolverLogTests(unittest.TestCase):
     LOG = """Time = 1
 
@@ -177,184 +148,6 @@ class AshraeTests(unittest.TestCase):
     def test_beyond_every_envelope(self):
         verdict = _ashrae_verdict(50.0)
         self.assertEqual(verdict["allowable_classes"], [])
-
-
-class PlausibleVelocityTests(unittest.TestCase):
-    """The check that catches a field no amount of fan or buoyancy could drive."""
-
-    def evaluate(self, peak_speed, supply=1.8, spread_k=2.0):
-        import numpy as np
-
-        from aicfd.foam.casedict import Box, CaseGeometry
-        from aicfd.post import KELVIN, _evaluate
-        from aicfd.foam import solverlog
-
-        divisions = (4, 4, 4)
-        geometry = CaseGeometry(
-            room=Box(lo=(0, 0, 0), hi=(6.0, 4.0, 3.0)),
-            divisions=divisions,
-            inlet_velocity=(supply, 0.0, 0.0),
-            inlet_temperature_k=291.0,
-            inlet_patch="fanwall",
-        )
-        shape = (divisions[2], divisions[1], divisions[0])
-        temperature = np.full(shape, 291.0)
-        temperature[-1, -1, -1] = 291.0 + spread_k
-        velocity = np.zeros((*shape, 3))
-        velocity[..., 0] = supply
-        velocity[0, 0, 0, 0] = peak_speed
-        _, checks, warnings = _evaluate(
-            geometry, {"T": temperature, "U": velocity}, solverlog.SolverLog()
-        )
-        check = next(c for c in checks if c.name == "plausible_velocity")
-        return check, warnings
-
-    def test_a_field_within_reach_passes(self):
-        check, _ = self.evaluate(peak_speed=3.0)
-        self.assertTrue(check.passed, check.detail)
-
-    def test_an_impossible_field_fails(self):
-        check, warnings = self.evaluate(peak_speed=14.3)
-        self.assertFalse(check.passed, check.detail)
-        self.assertTrue(
-            any("unreliable" in w for w in warnings),
-            "a failing velocity check must warn that the temperatures are "
-            "from the same field",
-        )
-
-    def test_the_ceiling_follows_buoyancy_when_the_supply_is_slow(self):
-        # A slow supply with a large temperature spread still permits real
-        # motion; the check must not fail that.
-        check, _ = self.evaluate(peak_speed=5.0, supply=0.2, spread_k=20.0)
-        self.assertTrue(check.passed, check.detail)
-
-    def test_a_still_room_still_has_a_floor(self):
-        # With no supply and no spread the ceiling must not collapse to zero,
-        # or every quiet case fails.
-        check, _ = self.evaluate(peak_speed=0.2, supply=0.0, spread_k=0.0)
-        self.assertTrue(check.passed, check.detail)
-
-
-class RackThroughflowTests(unittest.TestCase):
-    """A rack that is not drawing air is reporting the model's limits, not a room."""
-
-    def evaluate(self, through_speed, load_w=6000.0):
-        import numpy as np
-
-        from aicfd.foam import solverlog
-        from aicfd.foam.casedict import Box, CaseGeometry, HeatSource
-        from aicfd.post import _evaluate
-
-        divisions = (8, 8, 8)  # 6 x 4 x 3 m room
-        geometry = CaseGeometry(
-            room=Box(lo=(0, 0, 0), hi=(6.0, 4.0, 3.0)),
-            divisions=divisions,
-            zones={"R": Box(lo=(2.25, 1.0, 0.0), hi=(3.75, 3.0, 2.25))},
-            heat_sources=[HeatSource(zone="R", watts=load_w)],
-            inlet_velocity=(1.0, 0.0, 0.0),
-            inlet_temperature_k=291.0,
-            inlet_patch="fanwall",
-        )
-        shape = (divisions[2], divisions[1], divisions[0])
-        temperature = np.full(shape, 291.0)
-        temperature[2:6, 2:6, 3:5] = 295.0  # the rack is warmer
-        # Set the whole field: only the cells inside the zone are integrated,
-        # so hardcoding slices here would just risk missing the zone.
-        velocity = np.zeros((*shape, 3))
-        velocity[..., 0] = through_speed
-        _, checks, warnings = _evaluate(
-            geometry, {"T": temperature, "U": velocity}, solverlog.SolverLog()
-        )
-        return next(c for c in checks if c.name == "rack_throughflow"), warnings
-
-    def test_a_well_fed_rack_passes(self):
-        check, _ = self.evaluate(through_speed=1.0)
-        self.assertTrue(check.passed, check.detail)
-
-    def test_a_starved_rack_fails_and_names_the_numbers(self):
-        check, warnings = self.evaluate(through_speed=0.02)
-        self.assertFalse(check.passed)
-        self.assertIn("R draws", check.detail)
-        self.assertIn("m3/h", check.detail)
-        self.assertTrue(
-            any("resistance rather than a fan" in w for w in warnings),
-            "a starved rack must explain that this is the rack model's limit",
-        )
-
-    def test_backward_flow_is_not_counted_as_cooling(self):
-        # Air moving backwards through a rack is not cooling it.
-        backwards, _ = self.evaluate(through_speed=-1.0)
-        self.assertFalse(backwards.passed, backwards.detail)
-
-
-class NoAirBelowSupplyTests(unittest.TestCase):
-    def evaluate(self, coldest_k):
-        import numpy as np
-
-        from aicfd.foam import solverlog
-        from aicfd.foam.casedict import Box, CaseGeometry
-        from aicfd.post import _evaluate
-
-        divisions = (4, 4, 4)
-        geometry = CaseGeometry(
-            room=Box(lo=(0, 0, 0), hi=(6.0, 4.0, 3.0)),
-            divisions=divisions,
-            inlet_velocity=(1.0, 0.0, 0.0),
-            inlet_temperature_k=291.0,
-            inlet_patch="fanwall",
-        )
-        shape = (divisions[2], divisions[1], divisions[0])
-        temperature = np.full(shape, 293.0)
-        temperature[0, 0, 0] = coldest_k
-        velocity = np.zeros((*shape, 3))
-        velocity[..., 0] = 1.0
-        _, checks, _ = _evaluate(
-            geometry, {"T": temperature, "U": velocity}, solverlog.SolverLog()
-        )
-        return next(c for c in checks if c.name == "no_air_below_supply")
-
-    def test_air_at_the_supply_temperature_passes(self):
-        self.assertTrue(self.evaluate(291.0).passed)
-
-    def test_an_undershoot_fails(self):
-        self.assertFalse(self.evaluate(288.0).passed)
-
-    def test_recirculation_does_not_fail_the_check(self):
-        # The old monotonic-heating check failed correct recirculating rooms.
-        # Nothing here is below the supply, so this must pass.
-        self.assertTrue(self.evaluate(291.5).passed)
-
-
-class ReferenceResultsTests(unittest.TestCase):
-    """Guards the numbers the reference case is documented to produce."""
-
-    @classmethod
-    def setUpClass(cls):
-        if not SOLVED_CASE.exists():
-            raise unittest.SkipTest("run 'python -m aicfd run' first")
-        cls.results, _, _ = analyse(SOLVED_CASE)
-
-    def test_all_checks_pass(self):
-        failed = [c.name for c in self.results.checks if not c.passed]
-        self.assertEqual(failed, [], f"failing checks: {failed}")
-
-    def test_rack_temperatures_match_the_documented_run(self):
-        rack = self.results.kpis["zones"][0]
-        self.assertAlmostEqual(rack["mean_temp_c"], 18.73, places=1)
-        self.assertAlmostEqual(rack["peak_temp_c"], 19.50, places=1)
-
-    def test_reads_the_solver_log_not_the_meshing_logs(self):
-        # blockMesh/topoSet/checkMesh also write log.* files; picking one of
-        # those reports a converged run as having no convergence data.
-        self.assertEqual(self.results.kpis["iterations"], 800)
-        self.assertIsNotNone(self.results.kpis["runtime_s"])
-
-    def test_over_ventilation_is_reported(self):
-        self.assertGreater(self.results.kpis["over_ventilation_factor"], 10)
-        self.assertTrue(
-            any("Supply airflow is" in w for w in self.results.warnings),
-            "the over-ventilation warning should fire on this case",
-        )
 
 
 if __name__ == "__main__":

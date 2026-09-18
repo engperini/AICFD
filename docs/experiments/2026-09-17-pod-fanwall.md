@@ -125,7 +125,7 @@ loop" with `error in IOstream "sha1"`, an `OSHA1stream` fault inside
 `functionObjectList`'s dictionary digest — the same fault that makes
 `postProcess` unusable. A one-point, one-field `probes` entry triggers it, so it
 is the packaged library, not the dictionary. Instead the solver writes its
-fields at the sensor interval and `podpost.Sampler` reads each time directory as
+fields at the sensor interval and `post.Sampler` reads each time directory as
 it lands, guarded by OpenFOAM's own end-of-file footer. Same cells, same
 iterations.
 
@@ -161,7 +161,7 @@ hybrid or FMG initialisation, or mapping from a previous solution.
 The argument has one assumption: that the steady problem has a unique solution.
 A buoyancy-driven room need not, and then the initial condition selects between
 branches. So the same case is also run from a uniform field and
-`podpost.compare()` checks the two land in the same place, within 1 K at every
+`post.compare()` checks the two land in the same place, within 1 K at every
 instrumented place.
 
 At equal iteration count (600), what the seed actually bought:

@@ -1,176 +1,191 @@
 # AICFD
 
-**AI-assisted CFD for data center cooling.** Open source, runs on your own
-machine, and built for electrical and facility engineers rather than CFD
+**AI-assisted CFD for data centre cooling.** Open source, runs on your own
+machine, and written for electrical and facility engineers rather than CFD
 specialists.
 
-You describe a room in the units you already work in — kW per rack, m³/h per
-CRAC, supply temperature — and AICFD generates an OpenFOAM case, solves it,
-checks the result against physics, and renders it in your browser.
+You describe a POD or a data hall in the units you already work in — kW per
+rack, m³/h per fan wall, CFM/kW, supply temperature, site altitude — and AICFD
+derives the geometry, generates an OpenFOAM case, solves it, holds the result
+to eleven physical checks, and draws it as plan and sections with the field
+underneath.
 
-<!-- Add docs/images/viewer.png once a realistic multi-rack case exists. -->
-
-## Why
-
-Commercial data hall CFD costs tens of thousands per seat. Underneath, it runs
-the same physics OpenFOAM does: steady-state Navier-Stokes with buoyancy, racks
-and perforated tiles as Darcy-Forchheimer porous media, CRAC units as velocity
-patches. What those tools really sell is the interface. AICFD rebuilds that
-interface on free software.
-
-## Quick start
-
-### With Docker (any OS)
+Everything here is meant to be reproduced and disbelieved by someone else.
+There is one pipeline, one spec shape and one command that proves the whole
+thing works on a fresh machine:
 
 ```bash
-git clone https://github.com/engperini/AICFD && cd AICFD
-docker compose up --build        # builds the image, serves the viewer
+python3 -m aicfd verify --solve
 ```
 
-Then open <http://localhost:8000/web/?case=reference-case>.
+---
 
-To solve a case inside the container:
+## 1. Install and prove it works
 
-```bash
-docker compose run --rm aicfd python3 -m aicfd run cases/datahall-small.yaml
-```
-
-### Without Docker (Ubuntu / WSL2)
+Ubuntu or WSL2 (the reference environment; the Docker image is the same thing
+packaged):
 
 ```bash
 sudo apt-get install -y openfoam openfoam-examples
 pip install -r requirements.txt
 
-python -m aicfd doctor                      # confirm OpenFOAM is usable
-python -m aicfd run cases/datahall-small.yaml   # 6 racks, 48 kW, 2 CRACs
-python -m aicfd view                        # open the viewer
+python3 -m aicfd doctor      # is OpenFOAM usable here?
+python3 -m aicfd verify      # tests + install + mesh both worked cases (~1 min)
+python3 -m aicfd verify --solve   # the above, plus a short solve and its checks
 ```
 
-## Describing a room
+`verify` is the audit. It runs, in order: the unit tests, the OpenFOAM
+install check, a full mesh of every case in `cases/` (including the internal
+surgery that builds the containment and the fan walls), and — with `--solve` —
+a short run of the worked POD that has to pass all eleven physical checks.
+Anything that fails names itself and stops.
 
-A case is one YAML file, in the units you already use:
-
-```yaml
-name: datahall-a
-room:
-  size: [10.0, 8.0, 3.0]        # x (along the airflow), y (across), z (height), m
-racks:
-  - {id: A1, position: [3.0, 1.0], size: [1.0, 0.6, 2.0], load_kw: 8.0}
-  - {id: A2, position: [3.0, 1.7], size: [1.0, 0.6, 2.0], load_kw: 12.0}
-cracs:
-  - {id: CRAC01, airflow_m3h: 6000, supply_temp_c: 20.0}
-mesh: {cell_size: 0.10}
-```
-
-`aicfd new <name>` writes a starter file; `aicfd build` shows you what it derived
-before committing to a solve:
-
-```
-Case 'datahall-small'
-  Room            8 x 5 x 3 m
-  Mesh            80x50x30 = 120,000 cells (0.100 m)
-  IT load         48.0 kW across 6 rack(s)
-  Supply air      12,000 m3/h at 20.0 degC
-  Supply velocity 0.222 m/s (over 15.00 m2)
-  Design bulk dT  12.0 K
-```
-
-You never see an OpenFOAM dictionary. The supply patch velocity, the rack
-resistance coefficients, the enthalpy sources and the mesh divisions are all
-derived from the numbers above — and the spec is validated before anything runs,
-so a rack outside the room or a mesh too fine to finish is caught in
-milliseconds rather than after a ten-minute solve.
-
-## What you get
-
-`aicfd run` solves a case and `aicfd post` turns it into three things:
-
-- **`results/<case>/report.md`** — operating point, per-rack inlet temperatures
-  against the ASHRAE envelopes, and a pass/fail list of physical checks.
-- **`results/<case>/viewer.json` + `fields.bin`** — the web viewer's payload.
-- **A verdict.** A converged solve is not automatically a correct one. Every
-  run is checked for mass balance, monotonic heating along the flow path,
-  residual thresholds, and — the one that catches real mistakes — whether each
-  rack's cell zone actually contains cells. An empty zone converges beautifully
-  to a room with no heat load in it.
-
-The viewer shows the room in 3D with a draggable slice plane, air temperature
-judged against the ASHRAE recommended band, temperature rise above supply, air
-speed, a numeric readout under the cursor, and the residual history.
-
-## Commands
-
-| Command | What it does |
-|---|---|
-| `aicfd new <name>` | Write a starter room spec into `cases/<name>.yaml` |
-| `aicfd build <spec.yaml>` | Generate the OpenFOAM case and print what was derived |
-| `aicfd doctor` | Check that the OpenFOAM utilities are installed and reachable |
-| `aicfd run <spec.yaml>` | Generate, solve into `runs/`, then post-process |
-| `aicfd post <name>` | Re-run post-processing on an existing run |
-| `aicfd view [--case N]` | Serve the viewer on <http://localhost:8000> |
-
-Run them as `python -m aicfd <command>`.
-
-## With the AI assistant
-
-AICFD ships two [Claude Code](https://claude.com/claude-code) skills in
-`.claude/skills/`. Open this repository in Claude Code and describe what you
-want in plain language — it will build the case, run it, read the report, and
-tell you what the result means:
-
-> "Simulate a 10 × 8 × 3 m room with 12 racks at 8 kW and two CRACs at
-> 25,000 m³/h supplying 18 °C. Which racks are outside the ASHRAE envelope?"
-
-The assistant drives the same CLI you would, so nothing it does is a black box,
-and the tool is fully usable without it. No API key, no per-use cost.
-
-## Status
-
-Working today: describe a multi-rack room in YAML, solve it, validate it, and
-read it in the browser. The `docs/experiments/` notes record what was measured,
-including
-[the reference case's 52x over-ventilation](docs/experiments/2026-09-17-reference-case.md)
-— the finding that shaped how airflow is specified.
-
-Next: engineering KPIs (RCI, RTI, recirculation and bypass fractions, N+1
-failure scenarios), then containment, raised-floor plenums and in-row units, then
-IFC import from a federated Revit model.
-
-Full plan: [`docs/ROADMAP.md`](docs/ROADMAP.md).
-Design decisions and their reasons: [`docs/DECISIONS.md`](docs/DECISIONS.md).
-
-## Limitations — read these before trusting a result
-
-- **Room-level answers only.** Racks are porous zones, so AICFD can tell you the
-  air temperature at a rack inlet. It cannot tell you a component temperature
-  inside a server.
-- **Steady state.** No thermal ride-through or transient failure analysis.
-- **No radiation.** Negligible next to forced convection in a data hall, but
-  wrong if you have large glazing or solar gain.
-- **Per-rack airflow is a result, not an input.** A rack is a flow resistance,
-  not a fan, so the air it actually gets falls out of the solution. That is
-  deliberate — it is what makes recirculation and air starvation visible — but it
-  means you cannot pin a rack to its rated CFM.
-- **One CRAC topology.** Today every CRAC is a fan wall on the upstream face.
-  Downflow and in-row units are planned.
-- **A validated run is not a validated model.** The checks confirm the solver
-  produced a self-consistent answer to the question you asked. Whether the
-  boundary conditions describe your actual room is on you — and the reference
-  case is a worked example of how badly that can go (its fan wall moves 52× the
-  air its load needs).
-
-## Development
+## 2. Run a case
 
 ```bash
-python -m unittest discover tests
+python3 -m aicfd run cases/pod-fanwall.yaml    # one POD, 8 min on one core
+python3 -m aicfd view --case pod-fanwall       # the page, at localhost:8000
 ```
 
-The suite uses only `unittest` plus the project's own two dependencies. It
-covers the spec validation and unit conversions, the case generator (including a
-round trip through the reader), the OpenFOAM field and log parsers, and the KPI
-pass. Cases that need a solved run skip cleanly if you have not run one.
+The two worked cases in `cases/` are the reference results, and both are
+documented end to end in `docs/experiments/`:
 
-## License
+| Case | What it is | Mesh | Cost |
+|---|---|---|---|
+| `pod-fanwall.yaml` | one row of 3 racks, 18 kW, one fan wall | 75 600 cells | 8 min, 1 core |
+| `hall-10mw.yaml` | 16 PODs, 768 racks, 9,98 MW, 35 fan walls | 329 280 cells | 11 min, 4 cores |
 
-MIT. OpenFOAM itself is GPL-3.0 and is not redistributed here — the Docker image
-installs it from the Ubuntu archive at build time.
+`aicfd new <name>` writes a starter spec with every field commented.
+
+## 3. What the tool actually does
+
+The air loop closes inside one box, so every surface that matters is
+*internal*. A blockMesh box alone cannot express that, so the mesh is built
+and then operated on:
+
+```
+blockMesh     one box, six outer walls, nothing else
+topoSet       face zones for every internal surface, cell zones for racks
+createBaffles turn those zones into real two-sided patches  (-overwrite)
+checkMesh     confirm the surgery left a valid mesh
+buoyantSimpleFoam   steady RANS, k-epsilon, buoyancy
+```
+
+| Part of the room | How it is modelled | Why |
+|---|---|---|
+| Rack | Darcy–Forchheimer porous block + enthalpy source | a rack is a *resistance*, not a fan: what passes through it is an outcome of the room's pressure field (ADR-011) |
+| Fan wall | pair of patches on the same internal faces, both set by **mass** flow | the one place the loop is cut; volume flow would not close, since the air leaving is warmer and thinner (ADR-017) |
+| Return grille | cyclic pair carrying a `porousBafflePressure` jump | the datasheet's loss coefficient, applied as physics and then checked against the field (ADR-020) |
+| Containment, false ceiling, row ends | two-sided wall baffles | a rack row that is not closed on five sides leaks most of its air sideways (ADR-016) |
+| Site | operating pressure from the altitude | a unit selected at 1 880 m moves air 24% lighter than at the coast (ADR-023) |
+
+Nothing in `cases/*.yaml` is an OpenFOAM dictionary. The mesh divisions, the
+porosity coefficients, the heat sources, the boundary conditions and the
+baffle surgery are all derived from engineering numbers, and the generated
+case is a build artifact that is never edited by hand (ADR-004).
+
+## 4. How to audit a result
+
+A steady solver's residuals say how much the last iteration moved, not whether
+the answer means anything. So every run is judged by **eleven identities the
+physics has to satisfy**, printed by `aicfd run`, written into
+`results/<name>/report.md` and shown on the page:
+
+| Check | What it would catch |
+|---|---|
+| `mass_balance` | the fan walls supplying and drawing different masses |
+| `sealed_envelope` | any wall or baffle passing air |
+| `no_backflow` | air reversing through a fan intake |
+| `energy_closure` | the return air not carrying the installed load |
+| `return_path` | the hot aisle, plenum and gallery disagreeing, i.e. a volume still filling |
+| `rack_resistance` | the porous zones not delivering the pressure drop they were given |
+| `grille_resistance` | the same, for the ceiling grilles |
+| `fan_capacity` | the POD costing more than the unit's datasheet offers |
+| `settled` | a field still moving between samples |
+| `ashrae_inlet` | a rack breathing air above the recommended band |
+| `plausible_velocity` | a velocity field no fan or buoyancy could produce |
+
+Three of these were written *because a run passed everything else and was
+still wrong*; the story of each is in `docs/DECISIONS.md` and in the
+experiment notes. Separately from the checks, the plant is sized against the
+design office's rules before any CFD (capacity in kW, airflow at 158 CFM/kW).
+A shortfall is an **alert, never a blocker**: a conceptual study wants to see
+what an undersized plant does.
+
+**What the coarse mesh can and cannot say.** With one rack per cell in plan,
+trust the ranking of racks, the aisle-to-aisle temperatures and the hall-scale
+pressure distribution. A single rack's inlet carries 1 to 2 K of uncertainty,
+so do not sign off ASHRAE compliance rack by rack from it. Resolve the worst
+POD at 0,20 m cells for that.
+
+## 5. Reading the page
+
+`aicfd view` serves two pages, both in Portuguese (the code and the docs are in
+English; the interface is not):
+
+- **Model page** — the derived geometry as plan and two sections, the numbers
+  it implies (face velocities, pressure drops, HVAC sizing), the mesh-snapping
+  warnings, and a Run button. This is where a mistake is caught *before* paying
+  for a solve.
+- **Results page** — the same three drawings with the solved field underneath
+  (temperature, speed, pressure) in contour bands with the ASHRAE limits drawn
+  on the legend (ADR-024); every rack painted by the temperature of the air it
+  breathes, with the warmest listed and all of them downloadable as CSV; the
+  eleven checks; the residual history.
+
+## 6. The repository
+
+```
+aicfd/
+  model.py     the geometry: spec -> boxes, panels, rows, fan walls, sensors.
+               The single source of truth; the drawing and the mesh both read it
+  case.py      the OpenFOAM case generator (blockMesh, topoSet, createBaffles,
+               fvOptions, boundary conditions, the parallel pipeline)
+  post.py      the analysis: patch flows, the eleven checks, per-rack inlets,
+               live sampling during a run, the viewer export
+  run.py       the only place that shells out to OpenFOAM (isolated env, ADR-002)
+  server.py    the page's backend: model payload, parameter edits, run control
+  cli.py       every command, including `verify`
+  foam/        readers for OpenFOAM's own formats (fields, polyMesh, solver log)
+web/
+  index.html   model page          results.html  results page
+  drawing.js   plan and sections, shared by both pages
+  maps.js      the field maps and the contour legend
+  racks.js     every rack by its inlet temperature
+  colormaps.js perceptual ramps and the banded scale
+  data.js  convergence.js  app.js  results.js
+cases/         the worked case specs, commented line by line
+results/       exported results: viewer.json, fields.bin, report.md
+docs/
+  DECISIONS.md the numbered decision record (ADR-001 onwards) -- why, not what
+  ROADMAP.md   what exists, what is next, what is deliberately not done
+  experiments/ dated write-ups of real runs, including the faults they found
+tests/         186 unit tests, no OpenFOAM required
+```
+
+`runs/` holds solved cases and is not tracked: it is regenerated by
+`aicfd run`.
+
+## 7. Where the reasoning lives
+
+- **`docs/DECISIONS.md`** is the audit trail. Every modelling choice is a
+  numbered ADR with the alternative that was rejected and the measurement that
+  settled it. Superseded decisions stay in the file, marked, because deleting
+  them would delete the reasoning.
+- **`docs/experiments/`** holds what actually happened on real runs: the fan
+  wall that let air blow backwards, the rack row that delivered a fifth of its
+  rated resistance because three of its faces were open, the 10 MW hall whose
+  first rack in every row is starved by the aisle mouth.
+- **`.claude/skills/aicfd/SKILL.md`** is the same knowledge shaped for an AI
+  agent driving the tool.
+
+## 8. Limits
+
+- Steady state only. Transients (a unit failing, a door opening) are out of
+  scope for now.
+- Containment is modelled as perfect. Real containment leaks.
+- No comparison against measurement yet. Every validation is an identity the
+  physics must satisfy, which catches wrong models but cannot promise the real
+  room behaves this way.
+- Only the fan-wall architecture with a ceiling-plenum return. Raised-floor
+  plenums, in-row and downflow units are not modelled yet (see ROADMAP).

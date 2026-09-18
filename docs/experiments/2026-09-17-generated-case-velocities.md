@@ -1,5 +1,11 @@
 # 2026-09-17 — Why generated cases blew up (M2)
 
+> **Historical.** This run used the M2 room generator, removed in ADR-025.
+> The fault it found -- a rack passing a fifth of the air its load needs --
+> is still live in the current model, where a rack is a resistance and not a
+> fan (ADR-011); the 10 MW hall shows the same thing at the first rack of
+> every row.
+
 **Question.** The first multi-rack case built by the generator reported a peak
 air speed of 29.7 m/s in a room supplied at 0.22 m/s. Where did the momentum
 come from?

@@ -18,8 +18,8 @@ from pathlib import Path
 import yaml
 
 from aicfd import model as M
-from aicfd import podcase, podpost
-from aicfd.podcase import KELVIN
+from aicfd import case, post
+from aicfd.case import KELVIN
 
 SPEC = yaml.safe_load(
     """
@@ -169,7 +169,7 @@ mesh: {cell_size: 0.1}
         self.assertEqual(len(pod.rows), 1)
         self.assertEqual(len(pod.fans), 1)
         self.assertEqual(pod.fans[0].name, "fan")
-        self.assertEqual(podcase.fan_patches(pod), [("fanIntake", "fanSupply")])
+        self.assertEqual(case.fan_patches(pod), [("fanIntake", "fanSupply")])
 
 
 class SensorTest(unittest.TestCase):
@@ -188,53 +188,53 @@ class CaseTest(unittest.TestCase):
         self.model = build()
 
     def test_each_fan_wall_gets_its_own_baffle_pair_moving_its_share(self):
-        text = podcase.create_baffles_dict(self.model)
-        for intake, supply in podcase.fan_patches(self.model):
+        text = case.create_baffles_dict(self.model)
+        for intake, supply in case.fan_patches(self.model):
             self.assertIn(f"name    {intake};", text)
             self.assertIn(f"name    {supply};", text)
-        share = self.model.unit_airflow_m3h / 3600 * podcase.supply_density(self.model)
+        share = self.model.unit_airflow_m3h / 3600 * case.supply_density(self.model)
         self.assertEqual(text.count(f"massFlowRate {share:.6g}"), 2 * len(self.model.fans))
         for fan in self.model.fans:
             self.assertIn(f"zoneName    {fan.name};", text)
 
     def test_walls_of_a_kind_share_one_zone(self):
-        names = [name for name, _p, _h in podcase.wall_plan(self.model)]
+        names = [name for name, _p, _h in case.wall_plan(self.model)]
         self.assertEqual(
             names,
             ["divider", "forro", "rack_top", "rack_end", "containment_wall", "containment_door"],
         )
-        top = next(panels for name, panels, _ in podcase.wall_plan(self.model) if name == "rack_top")
+        top = next(panels for name, panels, _ in case.wall_plan(self.model) if name == "rack_top")
         self.assertEqual(len(top), len(self.model.rows))
 
     def test_the_divider_is_holed_by_every_fan_and_the_return(self):
-        text = podcase.topo_set_dict(self.model)
+        text = case.topo_set_dict(self.model)
         divider = text[text.index("dividerFaces") : text.index("forroFaces")]
         self.assertEqual(divider.count("action  delete"), len(self.model.fans) + 1)
 
     def test_grouped_faces_are_added_then_narrowed_once(self):
-        text = podcase.topo_set_dict(self.model)
+        text = case.topo_set_dict(self.model)
         top = text[text.index("rack_topFaces") : text.index("rack_endFaces")]
         self.assertEqual(top.count("action  new"), 2)  # the faceSet, then the zone
         self.assertEqual(top.count("action  add"), len(self.model.rows) - 1)
         self.assertEqual(top.count("normalToFace"), 1)
 
     def test_the_parallel_pipeline_decomposes_solves_under_mpi_and_stitches(self):
-        steps = podcase.pipeline(4)
-        self.assertEqual(steps[: len(podcase.MESH_PIPELINE)], podcase.MESH_PIPELINE)
+        steps = case.pipeline(4)
+        self.assertEqual(steps[: len(case.MESH_PIPELINE)], case.MESH_PIPELINE)
         commands = [s[0] if isinstance(s, tuple) else s for s in steps]
         self.assertEqual(commands[-3:], ["decomposePar", "mpirun", "reconstructPar"])
         mpirun = steps[-2]
         self.assertEqual(mpirun[1], ["-np", "4", "buoyantSimpleFoam", "-parallel"])
         self.assertEqual(mpirun[2], "buoyantSimpleFoam")  # the log keeps the solver's name
-        self.assertEqual(podcase.pipeline(1), podcase.PIPELINE)
+        self.assertEqual(case.pipeline(1), case.PIPELINE)
 
     def test_the_decomposition_slabs_the_longest_axis(self):
-        text = podcase.decompose_par_dict(self.model, 4)
+        text = case.decompose_par_dict(self.model, 4)
         self.assertIn("numberOfSubdomains 4;", text)
         self.assertIn("(1 4 1)", text)  # the hall is longest across y
 
     def test_the_warm_seed_is_warm_in_every_hot_aisle_and_cold_in_every_cold_one(self):
-        text = podcase.warm_start(self.model)
+        text = case.warm_start(self.model)
         values = [float(v) for v in text.split("(")[1].split(")")[0].split()]
         nx, ny, nz = self.model.divisions
         cx, cy, cz = self.model.cell_size
@@ -297,12 +297,12 @@ class ManyFansPostTest(unittest.TestCase):
 
     def test_fan_pairs_are_found_in_unit_order(self):
         self.assertEqual(
-            podpost.fan_pairs(self.step),
+            post.fan_pairs(self.step),
             [("fan1Intake", "fan1Supply"), ("fan2Intake", "fan2Supply")],
         )
 
     def test_each_unit_reports_its_own_flow_and_rise(self):
-        fans = podpost.fan_flows(self.step)
+        fans = post.fan_flows(self.step)
         self.assertEqual([f["name"] for f in fans], ["fan1", "fan2"])
         self.assertAlmostEqual(fans[0]["supply_kg_s"], 1.0)
         self.assertAlmostEqual(fans[1]["intake_kg_s"], 0.5)
@@ -311,14 +311,14 @@ class ManyFansPostTest(unittest.TestCase):
 
     def test_the_return_temperature_is_flow_weighted_across_units(self):
         # 1 kg/s at +10 K and 0.5 kg/s at +12 K -> +10.67 K
-        rise = podpost.return_temperature(self.step) - (20.0 + KELVIN)
+        rise = post.return_temperature(self.step) - (20.0 + KELVIN)
         self.assertAlmostEqual(rise, (1.0 * 10 + 0.5 * 12) / 1.5, places=3)
 
     def test_a_fan_patch_is_never_a_leak(self):
         for name in ("fanIntake", "fan12Supply", "fan3Intake"):
-            self.assertTrue(podpost._is_fan_patch(name))
-        self.assertFalse(podpost._is_fan_patch("fan_wall"))
-        self.assertFalse(podpost._is_fan_patch("rack_top_master"))
+            self.assertTrue(post._is_fan_patch(name))
+        self.assertFalse(post._is_fan_patch("fan_wall"))
+        self.assertFalse(post._is_fan_patch("rack_top_master"))
 
 
 class RackReadingTest(unittest.TestCase):
@@ -337,7 +337,7 @@ class RackReadingTest(unittest.TestCase):
         # reading has to differ from the face mean
         T[int(2.0 / cz), :, :] += 5.0
         grid = {"T": T, "x": (np.arange(nx) + 0.5) * cx, "y": y, "z": z}
-        rows = {r["id"]: r for r in podpost.rack_temperatures(model, grid)}
+        rows = {r["id"]: r for r in post.rack_temperatures(model, grid)}
         a = model.rows[0].racks[0]
         b = model.rows[1].racks[0]
         self.assertLess(rows[a.id]["inlet_c"], rows[a.id]["outlet_c"])

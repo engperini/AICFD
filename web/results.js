@@ -1,67 +1,15 @@
 /**
- * Wiring: load a case, build the room view, the KPI panel and the residual chart.
+ * Wiring: load a solved case and lay out the four things it is read by --
+ * the plan and sections over the field, the inlet of every rack, the
+ * validation checks, and the residual history.
  *
  * Which case is shown comes from `?case=<name>`, resolved against `../results/`.
  */
 
 import { Results } from './data.js';
-import { RoomScene } from './scene.js';
-import { Scale, buildLut } from './colormaps.js';
 import { ConvergenceChart } from './convergence.js';
 import { FieldMaps } from './maps.js';
 import { RackInlets } from './racks.js';
-
-const ASHRAE_RECOMMENDED = [18, 27];
-
-// Each entry pairs a field with the ramp its meaning calls for -- see colormaps.js.
-const FIELD_VIEWS = {
-  temperature: {
-    label: 'Air temperature vs. ASHRAE',
-    field: 'T',
-    kind: 'diverging',
-    units: '°C',
-    scaleFor: (results) => {
-      const { min, max } = results.fields.T;
-      return new Scale({
-        kind: 'diverging',
-        min,
-        max,
-        center: (ASHRAE_RECOMMENDED[0] + ASHRAE_RECOMMENDED[1]) / 2,
-      });
-    },
-    caption: 'Blue: below the 18–27 °C recommended band. Red: above it.',
-  },
-  rise: {
-    label: 'Temperature rise above supply',
-    field: 'T',
-    kind: 'sequential',
-    units: 'K',
-    scaleFor: (results, meta) => {
-      const supply = meta.kpis.supply_temp_c;
-      return new Scale({
-        kind: 'sequential',
-        min: supply,
-        max: results.fields.T.max,
-      });
-    },
-    caption: 'Heat the air has picked up since leaving the CRAC.',
-  },
-  speed: {
-    label: 'Air speed',
-    field: 'speed',
-    kind: 'sequential',
-    units: 'm/s',
-    scaleFor: (results) =>
-      new Scale({ kind: 'sequential', min: 0, max: results.fields.speed.max }),
-    caption: 'Stagnant air next to a rack is where heat accumulates.',
-  },
-};
-
-const AXES = [
-  { value: 2, label: 'height (z)' },
-  { value: 1, label: 'across (y)' },
-  { value: 0, label: 'along flow (x)' },
-];
 
 main();
 
@@ -92,9 +40,9 @@ async function main() {
 
   root.innerHTML = layoutHtml(meta);
 
-  // Plan and sections over the field are the primary picture for a POD -- the
-  // same drawings that were checked before the run. The 3-D scene stays
-  // available below for anyone who wants to orbit it.
+  // Plan and sections over the field are how a result is read: the same
+  // drawings that were checked before the run, now with the solved field
+  // underneath them (ADR-024).
   let maps = null;
   let racks = null;
   if (meta.model) {
@@ -105,11 +53,11 @@ async function main() {
       document.getElementById('racks-card').hidden = true;
     }
   } else {
+    // An export from before the model payload existed: the checks and the
+    // residuals still read, the drawings cannot.
     document.getElementById('maps-card').hidden = true;
     document.getElementById('racks-card').hidden = true;
-    document.getElementById('scene-details').open = true;
   }
-  const scene = new RoomScene(document.getElementById('viewport'), results);
   const chart = new ConvergenceChart(
     document.getElementById('convergence'),
     meta.residuals,
@@ -117,9 +65,7 @@ async function main() {
   document.getElementById('legend').innerHTML = chart.legendHtml();
   document.getElementById('residual-table').innerHTML = residualTableHtml(chart);
 
-  setupTheme(scene, maps, racks);
-  setupControls(scene, results, meta);
-  setupReadout(scene);
+  setupTheme(maps, racks);
 
   document.getElementById('toggle-table').addEventListener('click', (event) => {
     const table = document.getElementById('table-view');
@@ -128,86 +74,14 @@ async function main() {
   });
 }
 
-// --- controls ---------------------------------------------------------------
-
-function setupControls(scene, results, meta) {
-  const viewSelect = document.getElementById('field-view');
-  const axisSelect = document.getElementById('slice-axis');
-  const slider = document.getElementById('slice-index');
-  const readoutValue = document.getElementById('slice-value');
-  const caption = document.getElementById('colorbar-caption');
-
-  const apply = () => {
-    const view = FIELD_VIEWS[viewSelect.value];
-    const scale = view.scaleFor(results, meta);
-    scene.setField(view.field, scale, view.kind);
-    renderColorbar(view, scale, currentMode());
-    caption.textContent = view.caption;
-  };
-
-  // A case may say where the interesting cut is. A POD does: halfway up the
-  // box lands above the racks, where nothing happens.
-  const preferred = meta.geometry.default_slice;
-  if (preferred) axisSelect.value = String(preferred.axis);
-  let firstSlice = true;
-
-  const applySlice = () => {
-    const axis = Number(axisSelect.value);
-    const divisions = meta.grid.divisions[axis];
-    if (Number(slider.max) !== divisions - 1) {
-      slider.max = divisions - 1;
-      slider.value =
-        firstSlice && preferred && preferred.axis === axis
-          ? preferred.index
-          : Math.floor(divisions / 2);
-    }
-    firstSlice = false;
-    scene.setSlice(axis, Number(slider.value));
-    readoutValue.textContent = scene.sliceLabel();
-  };
-
-  viewSelect.addEventListener('change', apply);
-  axisSelect.addEventListener('change', applySlice);
-  slider.addEventListener('input', applySlice);
-
-  applySlice();
-  apply();
-  scene.refreshColorbar = () => apply();
-}
-
-function setupReadout(scene) {
-  const readout = document.getElementById('probe');
-  scene.onProbe = (probe) => {
-    if (!probe) {
-      readout.hidden = true;
-      return;
-    }
-    const [x, y, z] = probe.point;
-    readout.hidden = false;
-    readout.innerHTML =
-      `<strong>${probe.values.T.toFixed(2)} °C</strong> · ` +
-      `${probe.values.speed.toFixed(2)} m/s<br />` +
-      `x ${x.toFixed(2)} · y ${y.toFixed(2)} · z ${z.toFixed(2)} m`;
-  };
-}
-
-function setupTheme(scene, maps, racks) {
+function setupTheme(maps, racks) {
   const button = document.getElementById('theme-toggle');
   const apply = () => {
     const mode = currentMode();
     button.textContent = mode === 'dark' ? 'Light' : 'Dark';
-    // Dark mode is its own ramp, not a flipped one -- repaint the maps.
+    // Dark mode is its own ramp, not a flipped one -- repaint both maps.
     maps?.render();
     racks?.render();
-    const styles = getComputedStyle(document.documentElement);
-    scene.applyTheme(mode, {
-      axis: styles.getPropertyValue('--axis').trim(),
-      grid: styles.getPropertyValue('--grid').trim(),
-      accent: styles.getPropertyValue('--scene-accent').trim(),
-      zoneFill: styles.getPropertyValue('--scene-zone').trim(),
-      zoneEdge: styles.getPropertyValue('--scene-zone-edge').trim(),
-    });
-    scene.refreshColorbar?.();
   };
   button.addEventListener('click', () => {
     document.documentElement.dataset.theme = currentMode() === 'dark' ? 'light' : 'dark';
@@ -224,29 +98,6 @@ function currentMode() {
 }
 
 // --- rendering --------------------------------------------------------------
-
-function renderColorbar(view, scale, mode) {
-  const lut = buildLut(view.kind, mode, 32);
-  const stops = [];
-  for (let i = 0; i < 32; i += 1) {
-    stops.push(
-      `rgb(${lut[i * 3]},${lut[i * 3 + 1]},${lut[i * 3 + 2]}) ${(i / 31) * 100}%`,
-    );
-  }
-  document.getElementById('colorbar-ramp').style.background =
-    `linear-gradient(90deg, ${stops.join(',')})`;
-  document.getElementById('colorbar-name').textContent =
-    `${view.label} (${view.units})`;
-  document.getElementById('colorbar-ticks').innerHTML = scale
-    .ticks(5)
-    .map((tick) => {
-      const value = view.kind === 'sequential' && view.units === 'K'
-        ? tick.value - scale.min
-        : tick.value;
-      return `<span>${value.toFixed(1)}</span>`;
-    })
-    .join('');
-}
 
 function layoutHtml(meta) {
   const kpis = meta.kpis;
@@ -275,47 +126,6 @@ function layoutHtml(meta) {
     </div>
     <div id="racks"></div>
   </section>
-  <details class="card" id="scene-details">
-  <summary class="card-head" style="cursor:pointer"><span class="card-title">Vista 3D</span>
-    <span class="card-sub">a mesma fatia, para orbitar</span></summary>
-  <section class="viewport-card">
-    <div class="controls">
-      <div class="control">
-        <label for="field-view">Show</label>
-        <select id="field-view">
-          ${Object.entries(FIELD_VIEWS)
-            .map(([key, view]) => `<option value="${key}">${view.label}</option>`)
-            .join('')}
-        </select>
-      </div>
-      <div class="control">
-        <label for="slice-axis">Slice</label>
-        <select id="slice-axis">
-          ${AXES.map(
-            (axis) =>
-              `<option value="${axis.value}"${
-                axis.value === 2 ? ' selected' : ''
-              }>${axis.label}</option>`,
-          ).join('')}
-        </select>
-        <input type="range" id="slice-index" min="0" max="1" value="0" />
-        <span class="slice-value" id="slice-value"></span>
-      </div>
-    </div>
-    <div class="viewport-wrap">
-      <div id="viewport"></div>
-      <div class="readout" id="probe" hidden></div>
-    </div>
-    <div class="colorbar">
-      <div class="colorbar-label">
-        <span id="colorbar-name"></span>
-        <span class="card-sub" id="colorbar-caption"></span>
-      </div>
-      <div class="colorbar-ramp" id="colorbar-ramp"></div>
-      <div class="colorbar-ticks" id="colorbar-ticks"></div>
-    </div>
-  </section>
-  </details>
   <section class="card chart-card">
   <div class="card-head">
     <span class="card-title">Convergence</span>

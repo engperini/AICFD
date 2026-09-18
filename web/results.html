@@ -26,9 +26,6 @@
     --series-7: #4a3aa7; --series-8: #e34948;
     --cold:#2a78d6; --hot:#d03b3b; --containment:#1baf7a;
     --solid:#6f6e6a; --rack:#d8d8d4; --paper:#ffffff;
-    --scene-accent:   #2a78d6;
-    --scene-zone:     #52514e;
-    --scene-zone-edge:#0b0b0b;
   }
   @media (prefers-color-scheme: dark) {
     :root:not([data-theme="light"]) {
@@ -46,9 +43,6 @@
       --series-7: #9085e9; --series-8: #e66767;
       --cold:#3987e5; --hot:#e66767; --containment:#199e70;
       --solid:#8e8d88; --rack:#2e2e2b; --paper:#141413;
-      --scene-accent:   #3987e5;
-      --scene-zone:     #c3c2b7;
-      --scene-zone-edge:#ffffff;
     }
   }
   :root[data-theme="dark"] {
@@ -66,9 +60,6 @@
     --series-7: #9085e9; --series-8: #e66767;
     --cold:#3987e5; --hot:#e66767; --containment:#199e70;
     --solid:#8e8d88; --rack:#2e2e2b; --paper:#141413;
-    --scene-accent:   #3987e5;
-    --scene-zone:     #c3c2b7;
-    --scene-zone-edge:#ffffff;
   }
 
   * { box-sizing: border-box; }
@@ -119,10 +110,6 @@
   .card-sub { color: var(--text-muted); font-size: 12.5px; }
 
   /* --- controls: one row, above everything it scopes --------------------- */
-  .controls {
-    display: flex; gap: 18px; flex-wrap: wrap; align-items: center;
-    padding: 10px 16px; border-bottom: 1px solid var(--border);
-  }
   .control { display: flex; align-items: center; gap: 8px; }
   .control > label { color: var(--text-secondary); font-size: 12.5px; }
   select, input[type="range"] { font: inherit; accent-color: var(--series-1); }
@@ -131,35 +118,6 @@
     color: var(--text-primary); border: 1px solid var(--border);
   }
   input[type="range"] { width: 150px; }
-  .slice-value {
-    font-variant-numeric: tabular-nums; color: var(--text-secondary);
-    min-width: 76px; font-size: 12.5px;
-  }
-
-  /* --- 3D viewport ------------------------------------------------------- */
-  .viewport-wrap { position: relative; }
-  #viewport { position: relative; height: 460px; touch-action: none; overflow: hidden; }
-  #viewport canvas { display: block; width: 100%; height: 100%; }
-  .scene-overlay {
-    position: absolute; inset: 0; pointer-events: none; overflow: hidden;
-  }
-  .scene-label {
-    position: absolute; top: 0; left: 0; display: flex; flex-direction: column;
-    align-items: center; gap: 1px; padding: 3px 8px; border-radius: 7px;
-    background: var(--surface); border: 1px solid var(--border);
-    font-size: 11.5px; line-height: 1.25; white-space: nowrap;
-  }
-  .scene-label-name { font-weight: 600; }
-  .scene-label-load { color: var(--text-secondary); font-variant-numeric: tabular-nums; }
-
-  .readout {
-    position: absolute; left: 12px; bottom: 12px; padding: 8px 11px;
-    border-radius: 9px; background: var(--surface); border: 1px solid var(--border);
-    font-size: 12px; font-variant-numeric: tabular-nums; pointer-events: none;
-    color: var(--text-secondary);
-  }
-  .readout strong { color: var(--text-primary); font-weight: 600; }
-  .readout[hidden] { display: none; }
 
   /* --- colorbar: the numeric scale for a continuous color encoding ------- */
   .colorbar { padding: 12px 16px 14px; border-top: 1px solid var(--border); }
@@ -289,7 +247,6 @@
 
   @media (max-width: 900px) {
     .layout { grid-template-columns: minmax(0, 1fr); }
-    #viewport { height: 340px; }
   }
 
   /* --- plan and sections over the field --- */
@@ -350,9 +307,6 @@
 
 <div id="root"></div>
 
-<script type="importmap">
-{ "imports": { "three": "./vendor/three.module.js" } }
-</script>
 <script type="module" src="./results.js"></script>
 </body>
 </html>

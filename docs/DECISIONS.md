@@ -67,7 +67,7 @@ should stay explicit in the docs so nobody over-trusts the output.
 
 ## ADR-004 — One YAML file is the case; the OpenFOAM directory is a build artifact
 
-**Decision.** `room.yaml` is committed. The generated case directory is gitignored and
+**Decision.** The case spec (`cases/<name>.yaml`) is committed. The generated case directory is gitignored and
 regenerated on demand.
 
 **Why.** An OpenFOAM case is ~20 files of coupled dictionaries where a single
@@ -83,8 +83,11 @@ keeps the tool honest.
 
 ## ADR-005 — Static web viewer, no build step
 
-**Decision.** The viewer is plain ES modules with a vendored copy of Three.js, served
-as static files. No npm, no bundler, no framework.
+*Amended by ADR-025: the vendored Three.js and the 3-D scene were removed. The
+decision below stands; the page is now plain ES modules, SVG and canvas only.*
+
+**Decision.** The viewer is plain ES modules, served as static files. No npm, no
+bundler, no framework.
 
 **Why.** The target user is an electrical engineer running `docker compose up` on a
 corporate Windows laptop. Every build step is a failure mode they cannot debug, and a
@@ -120,6 +123,9 @@ is additive, not a rewrite.
 ---
 
 ## ADR-007 — Validation runs on every solve, and can fail a converged run
+
+*Superseded in detail by ADR-018, which replaced these checks with the eleven
+the closed-loop model needs. The principle below is why they exist at all.*
 
 **Decision.** `aicfd post` emits a validation verdict independent of the solver's exit
 code: mesh quality, mass balance in vs. out, monotonic temperature rise along the
@@ -261,6 +267,10 @@ pressure to the existing resistance, not replace it.
 
 ## ADR-012 — The outlet fixes p_rgh, not the static pressure
 
+*Superseded by ADR-017: there is no outlet patch any more -- the air loop closes
+inside the box and is cut only at the fan wall. Kept because the reasoning about
+`p_rgh` applies to every patch that ever gets added.*
+
 **Decision.** The return patch uses `fixedValue` on `p_rgh`. Never
 `prghPressure`.
 
@@ -372,7 +382,7 @@ rather than offering a Run that dies on an import.
 
 ## ADR-016 — A POD is meshed as one box and then operated on
 
-**Decision.** `aicfd/podcase.py` builds a fan-wall POD with `blockMesh` →
+**Decision.** `aicfd/case.py` builds a fan-wall POD with `blockMesh` →
 `topoSet` → `createBaffles -overwrite` → `checkMesh` → `buoyantSimpleFoam`.
 Every internal surface — the gallery/hall dividing wall, the false ceiling, the
 hot-aisle containment — is a two-sided baffle patch created from a face zone.
@@ -441,7 +451,7 @@ the mesh's face winding, not anything AICFD writes. Getting it backwards
 builds a POD that supplies cold air into its own return, and it would converge
 and report plausible numbers. So it is measured rather than assumed:
 `aicfd/foam/polymesh.py` reads one face and three points, and
-`podcase.check_fan_orientation` refuses to solve if `fanSupply` is not facing
+`case.check_fan_orientation` refuses to solve if `fanSupply` is not facing
 the data hall.
 
 The intake's temperature is written as `inletOutlet` even though nothing can
@@ -454,7 +464,7 @@ if it ever were used it would bring back cold air rather than fabricate heat.
 
 ## ADR-018 — A steady run is judged by its energy balance, not its residuals
 
-**Decision.** `aicfd/podpost.py` computes, from the values on the fan intake
+**Decision.** `aicfd/post.py` computes, from the values on the fan intake
 patch,
 
     Q = cp * sum over intake faces of  phi_i * (T_i - T_supply)
@@ -525,7 +535,7 @@ balance reads, which is why the intake is `inletOutlet` rather than
 racks, supply plus the design rise everywhere the air has already passed
 through them — the contained hot aisle, the return plenum, and the mechanical
 gallery. `solver.warm_start: false` converges the same case from a uniform
-field, and `podpost.compare()` checks the two land in the same place.
+field, and `post.compare()` checks the two land in the same place.
 
 **Why seed at all.** A steady solve's initial condition does not appear in its
 converged solution; it only decides how much work getting there costs. Leaving
@@ -767,3 +777,48 @@ The per-rack inlet map keeps fitted limits: its job is to rank 768 racks whose
 inlets differ by less than a kelvin, and the fixed 30 K band would paint all
 of them one colour. It is banded on a round step all the same (0,1 K on the
 worked hall), so it reads as numbers too.
+
+---
+
+## ADR-025 — One method, kept auditable: the room generator, the 3-D scene and their data are deleted
+
+**Decision.** The repository carries exactly one way to model a data hall. The
+M2 room generator (`room:` + `cracs:`, supply and return as faces of the
+domain) is deleted, with its spec validator, its post-processor, its case
+reader, its tests, its worked case and its exported results. The 3-D scene and
+its vendored Three.js are deleted. The remaining modules are named for what
+they do: `aicfd/case.py` generates, `aicfd/post.py` analyses. `aicfd verify`
+is added as the single command that proves a checkout works.
+
+**Why.** Two generators meant two answers to every question -- which spec shape
+is current, which post-processor a result came from, which of two colourbars to
+trust -- and the second answer was always the obsolete one. That is a cost paid
+by every new reader: another engineer opening the repo, or an AI agent in a
+fresh sandbox with no memory of which one won. The M2 shape cannot express what
+a real hall does (an air loop that closes inside the box, ADR-016), so it was
+never going to come back.
+
+The same applies to the 3-D scene. It showed one slice of the same field the
+plan and sections now show in contour bands with the ASHRAE limits on the
+legend (ADR-024), it could not be read quantitatively, and it carried 752 kB of
+vendored library. A second, weaker view of the same data is not an option for
+the reader; it is a question they have to answer before they can start.
+
+**Consequence.**
+
+- ~2 000 lines of Python, 434 lines of JavaScript and 752 kB of vendored
+  library are gone; the test suite went from 219 to 186 tests, all of which now
+  test code that is used.
+- `aicfd/post.py` absorbed the ASHRAE envelopes, the `Check` record and the
+  verdict helper, which were the only things the deleted post-processor still
+  provided.
+- The CLI has one path: every spec is a POD or a hall, both built by the same
+  model. `is_pod_spec` and the branching it fed are gone.
+- `aicfd verify` runs the unit tests, the install check, a full mesh of every
+  worked case, and optionally a short solve held to the eleven checks. It is
+  what a new sandbox runs first and what a reviewer runs to disbelieve a
+  result.
+- Deleted *decisions* are not deleted. Superseded ADRs stay in this file with a
+  status line, because the reasoning is the asset -- it is why the current
+  shape is what it is, and it is what stops the next contributor from
+  re-deriving a dead end.
