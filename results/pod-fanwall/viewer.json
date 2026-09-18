@@ -83,6 +83,7 @@
     "kind": "fan",
     "axis": 0,
     "position": 3.0,
+    "sign": 1,
     "lo": [
      3.0,
      0.0,
@@ -99,6 +100,7 @@
     "kind": "opening",
     "axis": 0,
     "position": 3.0,
+    "sign": 1,
     "lo": [
      3.0,
      0.0,
@@ -115,6 +117,7 @@
     "kind": "wall",
     "axis": 2,
     "position": 6.5,
+    "sign": 1,
     "lo": [
      3.0,
      0.0,
@@ -131,6 +134,7 @@
     "kind": "opening",
     "axis": 2,
     "position": 6.5,
+    "sign": 1,
     "lo": [
      5.0,
      3.0,
@@ -147,6 +151,7 @@
     "kind": "opening",
     "axis": 2,
     "position": 6.5,
+    "sign": 1,
     "lo": [
      5.6000000000000005,
      3.0,
@@ -163,6 +168,7 @@
     "kind": "opening",
     "axis": 2,
     "position": 6.5,
+    "sign": 1,
     "lo": [
      6.2,
      3.0,
@@ -179,6 +185,7 @@
     "kind": "wall",
     "axis": 2,
     "position": 2.2,
+    "sign": 1,
     "lo": [
      5.0,
      1.8,
@@ -195,6 +202,7 @@
     "kind": "wall",
     "axis": 0,
     "position": 5.0,
+    "sign": 1,
     "lo": [
      5.0,
      1.8,
@@ -211,6 +219,7 @@
     "kind": "wall",
     "axis": 0,
     "position": 6.800000000000001,
+    "sign": 1,
     "lo": [
      6.800000000000001,
      1.8,
@@ -227,6 +236,7 @@
     "kind": "wall",
     "axis": 1,
     "position": 3.0,
+    "sign": 1,
     "lo": [
      5.0,
      3.0,
@@ -243,6 +253,7 @@
     "kind": "wall",
     "axis": 0,
     "position": 5.0,
+    "sign": 1,
     "lo": [
      5.0,
      3.0,
@@ -259,6 +270,7 @@
     "kind": "wall",
     "axis": 0,
     "position": 6.800000000000001,
+    "sign": 1,
     "lo": [
      6.800000000000001,
      3.0,
@@ -274,7 +286,7 @@
   "sensors": [
    {
     "name": "cold_aisle",
-    "label": "Corredor frio",
+    "label": "Cold aisle",
     "points": [
      [
       5.36,
@@ -295,7 +307,7 @@
    },
    {
     "name": "hot_aisle",
-    "label": "Corredor quente",
+    "label": "Hot aisle",
     "points": [
      [
       5.36,
@@ -316,7 +328,7 @@
    },
    {
     "name": "plenum",
-    "label": "Plenum do forro",
+    "label": "Ceiling plenum",
     "points": [
      [
       5.36,
@@ -337,7 +349,7 @@
    },
    {
     "name": "fan_back",
-    "label": "Costas do fan wall",
+    "label": "Behind the fan wall",
     "points": [
      [
       2.7,
@@ -431,7 +443,9 @@
     "supply_kg_s": 1.67239,
     "intake_kg_s": 1.67239,
     "backflow_kg_s": 0.0,
-    "rise_pa": 29.992
+    "rise_pa": 29.992,
+    "return_temp_c": 30.7,
+    "heat_kw": 18.0
    }
   ],
   "rows": [
@@ -441,6 +455,21 @@
    }
   ],
   "energy_closure": 0.9995,
+  "hvac": {
+   "units": 1,
+   "unit_capacity_kw": null,
+   "unit_airflow_m3h": 5000.0,
+   "unit_power_kw": null,
+   "load_kw": 18.0,
+   "capacity_kw": null,
+   "capacity_ratio": null,
+   "airflow_m3h": 5000,
+   "airflow_needed_m3h": 4832,
+   "airflow_ratio": 1.035,
+   "cfm_per_kw": 158.0,
+   "units_needed": 1
+  },
+  "alerts": [],
   "zones": [
    {
     "name": "R1",
@@ -544,13 +573,13 @@
   {
    "name": "rack_resistance",
    "passed": true,
-   "detail": "the field drops 25.5 Pa across the row where the rack curve at 5,000 m3/h asks for 25.8 Pa (99%)",
+   "detail": "the field drops 25.5 Pa across the row where the rack curve at 5,000 m3/h asks for 26.8 Pa (95%)",
    "status": "PASS"
   },
   {
    "name": "grille_resistance",
    "passed": true,
-   "detail": "the field drops 2.41 Pa across the return grilles where their K at 5,000 m3/h asks for 2.36 Pa (102%)",
+   "detail": "the field drops 2.41 Pa across the return grilles where their K at 5,000 m3/h asks for 2.39 Pa (101%)",
    "status": "PASS"
   },
   {
@@ -574,7 +603,7 @@
   {
    "name": "plausible_velocity",
    "passed": true,
-   "detail": "peak 1.86 m/s against a plausible 12.05 m/s (peak air 31.0 degC)",
+   "detail": "peak 1.86 m/s against a plausible 11.98 m/s (peak air 31.0 degC)",
    "status": "PASS"
   }
  ],
@@ -18627,8 +18656,8 @@
   "groups": [
    {
     "name": "cold_aisle",
-    "label": "Corredor frio",
-    "note": "no meio do corredor, \u00e0 altura dos racks",
+    "label": "Cold aisle",
+    "note": "mid-aisle, at rack height",
     "points": [
      [
       5.36,
@@ -18737,8 +18766,8 @@
    },
    {
     "name": "hot_aisle",
-    "label": "Corredor quente",
-    "note": "dentro do enclausuramento, \u00e0 altura dos racks",
+    "label": "Hot aisle",
+    "note": "inside the containment, at rack height",
     "points": [
      [
       5.36,
@@ -18847,8 +18876,8 @@
    },
    {
     "name": "plenum",
-    "label": "Plenum do forro",
-    "note": "acima das grelhas de retorno",
+    "label": "Ceiling plenum",
+    "note": "above the return grilles",
     "points": [
      [
       5.36,
@@ -18957,8 +18986,8 @@
    },
    {
     "name": "fan_back",
-    "label": "Costas do fan wall",
-    "note": "na galeria, onde o ar de retorno chega ao fan wall",
+    "label": "Behind the fan wall",
+    "note": "in the gallery, where the return air reaches the units",
     "points": [
      [
       2.7,
@@ -19286,6 +19315,20 @@
     8.0
    ]
   },
+  "galleries": [
+   {
+    "lo": [
+     0.0,
+     0.0,
+     0.0
+    ],
+    "hi": [
+     3.0,
+     4.2,
+     8.0
+    ]
+   }
+  ],
   "hall": {
    "lo": [
     3.0,
@@ -19298,6 +19341,15 @@
     8.0
    ]
   },
+  "dividers": [
+   3.0
+  ],
+  "blocks": [
+   [
+    5.0,
+    6.800000000000001
+   ]
+  ],
   "ceiling_z": 6.5,
   "aisles": {
    "cold": [
@@ -19342,6 +19394,9 @@
   ],
   "fans": [
    "fan"
+  ],
+  "fan_sides": [
+   1
   ],
   "racks": [
    {
@@ -19410,7 +19465,8 @@
      ]
     ],
     "area": 7.2,
-    "resistance": null
+    "resistance": null,
+    "sign": 1
    },
    {
     "name": "plenum_opening",
@@ -19428,7 +19484,8 @@
      ]
     ],
     "area": 6.3,
-    "resistance": null
+    "resistance": null,
+    "sign": 1
    },
    {
     "name": "ceiling",
@@ -19446,7 +19503,8 @@
      ]
     ],
     "area": 25.2,
-    "resistance": null
+    "resistance": null,
+    "sign": 1
    },
    {
     "name": "grille1",
@@ -19464,7 +19522,8 @@
      ]
     ],
     "area": 0.36,
-    "resistance": 2.4
+    "resistance": 2.4,
+    "sign": 1
    },
    {
     "name": "grille2",
@@ -19482,7 +19541,8 @@
      ]
     ],
     "area": 0.36,
-    "resistance": 2.4
+    "resistance": 2.4,
+    "sign": 1
    },
    {
     "name": "grille3",
@@ -19500,7 +19560,8 @@
      ]
     ],
     "area": 0.36,
-    "resistance": 2.4
+    "resistance": 2.4,
+    "sign": 1
    },
    {
     "name": "rack_top",
@@ -19518,7 +19579,8 @@
      ]
     ],
     "area": 2.16,
-    "resistance": null
+    "resistance": null,
+    "sign": 1
    },
    {
     "name": "rack_end_5",
@@ -19536,7 +19598,8 @@
      ]
     ],
     "area": 2.64,
-    "resistance": null
+    "resistance": null,
+    "sign": 1
    },
    {
     "name": "rack_end_6_8",
@@ -19554,7 +19617,8 @@
      ]
     ],
     "area": 2.64,
-    "resistance": null
+    "resistance": null,
+    "sign": 1
    },
    {
     "name": "containment_roofwall",
@@ -19572,7 +19636,8 @@
      ]
     ],
     "area": 7.74,
-    "resistance": null
+    "resistance": null,
+    "sign": 1
    },
    {
     "name": "containment_door_5",
@@ -19590,7 +19655,8 @@
      ]
     ],
     "area": 7.8,
-    "resistance": null
+    "resistance": null,
+    "sign": 1
    },
    {
     "name": "containment_door_6_8",
@@ -19608,7 +19674,8 @@
      ]
     ],
     "area": 7.8,
-    "resistance": null
+    "resistance": null,
+    "sign": 1
    }
   ],
   "operating": {
@@ -19618,11 +19685,14 @@
    "fan_face_velocity_ms": 0.193,
    "supply_temp_c": 20.0,
    "load_kw": 18.0,
-   "design_delta_t_k": 10.84,
+   "design_delta_t_k": 10.71,
    "chimney_velocity_ms": 0.643,
-   "rack_drop_pa": 25.76,
-   "grille_drop_pa": 2.36,
+   "rack_drop_pa": 26.77,
+   "grille_drop_pa": 2.39,
    "fan_available_pa": 100.0,
+   "unit_capacity_kw": null,
+   "unit_power_kw": null,
+   "fan_static_pa": 100.0,
    "fan_curve": [
     [
      0.0,
@@ -19649,8 +19719,8 @@
   "sensors": [
    {
     "name": "cold_aisle",
-    "label": "Corredor frio",
-    "note": "no meio do corredor, \u00e0 altura dos racks",
+    "label": "Cold aisle",
+    "note": "mid-aisle, at rack height",
     "points": [
      [
       5.36,
@@ -19671,8 +19741,8 @@
    },
    {
     "name": "hot_aisle",
-    "label": "Corredor quente",
-    "note": "dentro do enclausuramento, \u00e0 altura dos racks",
+    "label": "Hot aisle",
+    "note": "inside the containment, at rack height",
     "points": [
      [
       5.36,
@@ -19693,8 +19763,8 @@
    },
    {
     "name": "plenum",
-    "label": "Plenum do forro",
-    "note": "acima das grelhas de retorno",
+    "label": "Ceiling plenum",
+    "note": "above the return grilles",
     "points": [
      [
       5.36,
@@ -19715,8 +19785,8 @@
    },
    {
     "name": "fan_back",
-    "label": "Costas do fan wall",
-    "note": "na galeria, onde o ar de retorno chega ao fan wall",
+    "label": "Behind the fan wall",
+    "note": "in the gallery, where the return air reaches the units",
     "points": [
      [
       2.7,
@@ -19738,61 +19808,96 @@
   ],
   "summary": [
    [
-    "Dom\u00ednio",
-    "9,00 x 4,20 x 8,00 m",
-    "75.600 c\u00e9lulas"
+    "Domain",
+    "9.00 x 4.20 x 8.00 m",
+    "75,600 cells"
    ],
    [
-    "Galeria mec\u00e2nica",
-    "3,00 m de profundidade",
-    "100,8 m\u00b3"
+    "Mechanical gallery",
+    "3.00 m deep",
+    "100.8 m3"
    ],
    [
     "Data hall",
-    "6,00 m de comprimento",
-    "forro a 6,50 m"
+    "6.00 m long",
+    "ceiling at 6.50 m"
    ],
    [
-    "Carga de TI",
+    "IT load",
     "3 x 6 kW",
-    "18,0 kW no total"
+    "18.0 kW in all"
    ],
    [
-    "Vaz\u00e3o",
-    "5.000 m\u00b3/h a 20,0 \u00b0C",
-    "\u0394T de projeto 10,8 K"
+    "Supply airflow",
+    "5,000 m3/h at 20.0 degC",
+    "design bulk dT 10.7 K"
    ],
    [
-    "Face do fan wall",
-    "1,80 x 4,00 m",
-    "7,20 m\u00b2 \u00b7 0,19 m/s por unidade"
+    "Fan wall face",
+    "1.80 x 4.00 m",
+    "7.20 m2 \u00b7 0.19 m/s per unit"
    ],
    [
-    "Grelhas do forro (3)",
-    "0,60 m quadradas, 80% de \u00e1rea livre",
-    "1,08 m\u00b2 \u00b7 1,29 m/s \u00b7 K 2,40 \u00b7 2,4 Pa"
+    "Return grilles (3)",
+    "0.60 m square, 80% free area",
+    "1.08 m2 \u00b7 1.29 m/s \u00b7 K 2.40 \u00b7 2.4 Pa"
    ],
    [
-    "Chamin\u00e9 do corredor quente",
-    "1,80 x 1,20 x 6,50 m",
-    "2,16 m\u00b2 \u00b7 0,64 m/s"
+    "Hot aisle chimney",
+    "1.80 x 1.20 x 6.50 m",
+    "2.16 m2 \u00b7 0.64 m/s"
    ],
    [
-    "Abertura para a galeria",
-    "4,20 x 1,50 m",
-    "6,30 m\u00b2 \u00b7 0,22 m/s"
+    "Opening to the gallery",
+    "4.20 x 1.50 m",
+    "6.30 m2 \u00b7 0.22 m/s"
    ],
    [
-    "Resist\u00eancia dos racks",
-    "25,76 Pa na vaz\u00e3o do fan wall",
-    "25 Pa nominais por rack"
+    "Rack resistance",
+    "26.77 Pa at the supply airflow",
+    "25 Pa nominal per rack"
    ],
    [
-    "Press\u00e3o do fan wall",
-    "100 Pa dispon\u00edveis a 5.000 m\u00b3/h por unidade (curva)",
-    "racks + grelhas pedem 28,1 Pa (28%)"
+    "Site air",
+    "0 m altitude \u00b7 101.3 kPa",
+    "rho 1.204 kg/m3 at 20.0 degC"
+   ],
+   [
+    "Rack air demand",
+    "158 CFM/kW \u00b7 4,832 m3/h",
+    "cooling supplies 5,000 m3/h (103%)"
+   ],
+   [
+    "Cooling capacity",
+    "not given (fanwall.capacity_kw)",
+    "-"
+   ],
+   [
+    "Fan wall pressure",
+    "100 Pa available at 5,000 m3/h per unit (curve)",
+    "racks + grilles ask for 29.2 Pa (29%)"
    ]
   ],
+  "hvac": {
+   "units": 1,
+   "unit_capacity_kw": null,
+   "unit_airflow_m3h": 5000.0,
+   "unit_power_kw": null,
+   "load_kw": 18.0,
+   "capacity_kw": null,
+   "capacity_ratio": null,
+   "airflow_m3h": 5000,
+   "airflow_needed_m3h": 4832,
+   "airflow_ratio": 1.035,
+   "cfm_per_kw": 158.0,
+   "units_needed": 1
+  },
+  "alerts": [],
+  "site": {
+   "altitude_m": 0.0,
+   "pressure_pa": 101325,
+   "rho": 1.2041
+  },
   "warnings": [],
   "spec": {}
  }

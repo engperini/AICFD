@@ -94,6 +94,17 @@ def lut(kind: str, steps: int = 256) -> list[tuple[int, int, int]]:
     return table
 
 
+#: The categorical series colours, in fixed order, as the page defines them
+#: (``--series-1`` onwards on the light surface). Assigned in order and never
+#: cycled: a colour follows the series it names, so the same field is the same
+#: colour on the page and in the document, and adding a series never repaints
+#: the others.
+SERIES = (
+    "#2a78d6", "#eb6834", "#1baf7a", "#eda100",
+    "#e87ba4", "#008300", "#4a3aa7", "#e34948",
+)
+
+
 #: The band every air temperature is coloured against, whatever the run
 #: (ADR-024). Fixed rather than fitted, so a colour means the same thing from
 #: one figure and one run to the next.

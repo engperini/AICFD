@@ -1474,6 +1474,7 @@ def to_dict(model: Model, spec: dict) -> dict:
             for row in model.rows
         ],
         "fans": [p.name for p in model.fans],
+        "fan_sides": [p.sign for p in model.fans],
         "racks": [
             {
                 "id": r.id,
@@ -1512,6 +1513,13 @@ def to_dict(model: Model, spec: dict) -> dict:
             "rack_drop_pa": round(model.rack_pressure_drop_pa, 2),
             "grille_drop_pa": round(model.grille_pressure_drop_pa, 2),
             "fan_available_pa": model.fan_available_pa(),
+            # The unit's datasheet figures, carried on the model rather than
+            # left in the spec: the export writes the model, and a reader of
+            # the result should not have to go back to the YAML to learn what
+            # the machine was rated at.
+            "unit_capacity_kw": model.unit_capacity_kw,
+            "unit_power_kw": model.unit_power_kw,
+            "fan_static_pa": model.fan_static_pa,
             "fan_curve": [list(p) for p in model.fan_curve] if model.fan_curve else None,
         },
         "sensors": [

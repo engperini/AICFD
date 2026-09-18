@@ -216,6 +216,7 @@ def _draw(export: Export, figures: Path) -> dict:
     rack_top = max(r["hi"][2] for r in racks) if racks else 2.0
     blocks = model.get("blocks") or [[model["hall"]["lo"][0], model["hall"]["hi"][0]]]
     hot = model["hot_aisles"][len(model["hot_aisles"]) // 2]
+    cold = model["cold_aisles"][len(model["cold_aisles"]) // 2]
     block = blocks[len(blocks) // 2]
     return {
         "plan_mid": plan(export, figures / "plan-rack-mid.png", rack_top / 2,
@@ -229,11 +230,17 @@ def _draw(export: Export, figures: Path) -> dict:
                          (block[0] + block[1]) / 2,
                          f"Section across the hall at x = {(block[0] + block[1]) / 2:.2f} m",
                          "y — across the hall (m)"),
-        "long": section(export, figures / "section-along.png", 1,
-                        (hot[0] + hot[1]) / 2,
-                        f"Section along the hall at y = {(hot[0] + hot[1]) / 2:.2f} m "
-                        "— through a contained hot aisle",
-                        "x — along the hall (m)"),
+        "long_cold": section(export, figures / "section-along-cold.png", 1,
+                             (cold[0] + cold[1]) / 2,
+                             f"Section along the hall at y = "
+                             f"{(cold[0] + cold[1]) / 2:.2f} m — through a cold aisle",
+                             "x — along the hall (m)"),
+        "long_hot": section(export, figures / "section-along-hot.png", 1,
+                            (hot[0] + hot[1]) / 2,
+                            f"Section along the hall at y = "
+                            f"{(hot[0] + hot[1]) / 2:.2f} m — through a contained "
+                            "hot aisle",
+                            "x — along the hall (m)"),
         "racks": rack_map(export, figures / "rack-intake.png"),
         "units": units(export, figures / "units.png"),
         "ashrae": ashrae(export, figures / "ashrae.png"),
@@ -289,8 +296,7 @@ def _contents(doc) -> None:
 def _summary(doc, export: Export) -> None:
     kpis = export.kpis
     model = export.model
-    spec = model.get("spec") or {}
-    fan = spec.get("fanwall", {})
+    fan = model.get("operating") or {}
     zones = kpis["zones"]
     warmest = max(zones, key=lambda z: z["inlet_top_c"] or -999)
     hvac = kpis.get("hvac") or {}
@@ -332,9 +338,11 @@ def _summary(doc, export: Export) -> None:
         ("Total airflow to the room", f"{_num(kpis['supply_flow_m3h'], 0)} m³/h"),
         ("Supply air temperature", f"{_num(kpis['supply_temp_c'], 1)} °C"),
         ("Net sensible capacity per unit",
-         f"{_num(fan.get('capacity_kw'), 1)} kW" if fan.get("capacity_kw") else "not given"),
+         f"{_num(fan.get('unit_capacity_kw'), 1)} kW"
+         if fan.get("unit_capacity_kw") else "not given"),
         ("Electrical input per unit",
-         f"{_num(fan.get('power_kw'), 1)} kW" if fan.get("power_kw") else "not given"),
+         f"{_num(fan.get('unit_power_kw'), 1)} kW"
+         if fan.get("unit_power_kw") else "not given"),
         ("External static pressure",
          f"{_num(kpis.get('fan_static_pa'), 0)} Pa" if kpis.get("fan_static_pa") else "not given"),
         ("Site elevation", f"{_num(site.get('altitude_m'), 0)} m"),
@@ -358,10 +366,18 @@ def _summary(doc, export: Export) -> None:
          if kpis.get("fan_static_pa") else "no datasheet pressure given"),
     ]
     if hvac:
+        # A unit's capacity is optional in a spec; its airflow is not. Where
+        # the datasheet capacity was not given the row says so rather than
+        # printing a ratio computed from nothing.
+        capacity = hvac.get("capacity_ratio")
+        airflow = hvac.get("airflow_ratio")
         rows.append((
             "Plant against the design rules",
-            f"{_num(hvac.get('capacity_ratio', 0) * 100, 0)} % capacity · "
-            f"{_num(hvac.get('airflow_ratio', 0) * 100, 0)} % airflow",
+            (f"{_num(capacity * 100, 0)} % capacity"
+             if capacity is not None else "capacity not given")
+            + " · "
+            + (f"{_num(airflow * 100, 0)} % airflow"
+               if airflow is not None else "airflow not given"),
             "installed against the load in kW and against the racks' demand at "
             f"{_num(hvac.get('cfm_per_kw'), 0)} CFM/kW",
         ))
@@ -553,9 +569,15 @@ def _results(doc, export: Export, drawn: dict) -> None:
     _figure(doc, drawn["cross"],
             "Section across the hall, through a rack block: cold aisle, rack row, "
             "contained hot aisle and the chimney up to the false ceiling.")
-    _figure(doc, drawn["long"],
-            "Section along the hall, through a contained hot aisle — the "
-            "gallery, the dividing wall and the plenum above the ceiling.")
+    _figure(doc, drawn["long_cold"],
+            "Section along the hall, through a cold aisle: the supply air "
+            "leaving the units, the length it has to travel, and the mechanical "
+            "gallery behind each dividing wall.")
+    _figure(doc, drawn["long_hot"],
+            "The same section through a contained hot aisle. The containment is "
+            "doing its job when this plane is hot from floor to ceiling and the "
+            "one above is not — the cold plane is where a containment leak "
+            "shows first.")
 
     _heading(doc, "3.4  Rack intake temperature", 2)
     _figure(doc, drawn["racks"],
@@ -587,7 +609,7 @@ def _results(doc, export: Export, drawn: dict) -> None:
                 "Return air temperature and heat removed, unit by unit. The "
                 "units are numbered along the gallery wall, in gallery order.")
     fans = kpis.get("fans", [])
-    rating = ((model.get("spec") or {}).get("fanwall") or {}).get("capacity_kw")
+    rating = (model.get("operating") or {}).get("unit_capacity_kw")
     _table(doc, ["Unit", "Return air", "Mass flow", "Heat removed",
                  "Of the rating", "Rise across the unit"],
            [(f["name"].replace("fan", ""),
@@ -633,7 +655,7 @@ def _conclusions(doc, export: Export) -> None:
     returns = [f.get("return_temp_c") for f in fans if f.get("return_temp_c") is not None]
     spread = (max(returns) - min(returns)) if returns else None
     heats = [f.get("heat_kw") for f in fans if f.get("heat_kw") is not None]
-    rating = ((model.get("spec") or {}).get("fanwall") or {}).get("capacity_kw")
+    rating = (model.get("operating") or {}).get("unit_capacity_kw")
 
     _heading(doc, "4  Conclusions", 1)
     findings = []

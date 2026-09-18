@@ -1149,9 +1149,20 @@ def report(results: PodResults) -> str:
         )
     fans = k.get("fans", [])
     if len(fans) > 1:
-        lines += ["", "  Fan wall     Supply kg/s   Rise Pa"]
+        # Per unit, because that is the level the plant is judged at: a hall
+        # uniform in the mean can still have one unit at the end of a row
+        # taking half again its neighbours' flow, or carrying a share of the
+        # load its coil cannot transfer at the air it receives.
+        lines += ["", "  Fan wall     Supply kg/s   Rise Pa   Return degC    Heat kW"]
         for fan in fans:
-            lines.append(f"  {fan['name']:<12}{fan['supply_kg_s']:>13.3f}{fan['rise_pa']:>10.1f}")
+            returned = fan.get("return_temp_c")
+            heat = fan.get("heat_kw")
+            lines.append(
+                f"  {fan['name']:<12}{fan['supply_kg_s']:>13.3f}"
+                f"{fan['rise_pa']:>10.1f}"
+                + (f"{returned:>14.2f}" if returned is not None else f"{'-':>14}")
+                + (f"{heat:>11.1f}" if heat is not None else f"{'-':>11}")
+            )
     racks = k["racks"]
     listed = racks
     if len(racks) > REPORT_RACKS:
@@ -1288,6 +1299,7 @@ def export(
                     "kind": panel.kind,
                     "axis": panel.axis,
                     "position": panel.position,
+                    "sign": panel.sign,
                     "lo": list(panel.box().lo),
                     "hi": list(panel.box().hi),
                 }

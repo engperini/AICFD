@@ -15,7 +15,7 @@
   ],
   "size": [
    21.0,
-   88.19999999999999,
+   88.2,
    8.0
   ],
   "order": "kji"
@@ -29,7 +29,7 @@
    ],
    "hi": [
     21.0,
-    88.19999999999999,
+    88.2,
     8.0
    ]
   },
@@ -10793,6 +10793,7 @@
     "kind": "fan",
     "axis": 0,
     "position": 3.0,
+    "sign": 1,
     "lo": [
      3.0,
      0.3,
@@ -10809,6 +10810,7 @@
     "kind": "fan",
     "axis": 0,
     "position": 3.0,
+    "sign": 1,
     "lo": [
      3.0,
      2.6999999999999997,
@@ -10825,6 +10827,7 @@
     "kind": "fan",
     "axis": 0,
     "position": 3.0,
+    "sign": 1,
     "lo": [
      3.0,
      5.1,
@@ -10841,6 +10844,7 @@
     "kind": "fan",
     "axis": 0,
     "position": 3.0,
+    "sign": 1,
     "lo": [
      3.0,
      7.8,
@@ -10857,6 +10861,7 @@
     "kind": "fan",
     "axis": 0,
     "position": 3.0,
+    "sign": 1,
     "lo": [
      3.0,
      10.2,
@@ -10873,6 +10878,7 @@
     "kind": "fan",
     "axis": 0,
     "position": 3.0,
+    "sign": 1,
     "lo": [
      3.0,
      12.9,
@@ -10889,6 +10895,7 @@
     "kind": "fan",
     "axis": 0,
     "position": 3.0,
+    "sign": 1,
     "lo": [
      3.0,
      15.299999999999999,
@@ -10905,6 +10912,7 @@
     "kind": "fan",
     "axis": 0,
     "position": 3.0,
+    "sign": 1,
     "lo": [
      3.0,
      17.7,
@@ -10921,6 +10929,7 @@
     "kind": "fan",
     "axis": 0,
     "position": 3.0,
+    "sign": 1,
     "lo": [
      3.0,
      20.4,
@@ -10937,6 +10946,7 @@
     "kind": "fan",
     "axis": 0,
     "position": 3.0,
+    "sign": 1,
     "lo": [
      3.0,
      22.8,
@@ -10953,6 +10963,7 @@
     "kind": "fan",
     "axis": 0,
     "position": 3.0,
+    "sign": 1,
     "lo": [
      3.0,
      25.5,
@@ -10969,6 +10980,7 @@
     "kind": "fan",
     "axis": 0,
     "position": 3.0,
+    "sign": 1,
     "lo": [
      3.0,
      27.9,
@@ -10985,6 +10997,7 @@
     "kind": "fan",
     "axis": 0,
     "position": 3.0,
+    "sign": 1,
     "lo": [
      3.0,
      30.299999999999997,
@@ -11001,6 +11014,7 @@
     "kind": "fan",
     "axis": 0,
     "position": 3.0,
+    "sign": 1,
     "lo": [
      3.0,
      33.0,
@@ -11017,6 +11031,7 @@
     "kind": "fan",
     "axis": 0,
     "position": 3.0,
+    "sign": 1,
     "lo": [
      3.0,
      35.4,
@@ -11033,6 +11048,7 @@
     "kind": "fan",
     "axis": 0,
     "position": 3.0,
+    "sign": 1,
     "lo": [
      3.0,
      38.1,
@@ -11049,6 +11065,7 @@
     "kind": "fan",
     "axis": 0,
     "position": 3.0,
+    "sign": 1,
     "lo": [
      3.0,
      40.5,
@@ -11065,6 +11082,7 @@
     "kind": "fan",
     "axis": 0,
     "position": 3.0,
+    "sign": 1,
     "lo": [
      3.0,
      43.199999999999996,
@@ -11081,6 +11099,7 @@
     "kind": "fan",
     "axis": 0,
     "position": 3.0,
+    "sign": 1,
     "lo": [
      3.0,
      45.6,
@@ -11097,6 +11116,7 @@
     "kind": "fan",
     "axis": 0,
     "position": 3.0,
+    "sign": 1,
     "lo": [
      3.0,
      48.0,
@@ -11113,6 +11133,7 @@
     "kind": "fan",
     "axis": 0,
     "position": 3.0,
+    "sign": 1,
     "lo": [
      3.0,
      50.699999999999996,
@@ -11129,6 +11150,7 @@
     "kind": "fan",
     "axis": 0,
     "position": 3.0,
+    "sign": 1,
     "lo": [
      3.0,
      53.1,
@@ -11145,6 +11167,7 @@
     "kind": "fan",
     "axis": 0,
     "position": 3.0,
+    "sign": 1,
     "lo": [
      3.0,
      55.5,
@@ -11161,6 +11184,7 @@
     "kind": "fan",
     "axis": 0,
     "position": 3.0,
+    "sign": 1,
     "lo": [
      3.0,
      58.199999999999996,
@@ -11177,6 +11201,7 @@
     "kind": "fan",
     "axis": 0,
     "position": 3.0,
+    "sign": 1,
     "lo": [
      3.0,
      60.599999999999994,
@@ -11193,6 +11218,7 @@
     "kind": "fan",
     "axis": 0,
     "position": 3.0,
+    "sign": 1,
     "lo": [
      3.0,
      63.3,
@@ -11209,6 +11235,7 @@
     "kind": "fan",
     "axis": 0,
     "position": 3.0,
+    "sign": 1,
     "lo": [
      3.0,
      65.7,
@@ -11225,6 +11252,7 @@
     "kind": "fan",
     "axis": 0,
     "position": 3.0,
+    "sign": 1,
     "lo": [
      3.0,
      68.1,
@@ -11241,6 +11269,7 @@
     "kind": "fan",
     "axis": 0,
     "position": 3.0,
+    "sign": 1,
     "lo": [
      3.0,
      70.8,
@@ -11257,6 +11286,7 @@
     "kind": "fan",
     "axis": 0,
     "position": 3.0,
+    "sign": 1,
     "lo": [
      3.0,
      73.2,
@@ -11273,6 +11303,7 @@
     "kind": "fan",
     "axis": 0,
     "position": 3.0,
+    "sign": 1,
     "lo": [
      3.0,
      75.89999999999999,
@@ -11289,6 +11320,7 @@
     "kind": "fan",
     "axis": 0,
     "position": 3.0,
+    "sign": 1,
     "lo": [
      3.0,
      78.3,
@@ -11305,6 +11337,7 @@
     "kind": "fan",
     "axis": 0,
     "position": 3.0,
+    "sign": 1,
     "lo": [
      3.0,
      81.0,
@@ -11321,6 +11354,7 @@
     "kind": "fan",
     "axis": 0,
     "position": 3.0,
+    "sign": 1,
     "lo": [
      3.0,
      83.39999999999999,
@@ -11337,6 +11371,7 @@
     "kind": "fan",
     "axis": 0,
     "position": 3.0,
+    "sign": 1,
     "lo": [
      3.0,
      85.8,
@@ -11353,6 +11388,7 @@
     "kind": "opening",
     "axis": 0,
     "position": 3.0,
+    "sign": 1,
     "lo": [
      3.0,
      0.0,
@@ -11369,6 +11405,7 @@
     "kind": "wall",
     "axis": 2,
     "position": 6.5,
+    "sign": 1,
     "lo": [
      3.0,
      0.0,
@@ -11385,6 +11422,7 @@
     "kind": "opening",
     "axis": 2,
     "position": 6.5,
+    "sign": 1,
     "lo": [
      4.8,
      3.0,
@@ -11401,6 +11439,7 @@
     "kind": "opening",
     "axis": 2,
     "position": 6.5,
+    "sign": 1,
     "lo": [
      4.8,
      8.4,
@@ -11417,6 +11456,7 @@
     "kind": "opening",
     "axis": 2,
     "position": 6.5,
+    "sign": 1,
     "lo": [
      4.8,
      13.799999999999999,
@@ -11433,6 +11473,7 @@
     "kind": "opening",
     "axis": 2,
     "position": 6.5,
+    "sign": 1,
     "lo": [
      4.8,
      19.2,
@@ -11449,6 +11490,7 @@
     "kind": "opening",
     "axis": 2,
     "position": 6.5,
+    "sign": 1,
     "lo": [
      4.8,
      24.599999999999998,
@@ -11465,6 +11507,7 @@
     "kind": "opening",
     "axis": 2,
     "position": 6.5,
+    "sign": 1,
     "lo": [
      4.8,
      30.0,
@@ -11481,6 +11524,7 @@
     "kind": "opening",
     "axis": 2,
     "position": 6.5,
+    "sign": 1,
     "lo": [
      4.8,
      35.4,
@@ -11497,6 +11541,7 @@
     "kind": "opening",
     "axis": 2,
     "position": 6.5,
+    "sign": 1,
     "lo": [
      4.8,
      40.8,
@@ -11513,6 +11558,7 @@
     "kind": "opening",
     "axis": 2,
     "position": 6.5,
+    "sign": 1,
     "lo": [
      4.8,
      46.199999999999996,
@@ -11529,6 +11575,7 @@
     "kind": "opening",
     "axis": 2,
     "position": 6.5,
+    "sign": 1,
     "lo": [
      4.8,
      51.6,
@@ -11545,6 +11592,7 @@
     "kind": "opening",
     "axis": 2,
     "position": 6.5,
+    "sign": 1,
     "lo": [
      4.8,
      57.0,
@@ -11561,6 +11609,7 @@
     "kind": "opening",
     "axis": 2,
     "position": 6.5,
+    "sign": 1,
     "lo": [
      4.8,
      62.4,
@@ -11577,6 +11626,7 @@
     "kind": "opening",
     "axis": 2,
     "position": 6.5,
+    "sign": 1,
     "lo": [
      4.8,
      67.8,
@@ -11593,6 +11643,7 @@
     "kind": "opening",
     "axis": 2,
     "position": 6.5,
+    "sign": 1,
     "lo": [
      4.8,
      73.2,
@@ -11609,6 +11660,7 @@
     "kind": "opening",
     "axis": 2,
     "position": 6.5,
+    "sign": 1,
     "lo": [
      4.8,
      78.6,
@@ -11625,6 +11677,7 @@
     "kind": "opening",
     "axis": 2,
     "position": 6.5,
+    "sign": 1,
     "lo": [
      4.8,
      84.0,
@@ -11641,6 +11694,7 @@
     "kind": "wall",
     "axis": 2,
     "position": 2.25,
+    "sign": 1,
     "lo": [
      4.8,
      1.7999999999999998,
@@ -11657,6 +11711,7 @@
     "kind": "wall",
     "axis": 0,
     "position": 4.8,
+    "sign": 1,
     "lo": [
      4.8,
      1.7999999999999998,
@@ -11673,6 +11728,7 @@
     "kind": "wall",
     "axis": 0,
     "position": 19.2,
+    "sign": 1,
     "lo": [
      19.2,
      1.7999999999999998,
@@ -11689,6 +11745,7 @@
     "kind": "wall",
     "axis": 2,
     "position": 2.25,
+    "sign": 1,
     "lo": [
      4.8,
      4.2,
@@ -11705,6 +11762,7 @@
     "kind": "wall",
     "axis": 0,
     "position": 4.8,
+    "sign": 1,
     "lo": [
      4.8,
      4.2,
@@ -11721,6 +11779,7 @@
     "kind": "wall",
     "axis": 0,
     "position": 19.2,
+    "sign": 1,
     "lo": [
      19.2,
      4.2,
@@ -11737,6 +11796,7 @@
     "kind": "wall",
     "axis": 1,
     "position": 3.0,
+    "sign": 1,
     "lo": [
      4.8,
      3.0,
@@ -11753,6 +11813,7 @@
     "kind": "wall",
     "axis": 1,
     "position": 4.2,
+    "sign": 1,
     "lo": [
      4.8,
      4.2,
@@ -11769,6 +11830,7 @@
     "kind": "wall",
     "axis": 0,
     "position": 4.8,
+    "sign": 1,
     "lo": [
      4.8,
      3.0,
@@ -11785,6 +11847,7 @@
     "kind": "wall",
     "axis": 0,
     "position": 19.2,
+    "sign": 1,
     "lo": [
      19.2,
      3.0,
@@ -11801,6 +11864,7 @@
     "kind": "wall",
     "axis": 2,
     "position": 2.25,
+    "sign": 1,
     "lo": [
      4.8,
      7.199999999999999,
@@ -11817,6 +11881,7 @@
     "kind": "wall",
     "axis": 0,
     "position": 4.8,
+    "sign": 1,
     "lo": [
      4.8,
      7.199999999999999,
@@ -11833,6 +11898,7 @@
     "kind": "wall",
     "axis": 0,
     "position": 19.2,
+    "sign": 1,
     "lo": [
      19.2,
      7.199999999999999,
@@ -11849,6 +11915,7 @@
     "kind": "wall",
     "axis": 2,
     "position": 2.25,
+    "sign": 1,
     "lo": [
      4.8,
      9.6,
@@ -11865,6 +11932,7 @@
     "kind": "wall",
     "axis": 0,
     "position": 4.8,
+    "sign": 1,
     "lo": [
      4.8,
      9.6,
@@ -11881,6 +11949,7 @@
     "kind": "wall",
     "axis": 0,
     "position": 19.2,
+    "sign": 1,
     "lo": [
      19.2,
      9.6,
@@ -11897,6 +11966,7 @@
     "kind": "wall",
     "axis": 1,
     "position": 8.4,
+    "sign": 1,
     "lo": [
      4.8,
      8.4,
@@ -11913,6 +11983,7 @@
     "kind": "wall",
     "axis": 1,
     "position": 9.6,
+    "sign": 1,
     "lo": [
      4.8,
      9.6,
@@ -11929,6 +12000,7 @@
     "kind": "wall",
     "axis": 0,
     "position": 4.8,
+    "sign": 1,
     "lo": [
      4.8,
      8.4,
@@ -11945,6 +12017,7 @@
     "kind": "wall",
     "axis": 0,
     "position": 19.2,
+    "sign": 1,
     "lo": [
      19.2,
      8.4,
@@ -11961,6 +12034,7 @@
     "kind": "wall",
     "axis": 2,
     "position": 2.25,
+    "sign": 1,
     "lo": [
      4.8,
      12.6,
@@ -11977,6 +12051,7 @@
     "kind": "wall",
     "axis": 0,
     "position": 4.8,
+    "sign": 1,
     "lo": [
      4.8,
      12.6,
@@ -11993,6 +12068,7 @@
     "kind": "wall",
     "axis": 0,
     "position": 19.2,
+    "sign": 1,
     "lo": [
      19.2,
      12.6,
@@ -12009,6 +12085,7 @@
     "kind": "wall",
     "axis": 2,
     "position": 2.25,
+    "sign": 1,
     "lo": [
      4.8,
      15.0,
@@ -12025,6 +12102,7 @@
     "kind": "wall",
     "axis": 0,
     "position": 4.8,
+    "sign": 1,
     "lo": [
      4.8,
      15.0,
@@ -12041,6 +12119,7 @@
     "kind": "wall",
     "axis": 0,
     "position": 19.2,
+    "sign": 1,
     "lo": [
      19.2,
      15.0,
@@ -12057,6 +12136,7 @@
     "kind": "wall",
     "axis": 1,
     "position": 13.799999999999999,
+    "sign": 1,
     "lo": [
      4.8,
      13.799999999999999,
@@ -12073,6 +12153,7 @@
     "kind": "wall",
     "axis": 1,
     "position": 15.0,
+    "sign": 1,
     "lo": [
      4.8,
      15.0,
@@ -12089,6 +12170,7 @@
     "kind": "wall",
     "axis": 0,
     "position": 4.8,
+    "sign": 1,
     "lo": [
      4.8,
      13.799999999999999,
@@ -12105,6 +12187,7 @@
     "kind": "wall",
     "axis": 0,
     "position": 19.2,
+    "sign": 1,
     "lo": [
      19.2,
      13.799999999999999,
@@ -12121,6 +12204,7 @@
     "kind": "wall",
     "axis": 2,
     "position": 2.25,
+    "sign": 1,
     "lo": [
      4.8,
      18.0,
@@ -12137,6 +12221,7 @@
     "kind": "wall",
     "axis": 0,
     "position": 4.8,
+    "sign": 1,
     "lo": [
      4.8,
      18.0,
@@ -12153,6 +12238,7 @@
     "kind": "wall",
     "axis": 0,
     "position": 19.2,
+    "sign": 1,
     "lo": [
      19.2,
      18.0,
@@ -12169,6 +12255,7 @@
     "kind": "wall",
     "axis": 2,
     "position": 2.25,
+    "sign": 1,
     "lo": [
      4.8,
      20.4,
@@ -12185,6 +12272,7 @@
     "kind": "wall",
     "axis": 0,
     "position": 4.8,
+    "sign": 1,
     "lo": [
      4.8,
      20.4,
@@ -12201,6 +12289,7 @@
     "kind": "wall",
     "axis": 0,
     "position": 19.2,
+    "sign": 1,
     "lo": [
      19.2,
      20.4,
@@ -12217,6 +12306,7 @@
     "kind": "wall",
     "axis": 1,
     "position": 19.2,
+    "sign": 1,
     "lo": [
      4.8,
      19.2,
@@ -12233,6 +12323,7 @@
     "kind": "wall",
     "axis": 1,
     "position": 20.4,
+    "sign": 1,
     "lo": [
      4.8,
      20.4,
@@ -12249,6 +12340,7 @@
     "kind": "wall",
     "axis": 0,
     "position": 4.8,
+    "sign": 1,
     "lo": [
      4.8,
      19.2,
@@ -12265,6 +12357,7 @@
     "kind": "wall",
     "axis": 0,
     "position": 19.2,
+    "sign": 1,
     "lo": [
      19.2,
      19.2,
@@ -12281,6 +12374,7 @@
     "kind": "wall",
     "axis": 2,
     "position": 2.25,
+    "sign": 1,
     "lo": [
      4.8,
      23.4,
@@ -12297,6 +12391,7 @@
     "kind": "wall",
     "axis": 0,
     "position": 4.8,
+    "sign": 1,
     "lo": [
      4.8,
      23.4,
@@ -12313,6 +12408,7 @@
     "kind": "wall",
     "axis": 0,
     "position": 19.2,
+    "sign": 1,
     "lo": [
      19.2,
      23.4,
@@ -12329,6 +12425,7 @@
     "kind": "wall",
     "axis": 2,
     "position": 2.25,
+    "sign": 1,
     "lo": [
      4.8,
      25.8,
@@ -12345,6 +12442,7 @@
     "kind": "wall",
     "axis": 0,
     "position": 4.8,
+    "sign": 1,
     "lo": [
      4.8,
      25.8,
@@ -12361,6 +12459,7 @@
     "kind": "wall",
     "axis": 0,
     "position": 19.2,
+    "sign": 1,
     "lo": [
      19.2,
      25.8,
@@ -12377,6 +12476,7 @@
     "kind": "wall",
     "axis": 1,
     "position": 24.599999999999998,
+    "sign": 1,
     "lo": [
      4.8,
      24.599999999999998,
@@ -12393,6 +12493,7 @@
     "kind": "wall",
     "axis": 1,
     "position": 25.8,
+    "sign": 1,
     "lo": [
      4.8,
      25.8,
@@ -12409,6 +12510,7 @@
     "kind": "wall",
     "axis": 0,
     "position": 4.8,
+    "sign": 1,
     "lo": [
      4.8,
      24.599999999999998,
@@ -12425,6 +12527,7 @@
     "kind": "wall",
     "axis": 0,
     "position": 19.2,
+    "sign": 1,
     "lo": [
      19.2,
      24.599999999999998,
@@ -12441,6 +12544,7 @@
     "kind": "wall",
     "axis": 2,
     "position": 2.25,
+    "sign": 1,
     "lo": [
      4.8,
      28.799999999999997,
@@ -12457,6 +12561,7 @@
     "kind": "wall",
     "axis": 0,
     "position": 4.8,
+    "sign": 1,
     "lo": [
      4.8,
      28.799999999999997,
@@ -12473,6 +12578,7 @@
     "kind": "wall",
     "axis": 0,
     "position": 19.2,
+    "sign": 1,
     "lo": [
      19.2,
      28.799999999999997,
@@ -12489,6 +12595,7 @@
     "kind": "wall",
     "axis": 2,
     "position": 2.25,
+    "sign": 1,
     "lo": [
      4.8,
      31.2,
@@ -12505,6 +12612,7 @@
     "kind": "wall",
     "axis": 0,
     "position": 4.8,
+    "sign": 1,
     "lo": [
      4.8,
      31.2,
@@ -12521,6 +12629,7 @@
     "kind": "wall",
     "axis": 0,
     "position": 19.2,
+    "sign": 1,
     "lo": [
      19.2,
      31.2,
@@ -12537,6 +12646,7 @@
     "kind": "wall",
     "axis": 1,
     "position": 30.0,
+    "sign": 1,
     "lo": [
      4.8,
      30.0,
@@ -12553,6 +12663,7 @@
     "kind": "wall",
     "axis": 1,
     "position": 31.2,
+    "sign": 1,
     "lo": [
      4.8,
      31.2,
@@ -12569,6 +12680,7 @@
     "kind": "wall",
     "axis": 0,
     "position": 4.8,
+    "sign": 1,
     "lo": [
      4.8,
      30.0,
@@ -12585,6 +12697,7 @@
     "kind": "wall",
     "axis": 0,
     "position": 19.2,
+    "sign": 1,
     "lo": [
      19.2,
      30.0,
@@ -12601,6 +12714,7 @@
     "kind": "wall",
     "axis": 2,
     "position": 2.25,
+    "sign": 1,
     "lo": [
      4.8,
      34.199999999999996,
@@ -12617,6 +12731,7 @@
     "kind": "wall",
     "axis": 0,
     "position": 4.8,
+    "sign": 1,
     "lo": [
      4.8,
      34.199999999999996,
@@ -12633,6 +12748,7 @@
     "kind": "wall",
     "axis": 0,
     "position": 19.2,
+    "sign": 1,
     "lo": [
      19.2,
      34.199999999999996,
@@ -12649,6 +12765,7 @@
     "kind": "wall",
     "axis": 2,
     "position": 2.25,
+    "sign": 1,
     "lo": [
      4.8,
      36.6,
@@ -12665,6 +12782,7 @@
     "kind": "wall",
     "axis": 0,
     "position": 4.8,
+    "sign": 1,
     "lo": [
      4.8,
      36.6,
@@ -12681,6 +12799,7 @@
     "kind": "wall",
     "axis": 0,
     "position": 19.2,
+    "sign": 1,
     "lo": [
      19.2,
      36.6,
@@ -12697,6 +12816,7 @@
     "kind": "wall",
     "axis": 1,
     "position": 35.4,
+    "sign": 1,
     "lo": [
      4.8,
      35.4,
@@ -12713,6 +12833,7 @@
     "kind": "wall",
     "axis": 1,
     "position": 36.6,
+    "sign": 1,
     "lo": [
      4.8,
      36.6,
@@ -12729,6 +12850,7 @@
     "kind": "wall",
     "axis": 0,
     "position": 4.8,
+    "sign": 1,
     "lo": [
      4.8,
      35.4,
@@ -12745,6 +12867,7 @@
     "kind": "wall",
     "axis": 0,
     "position": 19.2,
+    "sign": 1,
     "lo": [
      19.2,
      35.4,
@@ -12761,6 +12884,7 @@
     "kind": "wall",
     "axis": 2,
     "position": 2.25,
+    "sign": 1,
     "lo": [
      4.8,
      39.6,
@@ -12777,6 +12901,7 @@
     "kind": "wall",
     "axis": 0,
     "position": 4.8,
+    "sign": 1,
     "lo": [
      4.8,
      39.6,
@@ -12793,6 +12918,7 @@
     "kind": "wall",
     "axis": 0,
     "position": 19.2,
+    "sign": 1,
     "lo": [
      19.2,
      39.6,
@@ -12809,6 +12935,7 @@
     "kind": "wall",
     "axis": 2,
     "position": 2.25,
+    "sign": 1,
     "lo": [
      4.8,
      42.0,
@@ -12825,6 +12952,7 @@
     "kind": "wall",
     "axis": 0,
     "position": 4.8,
+    "sign": 1,
     "lo": [
      4.8,
      42.0,
@@ -12841,6 +12969,7 @@
     "kind": "wall",
     "axis": 0,
     "position": 19.2,
+    "sign": 1,
     "lo": [
      19.2,
      42.0,
@@ -12857,6 +12986,7 @@
     "kind": "wall",
     "axis": 1,
     "position": 40.8,
+    "sign": 1,
     "lo": [
      4.8,
      40.8,
@@ -12873,6 +13003,7 @@
     "kind": "wall",
     "axis": 1,
     "position": 42.0,
+    "sign": 1,
     "lo": [
      4.8,
      42.0,
@@ -12889,6 +13020,7 @@
     "kind": "wall",
     "axis": 0,
     "position": 4.8,
+    "sign": 1,
     "lo": [
      4.8,
      40.8,
@@ -12905,6 +13037,7 @@
     "kind": "wall",
     "axis": 0,
     "position": 19.2,
+    "sign": 1,
     "lo": [
      19.2,
      40.8,
@@ -12921,6 +13054,7 @@
     "kind": "wall",
     "axis": 2,
     "position": 2.25,
+    "sign": 1,
     "lo": [
      4.8,
      45.0,
@@ -12937,6 +13071,7 @@
     "kind": "wall",
     "axis": 0,
     "position": 4.8,
+    "sign": 1,
     "lo": [
      4.8,
      45.0,
@@ -12953,6 +13088,7 @@
     "kind": "wall",
     "axis": 0,
     "position": 19.2,
+    "sign": 1,
     "lo": [
      19.2,
      45.0,
@@ -12969,6 +13105,7 @@
     "kind": "wall",
     "axis": 2,
     "position": 2.25,
+    "sign": 1,
     "lo": [
      4.8,
      47.4,
@@ -12985,6 +13122,7 @@
     "kind": "wall",
     "axis": 0,
     "position": 4.8,
+    "sign": 1,
     "lo": [
      4.8,
      47.4,
@@ -13001,6 +13139,7 @@
     "kind": "wall",
     "axis": 0,
     "position": 19.2,
+    "sign": 1,
     "lo": [
      19.2,
      47.4,
@@ -13017,6 +13156,7 @@
     "kind": "wall",
     "axis": 1,
     "position": 46.199999999999996,
+    "sign": 1,
     "lo": [
      4.8,
      46.199999999999996,
@@ -13033,6 +13173,7 @@
     "kind": "wall",
     "axis": 1,
     "position": 47.4,
+    "sign": 1,
     "lo": [
      4.8,
      47.4,
@@ -13049,6 +13190,7 @@
     "kind": "wall",
     "axis": 0,
     "position": 4.8,
+    "sign": 1,
     "lo": [
      4.8,
      46.199999999999996,
@@ -13065,6 +13207,7 @@
     "kind": "wall",
     "axis": 0,
     "position": 19.2,
+    "sign": 1,
     "lo": [
      19.2,
      46.199999999999996,
@@ -13081,6 +13224,7 @@
     "kind": "wall",
     "axis": 2,
     "position": 2.25,
+    "sign": 1,
     "lo": [
      4.8,
      50.4,
@@ -13097,6 +13241,7 @@
     "kind": "wall",
     "axis": 0,
     "position": 4.8,
+    "sign": 1,
     "lo": [
      4.8,
      50.4,
@@ -13113,6 +13258,7 @@
     "kind": "wall",
     "axis": 0,
     "position": 19.2,
+    "sign": 1,
     "lo": [
      19.2,
      50.4,
@@ -13129,6 +13275,7 @@
     "kind": "wall",
     "axis": 2,
     "position": 2.25,
+    "sign": 1,
     "lo": [
      4.8,
      52.8,
@@ -13145,6 +13292,7 @@
     "kind": "wall",
     "axis": 0,
     "position": 4.8,
+    "sign": 1,
     "lo": [
      4.8,
      52.8,
@@ -13161,6 +13309,7 @@
     "kind": "wall",
     "axis": 0,
     "position": 19.2,
+    "sign": 1,
     "lo": [
      19.2,
      52.8,
@@ -13177,6 +13326,7 @@
     "kind": "wall",
     "axis": 1,
     "position": 51.6,
+    "sign": 1,
     "lo": [
      4.8,
      51.6,
@@ -13193,6 +13343,7 @@
     "kind": "wall",
     "axis": 1,
     "position": 52.8,
+    "sign": 1,
     "lo": [
      4.8,
      52.8,
@@ -13209,6 +13360,7 @@
     "kind": "wall",
     "axis": 0,
     "position": 4.8,
+    "sign": 1,
     "lo": [
      4.8,
      51.6,
@@ -13225,6 +13377,7 @@
     "kind": "wall",
     "axis": 0,
     "position": 19.2,
+    "sign": 1,
     "lo": [
      19.2,
      51.6,
@@ -13241,6 +13394,7 @@
     "kind": "wall",
     "axis": 2,
     "position": 2.25,
+    "sign": 1,
     "lo": [
      4.8,
      55.8,
@@ -13257,6 +13411,7 @@
     "kind": "wall",
     "axis": 0,
     "position": 4.8,
+    "sign": 1,
     "lo": [
      4.8,
      55.8,
@@ -13273,6 +13428,7 @@
     "kind": "wall",
     "axis": 0,
     "position": 19.2,
+    "sign": 1,
     "lo": [
      19.2,
      55.8,
@@ -13289,6 +13445,7 @@
     "kind": "wall",
     "axis": 2,
     "position": 2.25,
+    "sign": 1,
     "lo": [
      4.8,
      58.199999999999996,
@@ -13305,6 +13462,7 @@
     "kind": "wall",
     "axis": 0,
     "position": 4.8,
+    "sign": 1,
     "lo": [
      4.8,
      58.199999999999996,
@@ -13321,6 +13479,7 @@
     "kind": "wall",
     "axis": 0,
     "position": 19.2,
+    "sign": 1,
     "lo": [
      19.2,
      58.199999999999996,
@@ -13337,6 +13496,7 @@
     "kind": "wall",
     "axis": 1,
     "position": 57.0,
+    "sign": 1,
     "lo": [
      4.8,
      57.0,
@@ -13353,6 +13513,7 @@
     "kind": "wall",
     "axis": 1,
     "position": 58.199999999999996,
+    "sign": 1,
     "lo": [
      4.8,
      58.199999999999996,
@@ -13369,6 +13530,7 @@
     "kind": "wall",
     "axis": 0,
     "position": 4.8,
+    "sign": 1,
     "lo": [
      4.8,
      57.0,
@@ -13385,6 +13547,7 @@
     "kind": "wall",
     "axis": 0,
     "position": 19.2,
+    "sign": 1,
     "lo": [
      19.2,
      57.0,
@@ -13401,6 +13564,7 @@
     "kind": "wall",
     "axis": 2,
     "position": 2.25,
+    "sign": 1,
     "lo": [
      4.8,
      61.199999999999996,
@@ -13417,6 +13581,7 @@
     "kind": "wall",
     "axis": 0,
     "position": 4.8,
+    "sign": 1,
     "lo": [
      4.8,
      61.199999999999996,
@@ -13433,6 +13598,7 @@
     "kind": "wall",
     "axis": 0,
     "position": 19.2,
+    "sign": 1,
     "lo": [
      19.2,
      61.199999999999996,
@@ -13449,6 +13615,7 @@
     "kind": "wall",
     "axis": 2,
     "position": 2.25,
+    "sign": 1,
     "lo": [
      4.8,
      63.599999999999994,
@@ -13465,6 +13632,7 @@
     "kind": "wall",
     "axis": 0,
     "position": 4.8,
+    "sign": 1,
     "lo": [
      4.8,
      63.599999999999994,
@@ -13481,6 +13649,7 @@
     "kind": "wall",
     "axis": 0,
     "position": 19.2,
+    "sign": 1,
     "lo": [
      19.2,
      63.599999999999994,
@@ -13497,6 +13666,7 @@
     "kind": "wall",
     "axis": 1,
     "position": 62.4,
+    "sign": 1,
     "lo": [
      4.8,
      62.4,
@@ -13513,6 +13683,7 @@
     "kind": "wall",
     "axis": 1,
     "position": 63.599999999999994,
+    "sign": 1,
     "lo": [
      4.8,
      63.599999999999994,
@@ -13529,6 +13700,7 @@
     "kind": "wall",
     "axis": 0,
     "position": 4.8,
+    "sign": 1,
     "lo": [
      4.8,
      62.4,
@@ -13545,6 +13717,7 @@
     "kind": "wall",
     "axis": 0,
     "position": 19.2,
+    "sign": 1,
     "lo": [
      19.2,
      62.4,
@@ -13561,6 +13734,7 @@
     "kind": "wall",
     "axis": 2,
     "position": 2.25,
+    "sign": 1,
     "lo": [
      4.8,
      66.6,
@@ -13577,6 +13751,7 @@
     "kind": "wall",
     "axis": 0,
     "position": 4.8,
+    "sign": 1,
     "lo": [
      4.8,
      66.6,
@@ -13593,6 +13768,7 @@
     "kind": "wall",
     "axis": 0,
     "position": 19.2,
+    "sign": 1,
     "lo": [
      19.2,
      66.6,
@@ -13609,6 +13785,7 @@
     "kind": "wall",
     "axis": 2,
     "position": 2.25,
+    "sign": 1,
     "lo": [
      4.8,
      69.0,
@@ -13625,6 +13802,7 @@
     "kind": "wall",
     "axis": 0,
     "position": 4.8,
+    "sign": 1,
     "lo": [
      4.8,
      69.0,
@@ -13641,6 +13819,7 @@
     "kind": "wall",
     "axis": 0,
     "position": 19.2,
+    "sign": 1,
     "lo": [
      19.2,
      69.0,
@@ -13657,6 +13836,7 @@
     "kind": "wall",
     "axis": 1,
     "position": 67.8,
+    "sign": 1,
     "lo": [
      4.8,
      67.8,
@@ -13673,6 +13853,7 @@
     "kind": "wall",
     "axis": 1,
     "position": 69.0,
+    "sign": 1,
     "lo": [
      4.8,
      69.0,
@@ -13689,6 +13870,7 @@
     "kind": "wall",
     "axis": 0,
     "position": 4.8,
+    "sign": 1,
     "lo": [
      4.8,
      67.8,
@@ -13705,6 +13887,7 @@
     "kind": "wall",
     "axis": 0,
     "position": 19.2,
+    "sign": 1,
     "lo": [
      19.2,
      67.8,
@@ -13721,6 +13904,7 @@
     "kind": "wall",
     "axis": 2,
     "position": 2.25,
+    "sign": 1,
     "lo": [
      4.8,
      72.0,
@@ -13737,6 +13921,7 @@
     "kind": "wall",
     "axis": 0,
     "position": 4.8,
+    "sign": 1,
     "lo": [
      4.8,
      72.0,
@@ -13753,6 +13938,7 @@
     "kind": "wall",
     "axis": 0,
     "position": 19.2,
+    "sign": 1,
     "lo": [
      19.2,
      72.0,
@@ -13769,6 +13955,7 @@
     "kind": "wall",
     "axis": 2,
     "position": 2.25,
+    "sign": 1,
     "lo": [
      4.8,
      74.39999999999999,
@@ -13785,6 +13972,7 @@
     "kind": "wall",
     "axis": 0,
     "position": 4.8,
+    "sign": 1,
     "lo": [
      4.8,
      74.39999999999999,
@@ -13801,6 +13989,7 @@
     "kind": "wall",
     "axis": 0,
     "position": 19.2,
+    "sign": 1,
     "lo": [
      19.2,
      74.39999999999999,
@@ -13817,6 +14006,7 @@
     "kind": "wall",
     "axis": 1,
     "position": 73.2,
+    "sign": 1,
     "lo": [
      4.8,
      73.2,
@@ -13833,6 +14023,7 @@
     "kind": "wall",
     "axis": 1,
     "position": 74.39999999999999,
+    "sign": 1,
     "lo": [
      4.8,
      74.39999999999999,
@@ -13849,6 +14040,7 @@
     "kind": "wall",
     "axis": 0,
     "position": 4.8,
+    "sign": 1,
     "lo": [
      4.8,
      73.2,
@@ -13865,6 +14057,7 @@
     "kind": "wall",
     "axis": 0,
     "position": 19.2,
+    "sign": 1,
     "lo": [
      19.2,
      73.2,
@@ -13881,6 +14074,7 @@
     "kind": "wall",
     "axis": 2,
     "position": 2.25,
+    "sign": 1,
     "lo": [
      4.8,
      77.39999999999999,
@@ -13897,6 +14091,7 @@
     "kind": "wall",
     "axis": 0,
     "position": 4.8,
+    "sign": 1,
     "lo": [
      4.8,
      77.39999999999999,
@@ -13913,6 +14108,7 @@
     "kind": "wall",
     "axis": 0,
     "position": 19.2,
+    "sign": 1,
     "lo": [
      19.2,
      77.39999999999999,
@@ -13929,6 +14125,7 @@
     "kind": "wall",
     "axis": 2,
     "position": 2.25,
+    "sign": 1,
     "lo": [
      4.8,
      79.8,
@@ -13945,6 +14142,7 @@
     "kind": "wall",
     "axis": 0,
     "position": 4.8,
+    "sign": 1,
     "lo": [
      4.8,
      79.8,
@@ -13961,6 +14159,7 @@
     "kind": "wall",
     "axis": 0,
     "position": 19.2,
+    "sign": 1,
     "lo": [
      19.2,
      79.8,
@@ -13977,6 +14176,7 @@
     "kind": "wall",
     "axis": 1,
     "position": 78.6,
+    "sign": 1,
     "lo": [
      4.8,
      78.6,
@@ -13993,6 +14193,7 @@
     "kind": "wall",
     "axis": 1,
     "position": 79.8,
+    "sign": 1,
     "lo": [
      4.8,
      79.8,
@@ -14009,6 +14210,7 @@
     "kind": "wall",
     "axis": 0,
     "position": 4.8,
+    "sign": 1,
     "lo": [
      4.8,
      78.6,
@@ -14025,6 +14227,7 @@
     "kind": "wall",
     "axis": 0,
     "position": 19.2,
+    "sign": 1,
     "lo": [
      19.2,
      78.6,
@@ -14041,6 +14244,7 @@
     "kind": "wall",
     "axis": 2,
     "position": 2.25,
+    "sign": 1,
     "lo": [
      4.8,
      82.8,
@@ -14057,6 +14261,7 @@
     "kind": "wall",
     "axis": 0,
     "position": 4.8,
+    "sign": 1,
     "lo": [
      4.8,
      82.8,
@@ -14073,6 +14278,7 @@
     "kind": "wall",
     "axis": 0,
     "position": 19.2,
+    "sign": 1,
     "lo": [
      19.2,
      82.8,
@@ -14089,6 +14295,7 @@
     "kind": "wall",
     "axis": 2,
     "position": 2.25,
+    "sign": 1,
     "lo": [
      4.8,
      85.2,
@@ -14105,6 +14312,7 @@
     "kind": "wall",
     "axis": 0,
     "position": 4.8,
+    "sign": 1,
     "lo": [
      4.8,
      85.2,
@@ -14121,6 +14329,7 @@
     "kind": "wall",
     "axis": 0,
     "position": 19.2,
+    "sign": 1,
     "lo": [
      19.2,
      85.2,
@@ -14137,6 +14346,7 @@
     "kind": "wall",
     "axis": 1,
     "position": 84.0,
+    "sign": 1,
     "lo": [
      4.8,
      84.0,
@@ -14153,6 +14363,7 @@
     "kind": "wall",
     "axis": 1,
     "position": 85.2,
+    "sign": 1,
     "lo": [
      4.8,
      85.2,
@@ -14169,6 +14380,7 @@
     "kind": "wall",
     "axis": 0,
     "position": 4.8,
+    "sign": 1,
     "lo": [
      4.8,
      84.0,
@@ -14185,6 +14397,7 @@
     "kind": "wall",
     "axis": 0,
     "position": 19.2,
+    "sign": 1,
     "lo": [
      19.2,
      84.0,
@@ -14200,7 +14413,7 @@
   "sensors": [
    {
     "name": "cold_aisle",
-    "label": "Corredor frio",
+    "label": "Cold aisle",
     "points": [
      [
       12.0,
@@ -14221,7 +14434,7 @@
    },
    {
     "name": "hot_aisle",
-    "label": "Corredor quente",
+    "label": "Hot aisle",
     "points": [
      [
       12.0,
@@ -14242,7 +14455,7 @@
    },
    {
     "name": "plenum",
-    "label": "Plenum do forro",
+    "label": "Ceiling plenum",
     "points": [
      [
       12.0,
@@ -14263,7 +14476,7 @@
    },
    {
     "name": "fan_back",
-    "label": "Costas do fan wall",
+    "label": "Behind the fan wall",
     "points": [
      [
       2.7,
@@ -14425,245 +14638,315 @@
     "supply_kg_s": 20.2705,
     "intake_kg_s": 20.2705,
     "backflow_kg_s": 0.0,
-    "rise_pa": 67.836
+    "rise_pa": 67.836,
+    "return_temp_c": 35.83,
+    "heat_kw": 279.6
    },
    {
     "name": "fan2",
     "supply_kg_s": 20.2705,
     "intake_kg_s": 20.2705,
     "backflow_kg_s": 0.0,
-    "rise_pa": 70.27
+    "rise_pa": 70.27,
+    "return_temp_c": 36.0,
+    "heat_kw": 283.1
    },
    {
     "name": "fan3",
     "supply_kg_s": 20.2705,
     "intake_kg_s": 20.2705,
     "backflow_kg_s": 0.0,
-    "rise_pa": 69.87
+    "rise_pa": 69.87,
+    "return_temp_c": 36.03,
+    "heat_kw": 283.8
    },
    {
     "name": "fan4",
     "supply_kg_s": 20.2705,
     "intake_kg_s": 20.2705,
     "backflow_kg_s": 0.0,
-    "rise_pa": 70.485
+    "rise_pa": 70.485,
+    "return_temp_c": 36.16,
+    "heat_kw": 286.4
    },
    {
     "name": "fan5",
     "supply_kg_s": 20.2705,
     "intake_kg_s": 20.2705,
     "backflow_kg_s": 0.0,
-    "rise_pa": 69.935
+    "rise_pa": 69.935,
+    "return_temp_c": 36.08,
+    "heat_kw": 284.9
    },
    {
     "name": "fan6",
     "supply_kg_s": 20.2705,
     "intake_kg_s": 20.2705,
     "backflow_kg_s": 0.0,
-    "rise_pa": 71.525
+    "rise_pa": 71.525,
+    "return_temp_c": 36.15,
+    "heat_kw": 286.1
    },
    {
     "name": "fan7",
     "supply_kg_s": 20.2705,
     "intake_kg_s": 20.2705,
     "backflow_kg_s": 0.0,
-    "rise_pa": 71.949
+    "rise_pa": 71.949,
+    "return_temp_c": 36.07,
+    "heat_kw": 284.7
    },
    {
     "name": "fan8",
     "supply_kg_s": 20.27049,
     "intake_kg_s": 20.2705,
     "backflow_kg_s": 0.0,
-    "rise_pa": 71.955
+    "rise_pa": 71.955,
+    "return_temp_c": 36.1,
+    "heat_kw": 285.1
    },
    {
     "name": "fan9",
     "supply_kg_s": 20.2705,
     "intake_kg_s": 20.2705,
     "backflow_kg_s": 0.0,
-    "rise_pa": 71.125
+    "rise_pa": 71.125,
+    "return_temp_c": 36.05,
+    "heat_kw": 284.2
    },
    {
     "name": "fan10",
     "supply_kg_s": 20.2705,
     "intake_kg_s": 20.2705,
     "backflow_kg_s": 0.0,
-    "rise_pa": 70.865
+    "rise_pa": 70.865,
+    "return_temp_c": 36.09,
+    "heat_kw": 285.0
    },
    {
     "name": "fan11",
     "supply_kg_s": 20.2705,
     "intake_kg_s": 20.27049,
     "backflow_kg_s": 0.0,
-    "rise_pa": 68.016
+    "rise_pa": 68.016,
+    "return_temp_c": 36.11,
+    "heat_kw": 285.4
    },
    {
     "name": "fan12",
     "supply_kg_s": 20.2705,
     "intake_kg_s": 20.2705,
     "backflow_kg_s": 0.0,
-    "rise_pa": 70.308
+    "rise_pa": 70.308,
+    "return_temp_c": 36.14,
+    "heat_kw": 286.1
    },
    {
     "name": "fan13",
     "supply_kg_s": 20.2705,
     "intake_kg_s": 20.2705,
     "backflow_kg_s": 0.0,
-    "rise_pa": 67.522
+    "rise_pa": 67.522,
+    "return_temp_c": 36.15,
+    "heat_kw": 286.2
    },
    {
     "name": "fan14",
     "supply_kg_s": 20.2705,
     "intake_kg_s": 20.2705,
     "backflow_kg_s": 0.0,
-    "rise_pa": 72.13
+    "rise_pa": 72.13,
+    "return_temp_c": 36.14,
+    "heat_kw": 286.0
    },
    {
     "name": "fan15",
     "supply_kg_s": 20.2705,
     "intake_kg_s": 20.2705,
     "backflow_kg_s": 0.0,
-    "rise_pa": 67.516
+    "rise_pa": 67.516,
+    "return_temp_c": 36.16,
+    "heat_kw": 286.3
    },
    {
     "name": "fan16",
     "supply_kg_s": 20.2705,
     "intake_kg_s": 20.2705,
     "backflow_kg_s": 0.0,
-    "rise_pa": 72.457
+    "rise_pa": 72.457,
+    "return_temp_c": 36.14,
+    "heat_kw": 286.0
    },
    {
     "name": "fan17",
     "supply_kg_s": 20.2705,
     "intake_kg_s": 20.2705,
     "backflow_kg_s": 0.0,
-    "rise_pa": 68.455
+    "rise_pa": 68.455,
+    "return_temp_c": 36.19,
+    "heat_kw": 287.1
    },
    {
     "name": "fan18",
     "supply_kg_s": 20.2705,
     "intake_kg_s": 20.2705,
     "backflow_kg_s": 0.0,
-    "rise_pa": 70.755
+    "rise_pa": 70.755,
+    "return_temp_c": 36.15,
+    "heat_kw": 286.2
    },
    {
     "name": "fan19",
     "supply_kg_s": 20.2705,
     "intake_kg_s": 20.2705,
     "backflow_kg_s": 0.0,
-    "rise_pa": 68.852
+    "rise_pa": 68.852,
+    "return_temp_c": 36.21,
+    "heat_kw": 287.4
    },
    {
     "name": "fan20",
     "supply_kg_s": 20.2705,
     "intake_kg_s": 20.2705,
     "backflow_kg_s": 0.0,
-    "rise_pa": 71.78
+    "rise_pa": 71.78,
+    "return_temp_c": 36.18,
+    "heat_kw": 286.7
    },
    {
     "name": "fan21",
     "supply_kg_s": 20.2705,
     "intake_kg_s": 20.2705,
     "backflow_kg_s": 0.0,
-    "rise_pa": 68.18
+    "rise_pa": 68.18,
+    "return_temp_c": 36.18,
+    "heat_kw": 286.8
    },
    {
     "name": "fan22",
     "supply_kg_s": 20.2705,
     "intake_kg_s": 20.2705,
     "backflow_kg_s": 0.0,
-    "rise_pa": 72.486
+    "rise_pa": 72.486,
+    "return_temp_c": 36.15,
+    "heat_kw": 286.2
    },
    {
     "name": "fan23",
     "supply_kg_s": 20.2705,
     "intake_kg_s": 20.2705,
     "backflow_kg_s": 0.0,
-    "rise_pa": 69.211
+    "rise_pa": 69.211,
+    "return_temp_c": 36.12,
+    "heat_kw": 285.7
    },
    {
     "name": "fan24",
     "supply_kg_s": 20.2705,
     "intake_kg_s": 20.2705,
     "backflow_kg_s": 0.0,
-    "rise_pa": 73.068
+    "rise_pa": 73.068,
+    "return_temp_c": 36.11,
+    "heat_kw": 285.5
    },
    {
     "name": "fan25",
     "supply_kg_s": 20.2705,
     "intake_kg_s": 20.2705,
     "backflow_kg_s": 0.0,
-    "rise_pa": 69.31
+    "rise_pa": 69.31,
+    "return_temp_c": 36.07,
+    "heat_kw": 284.7
    },
    {
     "name": "fan26",
     "supply_kg_s": 20.2705,
     "intake_kg_s": 20.2705,
     "backflow_kg_s": 0.0,
-    "rise_pa": 73.227
+    "rise_pa": 73.227,
+    "return_temp_c": 36.12,
+    "heat_kw": 285.6
    },
    {
     "name": "fan27",
     "supply_kg_s": 20.2705,
     "intake_kg_s": 20.2705,
     "backflow_kg_s": 0.0,
-    "rise_pa": 71.157
+    "rise_pa": 71.157,
+    "return_temp_c": 36.1,
+    "heat_kw": 285.2
    },
    {
     "name": "fan28",
     "supply_kg_s": 20.2705,
     "intake_kg_s": 20.2705,
     "backflow_kg_s": 0.0,
-    "rise_pa": 71.826
+    "rise_pa": 71.826,
+    "return_temp_c": 36.16,
+    "heat_kw": 286.4
    },
    {
     "name": "fan29",
     "supply_kg_s": 20.2705,
     "intake_kg_s": 20.2705,
     "backflow_kg_s": 0.0,
-    "rise_pa": 72.518
+    "rise_pa": 72.518,
+    "return_temp_c": 36.1,
+    "heat_kw": 285.3
    },
    {
     "name": "fan30",
     "supply_kg_s": 20.2705,
     "intake_kg_s": 20.2705,
     "backflow_kg_s": 0.0,
-    "rise_pa": 71.533
+    "rise_pa": 71.533,
+    "return_temp_c": 36.16,
+    "heat_kw": 286.4
    },
    {
     "name": "fan31",
     "supply_kg_s": 20.2705,
     "intake_kg_s": 20.2705,
     "backflow_kg_s": 0.0,
-    "rise_pa": 70.195
+    "rise_pa": 70.195,
+    "return_temp_c": 36.1,
+    "heat_kw": 285.2
    },
    {
     "name": "fan32",
     "supply_kg_s": 20.2705,
     "intake_kg_s": 20.2705,
     "backflow_kg_s": 0.0,
-    "rise_pa": 70.612
+    "rise_pa": 70.612,
+    "return_temp_c": 36.17,
+    "heat_kw": 286.5
    },
    {
     "name": "fan33",
     "supply_kg_s": 20.2705,
     "intake_kg_s": 20.2705,
     "backflow_kg_s": 0.0,
-    "rise_pa": 69.79
+    "rise_pa": 69.79,
+    "return_temp_c": 36.04,
+    "heat_kw": 283.9
    },
    {
     "name": "fan34",
     "supply_kg_s": 20.2705,
     "intake_kg_s": 20.2705,
     "backflow_kg_s": 0.0,
-    "rise_pa": 70.237
+    "rise_pa": 70.237,
+    "return_temp_c": 36.0,
+    "heat_kw": 283.2
    },
    {
     "name": "fan35",
     "supply_kg_s": 20.2705,
     "intake_kg_s": 20.2705,
     "backflow_kg_s": 0.0,
-    "rise_pa": 67.791
+    "rise_pa": 67.791,
+    "return_temp_c": 35.83,
+    "heat_kw": 279.8
    }
   ],
   "rows": [
@@ -31780,11 +32063,11 @@
   }
  ],
  "warnings": [
-  "largura do fan wall: 2,230 m n\u00e3o cai na malha de 0,30 m; a malha vai usar 2,10 m (-130 mm).",
-  "altura dos racks: 2,200 m n\u00e3o cai na malha de 0,25 m; a malha vai usar 2,25 m (+50 mm).",
-  "borda do fan wall: 3,670 m n\u00e3o cai na malha de 0,25 m; a malha vai usar 3,75 m (+80 mm).",
-  "posi\u00e7\u00e3o do topo dos racks: 2,200 m n\u00e3o cai na malha de 0,25 m; a malha vai usar 2,25 m (+50 mm).",
-  "borda da lateral da fileira: 2,200 m n\u00e3o cai na malha de 0,25 m; a malha vai usar 2,25 m (+50 mm)."
+  "fan wall width: 2.230 m is not on the 0.30 m grid; the mesh will use 2.10 m (-130 mm).",
+  "rack height: 2.200 m is not on the 0.25 m grid; the mesh will use 2.25 m (+50 mm).",
+  "fan wall edge: 3.670 m is not on the 0.25 m grid; the mesh will use 3.75 m (+80 mm).",
+  "rack top position: 2.200 m is not on the 0.25 m grid; the mesh will use 2.25 m (+50 mm).",
+  "row end edge: 2.200 m is not on the 0.25 m grid; the mesh will use 2.25 m (+50 mm)."
  ],
  "residuals": {
   "iterations": [
@@ -36688,8 +36971,8 @@
   "groups": [
    {
     "name": "cold_aisle",
-    "label": "Corredor frio",
-    "note": "no meio do corredor, \u00e0 altura dos racks",
+    "label": "Cold aisle",
+    "note": "mid-aisle, at rack height",
     "points": [
      [
       12.0,
@@ -36738,8 +37021,8 @@
    },
    {
     "name": "hot_aisle",
-    "label": "Corredor quente",
-    "note": "dentro do enclausuramento, \u00e0 altura dos racks",
+    "label": "Hot aisle",
+    "note": "inside the containment, at rack height",
     "points": [
      [
       12.0,
@@ -36788,8 +37071,8 @@
    },
    {
     "name": "plenum",
-    "label": "Plenum do forro",
-    "note": "acima das grelhas de retorno",
+    "label": "Ceiling plenum",
+    "note": "above the return grilles",
     "points": [
      [
       12.0,
@@ -36838,8 +37121,8 @@
    },
    {
     "name": "fan_back",
-    "label": "Costas do fan wall",
-    "note": "na galeria, onde o ar de retorno chega ao fan wall",
+    "label": "Behind the fan wall",
+    "note": "in the gallery, where the return air reaches the units",
     "points": [
      [
       2.7,
@@ -36956,7 +37239,7 @@
    ],
    "hi": [
     21.0,
-    88.19999999999999,
+    88.2,
     8.0
    ]
   },
@@ -36968,10 +37251,24 @@
    ],
    "hi": [
     3.0,
-    88.19999999999999,
+    88.2,
     8.0
    ]
   },
+  "galleries": [
+   {
+    "lo": [
+     0.0,
+     0.0,
+     0.0
+    ],
+    "hi": [
+     3.0,
+     88.2,
+     8.0
+    ]
+   }
+  ],
   "hall": {
    "lo": [
     3.0,
@@ -36980,10 +37277,19 @@
    ],
    "hi": [
     21.0,
-    88.19999999999999,
+    88.2,
     8.0
    ]
   },
+  "dividers": [
+   3.0
+  ],
+  "blocks": [
+   [
+    4.8,
+    19.2
+   ]
+  ],
   "ceiling_z": 6.5,
   "aisles": {
    "cold": [
@@ -38261,6 +38567,43 @@
    "fan33",
    "fan34",
    "fan35"
+  ],
+  "fan_sides": [
+   1,
+   1,
+   1,
+   1,
+   1,
+   1,
+   1,
+   1,
+   1,
+   1,
+   1,
+   1,
+   1,
+   1,
+   1,
+   1,
+   1,
+   1,
+   1,
+   1,
+   1,
+   1,
+   1,
+   1,
+   1,
+   1,
+   1,
+   1,
+   1,
+   1,
+   1,
+   1,
+   1,
+   1,
+   1
   ],
   "racks": [
    {
@@ -50569,7 +50912,8 @@
      ]
     ],
     "area": 7.875,
-    "resistance": null
+    "resistance": null,
+    "sign": 1
    },
    {
     "name": "fan2",
@@ -50587,7 +50931,8 @@
      ]
     ],
     "area": 7.875,
-    "resistance": null
+    "resistance": null,
+    "sign": 1
    },
    {
     "name": "fan3",
@@ -50605,7 +50950,8 @@
      ]
     ],
     "area": 7.875,
-    "resistance": null
+    "resistance": null,
+    "sign": 1
    },
    {
     "name": "fan4",
@@ -50623,7 +50969,8 @@
      ]
     ],
     "area": 7.875,
-    "resistance": null
+    "resistance": null,
+    "sign": 1
    },
    {
     "name": "fan5",
@@ -50641,7 +50988,8 @@
      ]
     ],
     "area": 7.875,
-    "resistance": null
+    "resistance": null,
+    "sign": 1
    },
    {
     "name": "fan6",
@@ -50659,7 +51007,8 @@
      ]
     ],
     "area": 7.875,
-    "resistance": null
+    "resistance": null,
+    "sign": 1
    },
    {
     "name": "fan7",
@@ -50677,7 +51026,8 @@
      ]
     ],
     "area": 7.875,
-    "resistance": null
+    "resistance": null,
+    "sign": 1
    },
    {
     "name": "fan8",
@@ -50695,7 +51045,8 @@
      ]
     ],
     "area": 7.875,
-    "resistance": null
+    "resistance": null,
+    "sign": 1
    },
    {
     "name": "fan9",
@@ -50713,7 +51064,8 @@
      ]
     ],
     "area": 7.875,
-    "resistance": null
+    "resistance": null,
+    "sign": 1
    },
    {
     "name": "fan10",
@@ -50731,7 +51083,8 @@
      ]
     ],
     "area": 7.875,
-    "resistance": null
+    "resistance": null,
+    "sign": 1
    },
    {
     "name": "fan11",
@@ -50749,7 +51102,8 @@
      ]
     ],
     "area": 7.875,
-    "resistance": null
+    "resistance": null,
+    "sign": 1
    },
    {
     "name": "fan12",
@@ -50767,7 +51121,8 @@
      ]
     ],
     "area": 7.875,
-    "resistance": null
+    "resistance": null,
+    "sign": 1
    },
    {
     "name": "fan13",
@@ -50785,7 +51140,8 @@
      ]
     ],
     "area": 7.875,
-    "resistance": null
+    "resistance": null,
+    "sign": 1
    },
    {
     "name": "fan14",
@@ -50803,7 +51159,8 @@
      ]
     ],
     "area": 7.875,
-    "resistance": null
+    "resistance": null,
+    "sign": 1
    },
    {
     "name": "fan15",
@@ -50821,7 +51178,8 @@
      ]
     ],
     "area": 7.875,
-    "resistance": null
+    "resistance": null,
+    "sign": 1
    },
    {
     "name": "fan16",
@@ -50839,7 +51197,8 @@
      ]
     ],
     "area": 7.875,
-    "resistance": null
+    "resistance": null,
+    "sign": 1
    },
    {
     "name": "fan17",
@@ -50857,7 +51216,8 @@
      ]
     ],
     "area": 7.875,
-    "resistance": null
+    "resistance": null,
+    "sign": 1
    },
    {
     "name": "fan18",
@@ -50875,7 +51235,8 @@
      ]
     ],
     "area": 7.875,
-    "resistance": null
+    "resistance": null,
+    "sign": 1
    },
    {
     "name": "fan19",
@@ -50893,7 +51254,8 @@
      ]
     ],
     "area": 7.875,
-    "resistance": null
+    "resistance": null,
+    "sign": 1
    },
    {
     "name": "fan20",
@@ -50911,7 +51273,8 @@
      ]
     ],
     "area": 7.875,
-    "resistance": null
+    "resistance": null,
+    "sign": 1
    },
    {
     "name": "fan21",
@@ -50929,7 +51292,8 @@
      ]
     ],
     "area": 7.875,
-    "resistance": null
+    "resistance": null,
+    "sign": 1
    },
    {
     "name": "fan22",
@@ -50947,7 +51311,8 @@
      ]
     ],
     "area": 7.875,
-    "resistance": null
+    "resistance": null,
+    "sign": 1
    },
    {
     "name": "fan23",
@@ -50965,7 +51330,8 @@
      ]
     ],
     "area": 7.875,
-    "resistance": null
+    "resistance": null,
+    "sign": 1
    },
    {
     "name": "fan24",
@@ -50983,7 +51349,8 @@
      ]
     ],
     "area": 7.875,
-    "resistance": null
+    "resistance": null,
+    "sign": 1
    },
    {
     "name": "fan25",
@@ -51001,7 +51368,8 @@
      ]
     ],
     "area": 7.875,
-    "resistance": null
+    "resistance": null,
+    "sign": 1
    },
    {
     "name": "fan26",
@@ -51019,7 +51387,8 @@
      ]
     ],
     "area": 7.875,
-    "resistance": null
+    "resistance": null,
+    "sign": 1
    },
    {
     "name": "fan27",
@@ -51037,7 +51406,8 @@
      ]
     ],
     "area": 7.875,
-    "resistance": null
+    "resistance": null,
+    "sign": 1
    },
    {
     "name": "fan28",
@@ -51055,7 +51425,8 @@
      ]
     ],
     "area": 7.875,
-    "resistance": null
+    "resistance": null,
+    "sign": 1
    },
    {
     "name": "fan29",
@@ -51073,7 +51444,8 @@
      ]
     ],
     "area": 7.875,
-    "resistance": null
+    "resistance": null,
+    "sign": 1
    },
    {
     "name": "fan30",
@@ -51091,7 +51463,8 @@
      ]
     ],
     "area": 7.875,
-    "resistance": null
+    "resistance": null,
+    "sign": 1
    },
    {
     "name": "fan31",
@@ -51109,7 +51482,8 @@
      ]
     ],
     "area": 7.875,
-    "resistance": null
+    "resistance": null,
+    "sign": 1
    },
    {
     "name": "fan32",
@@ -51127,7 +51501,8 @@
      ]
     ],
     "area": 7.875,
-    "resistance": null
+    "resistance": null,
+    "sign": 1
    },
    {
     "name": "fan33",
@@ -51145,7 +51520,8 @@
      ]
     ],
     "area": 7.875,
-    "resistance": null
+    "resistance": null,
+    "sign": 1
    },
    {
     "name": "fan34",
@@ -51163,7 +51539,8 @@
      ]
     ],
     "area": 7.875,
-    "resistance": null
+    "resistance": null,
+    "sign": 1
    },
    {
     "name": "fan35",
@@ -51181,7 +51558,8 @@
      ]
     ],
     "area": 7.875,
-    "resistance": null
+    "resistance": null,
+    "sign": 1
    },
    {
     "name": "plenum_opening",
@@ -51199,7 +51577,8 @@
      ]
     ],
     "area": 132.3,
-    "resistance": null
+    "resistance": null,
+    "sign": 1
    },
    {
     "name": "ceiling",
@@ -51217,7 +51596,8 @@
      ]
     ],
     "area": 1587.6,
-    "resistance": null
+    "resistance": null,
+    "sign": 1
    },
    {
     "name": "grille1",
@@ -51235,7 +51615,8 @@
      ]
     ],
     "area": 17.28,
-    "resistance": 2.4
+    "resistance": 2.4,
+    "sign": 1
    },
    {
     "name": "grille2",
@@ -51253,7 +51634,8 @@
      ]
     ],
     "area": 17.28,
-    "resistance": 2.4
+    "resistance": 2.4,
+    "sign": 1
    },
    {
     "name": "grille3",
@@ -51271,7 +51653,8 @@
      ]
     ],
     "area": 17.28,
-    "resistance": 2.4
+    "resistance": 2.4,
+    "sign": 1
    },
    {
     "name": "grille4",
@@ -51289,7 +51672,8 @@
      ]
     ],
     "area": 17.28,
-    "resistance": 2.4
+    "resistance": 2.4,
+    "sign": 1
    },
    {
     "name": "grille5",
@@ -51307,7 +51691,8 @@
      ]
     ],
     "area": 17.28,
-    "resistance": 2.4
+    "resistance": 2.4,
+    "sign": 1
    },
    {
     "name": "grille6",
@@ -51325,7 +51710,8 @@
      ]
     ],
     "area": 17.28,
-    "resistance": 2.4
+    "resistance": 2.4,
+    "sign": 1
    },
    {
     "name": "grille7",
@@ -51343,7 +51729,8 @@
      ]
     ],
     "area": 17.28,
-    "resistance": 2.4
+    "resistance": 2.4,
+    "sign": 1
    },
    {
     "name": "grille8",
@@ -51361,7 +51748,8 @@
      ]
     ],
     "area": 17.28,
-    "resistance": 2.4
+    "resistance": 2.4,
+    "sign": 1
    },
    {
     "name": "grille9",
@@ -51379,7 +51767,8 @@
      ]
     ],
     "area": 17.28,
-    "resistance": 2.4
+    "resistance": 2.4,
+    "sign": 1
    },
    {
     "name": "grille10",
@@ -51397,7 +51786,8 @@
      ]
     ],
     "area": 17.28,
-    "resistance": 2.4
+    "resistance": 2.4,
+    "sign": 1
    },
    {
     "name": "grille11",
@@ -51415,7 +51805,8 @@
      ]
     ],
     "area": 17.28,
-    "resistance": 2.4
+    "resistance": 2.4,
+    "sign": 1
    },
    {
     "name": "grille12",
@@ -51433,7 +51824,8 @@
      ]
     ],
     "area": 17.28,
-    "resistance": 2.4
+    "resistance": 2.4,
+    "sign": 1
    },
    {
     "name": "grille13",
@@ -51451,7 +51843,8 @@
      ]
     ],
     "area": 17.28,
-    "resistance": 2.4
+    "resistance": 2.4,
+    "sign": 1
    },
    {
     "name": "grille14",
@@ -51469,7 +51862,8 @@
      ]
     ],
     "area": 17.28,
-    "resistance": 2.4
+    "resistance": 2.4,
+    "sign": 1
    },
    {
     "name": "grille15",
@@ -51487,7 +51881,8 @@
      ]
     ],
     "area": 17.28,
-    "resistance": 2.4
+    "resistance": 2.4,
+    "sign": 1
    },
    {
     "name": "grille16",
@@ -51505,7 +51900,8 @@
      ]
     ],
     "area": 17.28,
-    "resistance": 2.4
+    "resistance": 2.4,
+    "sign": 1
    },
    {
     "name": "rack_top_F1",
@@ -51523,7 +51919,8 @@
      ]
     ],
     "area": 17.28,
-    "resistance": null
+    "resistance": null,
+    "sign": 1
    },
    {
     "name": "rack_end_F1_4_8",
@@ -51541,7 +51938,8 @@
      ]
     ],
     "area": 2.7,
-    "resistance": null
+    "resistance": null,
+    "sign": 1
    },
    {
     "name": "rack_end_F1_19_2",
@@ -51559,7 +51957,8 @@
      ]
     ],
     "area": 2.7,
-    "resistance": null
+    "resistance": null,
+    "sign": 1
    },
    {
     "name": "rack_top_F2",
@@ -51577,7 +51976,8 @@
      ]
     ],
     "area": 17.28,
-    "resistance": null
+    "resistance": null,
+    "sign": 1
    },
    {
     "name": "rack_end_F2_4_8",
@@ -51595,7 +51995,8 @@
      ]
     ],
     "area": 2.7,
-    "resistance": null
+    "resistance": null,
+    "sign": 1
    },
    {
     "name": "rack_end_F2_19_2",
@@ -51613,7 +52014,8 @@
      ]
     ],
     "area": 2.7,
-    "resistance": null
+    "resistance": null,
+    "sign": 1
    },
    {
     "name": "containment_wall_1_a",
@@ -51631,7 +52033,8 @@
      ]
     ],
     "area": 61.2,
-    "resistance": null
+    "resistance": null,
+    "sign": 1
    },
    {
     "name": "containment_wall_1_b",
@@ -51649,7 +52052,8 @@
      ]
     ],
     "area": 61.2,
-    "resistance": null
+    "resistance": null,
+    "sign": 1
    },
    {
     "name": "containment_door_1_4_8",
@@ -51667,7 +52071,8 @@
      ]
     ],
     "area": 7.8,
-    "resistance": null
+    "resistance": null,
+    "sign": 1
    },
    {
     "name": "containment_door_1_19_2",
@@ -51685,7 +52090,8 @@
      ]
     ],
     "area": 7.8,
-    "resistance": null
+    "resistance": null,
+    "sign": 1
    },
    {
     "name": "rack_top_F3",
@@ -51703,7 +52109,8 @@
      ]
     ],
     "area": 17.28,
-    "resistance": null
+    "resistance": null,
+    "sign": 1
    },
    {
     "name": "rack_end_F3_4_8",
@@ -51721,7 +52128,8 @@
      ]
     ],
     "area": 2.7,
-    "resistance": null
+    "resistance": null,
+    "sign": 1
    },
    {
     "name": "rack_end_F3_19_2",
@@ -51739,7 +52147,8 @@
      ]
     ],
     "area": 2.7,
-    "resistance": null
+    "resistance": null,
+    "sign": 1
    },
    {
     "name": "rack_top_F4",
@@ -51757,7 +52166,8 @@
      ]
     ],
     "area": 17.28,
-    "resistance": null
+    "resistance": null,
+    "sign": 1
    },
    {
     "name": "rack_end_F4_4_8",
@@ -51775,7 +52185,8 @@
      ]
     ],
     "area": 2.7,
-    "resistance": null
+    "resistance": null,
+    "sign": 1
    },
    {
     "name": "rack_end_F4_19_2",
@@ -51793,7 +52204,8 @@
      ]
     ],
     "area": 2.7,
-    "resistance": null
+    "resistance": null,
+    "sign": 1
    },
    {
     "name": "containment_wall_2_a",
@@ -51811,7 +52223,8 @@
      ]
     ],
     "area": 61.2,
-    "resistance": null
+    "resistance": null,
+    "sign": 1
    },
    {
     "name": "containment_wall_2_b",
@@ -51829,7 +52242,8 @@
      ]
     ],
     "area": 61.2,
-    "resistance": null
+    "resistance": null,
+    "sign": 1
    },
    {
     "name": "containment_door_2_4_8",
@@ -51847,7 +52261,8 @@
      ]
     ],
     "area": 7.8,
-    "resistance": null
+    "resistance": null,
+    "sign": 1
    },
    {
     "name": "containment_door_2_19_2",
@@ -51865,7 +52280,8 @@
      ]
     ],
     "area": 7.8,
-    "resistance": null
+    "resistance": null,
+    "sign": 1
    },
    {
     "name": "rack_top_F5",
@@ -51883,7 +52299,8 @@
      ]
     ],
     "area": 17.28,
-    "resistance": null
+    "resistance": null,
+    "sign": 1
    },
    {
     "name": "rack_end_F5_4_8",
@@ -51901,7 +52318,8 @@
      ]
     ],
     "area": 2.7,
-    "resistance": null
+    "resistance": null,
+    "sign": 1
    },
    {
     "name": "rack_end_F5_19_2",
@@ -51919,7 +52337,8 @@
      ]
     ],
     "area": 2.7,
-    "resistance": null
+    "resistance": null,
+    "sign": 1
    },
    {
     "name": "rack_top_F6",
@@ -51937,7 +52356,8 @@
      ]
     ],
     "area": 17.28,
-    "resistance": null
+    "resistance": null,
+    "sign": 1
    },
    {
     "name": "rack_end_F6_4_8",
@@ -51955,7 +52375,8 @@
      ]
     ],
     "area": 2.7,
-    "resistance": null
+    "resistance": null,
+    "sign": 1
    },
    {
     "name": "rack_end_F6_19_2",
@@ -51973,7 +52394,8 @@
      ]
     ],
     "area": 2.7,
-    "resistance": null
+    "resistance": null,
+    "sign": 1
    },
    {
     "name": "containment_wall_3_a",
@@ -51991,7 +52413,8 @@
      ]
     ],
     "area": 61.2,
-    "resistance": null
+    "resistance": null,
+    "sign": 1
    },
    {
     "name": "containment_wall_3_b",
@@ -52009,7 +52432,8 @@
      ]
     ],
     "area": 61.2,
-    "resistance": null
+    "resistance": null,
+    "sign": 1
    },
    {
     "name": "containment_door_3_4_8",
@@ -52027,7 +52451,8 @@
      ]
     ],
     "area": 7.8,
-    "resistance": null
+    "resistance": null,
+    "sign": 1
    },
    {
     "name": "containment_door_3_19_2",
@@ -52045,7 +52470,8 @@
      ]
     ],
     "area": 7.8,
-    "resistance": null
+    "resistance": null,
+    "sign": 1
    },
    {
     "name": "rack_top_F7",
@@ -52063,7 +52489,8 @@
      ]
     ],
     "area": 17.28,
-    "resistance": null
+    "resistance": null,
+    "sign": 1
    },
    {
     "name": "rack_end_F7_4_8",
@@ -52081,7 +52508,8 @@
      ]
     ],
     "area": 2.7,
-    "resistance": null
+    "resistance": null,
+    "sign": 1
    },
    {
     "name": "rack_end_F7_19_2",
@@ -52099,7 +52527,8 @@
      ]
     ],
     "area": 2.7,
-    "resistance": null
+    "resistance": null,
+    "sign": 1
    },
    {
     "name": "rack_top_F8",
@@ -52117,7 +52546,8 @@
      ]
     ],
     "area": 17.28,
-    "resistance": null
+    "resistance": null,
+    "sign": 1
    },
    {
     "name": "rack_end_F8_4_8",
@@ -52135,7 +52565,8 @@
      ]
     ],
     "area": 2.7,
-    "resistance": null
+    "resistance": null,
+    "sign": 1
    },
    {
     "name": "rack_end_F8_19_2",
@@ -52153,7 +52584,8 @@
      ]
     ],
     "area": 2.7,
-    "resistance": null
+    "resistance": null,
+    "sign": 1
    },
    {
     "name": "containment_wall_4_a",
@@ -52171,7 +52603,8 @@
      ]
     ],
     "area": 61.2,
-    "resistance": null
+    "resistance": null,
+    "sign": 1
    },
    {
     "name": "containment_wall_4_b",
@@ -52189,7 +52622,8 @@
      ]
     ],
     "area": 61.2,
-    "resistance": null
+    "resistance": null,
+    "sign": 1
    },
    {
     "name": "containment_door_4_4_8",
@@ -52207,7 +52641,8 @@
      ]
     ],
     "area": 7.8,
-    "resistance": null
+    "resistance": null,
+    "sign": 1
    },
    {
     "name": "containment_door_4_19_2",
@@ -52225,7 +52660,8 @@
      ]
     ],
     "area": 7.8,
-    "resistance": null
+    "resistance": null,
+    "sign": 1
    },
    {
     "name": "rack_top_F9",
@@ -52243,7 +52679,8 @@
      ]
     ],
     "area": 17.28,
-    "resistance": null
+    "resistance": null,
+    "sign": 1
    },
    {
     "name": "rack_end_F9_4_8",
@@ -52261,7 +52698,8 @@
      ]
     ],
     "area": 2.7,
-    "resistance": null
+    "resistance": null,
+    "sign": 1
    },
    {
     "name": "rack_end_F9_19_2",
@@ -52279,7 +52717,8 @@
      ]
     ],
     "area": 2.7,
-    "resistance": null
+    "resistance": null,
+    "sign": 1
    },
    {
     "name": "rack_top_F10",
@@ -52297,7 +52736,8 @@
      ]
     ],
     "area": 17.28,
-    "resistance": null
+    "resistance": null,
+    "sign": 1
    },
    {
     "name": "rack_end_F10_4_8",
@@ -52315,7 +52755,8 @@
      ]
     ],
     "area": 2.7,
-    "resistance": null
+    "resistance": null,
+    "sign": 1
    },
    {
     "name": "rack_end_F10_19_2",
@@ -52333,7 +52774,8 @@
      ]
     ],
     "area": 2.7,
-    "resistance": null
+    "resistance": null,
+    "sign": 1
    },
    {
     "name": "containment_wall_5_a",
@@ -52351,7 +52793,8 @@
      ]
     ],
     "area": 61.2,
-    "resistance": null
+    "resistance": null,
+    "sign": 1
    },
    {
     "name": "containment_wall_5_b",
@@ -52369,7 +52812,8 @@
      ]
     ],
     "area": 61.2,
-    "resistance": null
+    "resistance": null,
+    "sign": 1
    },
    {
     "name": "containment_door_5_4_8",
@@ -52387,7 +52831,8 @@
      ]
     ],
     "area": 7.8,
-    "resistance": null
+    "resistance": null,
+    "sign": 1
    },
    {
     "name": "containment_door_5_19_2",
@@ -52405,7 +52850,8 @@
      ]
     ],
     "area": 7.8,
-    "resistance": null
+    "resistance": null,
+    "sign": 1
    },
    {
     "name": "rack_top_F11",
@@ -52423,7 +52869,8 @@
      ]
     ],
     "area": 17.28,
-    "resistance": null
+    "resistance": null,
+    "sign": 1
    },
    {
     "name": "rack_end_F11_4_8",
@@ -52441,7 +52888,8 @@
      ]
     ],
     "area": 2.7,
-    "resistance": null
+    "resistance": null,
+    "sign": 1
    },
    {
     "name": "rack_end_F11_19_2",
@@ -52459,7 +52907,8 @@
      ]
     ],
     "area": 2.7,
-    "resistance": null
+    "resistance": null,
+    "sign": 1
    },
    {
     "name": "rack_top_F12",
@@ -52477,7 +52926,8 @@
      ]
     ],
     "area": 17.28,
-    "resistance": null
+    "resistance": null,
+    "sign": 1
    },
    {
     "name": "rack_end_F12_4_8",
@@ -52495,7 +52945,8 @@
      ]
     ],
     "area": 2.7,
-    "resistance": null
+    "resistance": null,
+    "sign": 1
    },
    {
     "name": "rack_end_F12_19_2",
@@ -52513,7 +52964,8 @@
      ]
     ],
     "area": 2.7,
-    "resistance": null
+    "resistance": null,
+    "sign": 1
    },
    {
     "name": "containment_wall_6_a",
@@ -52531,7 +52983,8 @@
      ]
     ],
     "area": 61.2,
-    "resistance": null
+    "resistance": null,
+    "sign": 1
    },
    {
     "name": "containment_wall_6_b",
@@ -52549,7 +53002,8 @@
      ]
     ],
     "area": 61.2,
-    "resistance": null
+    "resistance": null,
+    "sign": 1
    },
    {
     "name": "containment_door_6_4_8",
@@ -52567,7 +53021,8 @@
      ]
     ],
     "area": 7.8,
-    "resistance": null
+    "resistance": null,
+    "sign": 1
    },
    {
     "name": "containment_door_6_19_2",
@@ -52585,7 +53040,8 @@
      ]
     ],
     "area": 7.8,
-    "resistance": null
+    "resistance": null,
+    "sign": 1
    },
    {
     "name": "rack_top_F13",
@@ -52603,7 +53059,8 @@
      ]
     ],
     "area": 17.28,
-    "resistance": null
+    "resistance": null,
+    "sign": 1
    },
    {
     "name": "rack_end_F13_4_8",
@@ -52621,7 +53078,8 @@
      ]
     ],
     "area": 2.7,
-    "resistance": null
+    "resistance": null,
+    "sign": 1
    },
    {
     "name": "rack_end_F13_19_2",
@@ -52639,7 +53097,8 @@
      ]
     ],
     "area": 2.7,
-    "resistance": null
+    "resistance": null,
+    "sign": 1
    },
    {
     "name": "rack_top_F14",
@@ -52657,7 +53116,8 @@
      ]
     ],
     "area": 17.28,
-    "resistance": null
+    "resistance": null,
+    "sign": 1
    },
    {
     "name": "rack_end_F14_4_8",
@@ -52675,7 +53135,8 @@
      ]
     ],
     "area": 2.7,
-    "resistance": null
+    "resistance": null,
+    "sign": 1
    },
    {
     "name": "rack_end_F14_19_2",
@@ -52693,7 +53154,8 @@
      ]
     ],
     "area": 2.7,
-    "resistance": null
+    "resistance": null,
+    "sign": 1
    },
    {
     "name": "containment_wall_7_a",
@@ -52711,7 +53173,8 @@
      ]
     ],
     "area": 61.2,
-    "resistance": null
+    "resistance": null,
+    "sign": 1
    },
    {
     "name": "containment_wall_7_b",
@@ -52729,7 +53192,8 @@
      ]
     ],
     "area": 61.2,
-    "resistance": null
+    "resistance": null,
+    "sign": 1
    },
    {
     "name": "containment_door_7_4_8",
@@ -52747,7 +53211,8 @@
      ]
     ],
     "area": 7.8,
-    "resistance": null
+    "resistance": null,
+    "sign": 1
    },
    {
     "name": "containment_door_7_19_2",
@@ -52765,7 +53230,8 @@
      ]
     ],
     "area": 7.8,
-    "resistance": null
+    "resistance": null,
+    "sign": 1
    },
    {
     "name": "rack_top_F15",
@@ -52783,7 +53249,8 @@
      ]
     ],
     "area": 17.28,
-    "resistance": null
+    "resistance": null,
+    "sign": 1
    },
    {
     "name": "rack_end_F15_4_8",
@@ -52801,7 +53268,8 @@
      ]
     ],
     "area": 2.7,
-    "resistance": null
+    "resistance": null,
+    "sign": 1
    },
    {
     "name": "rack_end_F15_19_2",
@@ -52819,7 +53287,8 @@
      ]
     ],
     "area": 2.7,
-    "resistance": null
+    "resistance": null,
+    "sign": 1
    },
    {
     "name": "rack_top_F16",
@@ -52837,7 +53306,8 @@
      ]
     ],
     "area": 17.28,
-    "resistance": null
+    "resistance": null,
+    "sign": 1
    },
    {
     "name": "rack_end_F16_4_8",
@@ -52855,7 +53325,8 @@
      ]
     ],
     "area": 2.7,
-    "resistance": null
+    "resistance": null,
+    "sign": 1
    },
    {
     "name": "rack_end_F16_19_2",
@@ -52873,7 +53344,8 @@
      ]
     ],
     "area": 2.7,
-    "resistance": null
+    "resistance": null,
+    "sign": 1
    },
    {
     "name": "containment_wall_8_a",
@@ -52891,7 +53363,8 @@
      ]
     ],
     "area": 61.2,
-    "resistance": null
+    "resistance": null,
+    "sign": 1
    },
    {
     "name": "containment_wall_8_b",
@@ -52909,7 +53382,8 @@
      ]
     ],
     "area": 61.2,
-    "resistance": null
+    "resistance": null,
+    "sign": 1
    },
    {
     "name": "containment_door_8_4_8",
@@ -52927,7 +53401,8 @@
      ]
     ],
     "area": 7.8,
-    "resistance": null
+    "resistance": null,
+    "sign": 1
    },
    {
     "name": "containment_door_8_19_2",
@@ -52945,7 +53420,8 @@
      ]
     ],
     "area": 7.8,
-    "resistance": null
+    "resistance": null,
+    "sign": 1
    },
    {
     "name": "rack_top_F17",
@@ -52963,7 +53439,8 @@
      ]
     ],
     "area": 17.28,
-    "resistance": null
+    "resistance": null,
+    "sign": 1
    },
    {
     "name": "rack_end_F17_4_8",
@@ -52981,7 +53458,8 @@
      ]
     ],
     "area": 2.7,
-    "resistance": null
+    "resistance": null,
+    "sign": 1
    },
    {
     "name": "rack_end_F17_19_2",
@@ -52999,7 +53477,8 @@
      ]
     ],
     "area": 2.7,
-    "resistance": null
+    "resistance": null,
+    "sign": 1
    },
    {
     "name": "rack_top_F18",
@@ -53017,7 +53496,8 @@
      ]
     ],
     "area": 17.28,
-    "resistance": null
+    "resistance": null,
+    "sign": 1
    },
    {
     "name": "rack_end_F18_4_8",
@@ -53035,7 +53515,8 @@
      ]
     ],
     "area": 2.7,
-    "resistance": null
+    "resistance": null,
+    "sign": 1
    },
    {
     "name": "rack_end_F18_19_2",
@@ -53053,7 +53534,8 @@
      ]
     ],
     "area": 2.7,
-    "resistance": null
+    "resistance": null,
+    "sign": 1
    },
    {
     "name": "containment_wall_9_a",
@@ -53071,7 +53553,8 @@
      ]
     ],
     "area": 61.2,
-    "resistance": null
+    "resistance": null,
+    "sign": 1
    },
    {
     "name": "containment_wall_9_b",
@@ -53089,7 +53572,8 @@
      ]
     ],
     "area": 61.2,
-    "resistance": null
+    "resistance": null,
+    "sign": 1
    },
    {
     "name": "containment_door_9_4_8",
@@ -53107,7 +53591,8 @@
      ]
     ],
     "area": 7.8,
-    "resistance": null
+    "resistance": null,
+    "sign": 1
    },
    {
     "name": "containment_door_9_19_2",
@@ -53125,7 +53610,8 @@
      ]
     ],
     "area": 7.8,
-    "resistance": null
+    "resistance": null,
+    "sign": 1
    },
    {
     "name": "rack_top_F19",
@@ -53143,7 +53629,8 @@
      ]
     ],
     "area": 17.28,
-    "resistance": null
+    "resistance": null,
+    "sign": 1
    },
    {
     "name": "rack_end_F19_4_8",
@@ -53161,7 +53648,8 @@
      ]
     ],
     "area": 2.7,
-    "resistance": null
+    "resistance": null,
+    "sign": 1
    },
    {
     "name": "rack_end_F19_19_2",
@@ -53179,7 +53667,8 @@
      ]
     ],
     "area": 2.7,
-    "resistance": null
+    "resistance": null,
+    "sign": 1
    },
    {
     "name": "rack_top_F20",
@@ -53197,7 +53686,8 @@
      ]
     ],
     "area": 17.28,
-    "resistance": null
+    "resistance": null,
+    "sign": 1
    },
    {
     "name": "rack_end_F20_4_8",
@@ -53215,7 +53705,8 @@
      ]
     ],
     "area": 2.7,
-    "resistance": null
+    "resistance": null,
+    "sign": 1
    },
    {
     "name": "rack_end_F20_19_2",
@@ -53233,7 +53724,8 @@
      ]
     ],
     "area": 2.7,
-    "resistance": null
+    "resistance": null,
+    "sign": 1
    },
    {
     "name": "containment_wall_10_a",
@@ -53251,7 +53743,8 @@
      ]
     ],
     "area": 61.2,
-    "resistance": null
+    "resistance": null,
+    "sign": 1
    },
    {
     "name": "containment_wall_10_b",
@@ -53269,7 +53762,8 @@
      ]
     ],
     "area": 61.2,
-    "resistance": null
+    "resistance": null,
+    "sign": 1
    },
    {
     "name": "containment_door_10_4_8",
@@ -53287,7 +53781,8 @@
      ]
     ],
     "area": 7.8,
-    "resistance": null
+    "resistance": null,
+    "sign": 1
    },
    {
     "name": "containment_door_10_19_2",
@@ -53305,7 +53800,8 @@
      ]
     ],
     "area": 7.8,
-    "resistance": null
+    "resistance": null,
+    "sign": 1
    },
    {
     "name": "rack_top_F21",
@@ -53323,7 +53819,8 @@
      ]
     ],
     "area": 17.28,
-    "resistance": null
+    "resistance": null,
+    "sign": 1
    },
    {
     "name": "rack_end_F21_4_8",
@@ -53341,7 +53838,8 @@
      ]
     ],
     "area": 2.7,
-    "resistance": null
+    "resistance": null,
+    "sign": 1
    },
    {
     "name": "rack_end_F21_19_2",
@@ -53359,7 +53857,8 @@
      ]
     ],
     "area": 2.7,
-    "resistance": null
+    "resistance": null,
+    "sign": 1
    },
    {
     "name": "rack_top_F22",
@@ -53377,7 +53876,8 @@
      ]
     ],
     "area": 17.28,
-    "resistance": null
+    "resistance": null,
+    "sign": 1
    },
    {
     "name": "rack_end_F22_4_8",
@@ -53395,7 +53895,8 @@
      ]
     ],
     "area": 2.7,
-    "resistance": null
+    "resistance": null,
+    "sign": 1
    },
    {
     "name": "rack_end_F22_19_2",
@@ -53413,7 +53914,8 @@
      ]
     ],
     "area": 2.7,
-    "resistance": null
+    "resistance": null,
+    "sign": 1
    },
    {
     "name": "containment_wall_11_a",
@@ -53431,7 +53933,8 @@
      ]
     ],
     "area": 61.2,
-    "resistance": null
+    "resistance": null,
+    "sign": 1
    },
    {
     "name": "containment_wall_11_b",
@@ -53449,7 +53952,8 @@
      ]
     ],
     "area": 61.2,
-    "resistance": null
+    "resistance": null,
+    "sign": 1
    },
    {
     "name": "containment_door_11_4_8",
@@ -53467,7 +53971,8 @@
      ]
     ],
     "area": 7.8,
-    "resistance": null
+    "resistance": null,
+    "sign": 1
    },
    {
     "name": "containment_door_11_19_2",
@@ -53485,7 +53990,8 @@
      ]
     ],
     "area": 7.8,
-    "resistance": null
+    "resistance": null,
+    "sign": 1
    },
    {
     "name": "rack_top_F23",
@@ -53503,7 +54009,8 @@
      ]
     ],
     "area": 17.28,
-    "resistance": null
+    "resistance": null,
+    "sign": 1
    },
    {
     "name": "rack_end_F23_4_8",
@@ -53521,7 +54028,8 @@
      ]
     ],
     "area": 2.7,
-    "resistance": null
+    "resistance": null,
+    "sign": 1
    },
    {
     "name": "rack_end_F23_19_2",
@@ -53539,7 +54047,8 @@
      ]
     ],
     "area": 2.7,
-    "resistance": null
+    "resistance": null,
+    "sign": 1
    },
    {
     "name": "rack_top_F24",
@@ -53557,7 +54066,8 @@
      ]
     ],
     "area": 17.28,
-    "resistance": null
+    "resistance": null,
+    "sign": 1
    },
    {
     "name": "rack_end_F24_4_8",
@@ -53575,7 +54085,8 @@
      ]
     ],
     "area": 2.7,
-    "resistance": null
+    "resistance": null,
+    "sign": 1
    },
    {
     "name": "rack_end_F24_19_2",
@@ -53593,7 +54104,8 @@
      ]
     ],
     "area": 2.7,
-    "resistance": null
+    "resistance": null,
+    "sign": 1
    },
    {
     "name": "containment_wall_12_a",
@@ -53611,7 +54123,8 @@
      ]
     ],
     "area": 61.2,
-    "resistance": null
+    "resistance": null,
+    "sign": 1
    },
    {
     "name": "containment_wall_12_b",
@@ -53629,7 +54142,8 @@
      ]
     ],
     "area": 61.2,
-    "resistance": null
+    "resistance": null,
+    "sign": 1
    },
    {
     "name": "containment_door_12_4_8",
@@ -53647,7 +54161,8 @@
      ]
     ],
     "area": 7.8,
-    "resistance": null
+    "resistance": null,
+    "sign": 1
    },
    {
     "name": "containment_door_12_19_2",
@@ -53665,7 +54180,8 @@
      ]
     ],
     "area": 7.8,
-    "resistance": null
+    "resistance": null,
+    "sign": 1
    },
    {
     "name": "rack_top_F25",
@@ -53683,7 +54199,8 @@
      ]
     ],
     "area": 17.28,
-    "resistance": null
+    "resistance": null,
+    "sign": 1
    },
    {
     "name": "rack_end_F25_4_8",
@@ -53701,7 +54218,8 @@
      ]
     ],
     "area": 2.7,
-    "resistance": null
+    "resistance": null,
+    "sign": 1
    },
    {
     "name": "rack_end_F25_19_2",
@@ -53719,7 +54237,8 @@
      ]
     ],
     "area": 2.7,
-    "resistance": null
+    "resistance": null,
+    "sign": 1
    },
    {
     "name": "rack_top_F26",
@@ -53737,7 +54256,8 @@
      ]
     ],
     "area": 17.28,
-    "resistance": null
+    "resistance": null,
+    "sign": 1
    },
    {
     "name": "rack_end_F26_4_8",
@@ -53755,7 +54275,8 @@
      ]
     ],
     "area": 2.7,
-    "resistance": null
+    "resistance": null,
+    "sign": 1
    },
    {
     "name": "rack_end_F26_19_2",
@@ -53773,7 +54294,8 @@
      ]
     ],
     "area": 2.7,
-    "resistance": null
+    "resistance": null,
+    "sign": 1
    },
    {
     "name": "containment_wall_13_a",
@@ -53791,7 +54313,8 @@
      ]
     ],
     "area": 61.2,
-    "resistance": null
+    "resistance": null,
+    "sign": 1
    },
    {
     "name": "containment_wall_13_b",
@@ -53809,7 +54332,8 @@
      ]
     ],
     "area": 61.2,
-    "resistance": null
+    "resistance": null,
+    "sign": 1
    },
    {
     "name": "containment_door_13_4_8",
@@ -53827,7 +54351,8 @@
      ]
     ],
     "area": 7.8,
-    "resistance": null
+    "resistance": null,
+    "sign": 1
    },
    {
     "name": "containment_door_13_19_2",
@@ -53845,7 +54370,8 @@
      ]
     ],
     "area": 7.8,
-    "resistance": null
+    "resistance": null,
+    "sign": 1
    },
    {
     "name": "rack_top_F27",
@@ -53863,7 +54389,8 @@
      ]
     ],
     "area": 17.28,
-    "resistance": null
+    "resistance": null,
+    "sign": 1
    },
    {
     "name": "rack_end_F27_4_8",
@@ -53881,7 +54408,8 @@
      ]
     ],
     "area": 2.7,
-    "resistance": null
+    "resistance": null,
+    "sign": 1
    },
    {
     "name": "rack_end_F27_19_2",
@@ -53899,7 +54427,8 @@
      ]
     ],
     "area": 2.7,
-    "resistance": null
+    "resistance": null,
+    "sign": 1
    },
    {
     "name": "rack_top_F28",
@@ -53917,7 +54446,8 @@
      ]
     ],
     "area": 17.28,
-    "resistance": null
+    "resistance": null,
+    "sign": 1
    },
    {
     "name": "rack_end_F28_4_8",
@@ -53935,7 +54465,8 @@
      ]
     ],
     "area": 2.7,
-    "resistance": null
+    "resistance": null,
+    "sign": 1
    },
    {
     "name": "rack_end_F28_19_2",
@@ -53953,7 +54484,8 @@
      ]
     ],
     "area": 2.7,
-    "resistance": null
+    "resistance": null,
+    "sign": 1
    },
    {
     "name": "containment_wall_14_a",
@@ -53971,7 +54503,8 @@
      ]
     ],
     "area": 61.2,
-    "resistance": null
+    "resistance": null,
+    "sign": 1
    },
    {
     "name": "containment_wall_14_b",
@@ -53989,7 +54522,8 @@
      ]
     ],
     "area": 61.2,
-    "resistance": null
+    "resistance": null,
+    "sign": 1
    },
    {
     "name": "containment_door_14_4_8",
@@ -54007,7 +54541,8 @@
      ]
     ],
     "area": 7.8,
-    "resistance": null
+    "resistance": null,
+    "sign": 1
    },
    {
     "name": "containment_door_14_19_2",
@@ -54025,7 +54560,8 @@
      ]
     ],
     "area": 7.8,
-    "resistance": null
+    "resistance": null,
+    "sign": 1
    },
    {
     "name": "rack_top_F29",
@@ -54043,7 +54579,8 @@
      ]
     ],
     "area": 17.28,
-    "resistance": null
+    "resistance": null,
+    "sign": 1
    },
    {
     "name": "rack_end_F29_4_8",
@@ -54061,7 +54598,8 @@
      ]
     ],
     "area": 2.7,
-    "resistance": null
+    "resistance": null,
+    "sign": 1
    },
    {
     "name": "rack_end_F29_19_2",
@@ -54079,7 +54617,8 @@
      ]
     ],
     "area": 2.7,
-    "resistance": null
+    "resistance": null,
+    "sign": 1
    },
    {
     "name": "rack_top_F30",
@@ -54097,7 +54636,8 @@
      ]
     ],
     "area": 17.28,
-    "resistance": null
+    "resistance": null,
+    "sign": 1
    },
    {
     "name": "rack_end_F30_4_8",
@@ -54115,7 +54655,8 @@
      ]
     ],
     "area": 2.7,
-    "resistance": null
+    "resistance": null,
+    "sign": 1
    },
    {
     "name": "rack_end_F30_19_2",
@@ -54133,7 +54674,8 @@
      ]
     ],
     "area": 2.7,
-    "resistance": null
+    "resistance": null,
+    "sign": 1
    },
    {
     "name": "containment_wall_15_a",
@@ -54151,7 +54693,8 @@
      ]
     ],
     "area": 61.2,
-    "resistance": null
+    "resistance": null,
+    "sign": 1
    },
    {
     "name": "containment_wall_15_b",
@@ -54169,7 +54712,8 @@
      ]
     ],
     "area": 61.2,
-    "resistance": null
+    "resistance": null,
+    "sign": 1
    },
    {
     "name": "containment_door_15_4_8",
@@ -54187,7 +54731,8 @@
      ]
     ],
     "area": 7.8,
-    "resistance": null
+    "resistance": null,
+    "sign": 1
    },
    {
     "name": "containment_door_15_19_2",
@@ -54205,7 +54750,8 @@
      ]
     ],
     "area": 7.8,
-    "resistance": null
+    "resistance": null,
+    "sign": 1
    },
    {
     "name": "rack_top_F31",
@@ -54223,7 +54769,8 @@
      ]
     ],
     "area": 17.28,
-    "resistance": null
+    "resistance": null,
+    "sign": 1
    },
    {
     "name": "rack_end_F31_4_8",
@@ -54241,7 +54788,8 @@
      ]
     ],
     "area": 2.7,
-    "resistance": null
+    "resistance": null,
+    "sign": 1
    },
    {
     "name": "rack_end_F31_19_2",
@@ -54259,7 +54807,8 @@
      ]
     ],
     "area": 2.7,
-    "resistance": null
+    "resistance": null,
+    "sign": 1
    },
    {
     "name": "rack_top_F32",
@@ -54277,7 +54826,8 @@
      ]
     ],
     "area": 17.28,
-    "resistance": null
+    "resistance": null,
+    "sign": 1
    },
    {
     "name": "rack_end_F32_4_8",
@@ -54295,7 +54845,8 @@
      ]
     ],
     "area": 2.7,
-    "resistance": null
+    "resistance": null,
+    "sign": 1
    },
    {
     "name": "rack_end_F32_19_2",
@@ -54313,7 +54864,8 @@
      ]
     ],
     "area": 2.7,
-    "resistance": null
+    "resistance": null,
+    "sign": 1
    },
    {
     "name": "containment_wall_16_a",
@@ -54331,7 +54883,8 @@
      ]
     ],
     "area": 61.2,
-    "resistance": null
+    "resistance": null,
+    "sign": 1
    },
    {
     "name": "containment_wall_16_b",
@@ -54349,7 +54902,8 @@
      ]
     ],
     "area": 61.2,
-    "resistance": null
+    "resistance": null,
+    "sign": 1
    },
    {
     "name": "containment_door_16_4_8",
@@ -54367,7 +54921,8 @@
      ]
     ],
     "area": 7.8,
-    "resistance": null
+    "resistance": null,
+    "sign": 1
    },
    {
     "name": "containment_door_16_19_2",
@@ -54385,7 +54940,8 @@
      ]
     ],
     "area": 7.8,
-    "resistance": null
+    "resistance": null,
+    "sign": 1
    }
   ],
   "operating": {
@@ -54400,6 +54956,9 @@
    "rack_drop_pa": 25.05,
    "grille_drop_pa": 8.3,
    "fan_available_pa": 100.0,
+   "unit_capacity_kw": 290.9,
+   "unit_power_kw": 16.9,
+   "fan_static_pa": 100.0,
    "fan_curve": [
     [
      0.0,
@@ -54426,8 +54985,8 @@
   "sensors": [
    {
     "name": "cold_aisle",
-    "label": "Corredor frio",
-    "note": "no meio do corredor, \u00e0 altura dos racks",
+    "label": "Cold aisle",
+    "note": "mid-aisle, at rack height",
     "points": [
      [
       12.0,
@@ -54448,8 +55007,8 @@
    },
    {
     "name": "hot_aisle",
-    "label": "Corredor quente",
-    "note": "dentro do enclausuramento, \u00e0 altura dos racks",
+    "label": "Hot aisle",
+    "note": "inside the containment, at rack height",
     "points": [
      [
       12.0,
@@ -54470,8 +55029,8 @@
    },
    {
     "name": "plenum",
-    "label": "Plenum do forro",
-    "note": "acima das grelhas de retorno",
+    "label": "Ceiling plenum",
+    "note": "above the return grilles",
     "points": [
      [
       12.0,
@@ -54492,8 +55051,8 @@
    },
    {
     "name": "fan_back",
-    "label": "Costas do fan wall",
-    "note": "na galeria, onde o ar de retorno chega ao fan wall",
+    "label": "Behind the fan wall",
+    "note": "in the gallery, where the return air reaches the units",
     "points": [
      [
       2.7,
@@ -54515,79 +55074,79 @@
   ],
   "summary": [
    [
-    "Dom\u00ednio",
-    "21,00 x 88,20 x 8,00 m",
-    "329.280 c\u00e9lulas"
+    "Domain",
+    "21.00 x 88.20 x 8.00 m",
+    "329,280 cells"
    ],
    [
-    "Galeria mec\u00e2nica",
-    "3,00 m de profundidade",
-    "2.116,8 m\u00b3"
+    "Mechanical gallery",
+    "3.00 m deep",
+    "2,116.8 m3"
    ],
    [
     "Data hall",
-    "18,00 m de comprimento",
-    "forro a 6,50 m"
+    "18.00 m long",
+    "ceiling at 6.50 m"
    ],
    [
-    "Carga de TI",
-    "768 x 13 kW em 32 fileiras",
-    "9.984,0 kW no total"
+    "IT load",
+    "768 x 13 kW in 32 rows",
+    "9,984.0 kW in all"
    ],
    [
-    "Vaz\u00e3o",
-    "35 x 76.650 = 2.682.750 m\u00b3/h a 22,1 \u00b0C",
-    "\u0394T de projeto 14,0 K"
+    "Supply airflow",
+    "35 x 76,650 = 2,682,750 m3/h at 22.1 degC",
+    "design bulk dT 14.0 K"
    ],
    [
-    "Face do fan wall (35 unidades)",
-    "2,10 x 3,75 m",
-    "7,88 m\u00b2 \u00b7 2,70 m/s por unidade"
+    "Fan wall face (35 units)",
+    "2.10 x 3.75 m",
+    "7.88 m2 \u00b7 2.70 m/s per unit"
    ],
    [
-    "Grelhas do forro (16)",
-    "faixas de 14,40 x 1,20 m sobre cada corredor quente, 80% de \u00e1rea livre",
-    "276,48 m\u00b2 \u00b7 2,70 m/s \u00b7 K 2,40 \u00b7 8,3 Pa"
+    "Return grilles (16)",
+    "14.40 x 1.20 m strip over each hot aisle, 80% free area",
+    "276.48 m2 \u00b7 2.70 m/s \u00b7 K 2.40 \u00b7 8.3 Pa"
    ],
    [
-    "Chamin\u00e9 do corredor quente (16)",
-    "14,40 x 1,20 x 6,50 m",
-    "276,48 m\u00b2 \u00b7 2,70 m/s"
+    "Hot aisle chimney (16)",
+    "14.40 x 1.20 x 6.50 m",
+    "276.48 m2 \u00b7 2.70 m/s"
    ],
    [
-    "Abertura para a galeria",
-    "88,20 x 1,50 m",
-    "132,30 m\u00b2 \u00b7 5,63 m/s"
+    "Opening to the gallery",
+    "88.20 x 1.50 m",
+    "132.30 m2 \u00b7 5.63 m/s"
    ],
    [
-    "Resist\u00eancia dos racks",
-    "25,05 Pa na vaz\u00e3o do fan wall",
-    "25 Pa nominais por rack"
+    "Rack resistance",
+    "25.05 Pa at the supply airflow",
+    "25 Pa nominal per rack"
    ],
    [
-    "Ar do site",
-    "1.880 m de altitude \u00b7 80,7 kPa",
-    "\u03c1 0,952 kg/m\u00b3 a 22,1 \u00b0C"
+    "Site air",
+    "1,880 m altitude \u00b7 80.7 kPa",
+    "rho 0.952 kg/m3 at 22.1 degC"
    ],
    [
-    "Demanda de ar dos racks",
-    "158 CFM/kW \u00b7 2.680.142 m\u00b3/h",
-    "HVAC fornece 2.682.750 m\u00b3/h (100%)"
+    "Rack air demand",
+    "158 CFM/kW \u00b7 2,680,142 m3/h",
+    "cooling supplies 2,682,750 m3/h (100%)"
    ],
    [
-    "Capacidade do HVAC",
-    "35 x 290,9 kW = 10.182 kW",
-    "carga de TI 9.984 kW (102%)"
+    "Cooling capacity",
+    "35 x 290.9 kW = 10,182 kW",
+    "IT load 9,984 kW (102%)"
    ],
    [
-    "Pot\u00eancia el\u00e9trica do HVAC",
-    "35 x 16,9 kW = 592 kW",
-    "5,9% da carga de TI"
+    "Cooling power input",
+    "35 x 16.9 kW = 592 kW",
+    "5.9% of the IT load"
    ],
    [
-    "Press\u00e3o do fan wall",
-    "100 Pa dispon\u00edveis a 76.650 m\u00b3/h por unidade (curva)",
-    "racks + grelhas pedem 33,3 Pa (33%)"
+    "Fan wall pressure",
+    "100 Pa available at 76,650 m3/h per unit (curve)",
+    "racks + grilles ask for 33.3 Pa (33%)"
    ]
   ],
   "hvac": {
@@ -54611,11 +55170,11 @@
    "rho": 0.952
   },
   "warnings": [
-   "largura do fan wall: 2,230 m n\u00e3o cai na malha de 0,30 m; a malha vai usar 2,10 m (-130 mm).",
-   "altura dos racks: 2,200 m n\u00e3o cai na malha de 0,25 m; a malha vai usar 2,25 m (+50 mm).",
-   "borda do fan wall: 3,670 m n\u00e3o cai na malha de 0,25 m; a malha vai usar 3,75 m (+80 mm).",
-   "posi\u00e7\u00e3o do topo dos racks: 2,200 m n\u00e3o cai na malha de 0,25 m; a malha vai usar 2,25 m (+50 mm).",
-   "borda da lateral da fileira: 2,200 m n\u00e3o cai na malha de 0,25 m; a malha vai usar 2,25 m (+50 mm)."
+   "fan wall width: 2.230 m is not on the 0.30 m grid; the mesh will use 2.10 m (-130 mm).",
+   "rack height: 2.200 m is not on the 0.25 m grid; the mesh will use 2.25 m (+50 mm).",
+   "fan wall edge: 3.670 m is not on the 0.25 m grid; the mesh will use 3.75 m (+80 mm).",
+   "rack top position: 2.200 m is not on the 0.25 m grid; the mesh will use 2.25 m (+50 mm).",
+   "row end edge: 2.200 m is not on the 0.25 m grid; the mesh will use 2.25 m (+50 mm)."
   ],
   "spec": {}
  }

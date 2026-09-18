@@ -63,6 +63,9 @@ def _pyplot():
             "figure.facecolor": "white",
             "savefig.facecolor": "white",
             "axes.grid": False,
+            "axes.prop_cycle": __import__("cycler").cycler(
+                color=list(palette.SERIES)
+            ),
         }
     )
     return plt
@@ -158,12 +161,10 @@ def _map_figure(plt, width_in: float, height_in: float):
     map drawn to equal aspect can end up any height at all, and a bar attached
     to a wide shallow one lands on top of its axis labels.
     """
-    fig, (ax, cax) = plt.subplots(
-        2, 1, figsize=(width_in, height_in + 0.95),
-        gridspec_kw={"height_ratios": [max(1.0, height_in / 0.30), 1.0],
-                     "hspace": 0.75},
-    )
-    return fig, ax, cax
+    fig = plt.figure(figsize=(width_in, height_in + 1.05), layout="constrained")
+    fig.get_layout_engine().set(h_pad=0.02, w_pad=0.02, hspace=0.02)
+    grid = fig.add_gridspec(2, 1, height_ratios=[max(1.0, height_in / 0.26), 1.0])
+    return fig, fig.add_subplot(grid[0]), fig.add_subplot(grid[1])
 
 
 def _temperature_bar(plt, fig, mesh, cax, label="Air temperature (°C)",
@@ -240,7 +241,7 @@ def plan(export: Export, out: Path, z: float, title: str) -> Path:
         line = ([lo, hi], [at, at]) if turned else ([at, at], [lo, hi])
         ax.plot(*line, color=FAN, linewidth=3.2, solid_capstyle="butt")
         if len(fans) <= 20:
-            away = 9 if panel.get("sign", 1) > 0 else -9
+            away = -9 * panel.get("sign", 1)  # into the gallery, not the hall
             ax.annotate(
                 f"{i + 1:02d}",
                 xy=((lo + hi) / 2, at) if turned else (at, (lo + hi) / 2),
@@ -389,7 +390,8 @@ def units(export: Export, out: Path) -> Path:
         return None  # an export written before per-unit returns were measured
     names = [f["name"].replace("fan", "") for f in fans]
     index = np.arange(len(fans))
-    rating = export.model.get("spec", {}).get("fanwall", {}).get("capacity_kw")
+    rating = (export.model.get("operating") or {}).get("unit_capacity_kw")
+    sides = export.model.get("fan_sides") or []
     fig, axes = plt.subplots(2, 1, figsize=(7.2, 4.6), sharex=True)
 
     returns = [f.get("return_temp_c") for f in fans]
@@ -413,11 +415,22 @@ def units(export: Export, out: Path) -> Path:
     axes[1].set_xticks(index)
     axes[1].set_xticklabels(names, fontsize=6.5)
     axes[1].set_xlabel("fan wall")
+    # Where the units change gallery, because that is the grouping a reader
+    # needs to see: each gallery serves the rack blocks at its own end.
+    breaks = [i for i in range(1, len(sides)) if sides[i] != sides[i - 1]]
     for ax in axes:
+        for i in breaks:
+            ax.axvline(i - 0.5, color=MUTED, linewidth=0.8, linestyle=":")
         ax.grid(axis="y", color=GRID, linewidth=0.6)
         ax.set_axisbelow(True)
         for side in ("top", "right"):
             ax.spines[side].set_visible(False)
+    if breaks:
+        for start, end, label in zip([0] + breaks, breaks + [len(sides)],
+                                     ("first gallery", "second gallery")):
+            axes[0].annotate(label, xy=((start + end - 1) / 2, 0.97),
+                             xycoords=("data", "axes fraction"),
+                             ha="center", va="top", fontsize=6.5, color=MUTED)
     fig.tight_layout()
     fig.savefig(out, dpi=DPI, bbox_inches="tight")
     plt.close(fig)
@@ -463,7 +476,13 @@ def convergence(export: Export, out: Path) -> Path:
     fig, axes = plt.subplots(1, 2, figsize=(7.2, 2.6))
 
     iterations = residuals.get("iterations", [])
-    for name, series in (residuals.get("series") or {}).items():
+    # Fixed order, so a residual keeps its colour between runs and between the
+    # page and this figure.
+    order = ["Ux", "Uy", "Uz", "h", "p_rgh", "k", "epsilon"]
+    logged = residuals.get("series") or {}
+    names = [n for n in order if n in logged] + [n for n in logged if n not in order]
+    for name in names:
+        series = logged[name]
         axes[0].semilogy(iterations[: len(series)],
                          [v if v and v > 0 else np.nan for v in series],
                          linewidth=1.0, label=name)
