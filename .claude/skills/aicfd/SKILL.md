@@ -20,6 +20,7 @@ aicfd run cases/NAME.yaml   -> runs/NAME         (generate, solve, sample, expor
 aicfd post NAME             -> results/NAME/{viewer.json,fields.bin,report.md}
 aicfd view --case NAME      -> http://localhost:8000/web/?case=NAME
 aicfd report NAME           -> results/NAME/NAME.docx  (the Word deliverable)
+aicfd stop NAME             # stop a running solve cleanly, keeping the field
 aicfd doctor                # when something looks broken
 aicfd verify [--solve]      # the audit; run it first in a fresh sandbox
 ```
@@ -58,6 +59,19 @@ reference intact. Do not write a spec from memory.
 The page is the same template: every field of the spec, grouped by section,
 showing only what the loaded spec carries. Point the user at it
 (`aicfd view --case <name>`) rather than dictating YAML to them.
+
+## Stopping a run
+
+`aicfd stop NAME` (or the page's Stop button) writes `stopAt writeNow` into the
+running case's controlDict. The solver finishes its iteration, writes and
+exits; the run then exports and faces the same eleven checks (ADR-031). Never
+kill the process instead -- that leaves a half-written time directory and no
+export.
+
+What comes out is a real result. Say plainly which kind it is: a run stopped
+after it settled passes all eleven checks and may be quoted like any other; a
+run stopped before it settled fails `settled`, and that failure is the answer
+describing how far it got, not something to explain away.
 
 ## Reading a run
 

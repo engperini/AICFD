@@ -1068,3 +1068,46 @@ pass it. A run that ends before its first write — an iteration cap below
 with `FileNotFoundError: .../0/phi`, because `0/` holds the initial conditions
 and has no flux field. It now says what happened and what to change. The three
 worked results were re-exported so they carry their specs.
+
+---
+
+## ADR-031 — Stop is a word in a file, not a signal
+
+**Decision.** `aicfd stop <name>`, and a Stop button on the page while the
+solver is iterating, write `stopAt writeNow;` into the running case's
+`system/controlDict`. The solver finishes the iteration it is on, writes the
+field and exits 0. The run then reconstructs, exports and is judged by the same
+eleven checks it would have faced at its iteration cap.
+
+**Why not kill the process.** A killed solver leaves a half-written time
+directory and no export: nothing to look at, and the next thing anyone does is
+delete it. The point of stopping is to *keep* what has been computed.
+
+**Why this works at all.** The generator has always written
+`runTimeModifiable true`, so OpenFOAM re-reads its controlDict every iteration.
+The mechanism was there from the start; what was missing was a way to ask. This
+is also exactly what every commercial tool's Stop button does — finish the
+iteration, keep the solution, let the user look at it.
+
+**The result of a stopped run is a real result, and says how far it got.** A run
+cut short before it settled fails `settled`, and may fail `energy_closure` and
+`return_path` too. That is not a fault to be worked around; it is the checks
+doing their job (ADR-018), and the page says so in those words rather than
+reporting a bare failure. A run stopped *after* it settled passes all eleven —
+which is what happened the first time this was used: the worked POD was stopped
+at iteration 1 329 of 2 000 and every check passed, so `results/pod-fanwall` is
+now that run.
+
+**Atomically, because the solver is reading that file.** The new text is written
+to a temporary in the same directory and `os.replace`d over the original, so a
+reader sees either the whole old file or the whole new one. A plain in-place
+rewrite can be read half-done, and the failure mode is a solver crash on a
+malformed dictionary — at exactly the moment the user asked for a clean stop.
+
+**Nothing is left behind.** `aicfd run` regenerates `system/controlDict`, so the
+flag cannot survive into the next run. This is asserted in `tests/test_stop.py`,
+because it is what makes it safe to leave the file as it is afterwards.
+
+**Not done here: resuming.** OpenFOAM restarts with `startFrom latestTime`, so
+"pause" is this plus that. It touches the generator rather than a running
+case's dictionary, and it is left for its own change.

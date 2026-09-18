@@ -90,10 +90,12 @@ class RunState:
     """What the page needs to show while a solve is in flight."""
 
     stage: str = "idle"
-    """idle | meshing | solving | done | failed"""
+    """idle | meshing | solving | exporting | done | failed"""
     step: str = ""
     message: str = ""
     case: str | None = None
+    stopping: bool = False
+    """A stop has been asked for and the solver has not reached it yet."""
     lock: threading.Lock = field(default_factory=threading.Lock)
 
     def set(self, **kwargs) -> None:
@@ -108,6 +110,7 @@ class RunState:
                 "step": self.step,
                 "message": self.message,
                 "case": self.case,
+                "stopping": self.stopping,
             }
 
 
@@ -319,6 +322,27 @@ def results_state(name: str, spec: dict) -> dict:
             "note": f"from different inputs: {listed}"}
 
 
+def stop_run(name: str) -> dict:
+    """Ask the running solve to stop cleanly, OpenFOAM's own way.
+
+    Not a kill: the solver finishes its iteration, writes the field and exits,
+    and the worker then exports as it would have at the iteration cap. What
+    comes out is a result, judged by the same eleven checks -- so a run cut
+    short before it settled reports that, rather than passing quietly.
+    """
+    from aicfd.run import request_stop
+
+    snapshot = STATE.snapshot()
+    if snapshot["stage"] != "solving":
+        return {"run": snapshot,
+                "blocked": "there is no solve running to stop"}
+    if not request_stop(RUNS_DIR / name):
+        return {"run": snapshot,
+                "blocked": "this run has no controlDict to stop"}
+    STATE.set(stopping=True)
+    return {"run": STATE.snapshot()}
+
+
 def start_run(name: str) -> None:
     """Solve in a worker thread so the page stays responsive."""
     from aicfd import case, post
@@ -371,13 +395,21 @@ def start_run(name: str) -> None:
             STATE.set(stage="exporting", step="post", message="")
             results = post.export(model, target, RESULTS_DIR / name, spec=spec)
             failed = [c.name for c in results.checks if not c.passed]
+            stopped = STATE.snapshot()["stopping"]
+            how = "stopped early" if stopped else "solved"
             STATE.set(
                 stage="done",
                 step="",
+                stopping=False,
                 message=(
-                    f"solved, all {len(results.checks)} checks passed"
+                    f"{how}, all {len(results.checks)} checks passed"
                     if not failed
-                    else f"solved, but these checks FAILED: {', '.join(failed)}"
+                    else f"{how}, and these checks FAILED: {', '.join(failed)}"
+                    + (
+                        " -- expected of a run cut short before it settled"
+                        if stopped
+                        else ""
+                    )
                 ),
             )
         except FoamCommandFailed as error:
@@ -385,9 +417,9 @@ def start_run(name: str) -> None:
         except Exception as error:  # surfaced verbatim on the page
             STATE.set(stage="failed", message=f"{type(error).__name__}: {error}")
 
-    if STATE.snapshot()["stage"] in {"meshing", "solving"}:
+    if STATE.snapshot()["stage"] in {"meshing", "solving", "exporting"}:
         return
-    STATE.set(stage="meshing", step="", message="", case=name)
+    STATE.set(stage="meshing", step="", message="", case=name, stopping=False)
     threading.Thread(target=worker, daemon=True).start()
 
 
@@ -428,6 +460,9 @@ class Handler(SimpleHTTPRequestHandler):
                 return payload
 
             return self._json(self._safely(update))
+
+        if self.path.startswith("/api/stop"):
+            return self._json(self._safely(stop_run, self.case_name))
 
         if self.path.startswith("/api/run"):
             blocked = solver_available()

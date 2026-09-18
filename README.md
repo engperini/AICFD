@@ -94,7 +94,15 @@ python3 -m aicfd report hall-double-gallery        # the Word document
 python3 -m aicfd run cases/pod-fanwall.yaml    # one POD, 8 min on one core
 python3 -m aicfd view --case pod-fanwall       # the page, at localhost:8000
 python3 -m aicfd report pod-fanwall            # the Word report, for circulation
+python3 -m aicfd stop pod-fanwall              # stop a run without losing it
 ```
+
+**Stopping a run.** `aicfd stop`, and the Stop button on the page, ask the
+solver to finish the iteration it is on, write the field and exit — OpenFOAM's
+own mechanism, not a signal (ADR-031). The run then exports and is held to the
+same eleven checks, so what you get is a *result*: partial, and honest about it.
+A run cut short before it settled fails `settled`; one stopped after it settled
+passes all eleven, which is how `results/pod-fanwall` was produced.
 
 The two worked cases in `cases/` are the reference results, and both are
 documented end to end in `docs/experiments/`:

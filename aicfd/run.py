@@ -159,3 +159,54 @@ def _entry(entry) -> tuple[str, list[str] | None, str | None]:
 def commands(pipeline: tuple) -> list[str]:
     """The programs a pipeline needs on PATH."""
     return [_entry(entry)[0] for entry in pipeline]
+
+
+# --- stopping a run ------------------------------------------------------------
+
+#: What `controlDict` says while a run is free to reach its iteration cap, and
+#: what it is changed to in order to stop one. `writeNow` rather than
+#: `noWriteNow`: a run stopped without a write leaves nothing to post-process,
+#: and the whole point of stopping cleanly is to keep what has been computed.
+RUNNING_STOP = "stopAt          endTime;"
+STOP_NOW = "stopAt          writeNow;"
+
+
+def request_stop(case_dir: str | Path) -> bool:
+    """Ask a running solver to stop at its next iteration, keeping the field.
+
+    This is OpenFOAM's own mechanism, not a signal: the solver re-reads
+    ``system/controlDict`` every iteration (``runTimeModifiable true``, which
+    the generator always writes), sees ``stopAt writeNow``, finishes the
+    iteration it is on, writes the fields and exits 0. The pipeline then goes
+    on to reconstruct and export exactly as it would have at the cap, so what
+    is left behind is a *result* -- partial, and held to the same eleven
+    checks, which is how a run stopped before it settled reports itself as
+    such.
+
+    Killing the process would leave a half-written time directory and no
+    export. Every commercial tool's Stop button does what this does.
+
+    The file is replaced atomically, because the solver may be reading it at
+    that moment: ``os.replace`` swaps the directory entry, so a reader sees
+    either the whole old file or the whole new one, never a partial write.
+
+    Returns False when the case has no controlDict to change.
+    """
+    control = Path(case_dir) / "system" / "controlDict"
+    if not control.is_file():
+        return False
+    text = control.read_text()
+    if STOP_NOW in text:
+        return True  # already asked; saying so is not an error
+    if RUNNING_STOP not in text:
+        return False
+    temporary = control.with_suffix(".controlDict.stopping")
+    temporary.write_text(text.replace(RUNNING_STOP, STOP_NOW))
+    os.replace(temporary, control)
+    return True
+
+
+def stop_requested(case_dir: str | Path) -> bool:
+    """Whether a stop has already been asked for on this case."""
+    control = Path(case_dir) / "system" / "controlDict"
+    return control.is_file() and STOP_NOW in control.read_text()

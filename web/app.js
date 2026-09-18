@@ -178,6 +178,7 @@ function render() {
         <span class="spacer" style="flex:1"></span>
         <a class="linkbutton" id="see-results"
            href="./results.html?case=${model.name}" hidden>See results</a>
+        <button id="stop" type="button" hidden>Stop</button>
         <button id="run" class="primary" type="button">Run simulation</button>
       </div>
       <div id="progress"></div>
@@ -224,6 +225,7 @@ function render() {
   document.getElementById('apply').addEventListener('click', applyChanges);
   document.getElementById('reset').addEventListener('click', () => renderParams());
   document.getElementById('run').addEventListener('click', startRun);
+  document.getElementById('stop').addEventListener('click', stopRun);
   window.addEventListener('resize', debounce(drawViews, 150));
 }
 
@@ -493,6 +495,25 @@ async function applyChanges() {
   }
 }
 
+async function stopRun() {
+  const stop = document.getElementById('stop');
+  if (!confirm(
+    'Stop at the next iteration?\n\n'
+    + 'The solver writes the field it has and exits, and the result is read '
+    + 'and checked as usual. A run cut short before it settled will fail the '
+    + '"settled" check -- that is the answer saying how far it got.',
+  )) return;
+  stop.disabled = true;
+  try {
+    const response = await fetchJson('/api/stop', { method: 'POST', body: {} });
+    if (response.blocked) throw new Error(response.blocked);
+    setStage(response.run);
+  } catch (error) {
+    alert(`Could not stop: ${error.message}`);
+    stop.disabled = false;
+  }
+}
+
 async function startRun() {
   const button = document.getElementById('run');
   button.disabled = true;
@@ -563,6 +584,20 @@ function setStage(run) {
     button.title = model.blocked || '';
   }
   renderResultsLink(run.stage);
+  const stop = document.getElementById('stop');
+  if (stop) {
+    // Only while the solver is actually iterating: meshing is seconds long
+    // and has no solver to ask.
+    stop.hidden = run.stage !== 'solving';
+    stop.disabled = Boolean(run.stopping);
+    stop.textContent = run.stopping ? 'stopping…' : 'Stop';
+    stop.title = run.stopping
+      ? 'Asked. The solver finishes the iteration it is on, writes the field '
+        + 'and exits; the result is then read and checked as usual.'
+      : 'Stop at the next iteration, keeping what has been computed. The '
+        + 'result is exported and held to the same eleven checks, so a run '
+        + 'cut short before it settled will say so.';
+  }
   const note = document.getElementById('progress-note');
   if (note && (run.stage === 'failed' || run.stage === 'done') && run.message) {
     note.textContent = run.message;

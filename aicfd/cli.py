@@ -59,6 +59,11 @@ def main(argv: list[str] | None = None) -> int:
         "--no-post", action="store_true", help="skip post-processing afterwards"
     )
 
+    stop_parser = sub.add_parser(
+        "stop", help="ask a running solve to stop cleanly at its next iteration"
+    )
+    stop_parser.add_argument("name", help="run name under runs/")
+
     post_parser = sub.add_parser("post", help="post-process a solved run")
     post_parser.add_argument("name", help="run name under runs/")
     post_parser.add_argument("--time", help="time directory (default: the latest)")
@@ -271,7 +276,10 @@ def _run(args) -> int:
         print(f"error: no such spec: {spec_path}", file=sys.stderr)
         return 1
 
+    import yaml
+
     model, solver = load_spec(spec_path)
+    spec = yaml.safe_load(spec_path.read_text())
     name = args.name or model.name
     target = RUNS_DIR / name
 
@@ -307,7 +315,45 @@ def _run(args) -> int:
     print(f"Solved in {sum(s.seconds for s in steps):.1f}s")
     if args.no_post:
         return 0
-    return _export(model, target, name, time=None)
+    return _export(model, target, name, time=None, spec=spec)
+
+
+def _stop(args) -> int:
+    """Stop a solve the way a solver is meant to be stopped.
+
+    Not a signal: OpenFOAM re-reads its controlDict every iteration, so this
+    asks it to finish the iteration it is on, write the field and exit. The
+    run then post-processes normally and what is left is a result -- partial,
+    and held to the same eleven checks, so a run stopped before it settled
+    says so rather than passing quietly.
+    """
+    from aicfd.run import request_stop, stop_requested
+
+    run = RUNS_DIR / args.name
+    if not run.exists():
+        print(f"error: no run named '{args.name}' under {RUNS_DIR}", file=sys.stderr)
+        return 1
+    already = stop_requested(run)
+    if not request_stop(run):
+        print(
+            f"error: {run}/system/controlDict is not a running case's "
+            "controlDict, so there is nothing to stop.",
+            file=sys.stderr,
+        )
+        return 1
+    if already:
+        print(f"'{args.name}' was already asked to stop.")
+    else:
+        print(f"Asked '{args.name}' to stop at its next iteration.")
+    print(
+        "The solver finishes the iteration it is on, writes the field and "
+        "exits; the run then post-processes as usual.\n"
+        "A run stopped before it settled will fail the 'settled' check, and "
+        "may fail 'energy_closure' and 'return_path' too. That is the answer "
+        "being honest about how far it got, not a fault.\n"
+        "Nothing is left behind: 'aicfd run' rewrites controlDict."
+    )
+    return 0
 
 
 def _post(args) -> int:
