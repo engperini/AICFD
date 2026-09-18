@@ -68,7 +68,9 @@ Three worked cases carry the evidence: `cases/pod-fanwall.yaml` (one POD,
 18 kW), `cases/hall-10mw.yaml` (16 PODs, 768 racks, 9,98 MW, a Vertiv CA40
 selection) and `cases/hall-double-gallery.yaml` (5 MW, two galleries, two rack
 blocks, a Vertiv CA80 selection, built against a real hall studied
-independently). All three are written up in `docs/experiments/`.
+independently, and agreeing with that study's warmest rack intake to within
+0,1 K on a mesh 78 times coarser). All three are written up in
+`docs/experiments/`.
 
 ## What is next
 
