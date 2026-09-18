@@ -47,9 +47,14 @@ the moment you clone, re-running a worked case can never collide with the copy
 in the repository, and `git pull` does not fight your own runs.
 
 The build is not just an install: it runs `doctor`, generates a case from a
-spec, produces a Word report and runs the 208 unit tests **inside the image, on
-the versions that image has**. If it builds, it works — and if a dependency is
+spec, produces a Word report and runs the unit tests **inside the image, on the
+versions that image has**. If it builds, it works — and if a dependency is
 missing it says so at build time rather than on your first real command.
+
+**After that, `git pull && docker compose up` is enough.** The image carries the
+slow half — OpenFOAM and the Python dependencies — and the code comes from your
+working copy, so a pull takes effect immediately with no rebuild (ADR-034).
+Rebuild only when `requirements.txt` or the `Dockerfile` changes.
 
 Apple Silicon needs nothing special: `openfoam` v1912 is published for arm64,
 so the container runs natively rather than under emulation.

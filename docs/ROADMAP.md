@@ -37,6 +37,9 @@ the remaining gap.
    satisfy, printed on every run. A run that fails them is reported as failed
    even when the solver exits 0 (ADR-018).
 6. **No build step.** The page is static files; the tests need no OpenFOAM.
+   True in Docker too: the image carries OpenFOAM and the libraries, and the
+   code is mounted from the working copy, so a `git pull` takes effect without
+   a rebuild (ADR-034).
 7. **A result that cannot be circulated is not finished.** `aicfd report`
    writes the Word document a reviewer marks up, from the same export the page
    draws, with the limits inside it rather than in a footnote (ADR-028).

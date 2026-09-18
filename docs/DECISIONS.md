@@ -1192,3 +1192,39 @@ an order of magnitude, and a reader who is told a precise number will believe
 it. The honest version of this input is one that makes the difference between
 minutes and hours obvious before the button is pressed, not one that predicts
 the clock.
+
+---
+
+## ADR-034 — The image is the dependencies; the clone is the application
+
+**Decision.** `docker compose` mounts `aicfd/`, `web/`, `tests/`, `cases/`,
+`runs/`, `results/` and (read-only) `reference/` from the working copy. The
+image carries OpenFOAM, Python and the libraries. `git pull && docker compose
+up` therefore runs the code that was just pulled, with no rebuild.
+
+**Why.** A user pulled a fix to the results page, ran `docker compose up`, and
+saw the old page. Nothing was wrong with the fix, the pull or the command —
+`web/` was baked into the image, and compose reuses an existing image unless
+told to rebuild. They reported the fix as not working, which is exactly how
+this failure presents: **the symptom is indistinguishable from the change not
+having been made.** That is worse than an error, because it sends the person
+looking in the wrong place, and it sends whoever wrote the fix looking there
+too.
+
+The remedy is not to document `--build`. A ten-minute rebuild to see a
+one-line CSS change is not a workflow anyone will follow, and a workflow nobody
+follows is not a remedy.
+
+**It also makes a stated principle true.** ROADMAP's sixth design principle is
+*"No build step. The page is static files; the tests need no OpenFOAM."* That
+was true of the repository and false of the only way most people will run it.
+It is now true of both.
+
+**What it costs.** Adding a Python dependency needs a rebuild, and until then
+the container fails with `ModuleNotFoundError`. That is a loud, specific,
+correctly-pointed failure — the opposite of the silent one it replaces — and
+the README says which changes need a rebuild.
+
+**Why `reference/` is mounted read-only.** So that "the tool never writes to
+the reference results" (ADR-032) is enforced by the filesystem rather than
+promised by the code.

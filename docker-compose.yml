@@ -15,10 +15,21 @@ services:
     # machine and another on the next.
     command: python3 -m aicfd view --case hall-double-gallery --port 8000 --no-browser
     volumes:
-      # Cases, runs and results live on the host so nothing is lost when the
-      # container is recreated. `reference/` is NOT mounted: the three worked
-      # results are part of the image, and nothing should write over the
-      # copy the repository carries (ADR-032).
+      # The clone IS the application. The image carries the slow, rarely
+      # changing half -- OpenFOAM and the Python dependencies -- and everything
+      # that moves comes from the working copy, so `git pull && docker compose
+      # up` shows the new code with no rebuild (ADR-034).
+      #
+      # Without this the page and the CLI are baked into the image, and a pull
+      # followed by `docker compose up` silently serves the old ones: the
+      # failure looks like the fix not working rather than like a stale image,
+      # which is the worst way for it to look.
+      - ./aicfd:/app/aicfd
+      - ./web:/app/web
+      - ./tests:/app/tests
       - ./cases:/app/cases
       - ./runs:/app/runs
       - ./results:/app/results
+      # Read-only: the three worked results are evidence, and nothing in the
+      # container has any business writing over them (ADR-032).
+      - ./reference:/app/reference:ro
