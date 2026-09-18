@@ -150,6 +150,7 @@ buoyantSimpleFoam   steady RANS, k-epsilon, buoyancy
 | Return grille | cyclic pair carrying a `porousBafflePressure` jump | the datasheet's loss coefficient, applied as physics and then checked against the field (ADR-020) |
 | Containment, false ceiling, row ends | two-sided wall baffles | a rack row that is not closed on five sides leaks most of its air sideways (ADR-016) |
 | Site | operating pressure from the altitude | a unit selected at 1 880 m moves air 24% lighter than at the coast (ADR-023) |
+| Fan wall capacity | a table of manufacturer selections, read at the return air the unit really gets | a coil's rating is true at one return temperature and no other: the worked CA80 delivers 505 kW at 35 °C and 734 kW at 41 (ADR-036) |
 
 **Two galleries, one plenum.** A hall longer than about 40 m is built with a
 mechanical gallery at *each* end, and its rack rows cut into blocks so each
@@ -238,6 +239,7 @@ aicfd/
                fvOptions, boundary conditions, the parallel pipeline)
   post.py      the analysis: patch flows, the eleven checks, per-rack inlets,
                live sampling during a run, the viewer export
+  equipment.py the unit library: capacity against the air a coil receives
   run.py       the only place that shells out to OpenFOAM (isolated env, ADR-002)
   report.py    the Word deliverable, built from the export and nothing else
   figures.py   its figures: plan, sections and charts, all 2-D
@@ -253,6 +255,9 @@ web/
   colormaps.js perceptual ramps and the banded scale
   data.js  convergence.js  app.js  results.js
 cases/         the worked case specs, commented line by line
+equipment/     one file per fan wall model: the manufacturer's selections, as
+               a table. `fanwall.model: <name>` in a spec is enough to
+               describe the machine
 reference/     the three worked results, tracked: the evidence the README and
                the ADRs cite. The tool never writes here
 results/       what YOU solve -- viewer.json, fields.bin, report.md, the Word
@@ -290,9 +295,10 @@ tests/         186 unit tests, no OpenFOAM required
   room behaves this way.
 - Only the fan-wall architecture with a ceiling-plenum return. Raised-floor
   plenums, in-row and downflow units are not modelled yet (see ROADMAP).
-- One scenario per run, one load per rack, and the coil's catalogue capacity. A
-  failure case (units out of service), a per-rack load map, and the capacity a
-  coil really has at the return temperature the room produces are the next
-  three inputs — and they are what an independent study of a real hall of this
-  shape was commissioned to answer. The gap is written out line by line in
+- One scenario per run, and one load per rack. A failure case (units out of
+  service) and a per-rack load map are the next two inputs; the gap is written
+  out line by line in
   [`docs/reference-report-parameters.md`](docs/reference-report-parameters.md).
+  The third — the capacity a coil really has at the return temperature the
+  room produces — is now covered by the equipment library (ADR-036), for any
+  unit whose selections you have.

@@ -104,10 +104,17 @@
   .param-group{padding:10px 0 4px;border-bottom:1px solid var(--border)}
   .param-group:last-child{border-bottom:none}
   .param-group-head{display:flex;justify-content:space-between;align-items:baseline;
-    gap:10px;font-size:12px;font-weight:650;letter-spacing:.02em;text-transform:uppercase;
-    color:var(--text-primary);margin-bottom:6px}
-  .param-group-head span{font-size:11.5px;font-weight:400;text-transform:none;
-    letter-spacing:0;color:var(--text-muted);text-align:right}
+    flex-wrap:wrap;gap:4px 10px;font-size:12px;font-weight:650;letter-spacing:.02em;
+    text-transform:uppercase;color:var(--text-primary);margin-bottom:6px}
+  .param-group-head .group-title{flex:0 1 auto;white-space:nowrap}
+  /* the note only: a bare `span` rule here also caught the title, which then
+     lost the uppercase the rest of the headers have */
+  .param-group-head .group-note{font-size:11.5px;font-weight:400;
+    text-transform:none;letter-spacing:0;color:var(--text-muted);text-align:right}
+  .param-group-head .group-link{flex:none;font-size:11px;font-weight:600;
+    text-transform:none;letter-spacing:0;color:var(--series-1);
+    text-decoration:none;white-space:nowrap}
+  .param-group-head .group-link:hover{text-decoration:underline}
   .param{display:grid;grid-template-columns:1fr 92px;gap:8px;align-items:center;
     padding:5px 0}
   .param label{color:var(--text-secondary);font-size:12.5px}

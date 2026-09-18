@@ -365,6 +365,25 @@ def results_state(name: str, spec: dict) -> dict:
             "note": f"{where}from different inputs: {listed}"}
 
 
+def read_equipment(model: str | None) -> dict:
+    """One unit out of the library, or the list of them.
+
+    The page shows the capacity table as a curve and lets it be edited. It is
+    not day-to-day work -- a unit is characterised once, from the
+    manufacturer's selections -- but it has to be possible, and it has to be
+    visible: the table decides every capacity number in a report, and a
+    number that decides a conclusion should not be buried in a file nobody
+    opens (ADR-036).
+    """
+    from aicfd import equipment as library
+
+    models = library.available()
+    if not model:
+        return {"models": models}
+    unit = library.load(model)
+    return {"models": models, "unit": unit.to_dict()}
+
+
 def stop_run(name: str) -> dict:
     """Ask the running solve to stop cleanly, OpenFOAM's own way.
 
@@ -469,6 +488,11 @@ def start_run(name: str) -> None:
 class Handler(SimpleHTTPRequestHandler):
     case_name = "pod-fanwall"
 
+    def _query(self, key: str) -> str | None:
+        from urllib.parse import parse_qs, urlparse
+
+        return (parse_qs(urlparse(self.path).query).get(key) or [None])[0]
+
     def __init__(self, *args, **kwargs):
         super().__init__(*args, directory=str(REPO_ROOT), **kwargs)
 
@@ -480,6 +504,9 @@ class Handler(SimpleHTTPRequestHandler):
     def do_GET(self):  # noqa: N802
         if self.path.startswith("/api/model"):
             return self._json(self._safely(build_payload, self.case_name))
+        if self.path.startswith("/api/equipment"):
+            return self._json(self._safely(read_equipment, self._query("model")))
+
         if self.path.startswith("/api/progress"):
             return self._json(
                 {
@@ -503,6 +530,17 @@ class Handler(SimpleHTTPRequestHandler):
                 return payload
 
             return self._json(self._safely(update))
+
+        if self.path.startswith("/api/equipment"):
+            name = self._query("model")
+
+            def store():
+                from aicfd import equipment as library
+
+                library.save(name, body)
+                return read_equipment(name)
+
+            return self._json(self._safely(store))
 
         if self.path.startswith("/api/stop"):
             return self._json(self._safely(stop_run, self.case_name))

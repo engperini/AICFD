@@ -261,6 +261,10 @@ class Model:
     unit_power_kw: float | None = None
     """Electrical input of one unit, from its datasheet."""
     altitude_m: float = 0.0
+    equipment: object | None = None
+    """The unit out of `equipment/`, when the spec names one. Carries the
+    capacity table, which is what says how much a coil can transfer at the
+    return temperature the room actually produces (ADR-036)."""
     blocks: list[tuple[float, float]] = field(default_factory=list)
     """The x span of each block of rack rows. A row cut by a transverse
     divider is two blocks, each a containment volume of its own, each served
@@ -652,6 +656,54 @@ class _Layout:
     blocks: list[tuple[float, float]] = field(default_factory=list)
 
 
+def equipment_for(spec: dict):
+    """Fill the fan wall block from the library when the spec names a unit.
+
+    `fanwall.model: CA80NPVG6` is enough to describe a machine: its
+    dimensions, its airflow, its capacity, its power and its supply
+    temperature all come from the manufacturer's own selections, taken at
+    `fanwall.design_return_c` (the warmest selection by default, which is how
+    a plant is normally sized).
+
+    Anything written in the spec still wins. The library is a default, not a
+    lock: a study of the same unit at a different external static pressure,
+    or with a fan speed the selections do not cover, is a legitimate thing to
+    type over the top -- and it stays visible in the spec, which is where a
+    reader looks for what was assumed (ADR-036).
+
+    Returns the Equipment, or None when the spec names none.
+    """
+    fan = spec.get("fanwall") or {}
+    name = fan.get("model")
+    if not name:
+        return None
+    from aicfd import equipment as library
+
+    unit = library.load(name)
+    point = unit.design_point(fan.get("design_return_c"))
+    defaults = {
+        "airflow_m3h": point["airflow_m3h"],
+        "capacity_kw": point["nscc_kw"],
+        "power_kw": point["power_kw"],
+        "supply_temp_c": point["supply_c"],
+        "width": unit.size[0],
+        "height": unit.size[2],
+        "static_pressure_pa": unit.selection.get("esp_pa"),
+        "curve": (unit.curve or {}).get("points"),
+    }
+    for key, value in defaults.items():
+        if value is not None and fan.get(key) is None:
+            fan[key] = value
+    # The site follows the selection unless the spec says otherwise: a unit
+    # selected at 750 m and run at sea level moves different air, and that is
+    # a decision, not a default to inherit silently.
+    site = spec.setdefault("site", {})
+    if site.get("altitude_m") is None and unit.selection.get("elevation_m") is not None:
+        site["altitude_m"] = unit.selection["elevation_m"]
+    spec["fanwall"] = fan
+    return unit
+
+
 def build_model(spec: dict) -> Model:
     """Derive the geometry from a spec mapping (already validated upstream).
 
@@ -666,6 +718,7 @@ def build_model(spec: dict) -> Model:
     name = spec.get("name", "case")
     cell = parse_cell_size(spec.get("mesh", {}).get("cell_size", 0.10))
     ceiling = float(spec["hall"]["ceiling"])
+    unit = equipment_for(spec)
     fan = spec["fanwall"]
     altitude = float(spec.get("site", {}).get("altitude_m", 0.0))
     supply_c = float(fan.get("supply_temp_c", 20.0))
@@ -729,6 +782,7 @@ def build_model(spec: dict) -> Model:
         unit_capacity_kw=float(fan["capacity_kw"]) if "capacity_kw" in fan else None,
         unit_power_kw=float(fan["power_kw"]) if "power_kw" in fan else None,
         altitude_m=altitude,
+        equipment=unit,
         blocks=layout.blocks,
         fan_static_pa=(
             float(fan["static_pressure_pa"]) if "static_pressure_pa" in fan else None

@@ -56,6 +56,9 @@ spec (YAML)  ->  aicfd/model.py   geometry: boxes, panels, rows, fan walls, sens
              ->  aicfd/post.py    patch flows, eleven checks, per-rack inlets, export
              ->  web/             plan and sections over the field, in the browser
              ->  aicfd/report.py  the Word deliverable, from the same export
+
+equipment/<model>.yaml  a unit as a TABLE of manufacturer selections, so a
+                        coil is judged at the air it actually receives
 ```
 
 Modelling choices, each with an ADR: racks as porous blocks with an enthalpy
@@ -89,11 +92,6 @@ commissioned to answer and AICFD cannot yet say.
   `fanwall.out_of_service`, with the total airflow to the room held constant
   between the cases so only the number of units sharing it changes. Without it
   a study reports the normal condition and calls the margin ample.
-- **Coil capacity at the operating point.** A chilled-water coil delivers its
-  catalogue rating only at its selection return temperature, and a real hall
-  never reaches it. `fanwall.rating_return_c` and `entering_water_c` turn the
-  `fan_capacity` check into *plant utilisation of available capacity* — the
-  difference, on the reference hall, between 19 % of margin and 4 %.
 - **Two scenarios from one mesh**, compared side by side on one colour scale,
   so the difference between them is attributable to the boundary conditions and
   not to discretisation.
@@ -117,6 +115,11 @@ commissioned to answer and AICFD cannot yet say.
 - **Comparison against measurement.** Every validation today is an identity the
   physics must satisfy. That class of check has caught several real faults, but
   it cannot promise the built room behaves this way.
+- **More units in the library.** One model is characterised (ADR-036); every
+  other fan wall in use needs its own set of selections. The gap that found
+  itself immediately: the CA80NPVG6's selections start at 35 °C, and a hall at
+  158 CFM/kW returns about 34, so that unit needs selections at 33 and 34 °C
+  before it can be judged in such a hall.
 - **BIM import.** IFC from a federated Revit model, filtered to the categories
   that affect airflow, into a spec. Loads still come from DCIM, never Revit.
 

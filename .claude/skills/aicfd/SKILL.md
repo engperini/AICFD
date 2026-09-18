@@ -127,8 +127,15 @@ legitimate study (ADR-023).
 
 ## Datasheet inputs, and what each buys
 
+- `fanwall.model` — a name in `equipment/`. Prefer this to typing the numbers:
+  it brings the unit's size, airflow, capacity, power and supply temperature
+  from the manufacturer's own selections, and it is what lets the result be
+  judged against the capacity the coil has at the return air it really gets
+  rather than against one catalogue figure (ADR-036). `design_return_c` picks
+  which selection sizes the plant before the CFD.
 - `fanwall.airflow_m3h`, `capacity_kw`, `power_kw`, `count` — per unit, as a
-  datasheet gives them. Feed the sizing alerts and the reports (ADR-023).
+  datasheet gives them. Feed the sizing alerts and the reports (ADR-023). With
+  a `model` named, every one of them is optional and overrides the library.
 - `fanwall.static_pressure_pa` and `curve` (m³/h, Pa points) — the solve still
   imposes the rated flow, as an EC array under flow control does. They feed
   `fan_capacity` and the uncontrolled operating point. Ask for the real curve;
@@ -145,6 +152,28 @@ legitimate study (ADR-023).
   `aisles.perimeter` and `aisles.transverse` on the x cell too, or every block
   edge is snapped by up to half a cell.
 
+## The equipment library
+
+`equipment/<model>.yaml` holds a fan wall as a TABLE of manufacturer
+selections -- the same machine at the same conditions, differing only in the
+return air it receives -- because a coil's capacity is not a constant. The
+CA80NPVG6 shipped here delivers 504,9 kW at 35 degC and 734,3 kW at 41.
+
+When a result carries `utilisation_pct`, that is the plant against what its
+coils can transfer **at the air they are actually receiving**. Quote it, and
+name it as such: a reader who has only seen the catalogue figure will read it
+as that and conclude the opposite. Both numbers appear in `report.md`.
+
+Between the rows AICFD interpolates; outside them it refuses and says so. If a
+run reports a return temperature outside the table, do not estimate -- say
+which selections are missing and that the manufacturer can produce them. On
+the CA80NPVG6 this is live: its selections start at 35 degC, and a hall at
+158 CFM/kW returns about 34, so that unit needs selections at 33 and 34 degC
+before it can be judged in such a hall.
+
+`aicfd view` links to `web/equipment.html` from the fan wall section. Point
+the user there rather than at the YAML.
+
 ## What the tool cannot yet be asked
 
 A user who has seen a consultant's CFD report will ask for these. Say plainly
@@ -154,10 +183,6 @@ against one such study of a real hall:
 
 - **a failure case** (units out of service, N+2 against N) -- one scenario per
   run today;
-- **the capacity a coil actually has** at the return temperature the room
-  produces, as opposed to its catalogue rating at the selection point. This is
-  the number that decides whether a plant has reserve, and `fan_capacity`
-  today is a pressure check, not this;
 - **a per-rack load map**, including unloaded positions;
 - **PDU or other ancillary heat** outside the racks.
 

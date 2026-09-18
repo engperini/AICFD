@@ -62,6 +62,10 @@ const SECTIONS = [
   {
     title: 'Fan walls',
     note: 'per unit, as the datasheet gives them',
+    // The unit's own characterisation -- its capacity against the air it
+    // receives -- lives on its own page. The everyday numbers stay here
+    // (ADR-036).
+    equipment: true,
     params: [
       { key: 'fan_count', label: 'Units', unit: '', step: 1 },
       { key: 'airflow_m3h', label: 'Airflow per unit', unit: 'm³/h', step: 100 },
@@ -248,6 +252,26 @@ function drawViews() {
   views.forEach((view, i) => cells[i].append(drawView(model, view, scale)));
 }
 
+/**
+ * The way through to the unit's own page, from the section that uses it.
+ *
+ * The capacity table decides every capacity number in a result, and it is not
+ * a field anyone edits day to day -- so it is one click away rather than in
+ * the form, and the link names the unit so a reader knows which machine the
+ * numbers in front of them came from (ADR-036).
+ */
+function equipmentLink() {
+  const named = model.spec?.fanwall?.model;
+  const href = named
+    ? `./equipment.html?model=${encodeURIComponent(named)}`
+    : './equipment.html';
+  return `<a class="group-link" href="${href}" title="${
+    named
+      ? `${named}: its capacity against the air it receives, and the rest of its characterisation`
+      : 'the equipment library. Name a unit with fanwall.model to use its capacity table'
+  }">${named ? `${named} ▸` : 'equipment ▸'}</a>`;
+}
+
 function wireMeshPreset() {
   const box = document.getElementById('p-cell_size');
   const preset = document.getElementById('p-cell-preset');
@@ -274,8 +298,10 @@ function renderParams() {
   host.innerHTML = activeSections()
     .map(
       (section) => `<div class="param-group">
-        <div class="param-group-head">${section.title}${
-          section.note ? `<span>${section.note}</span>` : ''
+        <div class="param-group-head"><span class="group-title">${
+          section.title
+        }</span>${section.equipment ? equipmentLink() : ''}${
+          section.note ? `<span class="group-note">${section.note}</span>` : ''
         }</div>
         ${section.params.map(inputHtml).join('')}
       </div>`,

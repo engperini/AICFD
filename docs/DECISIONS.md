@@ -1268,3 +1268,64 @@ inside it, so the whole page scrolled sideways. And rack labels were drawn
 whenever the rack cleared 26 px, which at 3× is true of a 0,6 m rack whose own
 id needs 50 — so the ids ran into each other along the row. The threshold is now
 the width of the text itself.
+
+---
+
+## ADR-036 — A unit is a table, not a rating
+
+**Decision.** `equipment/<model>.yaml` describes a fan wall by several
+manufacturer selections of the same machine at the same conditions, differing
+only in the return air temperature. `fanwall.model: CA80NPVG6` in a case spec
+is then enough to describe the machine — size, airflow, capacity, power and
+supply temperature all come from the table, at `fanwall.design_return_c`.
+After a solve, **every unit is judged against the capacity its coil has at the
+return air it actually receives**, and the report says that number alongside
+the catalogue one rather than instead of it. `web/equipment.html`, reached
+from the fan wall section of the model page, draws the curve and lets the
+table be edited.
+
+**Why.** A datasheet prints one capacity. It is true at one return air
+temperature — the one the unit was selected for — and a real room almost never
+returns air at it. On the unit this was built from, the Vertiv CA80NPVG6:
+
+| return air | net sensible |
+|---|---|
+| 35 °C | 504,9 kW |
+| 38 °C | 622,7 kW |
+| 41 °C | 734,3 kW |
+
+**45 % more capacity for 6 K of warmer air**, same machine, same water, same
+static pressure, same fan speed. A study that compares a hall's heat against a
+single figure is not comparing it against anything the plant will do, and the
+error is not conservative: quote the warm selection and an undersized plant
+looks fine.
+
+This is the gap `docs/reference-report-parameters.md` put at the top of the
+list, and the independent study of VIN03 is what it looks like when it bites —
+14 units whose catalogue sum was 6 056 kW against a 5 100 kW load, apparently
+19 % of margin, were at 95,6 % of the capacity available at the temperature the
+room really produced, and past 100 % with two units out.
+
+**Interpolated between the rows, refused outside them.** A coil curve is not a
+straight line — the slope of this one falls from 40,1 to 36,7 kW/K across the
+table — and the ends are exactly where extrapolating is worst. Outside the
+selections AICFD says so and names the fix: ask for a selection at that
+condition. A number that would decide whether a plant has reserve is not worth
+guessing.
+
+**The library is a default, never a lock.** Anything written in the spec wins,
+and stays visible there, which is where a reader looks for what was assumed. A
+study of the same unit at a different fan speed or external static pressure is
+legitimate; silently inheriting a table that no longer applies is not.
+
+**Editing keeps the file's provenance.** Saving from the page swaps the rows
+textually instead of re-dumping the YAML, because the comments are what say
+which selections these numbers came from, who issued them and on what date.
+A table of numbers nobody can trace is worth less than no table.
+
+**What it immediately found.** The CA80NPVG6's selections start at 35 °C. A
+hall designed at the office's 158 CFM/kW returns air about 12 K above supply,
+which lands near 34 °C — *below the table*. The design rule and the unit's
+characterisation are inconsistent by about 8 %, and the tool will refuse to
+extrapolate into the gap rather than paper over it. The fix is two more
+selections, at 33 and 34 °C.

@@ -1,0 +1,72 @@
+# Vertiv Liebert CWA CA80NPVG6 — fan wall unit.
+#
+# Everything below that is a NUMBER comes from seven manufacturer selections of
+# the same unit at the same conditions, differing only in the air it receives:
+# return air 35, 36, 37, 38, 39, 40 and 41 °C (Ascenty SP06, selection tool
+# v2.8.2604, issued by Lucca Mendonca, printed 2026-05-07). That is the point
+# of carrying a table instead of a rating: a chilled-water coil's capacity is
+# not a constant, and the one number a datasheet prints is only true at the one
+# return temperature it was selected for (ADR-036).
+#
+# How much it matters, on this unit: 504.9 kW at 35 °C and 734.3 kW at 41 °C.
+# The coil delivers 45% more for 6 K of warmer air. A study that compares a
+# room's heat against a single catalogue figure is not comparing it against
+# anything the plant will really do.
+model: CA80NPVG6
+family: Vertiv Liebert CWA
+
+size: [3.96, 1.48, 3.67]      # width x depth x height, metres
+weight_kg: 3000
+
+fans:
+  count: 8
+  type: backward-curved blower
+  module: High Static Fan-HP
+  modulation: 87.4            # % of full speed, at the selection point
+
+selection:
+  # The conditions every row of `capacity` was selected at. Change any of them
+  # and the table is no longer this unit's: ask the manufacturer for a new set.
+  elevation_m: 750
+  esp_pa: 100                 # external static pressure
+  entering_water_c: 18
+  leaving_water_c: 28
+  entering_air_rh: 30         # %
+
+capacity:
+  # return_c   the air the unit RECEIVES (dry bulb)
+  # nscc_kw    NET sensible cooling: gross coil duty less the fan power the
+  #            array returns to the air. Every comparison uses the net figure
+  # airflow_m3h  unit return airflow, actual air at the site's elevation
+  # power_kw   unit electrical input
+  # supply_c   supply air dry bulb that results
+  #
+  # nSHR is 1.00 at every point: this unit runs dry here, so all of its
+  # capacity is sensible and NTCC equals NSCC.
+  #
+  # The table starts at 35 °C because that is the coldest selection asked for.
+  # A hall designed at 158 CFM/kW returns air about 12 K above supply, which
+  # lands near 34 °C -- below this table. AICFD will refuse to extrapolate
+  # there and say so; the fix is a selection at 33 and 34 °C, not a guess.
+  - {return_c: 35, nscc_kw: 504.9, airflow_m3h: 132596, power_kw: 26.2, supply_c: 22}
+  - {return_c: 36, nscc_kw: 545, airflow_m3h: 132531, power_kw: 26.1, supply_c: 21.9}
+  - {return_c: 37, nscc_kw: 584.2, airflow_m3h: 132464, power_kw: 26, supply_c: 21.9}
+  - {return_c: 38, nscc_kw: 622.7, airflow_m3h: 132397, power_kw: 25.9, supply_c: 21.8}
+  - {return_c: 39, nscc_kw: 660.4, airflow_m3h: 132327, power_kw: 25.8, supply_c: 21.8}
+  - {return_c: 40, nscc_kw: 697.6, airflow_m3h: 132256, power_kw: 25.7, supply_c: 21.7}
+  - {return_c: 41, nscc_kw: 734.3, airflow_m3h: 132185, power_kw: 25.6, supply_c: 21.7}
+
+curve:
+  # Static pressure against airflow (m3/h, Pa). NOT from the selections above:
+  # they give one point, the 100 Pa of external static pressure the unit was
+  # selected to overcome at its rated flow. The rest has the shape of an EC
+  # fan array at fixed speed. REPLACE it with the manufacturer's P-Q curve
+  # when you have one -- it decides the uncontrolled operating point and how
+  # much margin the fan control has, and nothing else here depends on it.
+  measured: false
+  points:
+    - [0, 260]
+    - [66000, 210]
+    - [132400, 100]
+    - [165000, 45]
+    - [185000, 0]

@@ -266,6 +266,7 @@ def analyse(model: Model, case_dir: str | Path, time: str | None = None) -> PodR
     if available:
         kpis["fan_static_pa"] = available
         kpis["fan_margin"] = round(kpis["fan_rise_pa"] / available, 4)
+    kpis.update(coil_capacity(model, fans, kpis))
     kpis["drift_k"] = drift(case)
     kpis["hvac"] = model.hvac()
     kpis["hvac_lines"] = [line.strip() for line in _hvac_summary(model)]
@@ -275,6 +276,58 @@ def analyse(model: Model, case_dir: str | Path, time: str | None = None) -> PodR
     return PodResults(
         case_name=model.name, time=time, kpis=kpis, checks=_checks(model, step, kpis, grid)
     )
+
+
+def coil_capacity(model: Model, fans: list[dict], kpis: dict) -> dict:
+    """What the coils can transfer at the air they are actually receiving.
+
+    A datasheet's capacity is true at one return air temperature -- the one
+    the unit was selected for -- and a real room almost never returns air at
+    it. So the figure a plant should be judged against is not the catalogue
+    number but the table evaluated at each unit's own return temperature, and
+    the difference is not small: the worked CA80 delivers 505 kW at 35 degC
+    and 734 kW at 41 (ADR-036).
+
+    Adds `available_kw` and `of_available_pct` to each unit, and the plant's
+    utilisation of the capacity available to it. Says nothing at all when the
+    spec names no unit, or when a return temperature falls outside the
+    selections: an extrapolated coil curve is worse than no number.
+    """
+    unit = getattr(model, "equipment", None)
+    if unit is None:
+        return {}
+    available, removed, outside = 0.0, 0.0, []
+    for fan in fans:
+        temperature = fan.get("return_temp_c")
+        if temperature is None:
+            continue
+        if not unit.covers(temperature):
+            outside.append(round(temperature, 2))
+            continue
+        capacity = unit.available_kw(temperature)
+        fan["available_kw"] = round(capacity, 1)
+        available += capacity
+        if fan.get("heat_kw") is not None:
+            removed += fan["heat_kw"]
+            fan["of_available_pct"] = round(fan["heat_kw"] / capacity * 100, 1)
+    if not available:
+        return {"coil_outside_table_c": outside} if outside else {}
+    low, high = unit.span
+    return {
+        "unit_model": unit.model,
+        "available_kw": round(available, 1),
+        "utilisation_pct": round(removed / available * 100, 1),
+        "units_over_capacity": sum(
+            1 for f in fans if (f.get("of_available_pct") or 0) > 100
+        ),
+        "coil_table_span_c": [low, high],
+        # Named so nobody has to guess whether a number is the catalogue's or
+        # the room's: the catalogue figure is the same table at its selection
+        # point, and quoting one for the other is the mistake this exists to
+        # stop.
+        "catalogue_kw": round((model.unit_capacity_kw or 0) * len(fans), 1) or None,
+        "coil_outside_table_c": outside,
+    }
 
 
 def grille_pressure_drop(step: str | Path) -> float | None:
@@ -1122,6 +1175,35 @@ def _path_line(kpis: dict) -> str:
     )
 
 
+def _coil_line(kpis: dict) -> str:
+    """The plant against what its coils can actually transfer.
+
+    Separate from the catalogue comparison, and said in the same breath,
+    because a reader who has only ever seen the catalogue figure will read
+    this one as it and conclude the opposite of what it says.
+    """
+    used = kpis["utilisation_pct"]
+    over = kpis.get("units_over_capacity") or 0
+    catalogue = kpis.get("catalogue_kw")
+    line = (
+        f"Coils ({kpis['unit_model']}): the plant removes "
+        f"{kpis['recovered_kw']:,.0f} kW of the {kpis['available_kw']:,.0f} kW "
+        f"its coils can transfer at the air they are receiving ({used:.1f}%)"
+    )
+    if catalogue:
+        line += f"; the catalogue figure at the selection point is {catalogue:,.0f} kW"
+    if over:
+        line += f". {over} unit(s) are above their own coil's capacity"
+    outside = kpis.get("coil_outside_table_c") or []
+    if outside:
+        low, high = kpis["coil_table_span_c"]
+        line += (
+            f". {len(outside)} unit(s) return air outside the {low:g}-{high:g} degC "
+            f"the selections cover and are not counted"
+        )
+    return line + "."
+
+
 def _drift_line(kpis: dict) -> str:
     moved = kpis.get("drift_k")
     if moved is None:
@@ -1172,7 +1254,9 @@ def report(results: PodResults) -> str:
         # uniform in the mean can still have one unit at the end of a row
         # taking half again its neighbours' flow, or carrying a share of the
         # load its coil cannot transfer at the air it receives.
-        lines += ["", "  Fan wall     Supply kg/s   Rise Pa   Return degC    Heat kW"]
+        coil = any(f.get("available_kw") for f in fans)
+        head = "  Fan wall     Supply kg/s   Rise Pa   Return degC    Heat kW"
+        lines += ["", head + ("  Available kW   of avail" if coil else "")]
         for fan in fans:
             returned = fan.get("return_temp_c")
             heat = fan.get("heat_kw")
@@ -1181,7 +1265,14 @@ def report(results: PodResults) -> str:
                 f"{fan['rise_pa']:>10.1f}"
                 + (f"{returned:>14.2f}" if returned is not None else f"{'-':>14}")
                 + (f"{heat:>11.1f}" if heat is not None else f"{'-':>11}")
+                + (
+                    (f"{fan['available_kw']:>14.1f}"
+                     f"{fan.get('of_available_pct', 0):>10.0f}%")
+                    if fan.get("available_kw") else ""
+                )
             )
+        if k.get("available_kw"):
+            lines += ["", "  " + _coil_line(k)]
     racks = k["racks"]
     listed = racks
     if len(racks) > REPORT_RACKS:
@@ -1403,6 +1494,12 @@ def _viewer_kpis(model: Model, results: PodResults) -> dict:
         "fans": k.get("fans", []),
         "rows": k.get("rows", []),
         "energy_closure": k["energy_closure"],
+        "unit_model": k.get("unit_model"),
+        "available_kw": k.get("available_kw"),
+        "utilisation_pct": k.get("utilisation_pct"),
+        "units_over_capacity": k.get("units_over_capacity"),
+        "catalogue_kw": k.get("catalogue_kw"),
+        "coil_table_span_c": k.get("coil_table_span_c"),
         "hvac": k.get("hvac"),
         "alerts": k.get("alerts", []),
         "zones": [
