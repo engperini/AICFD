@@ -71,6 +71,9 @@ def main(argv: list[str] | None = None) -> int:
         "--out", help="output .docx (default: results/<name>/<name>.docx)"
     )
     report_parser.add_argument("--client", help="who the study is for, on the cover")
+    report_parser.add_argument(
+        "--title", help="the room's name on the cover (default: the case name)"
+    )
     report_parser.add_argument("--author", help="who ran it, on the cover")
 
     view_parser = sub.add_parser("view", help="serve the page")
@@ -346,7 +349,8 @@ def _report(args) -> int:
         )
         return 1
     out = Path(args.out) if args.out else source / f"{args.name}.docx"
-    written = build(source, out, client=args.client, author=args.author)
+    written = build(source, out, client=args.client, author=args.author,
+                    title=args.title)
     print(f"Wrote {written}")
     print(f"Figures in {source / 'figures'}")
     return 0

@@ -167,8 +167,15 @@ def _num(value, decimals=1, dash="—"):
 # --- the report ---------------------------------------------------------------
 
 
+def title_of(case: str) -> str:
+    """A case slug as a title: ``hall-double-gallery`` -> ``Hall Double
+    Gallery``. Replaced by ``--title`` when the room has a real name."""
+    return " ".join(word.capitalize() for word in case.replace("_", "-").split("-"))
+
+
 def build(results_dir: str | Path, out_path: str | Path,
-          client: str | None = None, author: str | None = None) -> Path:
+          client: str | None = None, author: str | None = None,
+          title: str | None = None) -> Path:
     """Write the Word report for one exported result."""
     docx = _docx()
     from docx.enum.text import WD_ALIGN_PARAGRAPH
@@ -190,7 +197,7 @@ def build(results_dir: str | Path, out_path: str | Path,
         section_.left_margin = Cm(2.4)
         section_.right_margin = Cm(2.4)
 
-    _cover(doc, export, client, author, WD_ALIGN_PARAGRAPH)
+    _cover(doc, export, client, author, title or title_of(export.payload["case"]))
     doc.add_page_break()
     _contents(doc)
     doc.add_page_break()
@@ -248,7 +255,7 @@ def _draw(export: Export, figures: Path) -> dict:
     }
 
 
-def _cover(doc, export: Export, client, author, align) -> None:
+def _cover(doc, export: Export, client, author, title_text: str) -> None:
     from docx.shared import Pt
 
     _para(doc, space_after=90)
@@ -259,8 +266,7 @@ def _cover(doc, export: Export, client, author, align) -> None:
           bold=True, colour=ACCENT, space_after=6)
     title = doc.add_paragraph()
     title.paragraph_format.space_after = Pt(30)
-    run = _run(title, f"CFD Analysis of the {export.payload['case']} Data Hall",
-               size=26, colour=INK)
+    run = _run(title, f"CFD Analysis of {title_text}", size=26, colour=INK)
     run.font.name = "Georgia"
     if client:
         _para(doc, client, size=13, space_after=4)
