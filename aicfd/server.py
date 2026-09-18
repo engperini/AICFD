@@ -46,13 +46,16 @@ EDITABLE = {
     "hall_height": (("hall", "height"), float, (2.5, 30.0)),
     "ceiling": (("hall", "ceiling"), float, (2.0, 20.0)),
     "gallery_depth": (("gallery", "depth"), float, (0.5, 20.0)),
+    "gallery_sides": (("gallery", "sides"), int, (1, 2)),
     # --- aisles and clearances ---------------------------------------------
     "cold_aisle": (("aisles", "cold"), float, (0.6, 10.0)),
     "hot_aisle": (("aisles", "hot"), float, (0.6, 10.0)),
     "perimeter": (("aisles", "perimeter"), float, (0.6, 20.0)),
+    "transverse": (("aisles", "transverse"), float, (0.6, 20.0)),
     # --- racks --------------------------------------------------------------
     "rack_count": (("racks", "count"), int, (1, 60)),
     "racks_per_row": (("racks", "per_row"), int, (1, 100)),
+    "rack_blocks": (("racks", "blocks"), int, (1, 6)),
     "rack_load_kw": (("racks", "load_kw"), float, (0.1, 200.0)),
     "rack_size": (("racks", "size"), "vector3", (0.1, 3.0)),
     "rack_offset_x": (("racks", "offset_x"), float, (0.0, 50.0)),

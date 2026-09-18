@@ -1,0 +1,110 @@
+# Data hall with a mechanical gallery at EACH END and rack rows cut into two
+# blocks -- the arrangement of a real 5 MW hall (Ascenty VIN03, studied
+# independently by Maders Consulting with HELYX 4.5.1 in September 2026, and
+# used here as the reference this case is checked against).
+#
+# The point of the arrangement: a 53 m hall driven from one end would ask one
+# gallery to push air the whole length. With a gallery at each end, every rack
+# block is fed from the end nearest to it, and no unit has to reach further
+# than half the room. The RETURN stays shared: the false ceiling covers the
+# whole hall, so the plenum above it is a single volume that collects from
+# every hot aisle and feeds BOTH galleries (ADR-027).
+#
+# The air loop, twice over and joined at the top:
+#   gallery A fan walls -> cold aisles -> block 1 racks -> contained hot aisles
+#   -> ceiling grilles -> THE ONE PLENUM -> openings at both ends -> galleries
+#   gallery B fan walls -> cold aisles -> block 2 racks -> (the same)
+#
+# Coarse conceptual-design mesh: one rack is one cell in plan, nine cells tall.
+name: hall-double-gallery
+
+site:
+  altitude_m: 750             # the fan wall datasheet was selected at 750 m
+
+gallery:
+  depth: 9.0                  # return corridor behind the units, no ceiling
+  sides: 2                    # one at each end of the hall.
+                              # 1 (the default) is the single-gallery hall.
+
+hall:
+  height: 7.5                 # floor to slab (7.60 m on site; snapped to the
+                              # 0.25 m mesh)
+  ceiling: 5.5                # false ceiling (5.45 m on site); above it, the
+                              # single return plenum, shared by both galleries
+  # Length and width are derived: along x, gallery + perimeter + blocks +
+  # transverse aisle + perimeter + gallery; along y, perimeter + N x (row +
+  # hot aisle + row) + cold aisles. Here 51.0 m x 32.4 m against the
+  # site's 54.64 x 31.98: the same arrangement, with the two return
+  # corridors symmetric at 9 m where the real ones are 7 m and 11 m.
+
+pods: 5                       # 5 x (row + contained hot aisle + row) = 10 rows
+
+aisles:
+  cold: 2.7                   # between PODs; the fan walls face these
+  hot: 1.2                    # contained, a chimney up to the false ceiling
+  perimeter: 1.8              # clearance round the rows, on both axes.
+                              # 1.8 keeps every rack block edge on the
+                              # 0.60 m mesh, so nothing has to be snapped.
+  transverse: 3.0             # the aisle between the two rack blocks. It is
+                              # what makes each block a containment volume of
+                              # its own: 5 hot aisles x 2 blocks = 10 of them.
+
+racks:
+  per_row: 22                 # PER BLOCK: a row is 2 x 22 = 44 positions
+  blocks: 2                   # rows cut in two along their length
+  load_kw: 11.59              # 440 positions x 11.59 = 5,100 kW. The site has
+                              # 5,000 kW of IT in 412 of 438 loaded positions
+                              # plus 100 kW of PDU loss; AICFD takes one load
+                              # per rack, so the total is spread evenly. A
+                              # per-rack load map is the next input to add.
+  size: [0.6, 1.2, 2.2]       # width x depth x height; the height snaps to
+                              # 2.25 m on the 0.25 m mesh (the model warns)
+  airflow_cfm_per_kw: 158     # design reference: what a rack draws per kW
+
+fanwall:
+  # Vertiv Liebert CWA CA80NPVG6, 8 backward-curved blowers per unit.
+  # Selection point: 750 m, 100 Pa ESP, 34.0 C entering air, 18 C entering
+  # water, 21.9 C supply, 121,545 m3/h unit return airflow, 432.6 kW NET
+  # sensible (454.0 kW gross less 21.4 kW of fan power returned to the air).
+  count: 14                   # 7 in each gallery -- the split is automatic,
+                              # and an odd count gives the extra to the first.
+                              # 14 x 432.6 = 6,056 kW >= 5,100 kW of IT.
+  width: 3.96                 # snaps to 3.90 m on the 0.30 m mesh (warned)
+  height: 3.67                # snaps to 3.75 m on the 0.25 m mesh (warned)
+  airflow_m3h: 104181         # PER UNIT in the N+2 condition: the 14 installed
+                              # units share the 1,458,540 m3/h that 12 units
+                              # would deliver at the selection point, so each
+                              # runs below its catalogue airflow.
+  capacity_kw: 432.6          # NSCC (net sensible cooling capacity)
+  power_kw: 21.4              # electrical power input
+  supply_temp_c: 21.9         # supply air from the selection
+  static_pressure_pa: 100     # ESP
+  curve:                      # representative, anchored on the selection
+    - [0, 260]                # point; replace with the unit's P-Q curve
+    - [60000, 210]
+    - [121545, 100]
+    - [150000, 45]
+    - [170000, 0]
+
+grilles:
+  size: 0.60
+  coverage: 1.0               # the whole ceiling over each hot-aisle block
+  free_area: 0.80
+  loss_coefficient: 2.4       # Koolair series 20.2, see cases/pod-fanwall.yaml
+
+containment:
+  enabled: true
+
+mesh:
+  # x 0.60: one rack per cell along the row; y 0.30: the 1.2 m rack, the 1.2 m
+  # hot aisle, the 2.7 m cold aisle and the fan wall all land on cell faces;
+  # z 0.25: ceiling (5.5), fan wall (3.75) and slab (7.5) aligned, nine cells
+  # per rack so the top reads separately from the base.
+  cell_size: [0.60, 0.30, 0.25]
+
+solver:
+  max_iterations: 3000
+  residual_tolerance: 1.0e-4
+  sensor_interval: 100
+  warm_start: true
+  processors: 4

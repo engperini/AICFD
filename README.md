@@ -54,6 +54,7 @@ documented end to end in `docs/experiments/`:
 |---|---|---|---|
 | `pod-fanwall.yaml` | one row of 3 racks, 18 kW, one fan wall | 75 600 cells | 8 min, 1 core |
 | `hall-10mw.yaml` | 16 PODs, 768 racks, 9,98 MW, 35 fan walls | 329 280 cells | 11 min, 4 cores |
+| `hall-double-gallery.yaml` | 5 PODs, 440 racks, 5,1 MW, a gallery at each end and rows in two blocks | 275 400 cells | 10 min, 4 cores |
 
 Start a study from one of them rather than from a blank file:
 
@@ -84,6 +85,16 @@ buoyantSimpleFoam   steady RANS, k-epsilon, buoyancy
 | Return grille | cyclic pair carrying a `porousBafflePressure` jump | the datasheet's loss coefficient, applied as physics and then checked against the field (ADR-020) |
 | Containment, false ceiling, row ends | two-sided wall baffles | a rack row that is not closed on five sides leaks most of its air sideways (ADR-016) |
 | Site | operating pressure from the altitude | a unit selected at 1 880 m moves air 24% lighter than at the coast (ADR-023) |
+
+**Two galleries, one plenum.** A hall longer than about 40 m is built with a
+mechanical gallery at *each* end, and its rack rows cut into blocks so each
+block is fed from the end nearest to it. `gallery.sides: 2` and `racks.blocks: 2`
+do that. The **return stays shared**: the false ceiling covers the whole hall,
+so the plenum above it is one volume that collects from every hot aisle and
+opens into both galleries — which is the redundancy the layout is bought for
+(ADR-027). The one thing it changes in the mesh is which half of each fan
+wall's baffle pair is the intake, and that is measured after meshing rather
+than assumed.
 
 Nothing in `cases/*.yaml` is an OpenFOAM dictionary. The mesh divisions, the
 porosity coefficients, the heat sources, the boundary conditions and the
@@ -200,3 +211,9 @@ tests/         186 unit tests, no OpenFOAM required
   room behaves this way.
 - Only the fan-wall architecture with a ceiling-plenum return. Raised-floor
   plenums, in-row and downflow units are not modelled yet (see ROADMAP).
+- One scenario per run, one load per rack, and the coil's catalogue capacity. A
+  failure case (units out of service), a per-rack load map, and the capacity a
+  coil really has at the return temperature the room produces are the next
+  three inputs — and they are what an independent study of a real hall of this
+  shape was commissioned to answer. The gap is written out line by line in
+  [`docs/reference-report-parameters.md`](docs/reference-report-parameters.md).

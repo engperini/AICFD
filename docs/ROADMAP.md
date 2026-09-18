@@ -56,12 +56,37 @@ source (ADR-011); the fan wall as an internal baffle pair set by mass flow
 pressure, and the plant sized against the design office's rules before any CFD
 (ADR-023).
 
-Two worked cases carry the evidence: `cases/pod-fanwall.yaml` (one POD, 18 kW)
-and `cases/hall-10mw.yaml` (16 PODs, 768 racks, 9,98 MW, a Vertiv CA40
-selection). Both are written up in `docs/experiments/`.
+A hall may have a mechanical gallery at **each end** (`gallery.sides: 2`) and
+rows cut into blocks along their length (`racks.blocks`), with the return plenum
+staying a single shared volume above the whole hall (ADR-027).
+
+Three worked cases carry the evidence: `cases/pod-fanwall.yaml` (one POD,
+18 kW), `cases/hall-10mw.yaml` (16 PODs, 768 racks, 9,98 MW, a Vertiv CA40
+selection) and `cases/hall-double-gallery.yaml` (5 MW, two galleries, two rack
+blocks, a Vertiv CA80 selection, built against a real hall studied
+independently). All three are written up in `docs/experiments/`.
 
 ## What is next
 
+The order below is set by [`reference-report-parameters.md`](reference-report-parameters.md),
+a line-by-line comparison against an independent CFD study of a real 5 MW hall
+of the same architecture. The first two items are what that study was
+commissioned to answer and AICFD cannot yet say.
+
+- **A failure scenario and the redundancy it tests.** `fanwall.redundancy` and
+  `fanwall.out_of_service`, with the total airflow to the room held constant
+  between the cases so only the number of units sharing it changes. Without it
+  a study reports the normal condition and calls the margin ample.
+- **Coil capacity at the operating point.** A chilled-water coil delivers its
+  catalogue rating only at its selection return temperature, and a real hall
+  never reaches it. `fanwall.rating_return_c` and `entering_water_c` turn the
+  `fan_capacity` check into *plant utilisation of available capacity* — the
+  difference, on the reference hall, between 19 % of margin and 4 %.
+- **Two scenarios from one mesh**, compared side by side on one colour scale,
+  so the difference between them is attributable to the boundary conditions and
+  not to discretisation.
+- **Reported numbers as means over a window** (`solver.average_over`), quoted
+  with the peak-to-peak range and drift of the monitors inside it.
 - **Leakage.** Containment is modelled as perfect. Real containment leaks, and
   the leak is what decides the top-of-rack temperature in a marginal design.
 - **Rack fans.** A rack is a resistance today, so a rack in a pressure trough
@@ -70,6 +95,10 @@ selection). Both are written up in `docs/experiments/`.
 - **Raised-floor plenums** with perforated tiles, and **in-row / downflow**
   unit types.
 - **Per-rack loads from a DCIM export**, instead of one load for the hall.
+  Unloaded positions are porous media without a source, and where they sit
+  decides how evenly the units load.
+- **Ancillary heat that is not in a rack** — PDU dissipation as a share of the
+  IT load, released in its own zone.
 - **A refinement study upward** from the working mesh: the coarse-versus-fine
   comparison so far went *coarser* and agreed, which is evidence but not a
   convergence study.

@@ -850,3 +850,64 @@ nothing and costs the mapping.
 `toLocaleString` calls use `en-US`. The tests that asserted on Portuguese
 strings assert on English ones. Anyone who wants a localised interface later
 adds a translation layer over a single vocabulary rather than untangling two.
+
+---
+
+## ADR-027 — A gallery at each end, rows in blocks, and one plenum
+
+**Decision.** The hall layout takes two new inputs, both optional and both
+defaulting to what the tool did before:
+
+- `gallery.sides: 2` puts a mechanical gallery at **each end** of the hall,
+  each with its own dividing wall and its own share of `fanwall.count`, facing
+  the opposite ends of the same cold aisles;
+- `racks.blocks: n` cuts every rack row into `n` blocks along its length,
+  separated by `aisles.transverse`, each block a contained volume of its own.
+
+The **return plenum stays single**. The false ceiling covers the hall and stops
+at each dividing wall, so the volume above it is one continuous space that
+collects from every hot aisle and opens into every gallery. Two supplies, one
+return.
+
+**Why.** A 50 m hall driven from one end asks one gallery to push air the whole
+length, and the measured consequence in `docs/experiments/2026-09-18-hall-10mw.md`
+was already visible at 88 m: the plenum was the bottleneck, taking 23 to 30 Pa
+of the unit's budget. Real halls of this size are built with a gallery at each
+end and the rows cut in two, so each block is fed from the end nearest to it and
+no unit reaches further than half the room.
+
+Keeping the return shared is not a simplification, it is the arrangement: a
+single plenum lets a block whose own gallery is short of capacity be drawn on by
+the other one, which is exactly the redundancy the layout is bought for. Two
+separate plenums would be two rooms in one box.
+
+**What it changes in the mesh.** One thing, and it is the thing that would have
+been silently wrong. `createBaffles` gives the *master* patch of a pair to the
+face's owner cell, and for an x-normal face of a blockMesh box the owner is the
+cell at lower x. For the near gallery that cell is in the gallery, so the master
+is the intake. For the far gallery the owner is a hall cell, so master and slave
+swap. Naming the two halves without swapping their boundary conditions builds a
+unit that supplies into its own return — and it converges, and every residual
+falls, and the answer is about nothing. So each fan wall carries a `sign` (+1
+when its gallery is at lower x), the generator emits the halves in that order,
+and `check_fan_orientation` measures the normal of both patches of every pair
+against it after the mesh is built (ADR-013's rule: orientation is measured, not
+assumed).
+
+**Alternatives rejected.**
+
+- *A second domain box for the far gallery, coupled by a mapped boundary.* Two
+  solutions to reconcile, and the shared plenum — the whole point — would become
+  a boundary condition instead of a volume.
+- *A separate plenum per gallery.* Simpler to mesh, and wrong: it removes the
+  cross-feed that the arrangement exists to provide.
+- *Blocks as separate rows in the spec.* A row cut in two is still one row of
+  the hall; making the user list it twice would let the two halves disagree.
+
+**Consequence.** `Model.gallery` became `Model.galleries` (a list; the POD keeps
+`gallery` as the first of them), and `Model.blocks` holds each block's x span,
+so the chimney area, the warm start, the drawing's section plane and the grille
+strips all count blocks rather than assuming one run of racks. The worked case
+is `cases/hall-double-gallery.yaml`, written against a real 5 MW hall of this
+shape (Ascenty VIN03) so the tool's answer can be held against an independent
+study of the same room.

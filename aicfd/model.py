@@ -99,6 +99,12 @@ class Panel:
     resistance: float | None = None
     """Loss coefficient K for an opening that resists the air (a grille):
     dp = K * rho * v^2 / 2 with v the face velocity over the gross area."""
+    sign: int = 1
+    """Which side of the panel the mechanical gallery is on, for the surfaces
+    that separate gallery from hall: +1 when the gallery is at lower x (the
+    hall is at higher x), -1 when the gallery is at higher x. A hall with a
+    gallery at each end carries both, and the sign is what tells the fan wall
+    which half of its baffle pair is the intake (ADR-027)."""
 
     @property
     def area(self) -> float:
@@ -226,7 +232,10 @@ class Model:
 
     name: str
     domain: Box
-    gallery: Box
+    galleries: list[Box]
+    """The mechanical galleries, in x order. One for a POD or a hall with a
+    single technical corridor; two when the hall has one at each end. The
+    ceiling plenum stays single either way and opens into all of them."""
     hall: Box
     ceiling_z: float
     cold_aisles: list[tuple[float, float]]
@@ -252,12 +261,38 @@ class Model:
     unit_power_kw: float | None = None
     """Electrical input of one unit, from its datasheet."""
     altitude_m: float = 0.0
+    blocks: list[tuple[float, float]] = field(default_factory=list)
+    """The x span of each block of rack rows. A row cut by a transverse
+    divider is two blocks, each a containment volume of its own, each served
+    by the gallery at its end. Empty means one block spanning every rack."""
     warnings: list[str] = field(default_factory=list)
     alerts: list[str] = field(default_factory=list)
     """Design criteria the HVAC does not meet. Alerts, never blockers: a
     conceptual study wants to see what an undersized plant does."""
 
     # --- the POD's singular names, for the one-row case -------------------------
+
+    @property
+    def gallery(self) -> Box:
+        """The first gallery. A POD has exactly one and calls it *the*
+        gallery; a hall with two keeps them in ``galleries``."""
+        return self.galleries[0]
+
+    @property
+    def dividers(self) -> list[float]:
+        """x of each wall between a gallery and the hall, in gallery order.
+
+        The first gallery is always at lower x than the hall, the second (when
+        there is one) at higher x, so the dividing walls are the hall's own
+        two x faces.
+        """
+        walls = [self.hall.lo[0], self.hall.hi[0]]
+        return walls[: len(self.galleries)]
+
+    @property
+    def rack_blocks(self) -> list[tuple[float, float]]:
+        """The rack blocks, falling back to the one span every rack shares."""
+        return self.blocks or ([self.rack_span()] if self.racks else [])
 
     @property
     def cold_aisle(self) -> tuple[float, float]:
@@ -406,9 +441,17 @@ class Model:
 
     @property
     def chimney_area(self) -> float:
-        """Cross-section of the contained hot aisles together, normal to the rise."""
-        row = self.rack_span()
-        return sum((row[1] - row[0]) * (hi - lo) for lo, hi in self.hot_aisles)
+        """Cross-section of the contained hot aisles together, normal to the rise.
+
+        One chimney per hot aisle *per block*: a row cut by a transverse
+        divider has a separate contained volume either side of it, and the
+        gap between the blocks is not a chimney.
+        """
+        return sum(
+            (bx1 - bx0) * (hi - lo)
+            for bx0, bx1 in self.rack_blocks
+            for lo, hi in self.hot_aisles
+        )
 
     @property
     def rack_pressure_drop_pa(self) -> float:
@@ -527,7 +570,12 @@ def sensors(model: Model) -> list[SensorGroup]:
 
     rack_mid_z = model.racks[0].box.hi[2] / 2
     mid = lambda band: (band[0] + band[1]) / 2  # noqa: E731
-    lo, hi = model.rack_span()
+    # Probe *inside a block*, never across the whole row: on a hall whose rows
+    # are cut in two, the middle of the row is the transverse aisle, and a
+    # "hot aisle" probe placed there reads the cold air passing between the
+    # blocks. It looks like perfect containment and it is a mislaid sensor.
+    blocks = model.rack_blocks
+    lo, hi = blocks[len(blocks) // 2]
     columns = tuple(lo + (hi - lo) * f for f in (0.2, 0.5, 0.8))
 
     def spread(bands: list[tuple[float, float]], z: float) -> tuple:
@@ -541,16 +589,22 @@ def sensors(model: Model) -> list[SensorGroup]:
 
     plenum_z = (model.ceiling_z + model.domain.hi[2]) / 2
     fans = model.fans
-    behind_x = max(model.hall.lo[0] - 0.3, model.cell(0))
+
+    def behind(fan: Panel) -> float:
+        """0,3 m back from the unit, on its gallery side -- which is the low-x
+        side for the first gallery and the high-x side for the second."""
+        x = fan.position - 0.3 * fan.sign
+        return min(max(x, model.cell(0)), model.domain.hi[0] - model.cell(0))
+
     if len(fans) >= 3:
         picked = (fans[0], fans[len(fans) // 2], fans[-1])
         fan_points = tuple(
-            (behind_x, mid(fan.extent[0]), fan.extent[1][1] * 0.5) for fan in picked
+            (behind(fan), mid(fan.extent[0]), fan.extent[1][1] * 0.5) for fan in picked
         )
     else:
         fan = fans[0]
         fan_points = tuple(
-            (behind_x, mid(fan.extent[0]), fan.extent[1][1] * fraction)
+            (behind(fan), mid(fan.extent[0]), fan.extent[1][1] * fraction)
             for fraction in (0.25, 0.5, 0.75)
         )
 
@@ -587,7 +641,7 @@ class _Layout:
     """What a layout hands the model: where everything is, before snapping."""
 
     domain: Box
-    gallery: Box
+    galleries: list[Box]
     hall: Box
     rows: list[Row]
     cold_aisles: list[tuple[float, float]]
@@ -595,6 +649,7 @@ class _Layout:
     fans: list[Panel]
     grilles: list[Panel]
     walls: list[Panel]
+    blocks: list[tuple[float, float]] = field(default_factory=list)
 
 
 def build_model(spec: dict) -> Model:
@@ -625,24 +680,32 @@ def build_model(spec: dict) -> Model:
     racks = [rack for row in layout.rows for rack in row.racks]
 
     panels: list[Panel] = list(layout.fans)
-    # The wall between gallery and hall is pierced by the fan walls and, above
-    # the false ceiling, by the return opening along the whole width.
-    panels.append(
-        Panel(
-            "plenum_opening",
-            "opening",
-            axis=0,
-            position=layout.hall.lo[0],
-            extent=((0.0, layout.domain.hi[1]), (ceiling, layout.domain.hi[2])),
+    # Each wall between a gallery and the hall is pierced by that gallery's fan
+    # walls and, above the false ceiling, by the return opening along the whole
+    # width. With a gallery at each end there are two openings and still one
+    # plenum: the volume above the false ceiling is continuous across the hall,
+    # so it collects from every hot aisle and feeds both galleries (ADR-027).
+    dividers = [layout.hall.lo[0], layout.hall.hi[0]][: len(layout.galleries)]
+    for i, x in enumerate(dividers):
+        panels.append(
+            Panel(
+                "plenum_opening" if i == 0 else f"plenum_opening{i + 1}",
+                "opening",
+                axis=0,
+                position=x,
+                extent=((0.0, layout.domain.hi[1]), (ceiling, layout.domain.hi[2])),
+                sign=1 if i == 0 else -1,
+            )
         )
-    )
+    # The false ceiling covers the hall only: a mechanical gallery is open to
+    # the slab, which is how the return air reaches the units.
     panels.append(
         Panel(
             "ceiling",
             "wall",
             axis=2,
             position=ceiling,
-            extent=((layout.hall.lo[0], layout.domain.hi[0]), (0.0, layout.domain.hi[1])),
+            extent=((layout.hall.lo[0], layout.hall.hi[0]), (0.0, layout.domain.hi[1])),
         )
     )
     panels.extend(layout.grilles)
@@ -651,7 +714,7 @@ def build_model(spec: dict) -> Model:
     model = Model(
         name=name,
         domain=layout.domain,
-        gallery=layout.gallery,
+        galleries=layout.galleries,
         hall=layout.hall,
         ceiling_z=ceiling,
         cold_aisles=layout.cold_aisles,
@@ -666,6 +729,7 @@ def build_model(spec: dict) -> Model:
         unit_capacity_kw=float(fan["capacity_kw"]) if "capacity_kw" in fan else None,
         unit_power_kw=float(fan["power_kw"]) if "power_kw" in fan else None,
         altitude_m=altitude,
+        blocks=layout.blocks,
         fan_static_pa=(
             float(fan["static_pressure_pa"]) if "static_pressure_pa" in fan else None
         ),
@@ -836,7 +900,8 @@ def _pod_layout(spec: dict, cell, rack_spec: dict | None = None) -> _Layout:
     if spec.get("containment", {}).get("enabled", True):
         walls += _containment(hot_aisle, span, rack_dz, ceiling, (band[1],))
 
-    return _Layout(domain, gallery, hall, [row], [(0.0, cold)], [hot_aisle], fans, grilles, walls)
+    return _Layout(domain, [gallery], hall, [row], [(0.0, cold)], [hot_aisle],
+                   fans, grilles, walls, [span])
 
 
 def _hall_layout(spec: dict, cell, rack_spec: dict | None = None) -> _Layout:
@@ -848,8 +913,26 @@ def _hall_layout(spec: dict, cell, rack_spec: dict | None = None) -> _Layout:
     the next POD; the last cold aisle is the far perimeter. Fan walls sit in
     the dividing wall centred on their cold aisle as far as the corners and
     their neighbours allow, never overlapping.
+
+    Two options make the hall bigger without changing any of that (ADR-027):
+
+    ``gallery.sides: 2``
+        a second mechanical gallery at the far end of the hall, with its own
+        dividing wall and its share of the units, facing the other end of
+        every cold aisle. The false ceiling still covers the whole hall, so
+        **the return plenum stays single** and opens into both galleries.
+
+    ``racks.blocks: 2``
+        every row cut into that many blocks along its length, separated by a
+        transverse aisle (``aisles.transverse``). Each block is a contained
+        volume of its own -- ``pods x blocks`` of them -- and is served by the
+        gallery at its end, which is what lets a long hall be driven from two
+        sides without one gallery having to push air the whole length.
     """
     gallery_depth = float(spec["gallery"]["depth"])
+    sides = int(spec["gallery"].get("sides", 1))
+    if sides not in (1, 2):
+        raise ValueError(f"gallery.sides must be 1 or 2, got {sides}")
     height = float(spec["hall"]["height"])
     ceiling = float(spec["hall"]["ceiling"])
     cold = float(spec["aisles"]["cold"])
@@ -860,16 +943,29 @@ def _hall_layout(spec: dict, cell, rack_spec: dict | None = None) -> _Layout:
     per_row = int(spec["racks"]["per_row"])
     load_kw = float(spec["racks"]["load_kw"])
     pods = int(spec["pods"])
+    n_blocks = int(spec["racks"].get("blocks", 1))
+    if n_blocks < 1:
+        raise ValueError(f"racks.blocks must be 1 or more, got {n_blocks}")
+    transverse = float(spec["aisles"].get("transverse", cold)) if n_blocks > 1 else 0.0
 
-    row_length = per_row * rack_dx
+    # per_row is the count in one block, so a row of two blocks holds twice it
+    block_length = per_row * rack_dx
+    row_length = n_blocks * block_length + (n_blocks - 1) * transverse
     hall_length = perimeter + row_length + perimeter
-    total_x = gallery_depth + hall_length
+    total_x = sides * gallery_depth + hall_length
     width = 2 * perimeter + pods * (2 * rack_dy + hot) + (pods - 1) * cold
     domain = Box((0.0, 0.0, 0.0), (total_x, width, height))
-    gallery = Box((0.0, 0.0, 0.0), (gallery_depth, width, height))
-    hall = Box((gallery_depth, 0.0, 0.0), (total_x, width, height))
+    hall = Box((gallery_depth, 0.0, 0.0), (gallery_depth + hall_length, width, height))
+    galleries = [Box((0.0, 0.0, 0.0), (gallery_depth, width, height))]
+    if sides == 2:
+        galleries.append(Box((hall.hi[0], 0.0, 0.0), (total_x, width, height)))
+
     x0 = gallery_depth + perimeter
-    span = (x0, x0 + row_length)
+    spans: list[tuple[float, float]] = []
+    x = x0
+    for _ in range(n_blocks):
+        spans.append((x, x + block_length))
+        x += block_length + transverse
 
     rows: list[Row] = []
     hot_aisles: list[tuple[float, float]] = []
@@ -877,10 +973,12 @@ def _hall_layout(spec: dict, cell, rack_spec: dict | None = None) -> _Layout:
     walls: list[Panel] = []
     grilles: list[Panel] = []
     coverage = float(spec["grilles"].get("coverage", 1.0))
-    strip = (
-        (span[0] + span[1]) / 2 - coverage * row_length / 2,
-        (span[0] + span[1]) / 2 + coverage * row_length / 2,
-    )
+
+    def strip_of(span: tuple[float, float]) -> tuple[float, float]:
+        """The grille strip over one block: centred, ``coverage`` of it long."""
+        mid = (span[0] + span[1]) / 2
+        half = coverage * (span[1] - span[0]) / 2
+        return (mid - half, mid + half)
 
     y = perimeter
     for k in range(pods):
@@ -888,25 +986,32 @@ def _hall_layout(spec: dict, cell, rack_spec: dict | None = None) -> _Layout:
         hot_aisle = (a[1], a[1] + hot)
         b = (hot_aisle[1], hot_aisle[1] + rack_dy)
         n = 2 * k
-        row_a = _make_row(f"F{n + 1}", a, +1, x0, per_row, size, load_kw,
-                          lambda i, n=n: f"F{n + 1}-{i + 1:02d}", rack_spec)
-        row_b = _make_row(f"F{n + 2}", b, -1, x0, per_row, size, load_kw,
-                          lambda i, n=n: f"F{n + 2}-{i + 1:02d}", rack_spec)
-        rows += [row_a, row_b]
         hot_aisles.append(hot_aisle)
-        for row in (row_a, row_b):
-            walls += _row_walls(row, span, rack_dz, suffix=f"_{row.id}")
-        walls += _containment(hot_aisle, span, rack_dz, ceiling, (a[1], b[0]), suffix=f"_{k + 1}")
-        grilles.append(
-            Panel(
-                f"grille{k + 1}",
-                "opening",
-                axis=2,
-                position=ceiling,
-                extent=(strip, hot_aisle),
-                resistance=_grille_k(spec),
+        for j, span in enumerate(spans):
+            tag = "" if n_blocks == 1 else f"B{j + 1}"
+            pair = []
+            for offset, band, front in ((1, a, +1), (2, b, -1)):
+                row_id = f"F{n + offset}{tag}"
+                pair.append(
+                    _make_row(row_id, band, front, span[0], per_row, size, load_kw,
+                              lambda i, row_id=row_id: f"{row_id}-{i + 1:02d}", rack_spec)
+                )
+            rows += pair
+            for row in pair:
+                walls += _row_walls(row, span, rack_dz, suffix=f"_{row.id}")
+            suffix = f"_{k + 1}" if n_blocks == 1 else f"_{k + 1}b{j + 1}"
+            walls += _containment(hot_aisle, span, rack_dz, ceiling,
+                                  (a[1], b[0]), suffix=suffix)
+            grilles.append(
+                Panel(
+                    f"grille{len(grilles) + 1}",
+                    "opening",
+                    axis=2,
+                    position=ceiling,
+                    extent=(strip_of(span), hot_aisle),
+                    resistance=_grille_k(spec),
+                )
             )
-        )
         y = b[1]
         if k < pods - 1:
             cold_aisles.append((y, y + cold))
@@ -915,18 +1020,28 @@ def _hall_layout(spec: dict, cell, rack_spec: dict | None = None) -> _Layout:
 
     fan = spec["fanwall"]
     fan_width = float(fan["width"])
-    count = int(fan.get("count", len(cold_aisles)))
-    extents = (
-        place_fans(cold_aisles, fan_width, width, cell[1])
-        if count == len(cold_aisles)
-        else distribute_fans(count, fan_width, width, cell[1])
-    )
-    fans = [
-        Panel(f"fan{i + 1}", "fan", axis=0, position=gallery_depth,
-              extent=(extent, (0.0, float(fan["height"]))))
-        for i, extent in enumerate(extents)
-    ]
-    return _Layout(domain, gallery, hall, rows, cold_aisles, hot_aisles, fans, grilles, walls)
+    count = int(fan.get("count", len(cold_aisles) * sides))
+    # The units split evenly between the galleries; an odd count gives the
+    # extra unit to the first, as a real installation does.
+    share = [count // sides + (1 if i < count % sides else 0) for i in range(sides)]
+    fans: list[Panel] = []
+    for side, (gallery, n_units) in enumerate(zip(galleries, share)):
+        if n_units < 1:
+            raise ValueError(f"{count} fan walls cannot be shared between {sides} galleries")
+        extents = (
+            place_fans(cold_aisles, fan_width, width, cell[1])
+            if n_units == len(cold_aisles)
+            else distribute_fans(n_units, fan_width, width, cell[1])
+        )
+        position = gallery.hi[0] if side == 0 else gallery.lo[0]
+        fans += [
+            Panel(f"fan{len(fans) + i + 1}", "fan", axis=0, position=position,
+                  extent=(extent, (0.0, float(fan["height"]))),
+                  sign=1 if side == 0 else -1)
+            for i, extent in enumerate(extents)
+        ]
+    return _Layout(domain, galleries, hall, rows, cold_aisles, hot_aisles,
+                   fans, grilles, walls, spans)
 
 
 def place_fans(aisles: list[tuple[float, float]], width: float, wall: float,
@@ -1017,11 +1132,16 @@ def snap_to_mesh(model: Model) -> Model:
                 for axis, (a0, a1) in zip(p.in_plane_axes, p.extent)
             ),
             p.resistance,
+            p.sign,
         )
         for p in model.panels
     ]
     model.cold_aisles = [snap_band(band) for band in model.cold_aisles]
     model.hot_aisles = [snap_band(band) for band in model.hot_aisles]
+    model.galleries = [snap_box(box) for box in model.galleries]
+    model.hall = snap_box(model.hall)
+    model.domain = snap_box(model.domain)
+    model.blocks = [(snap(lo, 0), snap(hi, 0)) for lo, hi in model.blocks]
     model.ceiling_z = snap(model.ceiling_z, 2)
     return model
 
@@ -1079,6 +1199,7 @@ def check_mesh_alignment(model: Model) -> list[str]:
 PANEL_LABEL = {
     "fan": "fan wall",
     "plenum_opening": "gallery opening",
+    "plenum_opening2": "gallery opening",
     "ceiling": "false ceiling",
     "containment_roofwall": "containment wall",
 }
@@ -1138,8 +1259,7 @@ def grille_loss_coefficient(free_area: float) -> float:
 def summary_rows(model: Model) -> list[tuple[str, str, str]]:
     """The derived numbers, as rows for the page and the CLI.
 
-    User-facing strings are in Portuguese, like the rest of the interface; the
-    code, comments and docs around them stay in English. These are the numbers
+    Everything in the tool is English (ADR-026). These are the numbers
     an engineer checks before committing to a solve -- face areas and the
     velocities they imply -- so they are spelled out rather than left to be
     recomputed from the geometry.
@@ -1149,7 +1269,8 @@ def summary_rows(model: Model) -> list[tuple[str, str, str]]:
     fan = fans[0]
     grilles = [p for p in model.panels if p.name.startswith("grille")]
     grille_area = sum(p.area for p in grilles)
-    plenum = model.panel("plenum_opening")
+    openings = [p for p in model.panels if p.name.startswith("plenum_opening")]
+    plenum = openings[0]
     dx, dy, dz = model.domain.size
 
     def face(panel: Panel) -> str:
@@ -1164,13 +1285,20 @@ def summary_rows(model: Model) -> list[tuple[str, str, str]]:
     return [
         ("Domain", f"{num(dx)} x {num(dy)} x {num(dz)} m", f"{num(model.n_cells, 0)} cells"),
         (
-            "Mechanical gallery",
-            f"{num(model.gallery.size[0])} m deep",
-            f"{num(model.gallery.volume, 1)} m3",
+            "Mechanical gallery"
+            + (f" ({len(model.galleries)})" if len(model.galleries) > 1 else ""),
+            f"{num(model.gallery.size[0])} m deep"
+            + (", one at each end" if len(model.galleries) > 1 else ""),
+            f"{num(sum(g.volume for g in model.galleries), 1)} m3",
         ),
         (
             "Data hall",
-            f"{num(model.hall.size[0])} m long",
+            f"{num(model.hall.size[0])} m long"
+            + (
+                f", rows in {len(model.rack_blocks)} blocks"
+                if len(model.rack_blocks) > 1
+                else ""
+            ),
             f"ceiling at {num(model.ceiling_z)} m",
         ),
         (
@@ -1226,7 +1354,12 @@ def summary_rows(model: Model) -> list[tuple[str, str, str]]:
             f"{num(model.hot_aisle[1] - model.hot_aisle[0])} x {num(model.ceiling_z)} m",
             through(model.chimney_area),
         ),
-        ("Opening to the gallery", face(plenum), through(plenum.area)),
+        (
+            "Opening to the gallery"
+            + (f" ({len(openings)})" if len(openings) > 1 else ""),
+            face(plenum),
+            through(sum(p.area for p in openings)),
+        ),
         (
             "Rack resistance",
             f"{num(model.rack_pressure_drop_pa)} Pa at the supply airflow",
@@ -1319,7 +1452,10 @@ def to_dict(model: Model, spec: dict) -> dict:
         "cells": model.n_cells,
         "domain": {"lo": list(model.domain.lo), "hi": list(model.domain.hi)},
         "gallery": {"lo": list(model.gallery.lo), "hi": list(model.gallery.hi)},
+        "galleries": [{"lo": list(g.lo), "hi": list(g.hi)} for g in model.galleries],
         "hall": {"lo": list(model.hall.lo), "hi": list(model.hall.hi)},
+        "dividers": model.dividers,
+        "blocks": [list(span) for span in model.rack_blocks],
         "ceiling_z": model.ceiling_z,
         "aisles": {
             "cold": list(model.cold_aisle),
@@ -1358,6 +1494,7 @@ def to_dict(model: Model, spec: dict) -> dict:
                 "extent": [list(e) for e in p.extent],
                 "area": round(p.area, 4),
                 "resistance": p.resistance,
+                "sign": p.sign,
             }
             for p in model.panels
         ],

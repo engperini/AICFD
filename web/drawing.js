@@ -77,11 +77,13 @@ export function isLong(model) {
 /** Panels worth naming, seen face-on -- there is room for a full caption. */
 const PANEL_LABEL = {
   plenum_opening: 'opening to gallery',
+  plenum_opening2: 'opening to gallery',
 };
 
 /** The same panels seen edge-on, where the caption has to fit on a line. */
 const EDGE_LABEL = {
   plenum_opening: 'return',
+  plenum_opening2: 'return',
 };
 
 /** A fan wall is named once: seventeen captions reading "fan wall" say less
@@ -109,8 +111,11 @@ function el(tag, attrs = {}, text) {
 /** The plane each section is taken on, chosen to cut the informative thing. */
 function sectionAt(model, view) {
   if (view.normal === 0) {
-    const [lo, hi] = rackSpan(model);
-    return (lo + hi) / 2; // through the middle of the row
+    // Through the middle of a rack block -- not of the whole row, which on a
+    // hall with two blocks is the transverse aisle between them.
+    const blocks = model.blocks?.length ? model.blocks : [rackSpan(model)];
+    const [lo, hi] = blocks[Math.floor(blocks.length / 2)];
+    return (lo + hi) / 2;
   }
   if (view.normal === 1) {
     const hot = hotAisles(model);
@@ -241,8 +246,9 @@ export function drawView(model, view, scale, options = {}) {
   // 1 — volumes. The transverse section looks along x, so gallery and hall
   // project onto the same rectangle; only the one the plane actually passes
   // through belongs on that drawing.
+  const galleries = model.galleries ?? [model.gallery];
   for (const [box, cls] of [
-    [model.gallery, 'dw-gallery'],
+    ...galleries.map((box) => [box, 'dw-gallery']),
     [model.hall, 'dw-hallfill'],
   ]) {
     if (view.normal === 0 && !straddles(box.lo, box.hi, 0, at)) continue;
@@ -308,8 +314,11 @@ export function drawView(model, view, scale, options = {}) {
     );
   }
   if (view.h === 0) {
-    line(X(model.hall.lo[0]), Y(d.hi[view.v]),
-      X(model.hall.lo[0]), Y(d.lo[view.v]), 'dw-divider');
+    // One dividing wall per gallery: the hall's own two x faces when there is
+    // a gallery at each end, the near one alone when there is only one.
+    for (const x of model.dividers ?? [model.hall.lo[0]]) {
+      line(X(x), Y(d.hi[view.v]), X(x), Y(d.lo[view.v]), 'dw-divider');
+    }
   }
 
   // 7 — panels the section sees edge-on. These project to a line, so a
@@ -390,18 +399,25 @@ function annotate(svg, model, view, X, Y, bounds) {
   const cold = coldAisles(model)[0];
   const hot = hotAisles(model)[0];
   const hallMidX = mid([model.hall.lo[0], model.hall.hi[0]]);
-  const galleryMidX = model.gallery.hi[0] / 2;
+  const galleries = model.galleries ?? [model.gallery];
+  const galleryMids = galleries.map((box) => mid([box.lo[0], box.hi[0]]));
 
   if (view.id === 'section-a') {
     put([hallMidX, mid(cold), 0.45], 'cold aisle', 'dw-note dw-cold-t');
     put([hallMidX, mid(hot), model.ceiling_z - 1.1], 'chimney', 'dw-note dw-hot-t');
   }
   if (view.id === 'section-b') {
-    put([galleryMidX, 0, model.domain.hi[2] - 0.55], 'mechanical gallery');
-    put([hallMidX, 0, model.ceiling_z + 0.6], 'return plenum', 'dw-note dw-hot-t');
+    for (const x of galleryMids) {
+      put([x, 0, model.domain.hi[2] - 0.55], 'mechanical gallery');
+    }
+    // The plenum is one volume however many galleries feed from it -- saying
+    // so on the drawing is the whole point of the double-gallery layout.
+    put([hallMidX, 0, model.ceiling_z + 0.6],
+      galleries.length > 1 ? 'return plenum (shared)' : 'return plenum',
+      'dw-note dw-hot-t');
   }
   if (view.id === 'plan') {
-    put([galleryMidX, model.domain.hi[1] - 0.35, 0], 'gallery');
+    for (const x of galleryMids) put([x, model.domain.hi[1] - 0.35, 0], 'gallery');
     put([hallMidX, mid(cold), 0], 'cold aisle', 'dw-note dw-cold-t');
   }
 }

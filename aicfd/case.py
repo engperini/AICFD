@@ -227,14 +227,24 @@ def wall_plan(model: Model) -> list[tuple[str, list[Panel], list[Panel]]]:
     """(zone name, the surfaces in it, the panels that are holes in them)."""
     plan: list[tuple[str, list[Panel], list[Panel]]] = []
 
-    divider = Panel(
-        "divider",
-        "wall",
-        axis=0,
-        position=model.hall.lo[0],
-        extent=((0.0, model.domain.hi[1]), (0.0, model.domain.hi[2])),
-    )
-    plan.append(("divider", [divider], [*model.fans, model.panel("plenum_opening")]))
+    # One dividing wall per mechanical gallery, each pierced by its own units
+    # and by its own opening into the (single) return plenum.
+    for i, x in enumerate(model.dividers):
+        name = "divider" if i == 0 else f"divider{i + 1}"
+        divider = Panel(
+            name,
+            "wall",
+            axis=0,
+            position=x,
+            extent=((0.0, model.domain.hi[1]), (0.0, model.domain.hi[2])),
+        )
+        holes = [
+            p
+            for p in model.panels
+            if (p.kind == "fan" or p.name.startswith("plenum_opening"))
+            and abs(p.position - x) < 1e-6
+        ]
+        plan.append((name, [divider], holes))
 
     grilles = [p for p in model.panels if p.name.startswith("grille")]
     plan.append(("forro", [model.panel("ceiling")], grilles))
@@ -476,25 +486,8 @@ def _fan_baffle(model: Model, fan: Panel, k: float, epsilon: float) -> str:
     # Each unit moves its share of the total, set by mass (see below).
     mass_flow = model.unit_airflow_m3h / 3600.0 * supply_density(model)
     intake, supply = f"{fan.name}Intake", f"{fan.name}Supply"
-    return f"""    {fan.name}
-    {{
-        // Where the loop is cut. Same faces, two patches: air leaves
-        // the gallery through {intake} and comes back into the cold aisle
-        // through {supply} at {model.supply_temp_c:g} degC. That is the fan
-        // wall, without modelling a single blade.
-        //
-        // Both sides are set by *mass* flow. Volume would not do: the air
-        // leaving is warmer and thinner than the air arriving, and in a loop
-        // with nowhere to store the difference a 1% mismatch has no way out.
-        type        faceZone;
-        zoneName    {fan.name};
-        patches
-        {{
-            master
-            {{
-                name    {intake};
-                type    patch;
-                patchFields
+
+    intake_fields = f"""                patchFields
                 {{
                     // A fan draws its duty whatever the gallery is doing.
                     // pressureInletOutletVelocity here let 3.9 kg/s blow back
@@ -522,13 +515,9 @@ def _fan_baffle(model: Model, fan: Panel, k: float, epsilon: float) -> str:
                     epsilon {{ type zeroGradient; }}
                     nut     {{ type calculated; value uniform 0; }}
                     alphat  {{ type calculated; value uniform 0; }}
-                }}
-            }}
-            slave
-            {{
-                name    {supply};
-                type    patch;
-                patchFields
+                }}"""
+
+    supply_fields = f"""                patchFields
                 {{
                     // {model.unit_airflow_m3h:,.0f} m3/h at {model.supply_temp_c:g} degC is
                     // {mass_flow:.4g} kg/s through {fan.area:.2f} m2,
@@ -543,8 +532,48 @@ def _fan_baffle(model: Model, fan: Panel, k: float, epsilon: float) -> str:
                     epsilon {{ type fixedValue; value uniform {epsilon:.4g}; }}
                     nut     {{ type calculated; value uniform 0; }}
                     alphat  {{ type calculated; value uniform 0; }}
-                }}
-            }}
+                }}"""
+
+    # createBaffles hands the master patch to the face's owner cell, which for
+    # an x-normal face of a blockMesh box is the cell at lower x. A gallery at
+    # lower x than the hall (sign +1) therefore owns its units' faces and the
+    # master is the intake; a gallery at the far end of the hall (sign -1) is
+    # at higher x, the owner is the hall cell, and the two swap. Naming them
+    # without swapping the conditions would build a unit that supplies into
+    # its own return -- and it would still read as converged.
+    side = "the gallery is at lower x" if fan.sign > 0 else "the gallery is at higher x"
+    pairs = (
+        ((intake, intake_fields), (supply, supply_fields))
+        if fan.sign > 0
+        else ((supply, supply_fields), (intake, intake_fields))
+    )
+    halves = "\n".join(
+        f"""            {role}
+            {{
+                name    {name};
+                type    patch;
+{fields}
+            }}"""
+        for role, (name, fields) in zip(("master", "slave"), pairs)
+    )
+
+    return f"""    {fan.name}
+    {{
+        // Where the loop is cut. Same faces, two patches: air leaves
+        // the gallery through {intake} and comes back into the cold aisle
+        // through {supply} at {model.supply_temp_c:g} degC. That is the fan
+        // wall, without modelling a single blade.
+        //
+        // Both sides are set by *mass* flow. Volume would not do: the air
+        // leaving is warmer and thinner than the air arriving, and in a loop
+        // with nowhere to store the difference a 1% mismatch has no way out.
+        //
+        // master is {intake if fan.sign > 0 else supply} here because {side}.
+        type        faceZone;
+        zoneName    {fan.name};
+        patches
+        {{
+{halves}
         }}
     }}"""
 
@@ -586,11 +615,15 @@ def check_fan_orientation(case_dir: str | Path, model: Model | None = None) -> l
     from aicfd.foam.polymesh import patch_normal
 
     pairs = fan_patches(model) if model is not None else [(FAN_INTAKE, FAN_SUPPLY)]
+    signs = [fan.sign for fan in model.fans] if model is not None else [1]
     problems = []
-    for intake, supply in pairs:
+    for (intake, supply), sign in zip(pairs, signs):
+        # The intake faces away from the hall, so its outward normal points
+        # along +x for a gallery at lower x and along -x for one at the far
+        # end; the supply is the other way round.
         for patch, expected, side in (
-            (intake, 1.0, "mechanical gallery"),
-            (supply, -1.0, "data hall"),
+            (intake, float(sign), "mechanical gallery"),
+            (supply, -float(sign), "data hall"),
         ):
             normal = patch_normal(case_dir, patch)
             if normal[0] * expected < 0.5:
@@ -829,11 +862,17 @@ def warm_start(model: Model) -> str:
     supply_k = model.supply_temp_c + KELVIN
     warm_k = supply_k + min(max(model.design_delta_t_k, 1.0), 25.0)
 
-    row_lo, row_hi = model.rack_span()
-    gallery_x = model.gallery.hi[0]
+    blocks = model.rack_blocks
+    galleries = [(g.lo[0], g.hi[0]) for g in model.galleries]
 
     def in_hot_aisle(y: float) -> bool:
         return any(lo <= y <= hi for lo, hi in model.hot_aisles)
+
+    def in_gallery(x: float) -> bool:
+        return any(lo <= x <= hi for lo, hi in galleries)
+
+    def over_racks(x: float) -> bool:
+        return any(lo <= x <= hi for lo, hi in blocks)
 
     hot_rows = [in_hot_aisle((j + 0.5) * cy) for j in range(ny)]
     values = []
@@ -843,9 +882,9 @@ def warm_start(model: Model) -> str:
             for i in range(nx):
                 x = (i + 0.5) * cx
                 downstream = (
-                    x < gallery_x  # the gallery carries return air
+                    in_gallery(x)  # every gallery carries return air
                     or z > model.ceiling_z  # the plenum above the false ceiling
-                    or (hot_rows[j] and row_lo <= x <= row_hi)
+                    or (hot_rows[j] and over_racks(x))
                 )
                 values.append(warm_k if downstream else supply_k)
 
@@ -983,7 +1022,7 @@ def summary(model: Model) -> str:
     dx, dy, dz = model.domain.size
     k, epsilon = turbulence_initial_values(model)
     lines = [
-        f"POD '{model.name}'",
+        f"Case '{model.name}'",
         f"  Domain          {dx:g} x {dy:g} x {dz:g} m",
         f"  Mesh            {'x'.join(str(n) for n in model.divisions)} "
         f"= {model.n_cells:,} cells ("

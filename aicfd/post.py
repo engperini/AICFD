@@ -1078,7 +1078,7 @@ def _drift_line(kpis: dict) -> str:
 def report(results: PodResults) -> str:
     k = results.kpis
     lines = [
-        f"POD '{results.case_name}' at iteration {results.time}",
+        f"Case '{results.case_name}' at iteration {results.time}",
         "",
         f"  Fan wall        {k['supply_m3h']:,.0f} m3/h "
         f"({k['supply_kg_s']:.3f} kg/s) at {k['supply_temp_c']:.1f} degC",

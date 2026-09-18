@@ -42,6 +42,14 @@ Both are the same geometry code (ADR-022); the spec's shape picks the layout.
   the edge, and `fanwall.count` units spread along the gallery wall.
   `cases/hall-10mw.yaml`.
 
+A long hall takes two more inputs, both optional (ADR-027):
+`gallery.sides: 2` puts a mechanical gallery at each end and splits
+`fanwall.count` between them; `racks.blocks: 2` cuts every row into blocks
+separated by `aisles.transverse`, each its own contained volume, each fed by
+the gallery at its end. The **return plenum stays single** and opens into both
+galleries — say so when explaining the layout, because it is the reason the
+arrangement is used. `cases/hall-double-gallery.yaml` is the worked case.
+
 Start from the worked case that matches and change numbers:
 `aicfd new <name> --from hall-10mw` copies it with every comment and datasheet
 reference intact. Do not write a spec from memory.
@@ -118,7 +126,25 @@ legitimate study (ADR-023).
   temperature by kelvins (ADR-023).
 - `mesh.cell_size` may be `[x, y, z]` (ADR-021). Keep z fine enough that the
   false ceiling, the fan wall top and the rack tops land on cell faces. The
-  model warns when a plane does not, and snaps it.
+  model warns when a plane does not, and snaps it. On a hall with blocks, keep
+  `aisles.perimeter` and `aisles.transverse` on the x cell too, or every block
+  edge is snapped by up to half a cell.
+
+## What the tool cannot yet be asked
+
+A user who has seen a consultant's CFD report will ask for these. Say plainly
+that they are not modelled rather than approximating them, and point at
+`docs/reference-report-parameters.md`, which compares AICFD line by line
+against one such study of a real hall:
+
+- **a failure case** (units out of service, N+2 against N) -- one scenario per
+  run today;
+- **the capacity a coil actually has** at the return temperature the room
+  produces, as opposed to its catalogue rating at the selection point. This is
+  the number that decides whether a plant has reserve, and `fan_capacity`
+  today is a pressure check, not this;
+- **a per-rack load map**, including unloaded positions;
+- **PDU or other ancillary heat** outside the racks.
 
 ## Rules
 

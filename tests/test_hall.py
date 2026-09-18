@@ -349,3 +349,168 @@ class RackReadingTest(unittest.TestCase):
 
 if __name__ == "__main__":
     unittest.main()
+
+
+DOUBLE = yaml.safe_load(
+    """
+name: d
+gallery: {depth: 3.0, sides: 2}
+hall: {height: 8.0, ceiling: 6.5}
+pods: 3
+aisles: {cold: 1.8, hot: 1.2, perimeter: 1.8, transverse: 2.4}
+racks: {per_row: 4, blocks: 2, load_kw: 13.0, size: [0.6, 1.2, 2.25]}
+fanwall: {count: 6, width: 3.6, height: 4.0, airflow_m3h: 20000,
+          supply_temp_c: 20.0, static_pressure_pa: 100}
+grilles: {size: 0.6, loss_coefficient: 2.4, free_area: 0.8}
+containment: {enabled: true}
+mesh: {cell_size: [0.6, 0.3, 0.25]}
+"""
+)
+
+
+class DoubleGalleryTest(unittest.TestCase):
+    """A gallery at each end of the hall and rows cut into blocks (ADR-027).
+
+    The thing being defended is that the second gallery is a *mirror* and not
+    a special case: the same walls, the same openings, one plenum shared by
+    both, and a baffle pair whose intake still faces the gallery even though
+    the gallery is now on the other side of it.
+    """
+
+    def setUp(self):
+        self.model = M.build_model(copy.deepcopy(DOUBLE))
+
+    def test_two_galleries_at_the_two_ends(self):
+        m = self.model
+        self.assertEqual(len(m.galleries), 2)
+        self.assertAlmostEqual(m.galleries[0].hi[0], m.hall.lo[0])
+        self.assertAlmostEqual(m.galleries[1].lo[0], m.hall.hi[0])
+        self.assertAlmostEqual(m.galleries[1].hi[0], m.domain.hi[0])
+        self.assertEqual(m.dividers, [m.hall.lo[0], m.hall.hi[0]])
+        # the length is gallery + perimeter + two blocks + transverse +
+        # perimeter + gallery
+        self.assertAlmostEqual(
+            m.domain.size[0], 3.0 + 1.8 + 2 * 4 * 0.6 + 2.4 + 1.8 + 3.0
+        )
+
+    def test_the_plenum_is_one_volume_opening_into_both(self):
+        """The single-plenum rule: the false ceiling covers the whole hall and
+        stops at each gallery, so the volume above it is continuous and every
+        gallery draws from the same air."""
+        m = self.model
+        ceiling = m.panel("ceiling")
+        self.assertAlmostEqual(ceiling.extent[0][0], m.hall.lo[0])
+        self.assertAlmostEqual(ceiling.extent[0][1], m.hall.hi[0])
+        openings = [p for p in m.panels if p.name.startswith("plenum_opening")]
+        self.assertEqual(len(openings), 2)
+        for opening, x in zip(openings, m.dividers):
+            self.assertAlmostEqual(opening.position, x)
+            self.assertAlmostEqual(opening.extent[1][0], m.ceiling_z)
+            self.assertAlmostEqual(opening.extent[0][1], m.domain.hi[1])
+
+    def test_units_split_between_the_galleries(self):
+        m = self.model
+        self.assertEqual(len(m.fans), 6)
+        for fan in m.fans[:3]:
+            self.assertAlmostEqual(fan.position, m.hall.lo[0])
+            self.assertEqual(fan.sign, 1)
+        for fan in m.fans[3:]:
+            self.assertAlmostEqual(fan.position, m.hall.hi[0])
+            self.assertEqual(fan.sign, -1)
+        # an odd count gives the extra unit to the first gallery
+        spec = copy.deepcopy(DOUBLE)
+        spec["fanwall"]["count"] = 7
+        odd = M.build_model(spec)
+        low = [f for f in odd.fans if f.sign > 0]
+        self.assertEqual((len(low), len(odd.fans) - len(low)), (4, 3))
+
+    def test_the_far_gallery_swaps_master_and_slave(self):
+        """createBaffles gives the master to the cell at lower x. For the far
+        gallery that cell is in the hall, so the halves swap -- otherwise the
+        unit would supply into its own return and still read as converged."""
+        m = self.model
+        near = case._fan_baffle(m, m.fans[0], 0.1, 0.01)
+        far = case._fan_baffle(m, m.fans[-1], 0.1, 0.01)
+        self.assertIn("master\n            {\n                name    fan1Intake;", near)
+        self.assertIn("slave\n            {\n                name    fan1Supply;", near)
+        self.assertIn("master\n            {\n                name    fan6Supply;", far)
+        self.assertIn("slave\n            {\n                name    fan6Intake;", far)
+        # and the conditions travel with the name, not with the role
+        self.assertRegex(far, r"(?s)fan6Supply;.*?flowRateInletVelocity")
+        self.assertRegex(far, r"(?s)fan6Intake;.*?flowRateOutletVelocity")
+
+    def test_every_divider_is_its_own_zone_with_its_own_holes(self):
+        plan = dict((zone, (panels, holes)) for zone, panels, holes in
+                    case.wall_plan(self.model))
+        self.assertIn("divider", plan)
+        self.assertIn("divider2", plan)
+        for name, x in (("divider", self.model.hall.lo[0]),
+                        ("divider2", self.model.hall.hi[0])):
+            panels, holes = plan[name]
+            self.assertAlmostEqual(panels[0].position, x)
+            self.assertEqual(len(holes), 4)  # three units and one opening
+            for hole in holes:
+                self.assertAlmostEqual(hole.position, x)
+
+    def test_each_block_is_a_containment_volume_of_its_own(self):
+        m = self.model
+        self.assertEqual(len(m.rack_blocks), 2)
+        # three hot aisles seen in plan, but six contained volumes
+        self.assertEqual(len(m.hot_aisles), 3)
+        doors = [p for p in m.panels if p.name.startswith("containment_door")]
+        self.assertEqual(len(doors), 3 * 2 * 2)  # two ends per volume
+        walls = [p for p in m.panels if p.name.startswith("containment_wall")]
+        self.assertEqual(len(walls), 3 * 2 * 2)  # two sides per volume
+        # the chimney area counts the blocks, not the gap between them
+        block = m.rack_blocks[0]
+        self.assertAlmostEqual(
+            m.chimney_area, 2 * 3 * (block[1] - block[0]) * 1.2
+        )
+
+    def test_rows_and_racks_carry_their_block(self):
+        m = self.model
+        self.assertEqual(len(m.rows), 3 * 2 * 2)
+        self.assertEqual(
+            [r.id for r in m.rows[:4]], ["F1B1", "F2B1", "F1B2", "F2B2"]
+        )
+        self.assertEqual(len(m.racks), 3 * 2 * 2 * 4)
+        self.assertEqual(m.racks[0].id, "F1B1-01")
+        self.assertTrue(all(len(set(r.id for r in m.racks)) == len(m.racks)
+                            for _ in (0,)))
+        # a block's racks sit inside that block's span, facing the same way
+        for row in m.rows:
+            lo = min(r.box.lo[0] for r in row.racks)
+            hi = max(r.box.hi[0] for r in row.racks)
+            self.assertIn((round(lo, 6), round(hi, 6)),
+                          [(round(a, 6), round(b, 6)) for a, b in m.rack_blocks])
+
+    def test_one_grille_strip_per_block_per_hot_aisle(self):
+        grilles = [p for p in self.model.panels if p.name.startswith("grille")]
+        self.assertEqual(len(grilles), 3 * 2)
+        spans = {(round(p.extent[0][0], 6), round(p.extent[0][1], 6)) for p in grilles}
+        self.assertEqual(
+            spans, {(round(a, 6), round(b, 6)) for a, b in self.model.rack_blocks}
+        )
+
+    def test_the_probes_sit_behind_the_units_in_both_galleries(self):
+        m = self.model
+        group = next(g for g in M.sensors(m) if g.name == "fan_back")
+        for x, _y, _z in group.points:
+            self.assertTrue(
+                any(g.lo[0] <= x <= g.hi[0] for g in m.galleries),
+                f"probe at x={x} is in neither gallery",
+            )
+
+    def test_a_single_gallery_hall_is_unchanged(self):
+        """The default is what it always was: one gallery, one block, one
+        opening -- no spec that does not ask for the new layout may move."""
+        m = M.build_model(copy.deepcopy(SPEC))
+        self.assertEqual(len(m.galleries), 1)
+        self.assertEqual(m.dividers, [m.hall.lo[0]])
+        self.assertEqual([r.id for r in m.rows[:2]], ["F1", "F2"])
+        self.assertEqual(m.racks[0].id, "F1-01")
+        self.assertEqual(
+            [p.name for p in m.panels if p.name.startswith("plenum_opening")],
+            ["plenum_opening"],
+        )
+        self.assertTrue(all(fan.sign == 1 for fan in m.fans))

@@ -35,6 +35,7 @@ const SECTIONS = [
       { key: 'hall_height', label: 'Floor to slab', unit: 'm', step: 0.1 },
       { key: 'ceiling', label: 'False ceiling height', unit: 'm', step: 0.1 },
       { key: 'gallery_depth', label: 'Mechanical gallery depth', unit: 'm', step: 0.1 },
+      { key: 'gallery_sides', label: 'Galleries (1, or 2 = one at each end)', unit: '', step: 1, optional: true },
     ],
   },
   {
@@ -43,13 +44,15 @@ const SECTIONS = [
       { key: 'cold_aisle', label: 'Cold aisle', unit: 'm', step: 0.1 },
       { key: 'hot_aisle', label: 'Hot aisle (contained)', unit: 'm', step: 0.1 },
       { key: 'perimeter', label: 'Perimeter clearance', unit: 'm', step: 0.1, optional: true },
+      { key: 'transverse', label: 'Transverse aisle between rack blocks', unit: 'm', step: 0.1, optional: true },
     ],
   },
   {
     title: 'Racks',
     params: [
       { key: 'rack_count', label: 'Racks in the row', unit: '', step: 1 },
-      { key: 'racks_per_row', label: 'Racks per row', unit: '', step: 1 },
+      { key: 'racks_per_row', label: 'Racks per row, per block', unit: '', step: 1 },
+      { key: 'rack_blocks', label: 'Blocks each row is cut into', unit: '', step: 1, optional: true },
       { key: 'rack_load_kw', label: 'Load per rack', unit: 'kW', step: 0.5 },
       { key: 'rack_size', label: 'Rack size (w, d, h)', unit: 'm', text: true },
       { key: 'rack_offset_x', label: 'Row offset from the gallery', unit: 'm', step: 0.1 },
