@@ -108,10 +108,6 @@ FoamFile
 """
 
 
-#: Where the probes functionObject writes, and so where podpost reads.
-SENSOR_DIR = "sensores"
-
-
 def build(model: Model, destination: str | Path, max_iterations: int = 400,
           residual_tolerance: float = 1.0e-4, sensor_interval: int = 100,
           warm_start_field: bool = True, processors: int = 1) -> Path:
