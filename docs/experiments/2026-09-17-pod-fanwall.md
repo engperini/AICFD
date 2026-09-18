@@ -280,12 +280,87 @@ literally the same geometry. And going *coarser* and finding the same answer is
 good evidence, not a refinement study: it shows the solution is not an artefact
 of this particular grid, not that the grid is fine enough to have converged.
 
+## Datasheets in, and the coarse grid becomes the default
+
+Two things the model was still inventing came from datasheets: the return
+grilles and the fan wall's capacity.
+
+**Grilles.** A Koolair série 20.2 return grille (the 600 × 600 ceiling module
+the case now uses) lists 4,1 Pa at a core velocity of 2,1 m/s, with a factor
+of 0,81 for ceiling mounting and about 80% free area. On the gross face
+velocity that is a loss coefficient K ≈ 2,4. Each grille is now a cyclic
+baffle pair with `porousBafflePressure` on `p_rgh` — the OpenFOAM way to put
+a pressure jump ½·K·ρ·U² on an internal face without giving it thickness —
+and `grille_resistance` compares the jump the field produces with the jump the
+K asks for at the fan's flow, the same way `rack_resistance` does for the
+racks. A K derived from the free area alone (Idelchik's thin-plate formula) is
+the fallback when a datasheet gives no pressure figure.
+
+**Fan wall.** The 100 Pa on the datasheet is the static pressure available at
+the rated 5 000 m³/h. `fan_capacity` compares the POD's cost with it; with a
+curve given, the same check also reports where an uncontrolled fan would
+settle against the POD's system curve (Q² through the solved operating point).
+The curve in the case is representative, marked to be replaced — the
+datasheet's actual P–Q table goes into `fanwall.curve` when it is transcribed.
+The EC arrays in the guides run closed-loop on flow or pressure, which is why
+the boundary condition is a fixed mass flow and not the curve.
+
+**Grid.** Cells are now per axis: 0,20 m in plan and 0,10 m in height, 75 600
+cells. The 0,10 m vertical step puts the false ceiling at exactly 6,50 m, which
+the uniform 0,20 m grid could not; the plan step keeps the run at seven and a
+half minutes. This is the grid `cases/pod-fanwall.yaml` ships with and the one
+`results/pod-fanwall` is exported from. The fine 0,10 m run stays on disk as
+`runs/pod-fine-reference`.
+
+At 2 000 iterations (457 s), warm-started, with h relaxed at 0,7, **all eleven
+checks pass**:
+
+```
+Fan wall        5 000 m³/h (1,672 kg/s) at 20,0 °C
+Return air      30,7 °C (dT 10,7 K)
+Heat carried    17,99 kW of 18,00 kW installed (100%)
+Return path     30,7 -> 30,7 -> 30,7 °C, 0,02 K apart
+
+Fan wall rise   30,0 Pa of the 100 Pa on the datasheet (30%)
+Rack row        25,5 Pa in the field, 25,8 Pa from the curve (99%)
+Return grilles  2,41 Pa in the field, 2,36 Pa from K (102%)
+
+Place                  Temp    dP vs intake    Speed
+Corredor frio          20,0            30,0     0,26
+Corredor quente        30,7             5,0     0,42
+Plenum do forro        30,7            -0,7     0,64
+Costas do fan wall     30,7            -0,0     0,26
+
+Rack              Load    Inlet   Outlet    Rise   ASHRAE
+R1                6,0 kW   20,4     30,7    10,3 K   ok
+R2                6,0 kW   20,6     30,6    10,0 K   ok
+R3                6,0 kW   20,5     30,8    10,3 K   ok
+```
+
+Against the fine reference (0,10 m uniform, open grilles): return air 30,7
+against 30,6 °C; rack drop 25,5 against 26,6 Pa; fan rise 30,0 against 29,0 Pa;
+rack inlets within 0,2 K. The extra pascal on the fan is the grilles: the
+earlier coarse run *without* them cost 28,3 Pa, and 28,3 + 2,4 is within a
+pascal of what the field now gives. The sensors settled from iteration 800 on
+and did not move by more than 0,01 K after 1 000; the seed's only visible
+trace was a plenum 1,2 K cool at iteration 100, gone by 300.
+
+The results page now shows this field as the three drawings the engineer
+checked before the run — transverse section, longitudinal section, plan — with
+temperature, air speed or pressure painted underneath and a slider on each
+cut. The 3-D scene is kept, folded below. Temperature diverges about the
+middle of the ASHRAE recommended band, pressure about the fan intake, speed
+runs light to dark in one hue; the colourbar caption states the field's actual
+range, because a symmetric diverging bar reaches values the air never has.
+
 ## Open
 
-- The ceiling grilles are modelled as fully open holes. A real return grille
-  has a free area around 50% and a loss coefficient, so some of the 71 Pa of
-  headroom against the datasheet is resistance that is simply not in the model
-  yet.
+- The fan curve in `cases/pod-fanwall.yaml` is representative, not the
+  datasheet's. Only the 100 Pa at 5 000 m³/h is a manufacturer figure; the
+  uncontrolled operating point the check reports is therefore indicative until
+  the real P–Q table is transcribed.
+- The grid went coarser and agreed. No run has gone finer than 0,10 m, so
+  there is still no refinement study upward.
 - Nothing here has been compared against a measurement. Every validation is an
   identity the physics must satisfy — mass closes, energy closes, the return
   path is isothermal, the rack resistance matches its own curve. That class of
