@@ -18,19 +18,41 @@ async function main() {
   const caseName = params.get('case') || 'reference-case';
   const root = document.getElementById('root');
 
+  // Yours first, the one shipped with the repository second. A result you
+  // produce shadows the worked one of the same name, which is what keeps
+  // `results/` out of version control and re-running a worked case from
+  // colliding with the copy in the repository (ADR-032).
   let results;
+  let shipped = false;
   try {
     results = await Results.load(`../results/${caseName}/`);
-  } catch (error) {
-    root.innerHTML =
-      `<div class="error"><strong>Could not load case "${caseName}".</strong>` +
-      `<p>${error.message}</p><code>aicfd post ${caseName}</code></div>`;
-    return;
+  } catch (mine) {
+    try {
+      results = await Results.load(`../reference/${caseName}/`);
+      shipped = true;
+    } catch (theirs) {
+      root.innerHTML =
+        `<div class="error"><strong>Could not load case "${caseName}".</strong>` +
+        `<p>${mine.message}</p><p>${theirs.message}</p>` +
+        `<code>aicfd post ${caseName}</code></div>`;
+      return;
+    }
   }
 
   const meta = results.meta;
   document.getElementById('case-name').textContent =
     `${meta.case} · t = ${meta.time} · ${meta.kpis.cells.toLocaleString()} cells`;
+  if (shipped) {
+    const badge = document.createElement('span');
+    badge.className = 'badge';
+    badge.textContent = 'shipped with the repository';
+    badge.title =
+      'This is the worked result the repository carries, not one solved here. '
+      + `Run the case and it is replaced by yours: results/${caseName}/.`;
+    document.querySelector('.topbar').insertBefore(
+      badge, document.getElementById('verdict'),
+    );
+  }
   announceIfSuperseded(caseName);
   const verdict = document.getElementById('verdict');
   verdict.hidden = false;

@@ -168,7 +168,10 @@ against one such study of a real hall:
 cliente, diretoria, or asks for something to send to someone -- it is the form
 every consultancy study of this kind arrives in.
 
-It reads `results/<name>/` only, so `aicfd post` has to have run. `--client`
+It reads the export -- `results/<name>/` if you solved it, `reference/<name>/`
+for a worked case you have not -- so `aicfd post` has to have run for anything
+of your own. The document and its figures are written into `results/<name>/`,
+never into `reference/`, which the tool treats as read-only (ADR-032). `--client`
 and `--author` fill the cover. It needs `python-docx` and `matplotlib`; if
 they are missing the command says so and nothing else in the tool is affected.
 

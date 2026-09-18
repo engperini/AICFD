@@ -16,7 +16,10 @@ import tempfile
 import unittest
 from pathlib import Path
 
-RESULT = Path(__file__).resolve().parents[1] / "results" / "pod-fanwall"
+#: The worked POD's export, tracked under reference/ because it is evidence
+#: rather than an artifact (ADR-032). A result solved locally lands in
+#: results/ and never touches this one.
+RESULT = Path(__file__).resolve().parents[1] / "reference" / "pod-fanwall"
 
 try:  # the report's two extras
     import docx  # noqa: F401

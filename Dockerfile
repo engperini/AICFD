@@ -42,7 +42,7 @@ RUN python3 -m aicfd doctor \
     && python3 -m aicfd build cases/pod-fanwall.yaml --out /tmp/smoke \
     && python3 -m aicfd report pod-fanwall --out /tmp/smoke.docx \
     && python3 -m unittest discover tests \
-    && rm -rf /tmp/smoke /tmp/smoke.docx
+    && rm -rf /tmp/smoke /tmp/smoke.docx results
 
 EXPOSE 8000
 CMD ["python3", "-m", "aicfd", "view", "--port", "8000", "--no-browser"]

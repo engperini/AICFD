@@ -27,6 +27,7 @@ REPO_ROOT = Path(__file__).resolve().parents[1]
 CASES_DIR = REPO_ROOT / "cases"
 RUNS_DIR = REPO_ROOT / "runs"
 RESULTS_DIR = REPO_ROOT / "results"
+REFERENCE_DIR = REPO_ROOT / "reference"
 
 #: Every parameter the page may change, as `key -> (path, caster, limits)`.
 #:
@@ -293,6 +294,40 @@ def spec_differences(before: dict, after: dict, prefix: str = "") -> list[str]:
     return changed
 
 
+def solved_after(name: str, export: Path) -> str | None:
+    """Whether a solve has written fields this export does not know about.
+
+    A run that is killed rather than stopped -- Ctrl+C on the container, a
+    crash, a laptop going to sleep -- leaves solved time directories behind
+    and no export, so `results/` still holds the run before it. Everything
+    else about that export is right, including its spec, so nothing else
+    here can tell that it is out of date.
+
+    Comparing what is on disk can: if a solved time directory is newer than
+    the export, a solve happened that nobody read. This is a file-mtime
+    comparison, so a clock that jumps backwards makes it say nothing; that is
+    the correct failure -- it is an extra warning, not a guarantee.
+    """
+    run = RUNS_DIR / name
+    if not run.is_dir() or not export.is_file():
+        return None
+    written = export.stat().st_mtime
+    newer = [
+        entry.name
+        for entry in run.iterdir()
+        if entry.is_dir() and (entry / "phi").is_file()
+        and (entry / "phi").stat().st_mtime > written + 1
+    ]
+    if not newer:
+        return None
+    latest = max(newer, key=float)
+    return (
+        f"a solve reached iteration {latest} after this was exported, and was "
+        f"never read -- a run that is killed rather than stopped leaves no "
+        f"export. Run 'aicfd post {name}' to read it."
+    )
+
+
 def results_state(name: str, spec: dict) -> dict:
     """What the exported result is, relative to the spec now on screen.
 
@@ -302,7 +337,11 @@ def results_state(name: str, spec: dict) -> dict:
     about it. So the comparison is made here and the page is told what it has
     (ADR-030).
     """
-    path = RESULTS_DIR / name / "viewer.json"
+    own = RESULTS_DIR / name / "viewer.json"
+    shipped = REFERENCE_DIR / name / "viewer.json"
+    # Yours shadows the one in the repository, the same way the page resolves
+    # it (ADR-032).
+    path = own if own.exists() else shipped
     if not path.exists():
         return {"exists": False, "matches": False, "note": "nothing exported yet"}
     try:
@@ -310,16 +349,20 @@ def results_state(name: str, spec: dict) -> dict:
     except (OSError, ValueError, KeyError):
         return {"exists": True, "matches": False,
                 "note": "the exported result could not be read"}
+    where = "" if path == own else "the result shipped with the repository, "
     if not exported:
         return {"exists": True, "matches": False,
-                "note": "exported before AICFD recorded the inputs with a result"}
+                "note": f"{where}exported before AICFD recorded its inputs"}
     changed = spec_differences(exported, spec)
     if not changed:
-        return {"exists": True, "matches": True, "note": ""}
+        behind = solved_after(name, path)
+        if behind:
+            return {"exists": True, "matches": False, "note": behind}
+        return {"exists": True, "matches": True, "note": where.rstrip(", ")}
     listed = ", ".join(changed[:3]) + (f" and {len(changed) - 3} more"
                                        if len(changed) > 3 else "")
     return {"exists": True, "matches": False,
-            "note": f"from different inputs: {listed}"}
+            "note": f"{where}from different inputs: {listed}"}
 
 
 def stop_run(name: str) -> dict:

@@ -248,6 +248,27 @@ function drawViews() {
   views.forEach((view, i) => cells[i].append(drawView(model, view, scale)));
 }
 
+function wireMeshPreset() {
+  const box = document.getElementById('p-cell_size');
+  const preset = document.getElementById('p-cell-preset');
+  const note = document.getElementById('cell-note');
+  if (!box || !preset || !note) return;
+  const refresh = () => {
+    note.textContent = meshNote(box.value);
+    // A typed value that happens to match a preset selects it; anything else
+    // falls back to Custom, so the select never claims something untrue.
+    const match = MESH_PRESETS.find((m) => m.value.join(', ') === box.value.trim());
+    preset.value = match ? match.value.join(', ') : '';
+  };
+  preset.addEventListener('change', () => {
+    if (!preset.value) return;
+    box.value = preset.value;
+    refresh();
+  });
+  box.addEventListener('input', refresh);
+  refresh();
+}
+
 function renderParams() {
   const host = document.getElementById('params');
   host.innerHTML = activeSections()
@@ -260,6 +281,46 @@ function renderParams() {
       </div>`,
     )
     .join('');
+  wireMeshPreset();
+}
+
+/**
+ * Mesh presets, offered beside the cell-size box rather than instead of it.
+ *
+ * The cell size is the one input that decides what a run COSTS, and it is the
+ * hardest to choose by typing: three numbers, and the consequence is a cell
+ * count the engineer cannot do in their head. These are the three the worked
+ * cases use, named by what they resolve, and the note under the box turns
+ * whatever is in it -- preset or typed -- into the number that actually
+ * matters (ADR-033).
+ *
+ * The axes differ on purpose: a rack is wide in x, and the vertical has to
+ * land the false ceiling, the fan wall top and the rack tops on cell faces.
+ */
+const MESH_PRESETS = [
+  { label: 'Conceptual — one rack per cell in plan', value: [0.6, 0.3, 0.25] },
+  { label: 'Standard — half a rack in plan', value: [0.3, 0.3, 0.25] },
+  { label: 'Fine — a quarter rack, for one POD', value: [0.2, 0.2, 0.1] },
+];
+
+/** Cells the domain would hold at this cell size, and what that costs. */
+function meshNote(text) {
+  const cell = String(text).split(/[,\s]+/).map(Number).filter((v) => v > 0);
+  const d = model.domain;
+  if (!d || (cell.length !== 1 && cell.length !== 3)) return '';
+  const size = [0, 1, 2].map((a) => d.hi[a] - d.lo[a]);
+  const each = [0, 1, 2].map((a) => Math.ceil(size[a] / (cell[cell.length === 1 ? 0 : a])));
+  const cells = each[0] * each[1] * each[2];
+  // Anchored on the worked cases: 275,400 cells settled in about 7 minutes on
+  // 4 cores, and cost rises faster than the cell count because a finer mesh
+  // also needs more iterations. Deliberately vague -- it is an order of
+  // magnitude, and saying so is the point.
+  const minutes = (cells / 275400) ** 1.3 * 7;
+  const cost =
+    minutes < 2 ? 'a couple of minutes'
+      : minutes < 90 ? `roughly ${Math.round(minutes)} min on 4 cores`
+        : `hours — ${Math.round(minutes / 60)} h or so on 4 cores`;
+  return `${each.join(' × ')} = ${cells.toLocaleString('en-US')} cells · ${cost}`;
 }
 
 function inputHtml(p) {
@@ -270,13 +331,36 @@ function inputHtml(p) {
       <input type="checkbox" id="p-${p.key}" ${value === false ? '' : 'checked'} />
     </div>`;
   }
+  const field = `<input type="${p.text ? 'text' : 'number'}" id="p-${p.key}"
+           step="${p.step ?? 'any'}" value="${formatValue(value)}" />`;
+  if (p.key !== 'cell_size') {
+    return `<div class="param">
+      <label for="p-${p.key}">${p.label}${
+        p.unit ? ` <span class="unit">${p.unit}</span>` : ''
+      }</label>
+      ${field}
+    </div>`;
+  }
+  const current = formatValue(value);
+  const options = MESH_PRESETS.map((preset) => {
+    const text = preset.value.join(', ');
+    return `<option value="${text}" ${text === current ? 'selected' : ''}>${
+      preset.label
+    }</option>`;
+  }).join('');
   return `<div class="param">
-    <label for="p-${p.key}">${p.label}${
-      p.unit ? ` <span class="unit">${p.unit}</span>` : ''
-    }</label>
-    <input type="${p.text ? 'text' : 'number'}" id="p-${p.key}"
-           step="${p.step ?? 'any'}" value="${formatValue(value)}" />
-  </div>`;
+      <label for="p-${p.key}">${p.label}${
+        p.unit ? ` <span class="unit">${p.unit}</span>` : ''
+      }</label>
+      ${field}
+    </div>
+    <div class="param param-wide">
+      <select id="p-cell-preset">
+        <option value="">Custom — type the three values above</option>
+        ${options}
+      </select>
+    </div>
+    <p class="param-note" id="cell-note">${meshNote(current)}</p>`;
 }
 
 /** A list in the spec (an anisotropic cell) shows as "0.2, 0.2, 0.1". */

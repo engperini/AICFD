@@ -38,10 +38,13 @@ Two pages, and they take the case differently:
 | | address | |
 |---|---|---|
 | **model** | `http://localhost:8000/web/` | the spec and the geometry it implies, before any solve. The case is the one the server was started with, because this page asks the server for it — `docker compose up` opens `hall-double-gallery`; change the line in `docker-compose.yml`, or run `aicfd view --case <name>`. |
-| **results** | `http://localhost:8000/web/results.html?case=hall-double-gallery` | a solved result. This page is static and resolves `?case=` against `results/` itself, so any name with an export works: `hall-double-gallery`, `hall-10mw`, `pod-fanwall`. |
+| **results** | `http://localhost:8000/web/results.html?case=hall-double-gallery` | a solved result. This page is static: it resolves `?case=` against `results/` first and `reference/` second, so any name with an export works — `hall-double-gallery`, `hall-10mw`, `pod-fanwall`. |
 
-The three worked results ship with the clone, so the results page has something
-to show before you have solved anything.
+**Your results shadow the shipped ones.** The three worked results are tracked
+under `reference/` and the tool never writes there; anything you solve goes to
+`results/`, which is not tracked (ADR-032). So the page has something to show
+the moment you clone, re-running a worked case can never collide with the copy
+in the repository, and `git pull` does not fight your own runs.
 
 The build is not just an install: it runs `doctor`, generates a case from a
 spec, produces a Word report and runs the 208 unit tests **inside the image, on
@@ -245,7 +248,10 @@ web/
   colormaps.js perceptual ramps and the banded scale
   data.js  convergence.js  app.js  results.js
 cases/         the worked case specs, commented line by line
-results/       exported results: viewer.json, fields.bin, report.md
+reference/     the three worked results, tracked: the evidence the README and
+               the ADRs cite. The tool never writes here
+results/       what YOU solve -- viewer.json, fields.bin, report.md, the Word
+               report -- and what the page prefers. Not tracked
 docs/
   DECISIONS.md the numbered decision record (ADR-001 onwards) -- why, not what
   ROADMAP.md   what exists, what is next, what is deliberately not done

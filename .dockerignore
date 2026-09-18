@@ -1,7 +1,9 @@
-# Not the clone's history, the local venv, or solver scratch. `results/` IS
-# copied in: the three worked results are what the page shows on first run, so
-# a fresh container has something to look at without solving anything first.
+# Not the clone's history, the local venv, or anything the tool generates.
+# `reference/` IS copied in: the three worked results are what the page shows
+# on first run, so a fresh container has something to look at without solving
+# anything first (ADR-032).
 .git
 .venv
 runs
+results
 __pycache__

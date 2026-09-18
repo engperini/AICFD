@@ -7,6 +7,7 @@ into a state the generator has never seen. These check the gate holds.
 from __future__ import annotations
 
 import unittest
+from pathlib import Path
 
 from aicfd import server
 
@@ -131,3 +132,85 @@ class SolverAvailabilityTest(unittest.TestCase):
 
 if __name__ == "__main__":
     unittest.main()
+
+
+class ResultsStateTest(unittest.TestCase):
+    """What the page is told about the export it is offering a link to.
+
+    Found by a user on their first run: the link opened a superseded result
+    under the current case's name and said nothing about it. These are the
+    four things the page has to be able to distinguish (ADR-030, ADR-032).
+    """
+
+    def setUp(self):
+        import tempfile
+
+        from aicfd import server
+
+        self.tmp = tempfile.TemporaryDirectory()
+        root = Path(self.tmp.name)
+        self.server = server
+        self.saved = (server.RESULTS_DIR, server.REFERENCE_DIR, server.RUNS_DIR)
+        server.RESULTS_DIR = root / "results"
+        server.REFERENCE_DIR = root / "reference"
+        server.RUNS_DIR = root / "runs"
+        self.spec = {"name": "c", "racks": {"load_kw": 12.0, "count": 3}}
+
+    def tearDown(self):
+        (self.server.RESULTS_DIR, self.server.REFERENCE_DIR,
+         self.server.RUNS_DIR) = self.saved
+        self.tmp.cleanup()
+
+    def _export(self, base, spec, name="c"):
+        import json
+
+        out = base / name
+        out.mkdir(parents=True)
+        (out / "viewer.json").write_text(json.dumps({"model": {"spec": spec}}))
+        return out / "viewer.json"
+
+    def test_nothing_exported(self):
+        state = self.server.results_state("c", self.spec)
+        self.assertFalse(state["exists"])
+
+    def test_the_shipped_result_is_named_as_such(self):
+        self._export(self.server.REFERENCE_DIR, self.spec)
+        state = self.server.results_state("c", self.spec)
+        self.assertTrue(state["exists"])
+        self.assertTrue(state["matches"])
+        self.assertIn("shipped with the repository", state["note"])
+
+    def test_your_own_result_shadows_the_shipped_one(self):
+        self._export(self.server.REFERENCE_DIR, {"name": "other"})
+        self._export(self.server.RESULTS_DIR, self.spec)
+        state = self.server.results_state("c", self.spec)
+        self.assertTrue(state["matches"])
+        self.assertEqual(state["note"], "")
+
+    def test_different_inputs_are_named(self):
+        import copy
+
+        older = copy.deepcopy(self.spec)
+        older["racks"]["load_kw"] = 8.0
+        self._export(self.server.RESULTS_DIR, older)
+        state = self.server.results_state("c", self.spec)
+        self.assertFalse(state["matches"])
+        self.assertIn("racks.load_kw", state["note"])
+
+    def test_a_killed_run_leaves_a_solve_nobody_read(self):
+        """Ctrl+C on the container writes fields and no export. Everything
+        about the export is still right, including its spec -- only the
+        clock says a solve happened after it."""
+        import os
+        import time
+
+        export = self._export(self.server.RESULTS_DIR, self.spec)
+        step = self.server.RUNS_DIR / "c" / "700"
+        step.mkdir(parents=True)
+        (step / "phi").write_text("")
+        later = time.time() + 60
+        os.utime(step / "phi", (later, later))
+        state = self.server.results_state("c", self.spec)
+        self.assertFalse(state["matches"])
+        self.assertIn("iteration 700", state["note"])
+        self.assertIn("aicfd post c", state["note"])

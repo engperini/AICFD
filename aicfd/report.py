@@ -182,8 +182,13 @@ def build(results_dir: str | Path, out_path: str | Path,
     from docx.shared import Cm, Pt
 
     export = Export(results_dir)
-    figures = Path(results_dir) / "figures"
-    figures.mkdir(exist_ok=True)
+    # The figures belong to the document, not to the export they were read
+    # from: writing them beside the source would have this command modify a
+    # result -- and, once the worked results moved to `reference/`, modify a
+    # file the repository tracks (ADR-032).
+    out = Path(out_path)
+    figures = out.parent / "figures"
+    figures.mkdir(parents=True, exist_ok=True)
     drawn = _draw(export, figures)
 
     doc = docx.Document()
@@ -210,8 +215,6 @@ def build(results_dir: str | Path, out_path: str | Path,
     _conclusions(doc, export)
     _limits(doc, export)
 
-    out = Path(out_path)
-    out.parent.mkdir(parents=True, exist_ok=True)
     doc.save(str(out))
     return out
 

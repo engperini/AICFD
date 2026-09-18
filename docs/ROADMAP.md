@@ -29,7 +29,10 @@ the remaining gap.
    drives the same CLI a person drives, so anything it does can be redone by
    hand and audited afterwards (ADR-003, ADR-006).
 4. **Every result is reproducible from one file.** A case is fully described by
-   its spec; `runs/` is a build artifact and is not tracked.
+   its spec; `runs/` and `results/` are build artifacts and are not tracked.
+   The three worked results live in `reference/`, which the tool never writes
+   to, so reproducing one cannot collide with the copy in the repository
+   (ADR-032).
 5. **Physical validation is mandatory.** Eleven identities the physics has to
    satisfy, printed on every run. A run that fails them is reported as failed
    even when the solver exits 0 (ADR-018).

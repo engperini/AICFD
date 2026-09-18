@@ -28,6 +28,18 @@ from pathlib import Path
 REPO_ROOT = Path(__file__).resolve().parents[1]
 RUNS_DIR = REPO_ROOT / "runs"
 RESULTS_DIR = REPO_ROOT / "results"
+#: The three worked results, tracked because they are evidence rather than
+#: artifacts. The tool never writes here: a result you produce goes to
+#: `results/` and shadows the one shipped (ADR-032).
+REFERENCE_DIR = REPO_ROOT / "reference"
+
+
+def find_result(name: str) -> Path | None:
+    """Where this case's export is: yours first, the shipped one otherwise."""
+    for base in (RESULTS_DIR, REFERENCE_DIR):
+        if (base / name / "viewer.json").is_file():
+            return base / name
+    return None
 CASES_DIR = REPO_ROOT / "cases"
 TESTS_DIR = REPO_ROOT / "tests"
 
@@ -396,19 +408,21 @@ def _report(args) -> int:
     """The Word deliverable, built from an exported result and nothing else."""
     from aicfd.report import build
 
-    source = RESULTS_DIR / args.name
-    if not (source / "viewer.json").exists():
+    source = find_result(args.name)
+    if source is None:
         print(
-            f"error: no exported result at {source}. Run 'aicfd post {args.name}' "
-            "first.",
+            f"error: no exported result for '{args.name}' in {RESULTS_DIR} or "
+            f"{REFERENCE_DIR}. Run 'aicfd post {args.name}' first.",
             file=sys.stderr,
         )
         return 1
-    out = Path(args.out) if args.out else source / f"{args.name}.docx"
+    # A report on a shipped result is written beside the clone's own results,
+    # never into reference/, which stays exactly as the repository has it.
+    out = Path(args.out) if args.out else RESULTS_DIR / args.name / f"{args.name}.docx"
     written = build(source, out, client=args.client, author=args.author,
                     title=args.title)
     print(f"Wrote {written}")
-    print(f"Figures in {source / 'figures'}")
+    print(f"Figures in {written.parent / 'figures'}")
     return 0
 
 

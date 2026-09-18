@@ -16,7 +16,9 @@ services:
     command: python3 -m aicfd view --case hall-double-gallery --port 8000 --no-browser
     volumes:
       # Cases, runs and results live on the host so nothing is lost when the
-      # container is recreated.
+      # container is recreated. `reference/` is NOT mounted: the three worked
+      # results are part of the image, and nothing should write over the
+      # copy the repository carries (ADR-032).
       - ./cases:/app/cases
       - ./runs:/app/runs
       - ./results:/app/results

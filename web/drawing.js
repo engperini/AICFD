@@ -15,6 +15,20 @@
 const NS = 'http://www.w3.org/2000/svg';
 const PAD = { left: 88, right: 30, top: 16, bottom: 44 };
 
+/**
+ * The tallest a drawing may be, in px.
+ *
+ * The three views share one scale, so that a metre is the same length in all
+ * of them and a reader can compare across drawings. `sheetScale` takes the
+ * smallest scale that fits every view, which means the most constrained view
+ * sets the size of all of them -- and while these were fixed at 320 and 420 px
+ * the constraint was always the HEIGHT: a 51 x 32 m hall had to fit its plan
+ * into 320 px, so everything was drawn at 10 px/m and the sections came out
+ * 74 px tall. This is now a generous cap that width almost always beats, so
+ * the drawings are as large as the column allows.
+ */
+const MAX_VIEW_HEIGHT = 680;
+
 export const VIEWS = [
   {
     id: 'section-a',
@@ -24,7 +38,7 @@ export const VIEWS = [
     v: 2,
     normal: 0,
     hLabel: 'y (m) — hall width',
-    height: 420,
+    height: MAX_VIEW_HEIGHT,
   },
   {
     id: 'section-b',
@@ -34,7 +48,7 @@ export const VIEWS = [
     v: 2,
     normal: 1,
     hLabel: 'x (m) — mechanical gallery + hall',
-    height: 420,
+    height: MAX_VIEW_HEIGHT,
   },
   {
     id: 'plan',
@@ -44,7 +58,7 @@ export const VIEWS = [
     v: 1,
     normal: 2,
     hLabel: 'x (m)',
-    height: 320,
+    height: MAX_VIEW_HEIGHT,
   },
 ];
 
@@ -63,7 +77,7 @@ export function viewsFor(model) {
       h: 1,
       v: 0,
       hLabel: 'y (m) — hall width',
-      height: Math.max(320, (d.hi[0] - d.lo[0]) * 22),
+      height: MAX_VIEW_HEIGHT,
       long,
     };
   });

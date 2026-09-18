@@ -255,10 +255,12 @@
   .maps-controls .control{display:flex;align-items:center;gap:8px}
   .maps-controls select{font:inherit;font-size:13px;padding:5px 8px;border-radius:7px;
     background:var(--page);color:var(--text-primary);border:1px solid var(--border)}
-  .views.maps{display:grid;grid-template-columns:minmax(0,.58fr) minmax(0,1fr);
+  /* One drawing per row. The three share a scale so a metre is the same
+     length in all of them, which means the narrowest column sets the size of
+     every drawing -- side by side, the transverse section was squeezing the
+     plan down with it. Full width each is bigger for all three. */
+  .views.maps{display:grid;grid-template-columns:1fr;
     gap:1px;background:var(--border)}
-  .views.maps .view:last-child{grid-column:1/-1}
-  .views.maps.long{grid-template-columns:1fr}
   /* --- rack inlets --- */
   .racks-controls{display:flex;align-items:center;gap:14px;flex-wrap:wrap;
     padding:10px 16px;border-bottom:1px solid var(--border)}
@@ -292,7 +294,7 @@
     font-size:12px;font-variant-numeric:tabular-nums;box-shadow:0 4px 14px rgba(0,0,0,.12)}
   details.card > summary{list-style:none}
   details.card > summary::-webkit-details-marker{display:none}
-  @media (max-width:900px){.views.maps{grid-template-columns:1fr}}
+
 </style>
 </head>
 <body>
