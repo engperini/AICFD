@@ -57,7 +57,7 @@ const TARGET_BANDS = 16;
 
 export const FIELDS = {
   temperature: {
-    label: 'Temperatura',
+    label: 'Temperature',
     field: 'T',
     kind: 'diverging',
     units: '°C',
@@ -70,10 +70,10 @@ export const FIELDS = {
         center: (TEMPERATURE_BAND.min + TEMPERATURE_BAND.max) / 2,
       }),
     caption:
-      'Limites ASHRAE na entrada do rack marcados na barra: recomendado 18 a 27 °C, permitido A1 até 32 °C.',
+      'ASHRAE rack-inlet limits are marked on the bar: recommended 18 to 27 °C, allowable A1 to 32 °C.',
   },
   speed: {
-    label: 'Velocidade',
+    label: 'Air speed',
     field: 'speed',
     kind: 'sequential',
     units: 'm/s',
@@ -87,10 +87,10 @@ export const FIELDS = {
         step,
       });
     },
-    caption: 'Ar parado ao lado de um rack é onde o calor acumula.',
+    caption: 'Still air beside a rack is where heat accumulates.',
   },
   pressure: {
-    label: 'Pressão',
+    label: 'Pressure',
     field: 'P',
     kind: 'diverging',
     units: 'Pa',
@@ -103,7 +103,7 @@ export const FIELDS = {
       return new Scale({ kind: 'diverging', min: -half, max: half, center: 0, step });
     },
     caption:
-      'Relativa à tomada do fan wall, sem a coluna hidrostática — o que um manômetro leria.',
+      'Relative to the fan wall intake, with the hydrostatic column removed: what a manometer would read.',
   },
 };
 
@@ -134,7 +134,7 @@ export class FieldMaps {
     this.host.innerHTML = `
       <div class="maps-controls">
         <div class="control">
-          <label for="map-field">Campo</label>
+          <label for="map-field">Field</label>
           <select id="map-field">${Object.entries(FIELDS)
             .filter(([, f]) => this.results.fields[f.field])
             .map(([k, f]) => `<option value="${k}">${f.label}</option>`)
@@ -172,7 +172,7 @@ export class FieldMaps {
         <div class="map-head">
           <div><h3>${view.title}</h3><p class="map-cut" data-role="cut"></p></div>
           <input type="range" data-role="slider" min="${lo + step / 2}" max="${hi - step / 2}"
-                 step="${step}" value="${this.cuts[view.id]}" aria-label="posição do corte" />
+                 step="${step}" value="${this.cuts[view.id]}" aria-label="cut position" />
         </div>
         <div class="map-stage" data-role="stage"></div>`;
       viewsHost.append(cell);
@@ -205,7 +205,7 @@ export class FieldMaps {
     const at = this.cuts[view.id];
     const axisName = 'xyz'[view.normal];
     cell.querySelector('[data-role="cut"]').textContent =
-      `corte em ${axisName} = ${fmt(at, 2)} m`;
+      `cut at ${axisName} = ${fmt(at, 2)} m`;
 
     const { width, height, X, Y } = viewTransform(this.model, view, this.sheet);
     const canvas = document.createElement('canvas');
@@ -340,9 +340,9 @@ export function renderScaleBar({ host, prefix, scale, lut, field, spec }) {
   const over = field.max > high + 1e-9;
   host.querySelector(`#${prefix}-name`).textContent =
     `${spec.label} (${spec.units})` +
-    (scale.step ? ` · faixas de ${fmt(scale.step, spec.decimals)}` : '') +
-    ` · campo de ${fmt(field.min, spec.decimals)} a ${fmt(field.max, spec.decimals)}` +
-    (under || over ? ' (as pontas saturam)' : '');
+    (scale.step ? ` · bands of ${fmt(scale.step, spec.decimals)}` : '') +
+    ` · field from ${fmt(field.min, spec.decimals)} to ${fmt(field.max, spec.decimals)}` +
+    (under || over ? ' (the ends saturate)' : '');
 
   // Label the band edges, thinning them out so nothing collides.
   const edges = bands.length
@@ -374,7 +374,7 @@ export function renderScaleBar({ host, prefix, scale, lut, field, spec }) {
 }
 
 const fmt = (v, places) =>
-  Number(v).toLocaleString('pt-BR', {
+  Number(v).toLocaleString('en-US', {
     minimumFractionDigits: places,
     maximumFractionDigits: places,
   });

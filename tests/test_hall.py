@@ -148,7 +148,7 @@ class LayoutTest(unittest.TestCase):
 
     def test_a_misaligned_rack_height_is_reported_once_not_per_rack(self):
         model = build(racks={**SPEC["racks"], "size": [0.6, 1.2, 2.2]})
-        about_racks = [w for w in model.warnings if "altura dos racks" in w]
+        about_racks = [w for w in model.warnings if "rack height" in w]
         self.assertEqual(len(about_racks), 1)
 
     def test_the_pod_spec_still_builds_one_row(self):

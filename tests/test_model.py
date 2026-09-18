@@ -275,12 +275,12 @@ class DerivedTest(unittest.TestCase):
         """A 0.61 m grille built at 0.60 m has to be quoted at 0.60 m."""
         model = build(grilles={"size": 0.61, "count": 3})
         row = dict((r[0], r[1]) for r in m.summary_rows(model))
-        self.assertIn("0,60", row["Grelhas do forro (3)"])
+        self.assertIn("0.60", row["Return grilles (3)"])
 
     def test_numbers_are_written_the_way_the_interface_reads_them(self):
-        self.assertEqual(m.num(1234.5, 1), "1.234,5")
-        self.assertEqual(m.num(0.19), "0,19")
-        self.assertEqual(m.num(302400, 0), "302.400")
+        self.assertEqual(m.num(1234.5, 1), "1,234.5")
+        self.assertEqual(m.num(0.19), "0.19")
+        self.assertEqual(m.num(302400, 0), "302,400")
 
 
 class SerialisationTest(unittest.TestCase):

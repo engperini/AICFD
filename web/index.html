@@ -1,5 +1,5 @@
 <!doctype html>
-<html lang="pt-BR">
+<html lang="en">
 <head>
 <meta charset="utf-8" />
 <meta name="viewport" content="width=device-width, initial-scale=1" />
@@ -98,7 +98,14 @@
   .swatch{width:11px;height:11px;border-radius:3px;display:inline-block;flex:none}
 
   /* --- form --- */
-  .params{padding:6px 16px 14px}
+  .params{padding:2px 16px 14px}
+  .param-group{padding:10px 0 4px;border-bottom:1px solid var(--border)}
+  .param-group:last-child{border-bottom:none}
+  .param-group-head{display:flex;justify-content:space-between;align-items:baseline;
+    gap:10px;font-size:12px;font-weight:650;letter-spacing:.02em;text-transform:uppercase;
+    color:var(--text-primary);margin-bottom:6px}
+  .param-group-head span{font-size:11.5px;font-weight:400;text-transform:none;
+    letter-spacing:0;color:var(--text-muted);text-align:right}
   .param{display:grid;grid-template-columns:1fr 92px;gap:8px;align-items:center;
     padding:5px 0}
   .param label{color:var(--text-secondary);font-size:12.5px}
@@ -168,7 +175,7 @@
   <span class="case" id="case-name">carregando…</span>
   <span class="badge" id="stage" data-stage="idle">—</span>
   <span class="spacer"></span>
-  <button id="theme-toggle" type="button">Escuro</button>
+  <button id="theme-toggle" type="button">Dark</button>
 </header>
 <div id="root"></div>
 <script type="module" src="./app.js"></script>

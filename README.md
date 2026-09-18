@@ -55,7 +55,13 @@ documented end to end in `docs/experiments/`:
 | `pod-fanwall.yaml` | one row of 3 racks, 18 kW, one fan wall | 75 600 cells | 8 min, 1 core |
 | `hall-10mw.yaml` | 16 PODs, 768 racks, 9,98 MW, 35 fan walls | 329 280 cells | 11 min, 4 cores |
 
-`aicfd new <name>` writes a starter spec with every field commented.
+Start a study from one of them rather than from a blank file:
+
+```bash
+python3 -m aicfd new my-hall --from hall-10mw   # a copy, comments and all
+python3 -m aicfd new my-pod                     # the commented blank POD
+python3 -m aicfd view --case my-hall            # fill it in on the page
+```
 
 ## 3. What the tool actually does
 
@@ -120,13 +126,18 @@ POD at 0,20 m cells for that.
 
 ## 5. Reading the page
 
-`aicfd view` serves two pages, both in Portuguese (the code and the docs are in
-English; the interface is not):
+`aicfd view` serves two pages. Everything in the software is in English
+(ADR-026).
 
-- **Model page** — the derived geometry as plan and two sections, the numbers
-  it implies (face velocities, pressure drops, HVAC sizing), the mesh-snapping
-  warnings, and a Run button. This is where a mistake is caught *before* paying
-  for a solve.
+- **Model page** — the input template on the right and what it implies on the
+  left. The template is every field of the spec, grouped the way an engineer
+  thinks about a hall: site, room, aisles and clearances, racks, fan walls,
+  return grilles and containment, mesh and solver. Only the fields the loaded
+  spec carries are shown, so a POD cannot be edited into a hall by accident.
+  Beside it: the geometry as plan and two sections, the derived numbers (face
+  velocities, pressure drops, HVAC sizing against load and CFM/kW), the
+  mesh-snapping warnings, and a Run button. This is where a mistake is caught
+  *before* paying for a solve.
 - **Results page** — the same three drawings with the solved field underneath
   (temperature, speed, pressure) in contour bands with the ASHRAE limits drawn
   on the legend (ADR-024); every rack painted by the temperature of the air it

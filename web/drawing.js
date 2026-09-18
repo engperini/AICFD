@@ -18,28 +18,28 @@ const PAD = { left: 88, right: 30, top: 16, bottom: 44 };
 export const VIEWS = [
   {
     id: 'section-a',
-    title: 'A · Corte transversal',
-    subtitle: 'pelo meio da fila de racks',
+    title: 'A · Transverse section',
+    subtitle: 'through the middle of the rack row',
     h: 1,
     v: 2,
     normal: 0,
-    hLabel: 'y (m) — largura do data hall',
+    hLabel: 'y (m) — hall width',
     height: 420,
   },
   {
     id: 'section-b',
-    title: 'B · Corte longitudinal',
-    subtitle: 'pelo corredor quente',
+    title: 'B · Longitudinal section',
+    subtitle: 'through the hot aisle',
     h: 0,
     v: 2,
     normal: 1,
-    hLabel: 'x (m) — galeria mecânica + data hall',
+    hLabel: 'x (m) — mechanical gallery + hall',
     height: 420,
   },
   {
     id: 'plan',
-    title: 'C · Planta',
-    subtitle: 'ao nível dos racks; grelhas do forro tracejadas (estão acima)',
+    title: 'C · Plan',
+    subtitle: 'at rack height; ceiling grilles dashed, they are overhead',
     h: 0,
     v: 1,
     normal: 2,
@@ -62,7 +62,7 @@ export function viewsFor(model) {
       ...view,
       h: 1,
       v: 0,
-      hLabel: 'y (m) — largura do data hall',
+      hLabel: 'y (m) — hall width',
       height: Math.max(320, (d.hi[0] - d.lo[0]) * 22),
       long,
     };
@@ -76,12 +76,12 @@ export function isLong(model) {
 
 /** Panels worth naming, seen face-on -- there is room for a full caption. */
 const PANEL_LABEL = {
-  plenum_opening: 'abertura p/ galeria',
+  plenum_opening: 'opening to gallery',
 };
 
 /** The same panels seen edge-on, where the caption has to fit on a line. */
 const EDGE_LABEL = {
-  plenum_opening: 'retorno',
+  plenum_opening: 'return',
 };
 
 /** A fan wall is named once: seventeen captions reading "fan wall" say less
@@ -393,16 +393,16 @@ function annotate(svg, model, view, X, Y, bounds) {
   const galleryMidX = model.gallery.hi[0] / 2;
 
   if (view.id === 'section-a') {
-    put([hallMidX, mid(cold), 0.45], 'corredor frio', 'dw-note dw-cold-t');
-    put([hallMidX, mid(hot), model.ceiling_z - 1.1], 'chaminé', 'dw-note dw-hot-t');
+    put([hallMidX, mid(cold), 0.45], 'cold aisle', 'dw-note dw-cold-t');
+    put([hallMidX, mid(hot), model.ceiling_z - 1.1], 'chimney', 'dw-note dw-hot-t');
   }
   if (view.id === 'section-b') {
-    put([galleryMidX, 0, model.domain.hi[2] - 0.55], 'galeria mecânica');
-    put([hallMidX, 0, model.ceiling_z + 0.6], 'plenum de retorno', 'dw-note dw-hot-t');
+    put([galleryMidX, 0, model.domain.hi[2] - 0.55], 'mechanical gallery');
+    put([hallMidX, 0, model.ceiling_z + 0.6], 'return plenum', 'dw-note dw-hot-t');
   }
   if (view.id === 'plan') {
-    put([galleryMidX, model.domain.hi[1] - 0.35, 0], 'galeria');
-    put([hallMidX, mid(cold), 0], 'corredor frio', 'dw-note dw-cold-t');
+    put([galleryMidX, model.domain.hi[1] - 0.35, 0], 'gallery');
+    put([hallMidX, mid(cold), 0], 'cold aisle', 'dw-note dw-cold-t');
   }
 }
 
@@ -428,17 +428,17 @@ function dimensions(svg, model, view, X, Y, width, height, hSpan) {
   const levels =
     view.v === 2
       ? [
-          [d.hi[2], 'laje'],
-          [model.ceiling_z, 'forro'],
-          ...(model.racks.length ? [[model.racks[0].hi[2], 'topo rack']] : []),
+          [d.hi[2], 'slab'],
+          [model.ceiling_z, 'ceiling'],
+          ...(model.racks.length ? [[model.racks[0].hi[2], 'rack top']] : []),
         ]
       : view.v === 1
         ? [
-            [model.aisles.cold[1], 'frente'],
-            [model.aisles.racks[1], 'costas'],
+            [model.aisles.cold[1], 'front'],
+            [model.aisles.racks[1], 'back'],
           ]
         : [
-            [spanLo, 'fileiras'],
+            [spanLo, 'rows'],
             [spanHi, ''],
           ];
   for (const [value, label] of levels) {
@@ -455,4 +455,4 @@ function dimensions(svg, model, view, X, Y, width, height, hSpan) {
   }
 }
 
-const fmt = (v) => v.toFixed(2).replace('.', ',');
+const fmt = (v) => v.toFixed(2);

@@ -822,3 +822,31 @@ the reader; it is a question they have to answer before they can start.
   status line, because the reasoning is the asset -- it is why the current
   shape is what it is, and it is what stops the next contributor from
   re-deriving a dead end.
+
+---
+
+## ADR-026 — The software is in English, end to end
+
+**Decision.** Every string the software produces or shows is English: the
+page, the case specs and their comments, the reports, the CLI, the code, the
+docs and the commit messages. Numbers are written the English way
+(`1,234.56`). Conversation with the user stays in whatever language they
+write in; that is not part of the software.
+
+**Why.** The page had grown into two languages at once -- Portuguese chrome
+around English check details that come straight from the analysis and are also
+what `report.md` carries. Half-translating is worse than either choice: a
+reader has to hold two vocabularies for one screen, and "Corredor frio" on the
+page against `cold_aisle` in the export is a translation step in the reader's
+head every time.
+
+English is the choice because everything the tool is made of is already in it:
+OpenFOAM's own vocabulary, ASHRAE's, the datasheets, the code, and the next
+engineer or agent who picks the repository up. A Brazilian data-centre
+engineer reads these terms in English daily; a tool that renames them buys
+nothing and costs the mapping.
+
+**Consequence.** `aicfd.model.num` formats one way, and the page's
+`toLocaleString` calls use `en-US`. The tests that asserted on Portuguese
+strings assert on English ones. Anyone who wants a localised interface later
+adds a translation layer over a single vocabulary rather than untangling two.

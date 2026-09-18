@@ -61,8 +61,8 @@ class ApplyChangesTest(unittest.TestCase):
         self.assertEqual(len(rejected), 1)
 
     def test_every_editable_parameter_names_a_real_spec_field(self):
-        for key, (section, field, _caster, _limits) in server.EDITABLE.items():
-            self.assertTrue(section and field, key)
+        for key, (path, _caster, _limits) in server.EDITABLE.items():
+            self.assertTrue(path and all(isinstance(step, str) for step in path), key)
 
 
 class ProgressTest(unittest.TestCase):

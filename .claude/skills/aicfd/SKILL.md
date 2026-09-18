@@ -14,7 +14,7 @@ Start by reading `README.md` if you have not: it is the method in one page.
 ## The loop
 
 ```
-aicfd new NAME              -> cases/NAME.yaml   (a starter spec, fully commented)
+aicfd new NAME [--from CASE] -> cases/NAME.yaml  (blank POD, or a copy of a worked case)
 aicfd build cases/NAME.yaml -> runs/NAME/case    (generate only, no solve)
 aicfd run cases/NAME.yaml   -> runs/NAME         (generate, solve, sample, export)
 aicfd post NAME             -> results/NAME/{viewer.json,fields.bin,report.md}
@@ -42,8 +42,13 @@ Both are the same geometry code (ADR-022); the spec's shape picks the layout.
   the edge, and `fanwall.count` units spread along the gallery wall.
   `cases/hall-10mw.yaml`.
 
-Start from the worked case that matches and change numbers. Do not write a
-spec from memory.
+Start from the worked case that matches and change numbers:
+`aicfd new <name> --from hall-10mw` copies it with every comment and datasheet
+reference intact. Do not write a spec from memory.
+
+The page is the same template: every field of the spec, grouped by section,
+showing only what the loaded spec carries. Point the user at it
+(`aicfd view --case <name>`) rather than dictating YAML to them.
 
 ## Reading a run
 
@@ -131,9 +136,10 @@ legitimate study (ADR-023).
 5. `functionObject`s and `postProcess` are broken in this OpenFOAM build (an
    `OSHA1stream` fault — see the note in `aicfd/case.py`). Sampling already
    covers it; do not reach for them.
-6. **Write in Portuguese to the user, in English in the repository.** Code,
-   comments, docs and commit messages are English; the page and your replies
-   are Portuguese.
+6. **The software is English, end to end** (ADR-026): the page, the specs and
+   their comments, the reports, the CLI, the code and the docs. Reply to the
+   user in whatever language they write in; that is conversation, not
+   software.
 7. **Record what you learn.** A modelling decision goes in `docs/DECISIONS.md`
    as a numbered ADR; a real run that found something goes in
    `docs/experiments/` with its numbers. That record is the reason the next

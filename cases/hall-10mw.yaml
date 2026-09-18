@@ -1,58 +1,63 @@
-# Data hall conceitual de 10 MW: PODs de fileira + HAC + fileira, repetidos,
-# e uma parede de fan walls Vertiv CA40 ao longo da galeria, dimensionada por
-# capacidade e por vazao (158 CFM/kW). Malha grossa de projeto
-# conceitual: um rack e uma celula em planta, nove celulas em altura.
+# Conceptual 10 MW data hall: PODs of row + contained hot aisle + row,
+# repeated, with a wall of Vertiv CA40 units along the mechanical gallery,
+# sized by capacity and by airflow (158 CFM/kW).
 #
-# Circuito do ar, o mesmo da POD, N vezes:
-#   fan walls -> corredores frios -> racks -> corredores quentes enclausurados ->
-#   grelhas do forro -> plenum -> abertura acima da parede -> galeria -> fan walls
+# Coarse conceptual-design mesh: one rack is one cell in plan, nine cells tall.
+#
+# The air loop, the POD's own, N times over:
+#   fan walls -> cold aisles -> racks -> contained hot aisles -> ceiling
+#   grilles -> plenum -> opening above the dividing wall -> gallery -> fan walls
+#
+# The run this case comes from is written up in
+# docs/experiments/2026-09-18-hall-10mw.md.
 name: hall-10mw
 
 gallery:
-  depth: 3.0                  # galeria mecanica dos fan walls, sem forro
+  depth: 3.0                  # mechanical gallery for the fan walls, no ceiling
 
 hall:
-  height: 8.0                 # piso -> laje
-  ceiling: 6.5                # forro; acima dele o plenum de retorno
-  # comprimento e largura saem do arranjo: perimetro + fileira + perimetro em
-  # x; perimetro + N x (fileira + HAC + fileira) + corredores frios em y.
+  height: 8.0                 # floor to slab
+  ceiling: 6.5                # false ceiling; above it, the return plenum
+  # Length and width are derived from the layout: perimeter + row + perimeter
+  # along x; perimeter + N x (row + hot aisle + row) + cold aisles along y.
 
-pods: 16                      # cada POD = fileira + corredor quente + fileira
-                              # 16 x 48 racks x 13 kW = 9,98 MW
+pods: 16                      # each POD = row + contained hot aisle + row
+                              # 16 x 48 racks x 13 kW = 9.98 MW
 
 aisles:
-  cold: 1.8                   # entre PODs; um fan wall na frente de cada um
-  hot: 1.2                    # enclausurado (HAC), chamine ate o forro
-  perimeter: 1.8              # ao redor de todas as fileiras (>= 1,8)
+  cold: 1.8                   # between PODs; the fan walls face these
+  hot: 1.2                    # contained, a chimney up to the false ceiling
+  perimeter: 1.8              # clearance round every row (>= 1.8)
 
 racks:
   per_row: 24
   load_kw: 13.0
-  size: [0.6, 1.2, 2.2]       # frente x profundidade x altura; a altura cai
-                              # em 2,25 m na malha de 0,25 m (aviso do modelo)
-  airflow_cfm_per_kw: 158     # referencia de projeto: o que o rack puxa por kW
+  size: [0.6, 1.2, 2.2]       # width x depth x height; the height snaps to
+                              # 2.25 m on the 0.25 m mesh (the model warns)
+  airflow_cfm_per_kw: 158     # design reference: what a rack draws per kW
 
 site:
-  altitude_m: 1880            # QR2. O datasheet do fan wall foi selecionado a
-                              # 1.880 m: 76.650 m3/h de ar real = 56.475 m3/h de
-                              # ar padrao. O solver roda na pressao do site
-                              # (80,8 kPa), entao vazao e massa batem com ele.
+  altitude_m: 1880            # the fan wall datasheet was selected at 1,880 m:
+                              # 76,650 m3/h of actual air = 56,475 m3/h of
+                              # standard air. The solver runs at the site's
+                              # pressure (80.7 kPa), so airflow and mass agree
+                              # with the selection.
 
 fanwall:
-  # Vertiv CWA CA40NPVG6, selecao Ascenty QR2 (retorno 37 C / 30% UR, agua
-  # 18/28 C, ESP 100 Pa). Tudo abaixo e do datasheet, por unidade.
-  count: 35                   # 35 x 290,9 kW = 10.181 kW >= 9.984 kW de TI;
-                              # 35 x 76.650 = 2,68 M m3/h >= 2,68 M m3/h dos
-                              # racks a 158 CFM/kW. 34 nao passa em nenhum.
-  width: 2.23                 # cai em 2,10 m na malha de 0,30 m (aviso)
-  height: 3.67                # cai em 3,75 m na malha de 0,25 m (aviso)
-  airflow_m3h: 76650          # ar real na altitude do site
-  capacity_kw: 290.9          # NSCC (sensivel liquida)
-  power_kw: 16.9              # potencia eletrica de entrada
-  supply_temp_c: 22.1         # insuflamento da selecao
+  # Vertiv CWA CA40NPVG6, Ascenty QR2 selection (37 C / 30% RH return, 18/28 C
+  # water, 100 Pa ESP). Everything below is from that datasheet, per unit.
+  count: 35                   # 35 x 290.9 kW = 10,182 kW >= 9,984 kW of IT;
+                              # 35 x 76,650 = 2.68 M m3/h >= the 2.68 M m3/h
+                              # the racks draw at 158 CFM/kW. 34 fails both.
+  width: 2.23                 # snaps to 2.10 m on the 0.30 m mesh (warned)
+  height: 3.67                # snaps to 3.75 m on the 0.25 m mesh (warned)
+  airflow_m3h: 76650          # actual air at the site's altitude
+  capacity_kw: 290.9          # NSCC (net sensible cooling capacity)
+  power_kw: 16.9              # electrical power input
+  supply_temp_c: 22.1         # supply air from the selection
   static_pressure_pa: 100     # ESP
-  curve:                      # representativa, ancorada no ponto de selecao;
-    - [0, 250]                # substitua pela curva P-Q da unidade
+  curve:                      # representative, anchored on the selection
+    - [0, 250]                # point; replace with the unit's P-Q curve
     - [38000, 200]
     - [76650, 100]
     - [100000, 40]
@@ -60,18 +65,18 @@ fanwall:
 
 grilles:
   size: 0.60
-  coverage: 1.0               # o forro sobre cada corredor quente e todo grelha
+  coverage: 1.0               # the whole ceiling over each hot aisle is grille
   free_area: 0.80
-  loss_coefficient: 2.4       # Koolair serie 20.2, ver cases/pod-fanwall.yaml
+  loss_coefficient: 2.4       # Koolair series 20.2, see cases/pod-fanwall.yaml
 
 containment:
   enabled: true
 
 mesh:
-  # x 0,60: um rack por celula ao longo da fileira; y 0,30: rack de 1,2 m,
-  # corredores de 1,2 e 1,8 m e fan wall de 4,5 m caem em faces de celula;
-  # z 0,25: forro (6,5), fan wall (4,0) e laje (8,0) alinhados, 9 celulas
-  # por rack para separar topo de base. 35 x 294 x 32 = 329.280 celulas.
+  # x 0.60: one rack per cell along the row; y 0.30: a 1.2 m rack, the 1.2 and
+  # 1.8 m aisles and the fan wall all land on cell faces; z 0.25: ceiling
+  # (6.5), fan wall (3.75) and slab (8.0) aligned, nine cells per rack so the
+  # top reads separately from the base. 35 x 294 x 32 = 329,280 cells.
   cell_size: [0.60, 0.30, 0.25]
 
 solver:
@@ -79,4 +84,4 @@ solver:
   residual_tolerance: 1.0e-4
   sensor_interval: 100
   warm_start: true
-  processors: 4               # decomposePar + mpirun; 1 roda em serie
+  processors: 4               # decomposePar + mpirun; 1 runs serially

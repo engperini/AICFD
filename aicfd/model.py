@@ -352,16 +352,16 @@ class Model:
         alerts = []
         if h["capacity_ratio"] is not None and h["capacity_ratio"] < 1.0:
             alerts.append(
-                f"Capacidade do HVAC abaixo da carga: {h['units']} x "
-                f"{num(h['unit_capacity_kw'], 1)} kW = {num(h['capacity_kw'], 0)} kW para "
-                f"{num(h['load_kw'], 0)} kW de TI ({num(h['capacity_ratio'] * 100, 0)}%). "
-                f"Precisaria de {h['units_needed']} unidades."
+                f"Cooling capacity is below the load: {h['units']} x "
+                f"{num(h['unit_capacity_kw'], 1)} kW = {num(h['capacity_kw'], 0)} kW for "
+                f"{num(h['load_kw'], 0)} kW of IT ({num(h['capacity_ratio'] * 100, 0)}%). "
+                f"{h['units_needed']} units would be needed."
             )
         if h["airflow_ratio"] is not None and h["airflow_ratio"] < 1.0:
             alerts.append(
-                f"Vazão do HVAC abaixo da demanda dos racks: {num(h['airflow_m3h'], 0)} m³/h "
-                f"para {num(h['airflow_needed_m3h'], 0)} m³/h a {h['cfm_per_kw']:g} CFM/kW "
-                f"({num(h['airflow_ratio'] * 100, 0)}%). Precisaria de {h['units_needed']} unidades."
+                f"Airflow is below what the racks draw: {num(h['airflow_m3h'], 0)} m3/h "
+                f"against {num(h['airflow_needed_m3h'], 0)} m3/h at {h['cfm_per_kw']:g} CFM/kW "
+                f"({num(h['airflow_ratio'] * 100, 0)}%). {h['units_needed']} units would be needed."
             )
         return alerts
 
@@ -557,27 +557,27 @@ def sensors(model: Model) -> list[SensorGroup]:
     return [
         SensorGroup(
             "cold_aisle",
-            "Corredor frio",
+            "Cold aisle",
             spread(model.cold_aisles, rack_mid_z),
-            "no meio do corredor, à altura dos racks",
+            "mid-aisle, at rack height",
         ),
         SensorGroup(
             "hot_aisle",
-            "Corredor quente",
+            "Hot aisle",
             spread(model.hot_aisles, rack_mid_z),
-            "dentro do enclausuramento, à altura dos racks",
+            "inside the containment, at rack height",
         ),
         SensorGroup(
             "plenum",
-            "Plenum do forro",
+            "Ceiling plenum",
             spread(model.hot_aisles, plenum_z),
-            "acima das grelhas de retorno",
+            "above the return grilles",
         ),
         SensorGroup(
             "fan_back",
-            "Costas do fan wall",
+            "Behind the fan wall",
             fan_points,
-            "na galeria, onde o ar de retorno chega ao fan wall",
+            "in the gallery, where the return air reaches the units",
         ),
     ]
 
@@ -685,8 +685,8 @@ def build_model(spec: dict) -> Model:
         if abs(built - nominal) > 1e-6:
             model.warnings.insert(
                 0,
-                f"largura do fan wall: {num(nominal, 3)} m não cai na malha de "
-                f"{num(cell[1])} m; a malha vai usar {num(built)} m "
+                f"fan wall width: {num(nominal, 3)} m is not on the {num(cell[1])} m "
+                f"grid; the mesh will use {num(built)} m "
                 f"({(built - nominal) * 1000:+.0f} mm).",
             )
     model.alerts = model.hvac_alerts()
@@ -1041,24 +1041,24 @@ def check_mesh_alignment(model: Model) -> list[str]:
         steps = value / model.cell(axis)
         return abs(steps - round(steps)) > 1e-9
 
-    checked: list[tuple[str, float, int]] = [("altura do forro", model.ceiling_z, 2)]
+    checked: list[tuple[str, float, int]] = [("ceiling height", model.ceiling_z, 2)]
     for band in model.cold_aisles:
-        checked.append(("corredor frio", band[1], 1))
+        checked.append(("cold aisle", band[1], 1))
     for band in model.hot_aisles:
-        checked.append(("corredor quente", band[1], 1))
+        checked.append(("hot aisle", band[1], 1))
     for row in model.rows:
-        checked.append((f"profundidade do rack (fileira {row.id})", row.band[1], 1))
-    for axis, label in enumerate(("comprimento", "largura", "altura")):
-        checked.append((f"{label} do domínio", model.domain.size[axis], axis))
+        checked.append((f"rack depth (row {row.id})", row.band[1], 1))
+    for axis, label in enumerate(("length", "width", "height")):
+        checked.append((f"domain {label}", model.domain.size[axis], axis))
     # Racks share a size, so one warning stands for all of them; a hall has
     # hundreds and a list that long says nothing a list of one does not.
     for rack in model.racks:
-        for axis, label in enumerate(("largura", "profundidade", "altura")):
-            checked.append((f"{label} dos racks", rack.box.hi[axis], axis))
+        for axis, label in enumerate(("width", "depth", "height")):
+            checked.append((f"rack {label}", rack.box.hi[axis], axis))
     for panel in model.panels:
-        checked.append((f"posição d{article(panel)}", panel.position, panel.axis))
+        checked.append((f"{article(panel)} position", panel.position, panel.axis))
         for axis, (a0, a1) in zip(panel.in_plane_axes, panel.extent):
-            checked.append((f"borda d{article(panel)}", a1, axis))
+            checked.append((f"{article(panel)} edge", a1, axis))
 
     reported: set[str] = set()
     for label, value, axis in checked:
@@ -1067,8 +1067,8 @@ def check_mesh_alignment(model: Model) -> list[str]:
             reported.add(label)
             snapped = round(value / cell) * cell
             warnings.append(
-                f"{label}: {num(value, 3)} m não cai na malha de "
-                f"{num(cell)} m; a malha vai usar {num(snapped)} m "
+                f"{label}: {num(value, 3)} m is not on the {num(cell)} m grid; "
+                f"the mesh will use {num(snapped)} m "
                 f"({(snapped - value) * 1000:+.0f} mm)."
             )
     return warnings
@@ -1076,29 +1076,29 @@ def check_mesh_alignment(model: Model) -> list[str]:
 
 #: What to call each panel where a person reads it. Internal names stay as
 #: they are -- they name mesh patches and have to match the case files.
-PANEL_PT = {
-    "fan": "o fan wall",
-    "plenum_opening": "a abertura para a galeria",
-    "ceiling": "o forro",
-    "containment_roofwall": "a parede do enclausuramento",
+PANEL_LABEL = {
+    "fan": "fan wall",
+    "plenum_opening": "gallery opening",
+    "ceiling": "false ceiling",
+    "containment_roofwall": "containment wall",
 }
 
 
 def article(panel: Panel) -> str:
-    """The panel's name in Portuguese, with its article, for a warning."""
-    if panel.name in PANEL_PT:
-        return PANEL_PT[panel.name]
+    """The panel's name as a person reads it, for a warning."""
+    if panel.name in PANEL_LABEL:
+        return PANEL_LABEL[panel.name]
     for prefix, name in (
-        ("grille", "a grelha"),
-        ("containment_door", "a porta do enclausuramento"),
-        ("containment_wall", "a parede do enclausuramento"),
-        ("rack_top", "o topo dos racks"),
-        ("rack_end", "a lateral da fileira"),
-        ("fan", "o fan wall"),
+        ("grille", "return grille"),
+        ("containment_door", "containment door"),
+        ("containment_wall", "containment wall"),
+        ("rack_top", "rack top"),
+        ("rack_end", "row end"),
+        ("fan", "fan wall"),
     ):
         if panel.name.startswith(prefix):
             return name
-    return f"o painel {panel.name}"
+    return f"panel {panel.name}"
 
 
 def parse_cell_size(raw) -> tuple[float, float, float]:
@@ -1159,54 +1159,54 @@ def summary_rows(model: Model) -> list[tuple[str, str, str]]:
     def through(area: float) -> str:
         if not area:
             return "-"
-        return f"{num(area)} m² · {num(model.airflow_m3s / area)} m/s"
+        return f"{num(area)} m2 · {num(model.airflow_m3s / area)} m/s"
 
     return [
-        ("Domínio", f"{num(dx)} x {num(dy)} x {num(dz)} m", f"{num(model.n_cells, 0)} células"),
+        ("Domain", f"{num(dx)} x {num(dy)} x {num(dz)} m", f"{num(model.n_cells, 0)} cells"),
         (
-            "Galeria mecânica",
-            f"{num(model.gallery.size[0])} m de profundidade",
-            f"{num(model.gallery.volume, 1)} m³",
+            "Mechanical gallery",
+            f"{num(model.gallery.size[0])} m deep",
+            f"{num(model.gallery.volume, 1)} m3",
         ),
         (
             "Data hall",
-            f"{num(model.hall.size[0])} m de comprimento",
-            f"forro a {num(model.ceiling_z)} m",
+            f"{num(model.hall.size[0])} m long",
+            f"ceiling at {num(model.ceiling_z)} m",
         ),
         (
-            "Carga de TI",
+            "IT load",
             (
                 f"{len(model.racks)} x {model.racks[0].load_kw:g} kW"
-                + (f" em {len(model.rows)} fileiras" if len(model.rows) > 1 else "")
+                + (f" in {len(model.rows)} rows" if len(model.rows) > 1 else "")
             )
             if model.racks
             else "-",
-            f"{num(model.total_load_w / 1000, 1)} kW no total",
+            f"{num(model.total_load_w / 1000, 1)} kW in all",
         ),
         (
-            "Vazão",
+            "Supply airflow",
             (
                 f"{len(fans)} x {num(model.unit_airflow_m3h, 0)} = "
                 if len(fans) > 1
                 else ""
             )
-            + f"{num(model.airflow_m3h, 0)} m³/h a {num(model.supply_temp_c, 1)} °C",
-            f"ΔT de projeto {num(model.design_delta_t_k, 1)} K",
+            + f"{num(model.airflow_m3h, 0)} m3/h at {num(model.supply_temp_c, 1)} degC",
+            f"design bulk dT {num(model.design_delta_t_k, 1)} K",
         ),
         (
-            f"Face do fan wall" + (f" ({len(fans)} unidades)" if len(fans) > 1 else ""),
+            "Fan wall face" + (f" ({len(fans)} units)" if len(fans) > 1 else ""),
             face(fan),
-            f"{num(fan.area)} m² · {num(model.fan_face_velocity_ms)} m/s por unidade",
+            f"{num(fan.area)} m2 · {num(model.fan_face_velocity_ms)} m/s per unit",
         ),
         (
-            f"Grelhas do forro ({len(grilles)})",
+            f"Return grilles ({len(grilles)})",
             (
-                f"{num(grilles[0].extent[0][1] - grilles[0].extent[0][0])} m quadradas"
+                f"{num(grilles[0].extent[0][1] - grilles[0].extent[0][0])} m square"
                 if len(model.rows) == 1
-                else f"faixas de {face(grilles[0])} sobre cada corredor quente"
+                else f"{face(grilles[0])} strip over each hot aisle"
             )
             + (
-                f", {num(model.grille_free_area * 100, 0)}% de área livre"
+                f", {num(model.grille_free_area * 100, 0)}% free area"
                 if model.grille_free_area
                 else ""
             )
@@ -1220,30 +1220,30 @@ def summary_rows(model: Model) -> list[tuple[str, str, str]]:
             ),
         ),
         (
-            "Chaminé do corredor quente"
+            "Hot aisle chimney"
             + (f" ({len(model.hot_aisles)})" if len(model.hot_aisles) > 1 else ""),
             f"{num(row[1] - row[0])} x "
             f"{num(model.hot_aisle[1] - model.hot_aisle[0])} x {num(model.ceiling_z)} m",
             through(model.chimney_area),
         ),
-        ("Abertura para a galeria", face(plenum), through(plenum.area)),
+        ("Opening to the gallery", face(plenum), through(plenum.area)),
         (
-            "Resistência dos racks",
-            f"{num(model.rack_pressure_drop_pa)} Pa na vazão do fan wall",
-            f"{num(RACK_PRESSURE_DROP, 0)} Pa nominais por rack",
+            "Rack resistance",
+            f"{num(model.rack_pressure_drop_pa)} Pa at the supply airflow",
+            f"{num(RACK_PRESSURE_DROP, 0)} Pa nominal per rack",
         ),
         *hvac_rows(model),
         (
-            "Pressão do fan wall",
+            "Fan wall pressure",
             (
-                f"{num(model.fan_available_pa() or 0, 0)} Pa disponíveis a "
-                f"{num(model.unit_airflow_m3h, 0)} m³/h por unidade"
-                + (" (curva)" if model.fan_curve else " (datasheet)")
+                f"{num(model.fan_available_pa() or 0, 0)} Pa available at "
+                f"{num(model.unit_airflow_m3h, 0)} m3/h per unit"
+                + (" (curve)" if model.fan_curve else " (datasheet)")
             )
             if model.fan_available_pa()
-            else "não informada",
+            else "not given",
             (
-                f"racks + grelhas pedem "
+                f"racks + grilles ask for "
                 f"{num(model.rack_pressure_drop_pa + model.grille_pressure_drop_pa, 1)} Pa "
                 f"({num((model.rack_pressure_drop_pa + model.grille_pressure_drop_pa) / model.fan_available_pa() * 100, 0)}%)"
             )
@@ -1258,15 +1258,15 @@ def hvac_rows(model: Model) -> list[tuple[str, str, str]]:
     h = model.hvac()
     rows = [
         (
-            "Ar do site",
-            f"{num(model.altitude_m, 0)} m de altitude · {num(model.pressure_pa / 1000, 1)} kPa",
-            f"ρ {num(model.rho, 3)} kg/m³ a {num(model.supply_temp_c, 1)} °C",
+            "Site air",
+            f"{num(model.altitude_m, 0)} m altitude · {num(model.pressure_pa / 1000, 1)} kPa",
+            f"rho {num(model.rho, 3)} kg/m3 at {num(model.supply_temp_c, 1)} degC",
         ),
         (
-            "Demanda de ar dos racks",
-            f"{h['cfm_per_kw']:g} CFM/kW · {num(h['airflow_needed_m3h'], 0)} m³/h",
+            "Rack air demand",
+            f"{h['cfm_per_kw']:g} CFM/kW · {num(h['airflow_needed_m3h'], 0)} m3/h",
             (
-                f"HVAC fornece {num(h['airflow_m3h'], 0)} m³/h "
+                f"cooling supplies {num(h['airflow_m3h'], 0)} m3/h "
                 f"({num(h['airflow_ratio'] * 100, 0)}%)"
                 if h["airflow_ratio"] is not None
                 else "-"
@@ -1276,33 +1276,31 @@ def hvac_rows(model: Model) -> list[tuple[str, str, str]]:
     if h["capacity_kw"] is not None:
         rows.append(
             (
-                "Capacidade do HVAC",
+                "Cooling capacity",
                 f"{h['units']} x {num(h['unit_capacity_kw'], 1)} kW = {num(h['capacity_kw'], 0)} kW",
-                f"carga de TI {num(h['load_kw'], 0)} kW ({num(h['capacity_ratio'] * 100, 0)}%)",
+                f"IT load {num(h['load_kw'], 0)} kW ({num(h['capacity_ratio'] * 100, 0)}%)",
             )
         )
     else:
-        rows.append(("Capacidade do HVAC", "não informada (fanwall.capacity_kw)", "-"))
+        rows.append(("Cooling capacity", "not given (fanwall.capacity_kw)", "-"))
     if h["unit_power_kw"]:
         rows.append(
             (
-                "Potência elétrica do HVAC",
+                "Cooling power input",
                 f"{h['units']} x {num(h['unit_power_kw'], 1)} kW = {num(h['unit_power_kw'] * h['units'], 0)} kW",
-                f"{num(h['unit_power_kw'] * h['units'] / h['load_kw'] * 100, 1)}% da carga de TI",
+                f"{num(h['unit_power_kw'] * h['units'] / h['load_kw'] * 100, 1)}% of the IT load",
             )
         )
     return rows
 
 
 def num(value: float, decimals: int = 2) -> str:
-    """Format a number the way the interface writes them: 1.234,56.
+    """Format a number the way the interface writes them: 1,234.56.
 
-    Python's own separators are the other way round, so the two are swapped in
-    one place rather than in each of the thirty strings below.
+    One place, so a thousands separator never has to be decided again further
+    down. The whole tool -- code, page, report -- is in English (ADR-026).
     """
-    return (
-        f"{value:,.{decimals}f}".replace(",", "\x00").replace(".", ",").replace("\x00", ".")
-    )
+    return f"{value:,.{decimals}f}"
 
 
 # --- serialisation ------------------------------------------------------------

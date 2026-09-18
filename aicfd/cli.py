@@ -20,6 +20,7 @@ hall and one without is a single POD, and both are the same model underneath
 from __future__ import annotations
 
 import argparse
+import re
 import sys
 import webbrowser
 from pathlib import Path
@@ -37,6 +38,11 @@ def main(argv: list[str] | None = None) -> int:
 
     new_parser = sub.add_parser("new", help="write a starter case spec")
     new_parser.add_argument("name", help="case name; becomes cases/<name>.yaml")
+    new_parser.add_argument(
+        "--from",
+        dest="template",
+        help="start from an existing case (e.g. hall-10mw) instead of the blank POD",
+    )
 
     sub.add_parser("doctor", help="check the OpenFOAM installation")
 
@@ -153,13 +159,36 @@ solver:
 
 
 def _new(args) -> int:
+    """Write a new case spec: the commented starter, or a copy of a worked one.
+
+    `--from hall-10mw` is how a real study starts: the worked case carries a
+    datasheet selection, a mesh that is known to build and comments on every
+    line, so the engineer edits numbers rather than inventing a file.
+    """
     CASES_DIR.mkdir(parents=True, exist_ok=True)
     path = CASES_DIR / f"{args.name}.yaml"
     if path.exists():
         print(f"error: {path} already exists", file=sys.stderr)
         return 1
-    path.write_text(STARTER_SPEC.format(name=args.name))
-    print(f"Wrote {path}\nEdit it, then:  aicfd run {path}")
+
+    if args.template:
+        source = CASES_DIR / f"{Path(args.template).stem}.yaml"
+        if not source.exists():
+            available = ", ".join(sorted(p.stem for p in CASES_DIR.glob("*.yaml")))
+            print(
+                f"error: no case named '{args.template}'. Available: {available}",
+                file=sys.stderr,
+            )
+            return 1
+        text = source.read_text()
+        # Only the name changes; every comment and datasheet reference stays.
+        text = re.sub(r"^name:.*$", f"name: {args.name}", text, count=1, flags=re.M)
+        path.write_text(text)
+        print(f"Wrote {path}, copied from {source.name}")
+    else:
+        path.write_text(STARTER_SPEC.format(name=args.name))
+        print(f"Wrote {path}")
+    print(f"Edit it, then:  aicfd view --case {args.name}    (or: aicfd run {path})")
     return 0
 
 

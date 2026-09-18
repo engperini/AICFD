@@ -114,15 +114,15 @@ function layoutHtml(meta) {
   <div class="column">
   <section class="card" id="maps-card">
     <div class="card-head">
-      <span class="card-title">Planta e cortes</span>
-      <span class="card-sub">o campo resolvido sob os mesmos desenhos conferidos antes da rodada; arraste o corte</span>
+      <span class="card-title">Plan and sections</span>
+      <span class="card-sub">the solved field under the same drawings checked before the run; drag the cut</span>
     </div>
     <div id="maps"></div>
   </section>
   <section class="card" id="racks-card">
     <div class="card-head">
-      <span class="card-title">Entrada dos racks</span>
-      <span class="card-sub">cada rack pela temperatura do ar que recebe; o pior rack é o que decide o conceito</span>
+      <span class="card-title">Rack inlets</span>
+      <span class="card-sub">every rack by the air it breathes; the worst rack is what decides the concept</span>
     </div>
     <div id="racks"></div>
   </section>
@@ -152,9 +152,9 @@ function layoutHtml(meta) {
         }</div>
         <div class="hero-note">${
           warmest
-            ? `${warmest.name}${warmest.inlet_top_c != null ? ', topo do rack' : ''} · ${warmest.ashrae.verdict}` +
+            ? `${warmest.name}${warmest.inlet_top_c != null ? ', top of the rack' : ''} · ${warmest.ashrae.verdict}` +
               (kpis.zones.length > 1
-                ? ` · ${over} de ${kpis.zones.length} racks acima do recomendado`
+                ? ` · ${over} of ${kpis.zones.length} racks above recommended`
                 : '')
             : 'no rack zones in this case'
         }</div>

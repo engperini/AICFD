@@ -28,32 +28,57 @@ CASES_DIR = REPO_ROOT / "cases"
 RUNS_DIR = REPO_ROOT / "runs"
 RESULTS_DIR = REPO_ROOT / "results"
 
-#: Parameters the page may change. Anything not listed here needs an edit to
-#: the YAML -- the form is for the numbers an engineer iterates on, not a
-#: general-purpose editor that could put the spec into a state the generator
-#: has never seen.
+#: Every parameter the page may change, as `key -> (path, caster, limits)`.
+#:
+#: The page is the template an engineer fills in, so this list is deliberately
+#: the whole spec rather than a chosen few: dimensions, clearances, equipment,
+#: grilles, airflows, mesh and solver. What it is not is a general YAML editor
+#: -- each entry names one field, casts it, and holds it to a range, so the
+#: form cannot put the spec into a state the generator has never seen.
+#:
+#: `vector3` takes "0.6, 1.2, 2.2"; `cell_size` takes one value or three.
 EDITABLE = {
-    "airflow_m3h": ("fanwall", "airflow_m3h", float, (100.0, 500_000.0)),
-    "fan_count": ("fanwall", "count", int, (1, 200)),
-    "fan_capacity_kw": ("fanwall", "capacity_kw", float, (0.1, 5_000.0)),
-    "fan_power_kw": ("fanwall", "power_kw", float, (0.0, 500.0)),
-    "rack_cfm_per_kw": ("racks", "airflow_cfm_per_kw", float, (20.0, 400.0)),
-    "altitude_m": ("site", "altitude_m", float, (0.0, 5_000.0)),
-    "supply_temp_c": ("fanwall", "supply_temp_c", float, (-10.0, 40.0)),
-    "fan_height": ("fanwall", "height", float, (0.5, 20.0)),
-    "rack_count": ("racks", "count", int, (1, 60)),
-    "rack_load_kw": ("racks", "load_kw", float, (0.1, 100.0)),
-    "cold_aisle": ("aisles", "cold", float, (0.6, 10.0)),
-    "hot_aisle": ("aisles", "hot", float, (0.6, 10.0)),
-    "ceiling": ("hall", "ceiling", float, (2.0, 20.0)),
-    "gallery_depth": ("gallery", "depth", float, (0.5, 20.0)),
-    "cell_size": ("mesh", "cell_size", "cell_size", (0.02, 0.5)),
-    "max_iterations": ("solver", "max_iterations", int, (10, 20_000)),
-    "sensor_interval": ("solver", "sensor_interval", int, (10, 5_000)),
-    "warm_start": ("solver", "warm_start", bool, None),
-    "processors": ("solver", "processors", int, (1, 64)),
-    "racks_per_row": ("racks", "per_row", int, (1, 60)),
-    "containment": ("containment", "enabled", bool, None),
+    # --- site ---------------------------------------------------------------
+    "altitude_m": (("site", "altitude_m"), float, (0.0, 5_000.0)),
+    # --- the room -----------------------------------------------------------
+    "pods": (("pods",), int, (1, 60)),
+    "hall_size": (("hall", "size"), "vector3", (0.5, 500.0)),
+    "hall_height": (("hall", "height"), float, (2.5, 30.0)),
+    "ceiling": (("hall", "ceiling"), float, (2.0, 20.0)),
+    "gallery_depth": (("gallery", "depth"), float, (0.5, 20.0)),
+    # --- aisles and clearances ---------------------------------------------
+    "cold_aisle": (("aisles", "cold"), float, (0.6, 10.0)),
+    "hot_aisle": (("aisles", "hot"), float, (0.6, 10.0)),
+    "perimeter": (("aisles", "perimeter"), float, (0.6, 20.0)),
+    # --- racks --------------------------------------------------------------
+    "rack_count": (("racks", "count"), int, (1, 60)),
+    "racks_per_row": (("racks", "per_row"), int, (1, 100)),
+    "rack_load_kw": (("racks", "load_kw"), float, (0.1, 200.0)),
+    "rack_size": (("racks", "size"), "vector3", (0.1, 3.0)),
+    "rack_offset_x": (("racks", "offset_x"), float, (0.0, 50.0)),
+    "rack_cfm_per_kw": (("racks", "airflow_cfm_per_kw"), float, (20.0, 400.0)),
+    # --- fan walls ----------------------------------------------------------
+    "fan_count": (("fanwall", "count"), int, (1, 200)),
+    "airflow_m3h": (("fanwall", "airflow_m3h"), float, (100.0, 500_000.0)),
+    "fan_capacity_kw": (("fanwall", "capacity_kw"), float, (0.1, 5_000.0)),
+    "fan_power_kw": (("fanwall", "power_kw"), float, (0.0, 500.0)),
+    "fan_width": (("fanwall", "width"), float, (0.3, 20.0)),
+    "fan_height": (("fanwall", "height"), float, (0.5, 20.0)),
+    "supply_temp_c": (("fanwall", "supply_temp_c"), float, (-10.0, 40.0)),
+    "fan_static_pa": (("fanwall", "static_pressure_pa"), float, (0.0, 2_000.0)),
+    # --- return grilles -----------------------------------------------------
+    "grille_size": (("grilles", "size"), float, (0.1, 3.0)),
+    "grille_count": (("grilles", "count"), int, (1, 200)),
+    "grille_coverage": (("grilles", "coverage"), float, (0.05, 1.0)),
+    "grille_free_area": (("grilles", "free_area"), float, (0.05, 1.0)),
+    "grille_k": (("grilles", "loss_coefficient"), float, (0.0, 100.0)),
+    "containment": (("containment", "enabled"), bool, None),
+    # --- mesh and solver ----------------------------------------------------
+    "cell_size": (("mesh", "cell_size"), "cell_size", (0.02, 1.0)),
+    "max_iterations": (("solver", "max_iterations"), int, (10, 20_000)),
+    "sensor_interval": (("solver", "sensor_interval"), int, (10, 5_000)),
+    "warm_start": (("solver", "warm_start"), bool, None),
+    "processors": (("solver", "processors"), int, (1, 64)),
 }
 
 
@@ -157,21 +182,26 @@ def apply_changes(spec: dict, changes: dict) -> tuple[dict, list[str]]:
         if key not in EDITABLE:
             rejected.append(f"{key}: not an editable parameter")
             continue
-        section, field_name, caster, limits = EDITABLE[key]
-        if caster == "cell_size":
-            # One number, or three: "0.2" or "0.2, 0.2, 0.1" (x, y, z).
+        path, caster, limits = EDITABLE[key]
+        if caster in ("cell_size", "vector3"):
+            # "0.2" or "0.2, 0.2, 0.1" -- one value or three (x, y, z).
             try:
-                parts = [float(v) for v in str(raw).replace(";", ",").split(",") if v.strip()]
+                parts = [
+                    float(v) for v in str(raw).replace(";", ",").split(",") if v.strip()
+                ]
             except ValueError:
                 rejected.append(f"{key}: {raw!r} is not a number or three numbers")
                 continue
-            if len(parts) not in (1, 3):
-                rejected.append(f"{key}: give one value or three (x, y, z)")
+            allowed = (1, 3) if caster == "cell_size" else (3,)
+            if len(parts) not in allowed:
+                rejected.append(
+                    f"{key}: give {'one value or three' if caster == 'cell_size' else 'three values'} (x, y, z)"
+                )
                 continue
             if limits and not all(limits[0] <= v <= limits[1] for v in parts):
                 rejected.append(f"{key}: outside {limits[0]:g}-{limits[1]:g}")
                 continue
-            spec.setdefault(section, {})[field_name] = parts[0] if len(parts) == 1 else parts
+            _place(spec, path, parts[0] if len(parts) == 1 else parts)
             continue
         try:
             value = caster(raw)
@@ -179,12 +209,18 @@ def apply_changes(spec: dict, changes: dict) -> tuple[dict, list[str]]:
             rejected.append(f"{key}: {raw!r} is not a {caster.__name__}")
             continue
         if limits and not (limits[0] <= value <= limits[1]):
-            rejected.append(
-                f"{key}: {value:g} is outside {limits[0]:g}-{limits[1]:g}"
-            )
+            rejected.append(f"{key}: {value:g} is outside {limits[0]:g}-{limits[1]:g}")
             continue
-        spec.setdefault(section, {})[field_name] = value
+        _place(spec, path, value)
     return spec, rejected
+
+
+def _place(spec: dict, path: tuple[str, ...], value) -> None:
+    """Write ``value`` at ``path``, creating the sections it needs."""
+    node = spec
+    for step in path[:-1]:
+        node = node.setdefault(step, {})
+    node[path[-1]] = value
 
 
 def _processors(name: str | None) -> int:
@@ -229,7 +265,9 @@ def build_payload(name: str) -> dict:
     spec = load_spec(name)
     model = model_module.build_model(spec)
     payload = model_module.to_dict(model, spec)
-    payload["editable"] = sorted(EDITABLE)
+    # The page needs the path of every editable field, so it can read the
+    # current value out of the spec without a second copy of this table.
+    payload["editable"] = {key: list(path) for key, (path, _c, _l) in EDITABLE.items()}
     payload["run"] = STATE.snapshot()
     payload["has_results"] = (RESULTS_DIR / name / "viewer.json").exists()
     payload["blocked"] = solver_available(name)

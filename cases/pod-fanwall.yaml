@@ -1,37 +1,46 @@
-# POD fan wall com enclausuramento de corredor quente e retorno por plenum de forro.
+# Fan-wall POD with hot-aisle containment and a ceiling-plenum return.
 #
-# Circuito do ar:
-#   fan wall -> corredor frio -> racks -> corredor quente enclausurado ->
-#   grelhas do forro -> plenum -> abertura acima da parede -> galeria -> fan wall
+# The air loop:
+#   fan wall -> cold aisle -> racks -> contained hot aisle -> ceiling grilles
+#   -> return plenum -> opening above the dividing wall -> gallery -> fan wall
+#
+# This is the worked single-POD case: 18 kW, 75,600 cells, about 8 minutes on
+# one core. See docs/experiments/2026-09-17-pod-fanwall.md for the run it
+# comes from and the three faults it found.
 name: pod-fanwall
 
+site:
+  altitude_m: 0               # sea level; the air weighs what it weighs here
+
 gallery:
-  depth: 3.0                  # galeria mecanica, sem forro, toda a altura
+  depth: 3.0                  # mechanical gallery, no false ceiling, full height
 
 hall:
-  size: [6.0, 4.2, 8.0]       # comprimento x, largura y, piso->laje z
-  ceiling: 6.5                # forro; acima dele o plenum de retorno
+  size: [6.0, 4.2, 8.0]       # length x, width y, floor to slab z
+  ceiling: 6.5                # false ceiling; above it, the return plenum
 
 aisles:
   cold: 1.8
-  hot: 1.2
+  hot: 1.2                    # contained: a chimney from the racks to the ceiling
 
 racks:
   count: 3
   load_kw: 6.0
-  size: [0.6, 1.2, 2.2]       # frente(x) x profundidade(y) x altura(z)
-  offset_x: 2.0               # a partir da parede da galeria
+  size: [0.6, 1.2, 2.2]       # front(x) x depth(y) x height(z)
+  offset_x: 2.0               # from the gallery wall
+  airflow_cfm_per_kw: 158     # what a rack draws per kW; sizes its resistance
 
 fanwall:
-  airflow_m3h: 5000
+  airflow_m3h: 5000           # PER UNIT, as a datasheet gives it
   supply_temp_c: 20.0
   height: 4.0
-  width: 1.8                  # na largura do corredor frio
-  static_pressure_pa: 100     # pressao estatica externa de datasheet, na vazao nominal
-  # Curva P-Q da unidade (m3/h, Pa). O ponto 5000 @ 100 e o do datasheet; os
-  # demais tem a forma tipica de um fan array EC (queda quase quadratica ate a
-  # descarga livre). SUBSTITUA pela curva do seu datasheet quando a tiver --
-  # ela decide o ponto de operacao sem controle e a margem do controle.
+  width: 1.8                  # across the cold aisle
+  static_pressure_pa: 100     # external static pressure from the datasheet,
+                              # at the rated airflow
+  # P-Q curve of the unit (m3/h, Pa). The 5000 @ 100 point is the datasheet's;
+  # the rest has the shape of an EC fan array (an almost quadratic fall to free
+  # delivery). REPLACE with the curve from your datasheet -- it decides the
+  # uncontrolled operating point and how much margin the control has.
   curve:
     - [0, 250]
     - [2500, 200]
@@ -40,16 +49,16 @@ fanwall:
     - [7500, 0]
 
 grilles:
-  size: 0.60                  # 3 grelhas quadradas, adjacentes, sobre os racks
+  size: 0.60                  # 3 square grilles, side by side, over the racks
   count: 3
-  # Grelha de retorno de teto. Datasheet de catalogo (Koolair serie 20.2,
-  # grelha de retorno montada em forro): perda de 4,1 Pa a 2,1 m/s de
-  # velocidade efetiva (Vk), fator de montagem em teto 0,81, ~80% de area
-  # livre. Referido a velocidade de face sobre a area bruta (o que o modelo
-  # usa): v = 2,1 x 0,80 = 1,68 m/s -> K = 2 x 4,1 / (1,2 x 1,68^2) = 2,4.
-  # loss_coefficient vence free_area quando os dois estao presentes; sem ele,
-  # K sai da area livre pela placa fina de Idelchik (subestima grelha com
-  # aletas -- daria 0,54 aqui).
+  # Ceiling return grille, from a catalogue datasheet (Koolair series 20.2,
+  # ceiling-mounted return): 4.1 Pa at 2.1 m/s core velocity (Vk), ceiling
+  # mounting factor 0.81, about 80% free area. Referred to the face velocity
+  # over the gross area (what the model uses): v = 2.1 x 0.80 = 1.68 m/s, so
+  # K = 2 x 4.1 / (1.2 x 1.68^2) = 2.4.
+  # loss_coefficient wins over free_area when both are present; without it, K
+  # comes from the free area by Idelchik's thin plate (which under-reads a
+  # vaned grille -- it would give 0.54 here).
   free_area: 0.80
   loss_coefficient: 2.4
 
@@ -57,16 +66,19 @@ containment:
   enabled: true
 
 mesh:
-  # Celula por eixo (x, y, z). 0,20 m em planta resolve um rack de 0,60 m; em z
-  # fica 0,10 m para o forro (6,5 m) e o topo dos racks (2,2 m) cairem em face
-  # de celula. 75.600 celulas: 4x menos que 0,10 m uniforme, e a comparacao
-  # grossa x fina ficou dentro de 0,2 K e 3% (ver docs/experiments).
+  # Cell edge per axis (x, y, z). 0.20 m in plan resolves a 0.60 m rack; in z
+  # it is 0.10 m so the false ceiling (6.5 m) and the rack tops (2.2 m) land on
+  # cell faces. 75,600 cells: four times fewer than a uniform 0.10 m mesh, and
+  # the coarse-against-fine comparison agreed within 0.2 K and 3%
+  # (docs/experiments).
   cell_size: [0.20, 0.20, 0.10]
 
 solver:
-  max_iterations: 2000        # teto, nao meta: residualControl deve parar antes
+  max_iterations: 2000        # a cap, not a target: residualControl should stop
+                              # the run first
   residual_tolerance: 1.0e-4
-  sensor_interval: 100        # a cada quantas iteracoes os sensores reportam
-  warm_start: true            # semeia o campo com a topologia do circuito.
-                              # false parte de um campo uniforme -- as duas
-                              # tem de chegar no mesmo lugar (ADR-019).
+  sensor_interval: 100        # how often the instrumented places report
+  warm_start: true            # seed the field with the loop's topology.
+                              # false starts from a uniform field -- both have
+                              # to reach the same answer (ADR-019)
+  processors: 1               # above 1: decomposePar + mpirun

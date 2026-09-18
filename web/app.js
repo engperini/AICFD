@@ -8,44 +8,100 @@
 
 import { viewsFor, drawView, sheetScale } from './drawing.js';
 
-const PARAMS = [
-  { key: 'rack_count', label: 'Racks', unit: 'un', step: 1 },
-  { key: 'rack_load_kw', label: 'Carga por rack', unit: 'kW', step: 0.5 },
-  { key: 'rack_cfm_per_kw', label: 'Ar por kW de rack', unit: 'CFM/kW', step: 1 },
-  { key: 'fan_count', label: 'Fan walls', unit: 'un', step: 1 },
-  { key: 'airflow_m3h', label: 'Vazão por fan wall', unit: 'm³/h', step: 100 },
-  { key: 'fan_capacity_kw', label: 'Capacidade por fan wall', unit: 'kW', step: 1 },
-  { key: 'fan_power_kw', label: 'Potência elétrica por fan wall', unit: 'kW', step: 0.1 },
-  { key: 'altitude_m', label: 'Altitude do site', unit: 'm', step: 10 },
-  { key: 'supply_temp_c', label: 'Temperatura de insuflamento', unit: '°C', step: 0.5 },
-  { key: 'fan_height', label: 'Altura do fan wall', unit: 'm', step: 0.1 },
-  { key: 'cold_aisle', label: 'Corredor frio', unit: 'm', step: 0.1 },
-  { key: 'hot_aisle', label: 'Corredor quente', unit: 'm', step: 0.1 },
-  { key: 'ceiling', label: 'Altura do forro', unit: 'm', step: 0.1 },
-  { key: 'gallery_depth', label: 'Profundidade da galeria', unit: 'm', step: 0.1 },
-  { key: 'cell_size', label: 'Célula (x, y, z)', unit: 'm', step: 0.01, text: true },
-  { key: 'max_iterations', label: 'Iterações (teto)', unit: 'un', step: 50 },
+/**
+ * The input template: every field of the case spec, grouped the way an
+ * engineer thinks about a data hall.
+ *
+ * A field appears when the loaded spec has it, so a POD shows `Racks in the
+ * row` and a hall shows `Racks per row` and `PODs`, and neither can be edited
+ * into the other's shape by accident. Fields marked `optional` are shown even
+ * when absent, because they are the ones a user adds: a datasheet capacity, a
+ * perimeter clearance, the site altitude.
+ *
+ * The paths come from the server (`model.editable`), so this file never holds
+ * a second copy of where a value lives in the spec.
+ */
+const SECTIONS = [
+  {
+    title: 'Site',
+    note: 'the air weighs what it weighs here',
+    params: [{ key: 'altitude_m', label: 'Altitude', unit: 'm', step: 10, optional: true }],
+  },
+  {
+    title: 'Room',
+    params: [
+      { key: 'pods', label: 'PODs (row + hot aisle + row)', unit: '', step: 1 },
+      { key: 'hall_size', label: 'Hall size (x, y, z)', unit: 'm', text: true },
+      { key: 'hall_height', label: 'Floor to slab', unit: 'm', step: 0.1 },
+      { key: 'ceiling', label: 'False ceiling height', unit: 'm', step: 0.1 },
+      { key: 'gallery_depth', label: 'Mechanical gallery depth', unit: 'm', step: 0.1 },
+    ],
+  },
+  {
+    title: 'Aisles and clearances',
+    params: [
+      { key: 'cold_aisle', label: 'Cold aisle', unit: 'm', step: 0.1 },
+      { key: 'hot_aisle', label: 'Hot aisle (contained)', unit: 'm', step: 0.1 },
+      { key: 'perimeter', label: 'Perimeter clearance', unit: 'm', step: 0.1, optional: true },
+    ],
+  },
+  {
+    title: 'Racks',
+    params: [
+      { key: 'rack_count', label: 'Racks in the row', unit: '', step: 1 },
+      { key: 'racks_per_row', label: 'Racks per row', unit: '', step: 1 },
+      { key: 'rack_load_kw', label: 'Load per rack', unit: 'kW', step: 0.5 },
+      { key: 'rack_size', label: 'Rack size (w, d, h)', unit: 'm', text: true },
+      { key: 'rack_offset_x', label: 'Row offset from the gallery', unit: 'm', step: 0.1 },
+      { key: 'rack_cfm_per_kw', label: 'Rack airflow', unit: 'CFM/kW', step: 1, optional: true },
+    ],
+  },
+  {
+    title: 'Fan walls',
+    note: 'per unit, as the datasheet gives them',
+    params: [
+      { key: 'fan_count', label: 'Units', unit: '', step: 1 },
+      { key: 'airflow_m3h', label: 'Airflow per unit', unit: 'm³/h', step: 100 },
+      { key: 'fan_capacity_kw', label: 'Sensible capacity', unit: 'kW', step: 1, optional: true },
+      { key: 'fan_power_kw', label: 'Power input', unit: 'kW', step: 0.1, optional: true },
+      { key: 'fan_width', label: 'Unit width', unit: 'm', step: 0.1 },
+      { key: 'fan_height', label: 'Unit height', unit: 'm', step: 0.1 },
+      { key: 'supply_temp_c', label: 'Supply temperature', unit: '°C', step: 0.5 },
+      { key: 'fan_static_pa', label: 'External static pressure', unit: 'Pa', step: 5, optional: true },
+    ],
+  },
+  {
+    title: 'Return grilles and containment',
+    params: [
+      { key: 'grille_size', label: 'Grille size', unit: 'm', step: 0.05 },
+      { key: 'grille_count', label: 'Grilles', unit: '', step: 1 },
+      { key: 'grille_coverage', label: 'Ceiling covered over each hot aisle', unit: '0-1', step: 0.05 },
+      { key: 'grille_free_area', label: 'Free area', unit: '0-1', step: 0.05, optional: true },
+      { key: 'grille_k', label: 'Loss coefficient K', unit: '', step: 0.1, optional: true },
+      { key: 'containment', label: 'Contain the hot aisle', check: true, optional: true },
+    ],
+  },
+  {
+    title: 'Mesh and solver',
+    params: [
+      { key: 'cell_size', label: 'Cell size (x, y, z)', unit: 'm', text: true },
+      { key: 'max_iterations', label: 'Iteration cap', unit: '', step: 50 },
+      { key: 'sensor_interval', label: 'Report every', unit: 'iterations', step: 10 },
+      { key: 'processors', label: 'Processors', unit: '', step: 1, optional: true },
+      { key: 'warm_start', label: 'Warm start', check: true, optional: true },
+    ],
+  },
 ];
 
-const SPEC_PATH = {
-  rack_count: ['racks', 'count'],
-  rack_load_kw: ['racks', 'load_kw'],
-  rack_cfm_per_kw: ['racks', 'airflow_cfm_per_kw'],
-  fan_count: ['fanwall', 'count'],
-  airflow_m3h: ['fanwall', 'airflow_m3h'],
-  fan_capacity_kw: ['fanwall', 'capacity_kw'],
-  fan_power_kw: ['fanwall', 'power_kw'],
-  altitude_m: ['site', 'altitude_m'],
-  supply_temp_c: ['fanwall', 'supply_temp_c'],
-  fan_height: ['fanwall', 'height'],
-  cold_aisle: ['aisles', 'cold'],
-  hot_aisle: ['aisles', 'hot'],
-  ceiling: ['hall', 'ceiling'],
-  gallery_depth: ['gallery', 'depth'],
-  cell_size: ['mesh', 'cell_size'],
-  max_iterations: ['solver', 'max_iterations'],
-  containment: ['containment', 'enabled'],
-};
+/** The parameters this spec actually carries, section by section. */
+function activeSections() {
+  return SECTIONS.map((section) => ({
+    ...section,
+    params: section.params.filter(
+      (p) => model.editable?.[p.key] && (p.optional || specValue(p.key) !== ''),
+    ),
+  })).filter((section) => section.params.length);
+}
 
 const RESIDUAL_ORDER = ['Ux', 'Uy', 'Uz', 'h', 'p_rgh', 'k', 'epsilon'];
 
@@ -60,14 +116,14 @@ async function main() {
     model = await fetchJson('/api/model');
   } catch (error) {
     document.getElementById('root').innerHTML =
-      `<div class="error"><strong>Não consegui carregar o modelo.</strong>
+      `<div class="error"><strong>Could not load the model.</strong>
        <p>${error.message}</p>
-       <p>Esta página precisa do servidor do AICFD. Rode <code>aicfd view</code>.</p></div>`;
+       <p>This page needs the AICFD server. Run <code>aicfd view</code>.</p></div>`;
     return;
   }
   if (model.error) {
     document.getElementById('root').innerHTML =
-      `<div class="error"><strong>Erro no spec.</strong><p>${model.error}</p></div>`;
+      `<div class="error"><strong>Error in the spec.</strong><p>${model.error}</p></div>`;
     return;
   }
   render();
@@ -78,7 +134,7 @@ async function main() {
 
 function render() {
   document.getElementById('case-name').textContent =
-    `${model.name} · ${model.cells.toLocaleString('pt-BR')} células · ` +
+    `${model.name} · ${model.cells.toLocaleString('en-US')} cells · ` +
     `${model.divisions.join(' × ')}`;
   setStage(model.run);
 
@@ -87,42 +143,42 @@ function render() {
   <div class="column">
     <section class="card">
       <div class="card-head">
-        <span class="card-title">Modelo</span>
-        <span class="card-sub">desenhado a partir da geometria que vai ser discretizada</span>
+        <span class="card-title">Model</span>
+        <span class="card-sub">drawn from the geometry that will be meshed</span>
       </div>
       <div class="views" id="views"></div>
       <div class="legend">
-        <span><i class="swatch" style="background:var(--cold)"></i>fan wall / ar frio</span>
-        <span><i class="swatch" style="background:var(--hot)"></i>grelhas e retorno</span>
-        <span><i class="swatch" style="background:var(--containment)"></i>enclausuramento</span>
+        <span><i class="swatch" style="background:var(--cold)"></i>fan wall / cold air</span>
+        <span><i class="swatch" style="background:var(--hot)"></i>grilles and return</span>
+        <span><i class="swatch" style="background:var(--containment)"></i>containment</span>
         <span><i class="swatch" style="background:var(--rack);border:1px solid var(--text-primary)"></i>racks</span>
-        <span><i class="swatch" style="background:var(--series-4)"></i>sensores</span>
-        <span>tracejado = além do plano de corte</span>
+        <span><i class="swatch" style="background:var(--series-4)"></i>sensors</span>
+        <span>dashed = beyond the section plane</span>
       </div>
     </section>
 
     <section class="card" id="sensors-card">
       <div class="card-head">
-        <span class="card-title">Sensores</span>
-        <span class="card-sub">média de 3 pontos por local, a cada
-          ${model.spec?.solver?.sensor_interval ?? 100} iterações</span>
+        <span class="card-title">Sensors</span>
+        <span class="card-sub">mean of 3 points per place, every
+          ${model.spec?.solver?.sensor_interval ?? 100} iterations</span>
       </div>
       <div id="sensors"></div>
     </section>
 
     <section class="card">
       <div class="card-head">
-        <span class="card-title">Convergência</span>
+        <span class="card-title">Convergence</span>
         <span class="card-sub" id="progress-note">${
-          model.blocked ? `não dá para rodar: ${model.blocked}` : 'nada rodando'
+          model.blocked ? `cannot run: ${model.blocked}` : 'nothing running'
         }</span>
         <span class="spacer" style="flex:1"></span>
         ${
           model.has_results
-            ? `<a class="linkbutton" href="./results.html?case=${model.name}">Ver resultados</a>`
+            ? `<a class="linkbutton" href="./results.html?case=${model.name}">See results</a>`
             : ''
         }
-        <button id="run" class="primary" type="button">Rodar simulação</button>
+        <button id="run" class="primary" type="button">Run simulation</button>
       </div>
       <div id="progress"></div>
     </section>
@@ -130,27 +186,28 @@ function render() {
 
   <aside class="column">
     <section class="card">
-      <div class="card-head"><span class="card-title">Parâmetros</span></div>
+      <div class="card-head"><span class="card-title">Inputs</span>
+        <span class="card-sub">the case template; every field of the spec</span></div>
       <div class="params" id="params"></div>
       <div class="actions">
-        <button id="apply" class="primary" type="button">Aplicar</button>
-        <button id="reset" type="button">Desfazer</button>
+        <button id="apply" class="primary" type="button">Apply</button>
+        <button id="reset" type="button">Undo</button>
       </div>
     </section>
 
     <section class="card">
-      <div class="card-head"><span class="card-title">Verificação</span>
-        <span class="card-sub">números derivados</span></div>
+      <div class="card-head"><span class="card-title">Check</span>
+        <span class="card-sub">what the inputs imply</span></div>
       <div id="summary"></div>
     </section>
 
     <section class="card" id="alerts-card" hidden>
-      <div class="card-head"><span class="card-title">Capacidade do HVAC</span>
-        <span class="card-sub">critérios de projeto; alertam, não impedem a rodada</span></div>
+      <div class="card-head"><span class="card-title">Cooling capacity</span>
+        <span class="card-sub">design criteria; these warn, they do not block a run</span></div>
       <ul class="notes alerts" id="alerts"></ul>
     </section>
     <section class="card" id="warnings-card" hidden>
-      <div class="card-head"><span class="card-title">Ajustes à malha</span></div>
+      <div class="card-head"><span class="card-title">Mesh snapping</span></div>
       <ul class="notes" id="warnings"></ul>
     </section>
   </aside>
@@ -191,18 +248,33 @@ function drawViews() {
 
 function renderParams() {
   const host = document.getElementById('params');
-  host.innerHTML =
-    PARAMS.map(
-      (p) => `<div class="param">
-        <label for="p-${p.key}">${p.label} <span class="unit">${p.unit}</span></label>
-        <input type="${p.text ? 'text' : 'number'}" id="p-${p.key}" step="${p.step}"
-               value="${formatValue(specValue(p.key))}" />
+  host.innerHTML = activeSections()
+    .map(
+      (section) => `<div class="param-group">
+        <div class="param-group-head">${section.title}${
+          section.note ? `<span>${section.note}</span>` : ''
+        }</div>
+        ${section.params.map(inputHtml).join('')}
       </div>`,
-    ).join('') +
-    `<div class="param">
-       <label for="p-containment">Enclausurar corredor quente</label>
-       <input type="checkbox" id="p-containment" ${specValue('containment') ? 'checked' : ''} />
-     </div>`;
+    )
+    .join('');
+}
+
+function inputHtml(p) {
+  const value = specValue(p.key);
+  if (p.check) {
+    return `<div class="param">
+      <label for="p-${p.key}">${p.label}</label>
+      <input type="checkbox" id="p-${p.key}" ${value === false ? '' : 'checked'} />
+    </div>`;
+  }
+  return `<div class="param">
+    <label for="p-${p.key}">${p.label}${
+      p.unit ? ` <span class="unit">${p.unit}</span>` : ''
+    }</label>
+    <input type="${p.text ? 'text' : 'number'}" id="p-${p.key}"
+           step="${p.step ?? 'any'}" value="${formatValue(value)}" />
+  </div>`;
 }
 
 /** A list in the spec (an anisotropic cell) shows as "0.2, 0.2, 0.1". */
@@ -211,7 +283,8 @@ function formatValue(value) {
 }
 
 function specValue(key) {
-  const path = SPEC_PATH[key];
+  const path = model.editable?.[key];
+  if (!path) return '';
   let node = model.spec;
   for (const step of path) node = node?.[step];
   return node ?? '';
@@ -270,8 +343,8 @@ function renderSensors(history) {
   host.innerHTML = `${balance ? balanceStrip(balance) : ''}
   <table class="sensors">
     <thead><tr>
-      <th>Local</th><th>Temp.</th><th>Δ entre pontos</th>
-      <th>Pressão</th><th>Velocidade</th>
+      <th>Place</th><th>Temp.</th><th>Spread</th>
+      <th>Pressure</th><th>Speed</th>
     </tr></thead>
     <tbody>${placed
       .map(({ label, note, live }) => {
@@ -289,11 +362,11 @@ function renderSensors(history) {
         </tr>`;
       })
       .join('')}</tbody></table>
-    <p class="sensor-foot">Pressão relativa à tomada do fan wall, com a coluna
-      hidrostática removida — é a diferença que um manômetro leria e que empurra
-      o ar pelo circuito.</p>
+    <p class="sensor-foot">Pressure is relative to the fan wall intake, with the
+      hydrostatic column removed: the difference a manometer would read, and the
+      one that pushes the air round the loop.</p>
     ${iterations.length ? drawSensorChart(history) :
-      `<p class="empty">as medidas aparecem a partir da primeira leitura</p>`}`;
+      `<p class="empty">readings appear from the first sample</p>`}`;
 }
 
 /**
@@ -310,15 +383,15 @@ function balanceStrip(b) {
   return `<div class="balance">
     <span class="balance-item" data-state="${state}">
       <b>${closure == null ? '—' : `${fmt(closure, 0)}%`}</b>
-      <i>da carga no ar de retorno</i></span>
+      <i>of the load in the return air</i></span>
     <span class="balance-item"><b>${fmt(b.return_temp_c, 1)} °C</b>
-      <i>retorno no fan wall</i></span>
+      <i>return at the fan wall</i></span>
     <span class="balance-item"><b>${fmt(b.peak_speed_ms, 2)} m/s</b>
-      <i>velocidade máxima</i></span>
+      <i>peak air speed</i></span>
     ${b.fan_rise_pa == null ? '' : `<span class="balance-item">
-      <b>${fmt(b.fan_rise_pa, 1)} Pa</b><i>pressão do fan wall</i></span>`}
+      <b>${fmt(b.fan_rise_pa, 1)} Pa</b><i>fan wall pressure</i></span>`}
     <span class="balance-item" data-state="${b.backflow_kg_s > 0.01 ? 'warn' : ''}">
-      <b>${fmt(b.backflow_kg_s, 3)} kg/s</b><i>refluxo na tomada</i></span>
+      <b>${fmt(b.backflow_kg_s, 3)} kg/s</b><i>backflow at the intake</i></span>
   </div>`;
 }
 
@@ -326,7 +399,7 @@ function balanceStrip(b) {
 function drawSensorChart(history) {
   const W = 640;
   const H = 180;
-  const pad = { left: 44, right: 96, top: 10, bottom: 26 };
+  const pad = { left: 44, right: 132, top: 10, bottom: 26 };
   const its = history.iterations;
   const series = history.groups.filter((g) => g.temp_c?.length);
   if (!series.length || its.length < 2) return '';
@@ -347,6 +420,19 @@ function drawSensorChart(history) {
     )
     .join('');
 
+  // Three of the four places sit within a kelvin of each other at steady
+  // state, so their end labels would overlap. Stack them apart, in order.
+  const ends = series
+    .map((g, i) => ({ i, y: Y(g.temp_c[g.temp_c.length - 1]) }))
+    .sort((a, b) => a.y - b.y);
+  const labelY = {};
+  let previous = -Infinity;
+  for (const end of ends) {
+    const y = Math.max(end.y, previous + 13);
+    labelY[end.i] = y;
+    previous = y;
+  }
+
   const lines = series
     .map((g, i) => {
       const d = g.temp_c
@@ -355,21 +441,21 @@ function drawSensorChart(history) {
       const colour = `var(--series-${(i % 8) + 1})`;
       const end = g.temp_c.length - 1;
       return `<path class="chart-line" d="${d}" stroke="${colour}"/>
-        <text class="chart-tick" x="${X(end) + 6}" y="${Y(g.temp_c[end]) + 4}"
+        <text class="chart-tick" x="${X(end) + 6}" y="${labelY[i] + 4}"
           fill="${colour}">${g.label}</text>`;
     })
     .join('');
 
   return `<svg class="sensor-chart" viewBox="0 0 ${W} ${H}" role="img"
-      aria-label="temperatura por local ao longo das iterações">
+      aria-label="temperature at each place against iteration">
     ${grid}${lines}
     <text class="chart-tick" x="${(pad.left + W - pad.right) / 2}" y="${H - 6}"
-      text-anchor="middle">iteração ${its[its.length - 1]}</text>
+      text-anchor="middle">iteration ${its[its.length - 1]}</text>
   </svg>`;
 }
 
 const fmt = (v, places) =>
-  Number(v).toLocaleString('pt-BR', {
+  Number(v).toLocaleString('en-US', {
     minimumFractionDigits: places,
     maximumFractionDigits: places,
   });
@@ -380,12 +466,17 @@ async function applyChanges() {
   const button = document.getElementById('apply');
   button.disabled = true;
   const changes = {};
-  for (const p of PARAMS) {
-    const input = document.getElementById(`p-${p.key}`);
-    if (input.value === '') continue;
-    changes[p.key] = p.text ? input.value : Number(input.value);
+  for (const section of activeSections()) {
+    for (const p of section.params) {
+      const input = document.getElementById(`p-${p.key}`);
+      if (!input) continue;
+      if (p.check) {
+        changes[p.key] = input.checked;
+      } else if (input.value !== '') {
+        changes[p.key] = p.text ? input.value : Number(input.value);
+      }
+    }
   }
-  changes.containment = document.getElementById('p-containment').checked;
 
   try {
     const next = await fetchJson('/api/model', { method: 'POST', body: changes });
@@ -393,10 +484,10 @@ async function applyChanges() {
     model = next;
     render();
     if (next.rejected?.length) {
-      alert(`Não aceito:\n${next.rejected.join('\n')}`);
+      alert(`Not accepted:\n${next.rejected.join('\n')}`);
     }
   } catch (error) {
-    alert(`Falha ao aplicar: ${error.message}`);
+    alert(`Could not apply: ${error.message}`);
   } finally {
     button.disabled = false;
   }
@@ -410,7 +501,7 @@ async function startRun() {
     if (response.blocked) throw new Error(response.blocked);
     setStage(response.run);
   } catch (error) {
-    alert(`Não consegui iniciar: ${error.message}`);
+    alert(`Could not start: ${error.message}`);
     button.disabled = false;
   }
 }
@@ -420,11 +511,11 @@ function setStage(run) {
   const badge = document.getElementById('stage');
   badge.dataset.stage = run.stage;
   const labels = {
-    idle: 'pronto para rodar',
-    meshing: `malhando${run.step ? ` · ${run.step}` : ''}`,
-    solving: 'resolvendo',
-    done: 'resolvido',
-    failed: 'falhou',
+    idle: 'ready to run',
+    meshing: `meshing${run.step ? ` · ${run.step}` : ''}`,
+    solving: 'solving',
+    done: 'solved',
+    failed: 'failed',
   };
   badge.textContent = labels[run.stage] || run.stage;
   const button = document.getElementById('run');
@@ -448,7 +539,7 @@ async function poll() {
     renderSensors(status.sensors);
     const note = document.getElementById('progress-note');
     if (note && !model.blocked && status.residuals.total) {
-      note.textContent = `${status.residuals.total.toLocaleString('pt-BR')} iterações`;
+      note.textContent = `${status.residuals.total.toLocaleString('en-US')} iterations`;
     }
   } catch {
     /* the server may be mid-restart; try again on the next tick */
@@ -473,7 +564,7 @@ function drawProgress(residuals) {
   const names = RESIDUAL_ORDER.filter((n) => residuals.series?.[n]?.length);
   if (!names.length) {
     svg.append(
-      text(width / 2, height / 2, 'sem dados ainda — a curva aparece durante a simulação',
+      text(width / 2, height / 2, 'no data yet: the curve appears while the solver runs',
         'chart-empty'),
     );
     host.append(svg);
@@ -559,7 +650,7 @@ function setupTheme() {
     document.documentElement.dataset.theme ||
     (matchMedia('(prefers-color-scheme: dark)').matches ? 'dark' : 'light');
   const apply = () => {
-    button.textContent = current() === 'dark' ? 'Claro' : 'Escuro';
+    button.textContent = current() === 'dark' ? 'Light' : 'Dark';
     if (model) drawViews();
   };
   button.addEventListener('click', () => {

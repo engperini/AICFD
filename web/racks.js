@@ -20,8 +20,8 @@ import { Scale, buildLut, niceStep } from './colormaps.js';
 import { renderScaleBar } from './maps.js';
 
 const METRICS = {
-  inlet_top_c: { label: 'Topo do rack (pior ponto)', short: 'topo' },
-  inlet_temp_c: { label: 'Média da face de entrada', short: 'média' },
+  inlet_top_c: { label: 'Top of the rack (worst point)', short: 'top' },
+  inlet_temp_c: { label: 'Mean over the inlet face', short: 'mean' },
 };
 
 const ASHRAE_RECOMMENDED_MAX = 27;
@@ -58,10 +58,10 @@ export class RackInlets {
     this.host.innerHTML = `
       <div class="racks-controls">
         <div class="control">
-          <label for="rack-metric">Pintar por</label>
+          <label for="rack-metric">Paint by</label>
           <select id="rack-metric">${options}</select>
         </div>
-        <button type="button" id="rack-csv">Baixar CSV (${this.racks.length} racks)</button>
+        <button type="button" id="rack-csv">Download CSV (${this.racks.length} racks)</button>
         <span class="card-sub" id="rack-caption"></span>
       </div>
       <div class="racks-stage"><div class="wrap" id="rack-stage"></div></div>
@@ -109,8 +109,8 @@ export class RackInlets {
     const scale = this.scale;
     const metric = METRICS[this.metric];
     this.host.querySelector('#rack-caption').textContent =
-      `Cada rack pela temperatura de entrada (${metric.short}). ` +
-      `ASHRAE recomenda até ${ASHRAE_RECOMMENDED_MAX} °C.`;
+      `Every rack by its inlet temperature (${metric.short}). ` +
+      `ASHRAE recommends up to ${ASHRAE_RECOMMENDED_MAX} °C.`;
 
     const stage = this.host.querySelector('#rack-stage');
     const outer = stage.parentElement;
@@ -166,9 +166,9 @@ export class RackInlets {
       }
       probe.hidden = false;
       probe.textContent =
-        `${hit.name} · entrada ${fmt(hit.inlet_temp_c, 1)} °C, ` +
-        `topo ${fmt(hit.inlet_top_c ?? hit.inlet_temp_c, 1)} °C, ` +
-        `saída ${fmt(hit.peak_temp_c, 1)} °C · ${hit.ashrae.verdict}`;
+        `${hit.name} · inlet ${fmt(hit.inlet_temp_c, 1)} °C, ` +
+        `top ${fmt(hit.inlet_top_c ?? hit.inlet_temp_c, 1)} °C, ` +
+        `outlet ${fmt(hit.peak_temp_c, 1)} °C · ${hit.ashrae.verdict}`;
       probe.style.left = `${event.clientX + 14}px`;
       probe.style.top = `${event.clientY + 14}px`;
     });
@@ -186,7 +186,7 @@ export class RackInlets {
       lut,
       field: { min: Math.min(...values), max: Math.max(...values) },
       spec: {
-        label: `Entrada do rack, ${metric.short}`,
+        label: `Rack inlet, ${metric.short}`,
         units: '°C',
         decimals: 1,
       },
@@ -213,17 +213,17 @@ export class RackInlets {
       )
       .join('');
     this.host.querySelector('#rack-table').innerHTML = `<table>
-      <thead><tr><th>Rack</th><th>Fileira</th><th>Pos.</th><th>Entrada °C</th>
-      <th>Topo °C</th><th>Saída °C</th><th>ΔT K</th><th>ASHRAE</th></tr></thead>
+      <thead><tr><th>Rack</th><th>Row</th><th>Pos.</th><th>Inlet °C</th>
+      <th>Top °C</th><th>Outlet °C</th><th>ΔT K</th><th>ASHRAE</th></tr></thead>
       <tbody>${rows}</tbody></table>`;
     const note = this.host.querySelector('#rack-note');
     const more = sorted.length > LISTED;
     note.innerHTML =
-      `${this.racks.length} racks · entrada no topo de ${fmt(Math.min(...values), 1)} a ` +
-      `${fmt(Math.max(...values), 1)} °C · ${over} acima do recomendado.` +
+      `${this.racks.length} racks · inlet at the top from ${fmt(Math.min(...values), 1)} to ` +
+      `${fmt(Math.max(...values), 1)} °C · ${over} above recommended.` +
       (more
         ? ` <button type="button" id="rack-more" class="linkish">${
-            this.showAll ? `Mostrar só os ${LISTED} mais quentes` : `Mostrar todos os ${sorted.length}`
+            this.showAll ? `Show only the ${LISTED} warmest` : `Show all ${sorted.length}`
           }</button>`
         : '');
     const button = note.querySelector('#rack-more');
@@ -237,8 +237,8 @@ export class RackInlets {
 
   download() {
     const header = [
-      'rack', 'fileira', 'posicao', 'carga_kw', 'entrada_media_c', 'entrada_topo_c',
-      'saida_c', 'delta_t_k', 'ashrae',
+      'rack', 'row', 'position', 'load_kw', 'inlet_mean_c', 'inlet_top_c',
+      'outlet_c', 'delta_t_k', 'ashrae',
     ];
     const lines = this.racks.map((r) =>
       [
@@ -260,7 +260,7 @@ export class RackInlets {
 }
 
 const fmt = (v, places) =>
-  Number(v).toLocaleString('pt-BR', {
+  Number(v).toLocaleString('en-US', {
     minimumFractionDigits: places,
     maximumFractionDigits: places,
   });
