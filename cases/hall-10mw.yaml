@@ -1,5 +1,6 @@
 # Data hall conceitual de 10 MW: PODs de fileira + HAC + fileira, repetidos,
-# com um fan wall na frente de cada corredor frio. Malha grossa de projeto
+# e uma parede de fan walls Vertiv CA40 ao longo da galeria, dimensionada por
+# capacidade e por vazao (158 CFM/kW). Malha grossa de projeto
 # conceitual: um rack e uma celula em planta, nove celulas em altura.
 #
 # Circuito do ar, o mesmo da POD, N vezes:
@@ -29,21 +30,33 @@ racks:
   load_kw: 13.0
   size: [0.6, 1.2, 2.2]       # frente x profundidade x altura; a altura cai
                               # em 2,25 m na malha de 0,25 m (aviso do modelo)
+  airflow_cfm_per_kw: 158     # referencia de projeto: o que o rack puxa por kW
+
+site:
+  altitude_m: 1880            # QR2. O datasheet do fan wall foi selecionado a
+                              # 1.880 m: 76.650 m3/h de ar real = 56.475 m3/h de
+                              # ar padrao. O solver roda na pressao do site
+                              # (80,8 kPa), entao vazao e massa batem com ele.
 
 fanwall:
-  width: 4.5                  # largura da unidade
-  height: 4.0
-  airflow_m3h: 160000         # POR UNIDADE. 17 unidades x 160.000 = 2,72 M m3/h:
-                              # o que 768 racks de 13 kW pedem a 11 K. Confira
-                              # com a vazao nominal do datasheet da unidade.
-  supply_temp_c: 20.0
-  static_pressure_pa: 100     # datasheet, na vazao nominal
-  curve:                      # representativa -- substitua pela do datasheet
-    - [0, 250]
-    - [80000, 200]
-    - [160000, 100]
-    - [208000, 40]
-    - [240000, 0]
+  # Vertiv CWA CA40NPVG6, selecao Ascenty QR2 (retorno 37 C / 30% UR, agua
+  # 18/28 C, ESP 100 Pa). Tudo abaixo e do datasheet, por unidade.
+  count: 35                   # 35 x 290,9 kW = 10.181 kW >= 9.984 kW de TI;
+                              # 35 x 76.650 = 2,68 M m3/h >= 2,68 M m3/h dos
+                              # racks a 158 CFM/kW. 34 nao passa em nenhum.
+  width: 2.23                 # cai em 2,10 m na malha de 0,30 m (aviso)
+  height: 3.67                # cai em 3,75 m na malha de 0,25 m (aviso)
+  airflow_m3h: 76650          # ar real na altitude do site
+  capacity_kw: 290.9          # NSCC (sensivel liquida)
+  power_kw: 16.9              # potencia eletrica de entrada
+  supply_temp_c: 22.1         # insuflamento da selecao
+  static_pressure_pa: 100     # ESP
+  curve:                      # representativa, ancorada no ponto de selecao;
+    - [0, 250]                # substitua pela curva P-Q da unidade
+    - [38000, 200]
+    - [76650, 100]
+    - [100000, 40]
+    - [115000, 0]
 
 grilles:
   size: 0.60

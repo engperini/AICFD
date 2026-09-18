@@ -43,9 +43,9 @@ KELVIN = 273.15
 C_MU = 0.09
 T_REFERENCE_K = 293.0
 
-#: Specific gas constant for air, J/(kg K), and the pressure the case runs at.
+#: Specific gas constant for air, J/(kg K). The pressure the case runs at is
+#: the site's, from its altitude (aicfd.model.site_pressure).
 R_AIR = 287.05
-P_OPERATING = 101325.0
 
 #: Turbulence intensity for a room-scale recirculating flow (see aicfd.case).
 TURBULENCE_INTENSITY = 0.10
@@ -162,7 +162,7 @@ def supply_density(model: Model) -> float:
     itself computes at the supply patch. A nominal 1.19 would leave a percent
     of mass imbalance in a domain that has nowhere to put it.
     """
-    return P_OPERATING / (R_AIR * (model.supply_temp_c + KELVIN))
+    return model.pressure_pa / (R_AIR * (model.supply_temp_c + KELVIN))
 
 
 def _v(point) -> str:
@@ -365,13 +365,13 @@ actions
 # --- baffles ------------------------------------------------------------------
 
 
-def _wall_patch_fields(k: float, epsilon: float) -> str:
+def _wall_patch_fields(k: float, epsilon: float, p0: float) -> str:
     return f"""            patchFields
             {{
                 U       {{ type noSlip; }}
                 T       {{ type zeroGradient; }}
-                p_rgh   {{ type fixedFluxPressure; value uniform 101325; }}
-                p       {{ type calculated; value uniform 101325; }}
+                p_rgh   {{ type fixedFluxPressure; value uniform {p0:.0f}; }}
+                p       {{ type calculated; value uniform {p0:.0f}; }}
                 k       {{ type kqRWallFunction; value uniform {k:.4g}; }}
                 epsilon {{ type epsilonWallFunction; value uniform {epsilon:.4g}; }}
                 nut     {{ type nutkWallFunction; value uniform 0; }}
@@ -384,7 +384,7 @@ def grilles(model: Model) -> list[Panel]:
     return [p for p in model.panels if p.name.startswith("grille")]
 
 
-def _grille_baffle(grille: Panel) -> str:
+def _grille_baffle(grille: Panel, p0: float) -> str:
     """A return grille as a cyclic pair with a pressure jump across it.
 
     porousBafflePressure gives dp = -(D mu U + 0.5 I rho |U|^2) L on the
@@ -412,7 +412,7 @@ def _grille_baffle(grille: Panel) -> str:
 {cyclic}
                     p_rgh   {{ type porousBafflePressure; patchType cyclic;
                               D 0; I {K:.4g}; length 1;
-                              jump uniform 0; value uniform 101325; }}
+                              jump uniform 0; value uniform {p0:.0f}; }}
                 }}
             }}"""
 
@@ -443,7 +443,8 @@ def fan_patches(model: Model) -> list[tuple[str, str]]:
 def create_baffles_dict(model: Model) -> str:
     k, epsilon = turbulence_initial_values(model)
 
-    entries = [_grille_baffle(g) for g in grilles(model) if g.resistance is not None]
+    p0 = model.pressure_pa
+    entries = [_grille_baffle(g, p0) for g in grilles(model) if g.resistance is not None]
     for name, _panels, _holes in wall_plan(model):
         entries.append(
             f"""    {name}
@@ -453,7 +454,7 @@ def create_baffles_dict(model: Model) -> str:
         patchPairs
         {{
             type    wall;
-{_wall_patch_fields(k, epsilon)}
+{_wall_patch_fields(k, epsilon, p0)}
         }}
     }}"""
         )
@@ -475,6 +476,7 @@ baffles
 
 def _fan_baffle(model: Model, fan: Panel, k: float, epsilon: float) -> str:
     supply_k = model.supply_temp_c + KELVIN
+    p0 = model.pressure_pa
     # Each unit moves its share of the total, set by mass (see below).
     mass_flow = model.unit_airflow_m3h / 3600.0 * supply_density(model)
     intake, supply = f"{fan.name}Intake", f"{fan.name}Supply"
@@ -518,8 +520,8 @@ def _fan_baffle(model: Model, fan: Panel, k: float, epsilon: float) -> str:
                     T       {{ type inletOutlet;
                               inletValue uniform {supply_k:.2f};
                               value uniform {supply_k:.2f}; }}
-                    p_rgh   {{ type fixedFluxPressure; value uniform 101325; }}
-                    p       {{ type calculated; value uniform 101325; }}
+                    p_rgh   {{ type fixedFluxPressure; value uniform {p0:.0f}; }}
+                    p       {{ type calculated; value uniform {p0:.0f}; }}
                     k       {{ type zeroGradient; }}
                     epsilon {{ type zeroGradient; }}
                     nut     {{ type calculated; value uniform 0; }}
@@ -539,8 +541,8 @@ def _fan_baffle(model: Model, fan: Panel, k: float, epsilon: float) -> str:
                               massFlowRate {mass_flow:.6g};
                               rho rho; value uniform (0 0 0); }}
                     T       {{ type fixedValue; value uniform {supply_k:.2f}; }}
-                    p_rgh   {{ type fixedFluxPressure; value uniform 101325; }}
-                    p       {{ type calculated; value uniform 101325; }}
+                    p_rgh   {{ type fixedFluxPressure; value uniform {p0:.0f}; }}
+                    p       {{ type calculated; value uniform {p0:.0f}; }}
                     k       {{ type fixedValue; value uniform {k:.4g}; }}
                     epsilon {{ type fixedValue; value uniform {epsilon:.4g}; }}
                     nut     {{ type calculated; value uniform 0; }}
@@ -742,6 +744,7 @@ runTimeModifiable true;
 
 
 def fv_solution(model: Model, tolerance: float) -> str:
+    p0 = model.pressure_pa
     return f"""{_header(model, "dictionary", "fvSolution")}
 solvers
 {{
@@ -767,9 +770,9 @@ SIMPLE
     nNonOrthogonalCorrectors 0;
     consistent      yes;
     // Both sides of the fan fix their mass flow, so no patch fixes p_rgh and
-    // its level is undetermined. This pins it.
+    // its level is undetermined. This pins it, at the site's own pressure.
     pRefCell        0;
-    pRefValue       101325;
+    pRefValue       {p0:.0f};
     residualControl
     {{
         p_rgh           {tolerance:g};
@@ -868,6 +871,7 @@ def initial_fields(model: Model, warm: bool = True) -> dict[str, str]:
     k, epsilon = turbulence_initial_values(model)
     supply_k = model.supply_temp_c + KELVIN
     walls = "|".join(OUTER_PATCHES)
+    p0 = model.pressure_pa
 
     return {
         "U": f"""{_header(model, "volVectorField", "U", "0")}
@@ -897,21 +901,21 @@ boundaryField
         "p_rgh": f"""{_header(model, "volScalarField", "p_rgh", "0")}
 dimensions      [1 -1 -2 0 0 0 0];
 
-internalField   uniform 101325;
+internalField   uniform {p0:.0f};
 
 boundaryField
 {{
-    "({walls})" {{ type fixedFluxPressure; value uniform 101325; }}
+    "({walls})" {{ type fixedFluxPressure; value uniform {p0:.0f}; }}
 }}
 """,
         "p": f"""{_header(model, "volScalarField", "p", "0")}
 dimensions      [1 -1 -2 0 0 0 0];
 
-internalField   uniform 101325;
+internalField   uniform {p0:.0f};
 
 boundaryField
 {{
-    ".*" {{ type calculated; value uniform 101325; }}
+    ".*" {{ type calculated; value uniform {p0:.0f}; }}
 }}
 """,
         "k": f"""{_header(model, "volScalarField", "k", "0")}
@@ -961,6 +965,23 @@ boundaryField
 # --- human-readable summary ----------------------------------------------------
 
 
+def _hvac_lines(model: Model) -> list[str]:
+    h = model.hvac()
+    lines = []
+    if h["capacity_kw"] is not None:
+        lines.append(
+            f"  HVAC capacity   {h['units']} x {h['unit_capacity_kw']:.1f} kW = "
+            f"{h['capacity_kw']:,.0f} kW for {h['load_kw']:,.0f} kW of IT "
+            f"({h['capacity_ratio'] * 100:.0f}%)"
+        )
+    if h["airflow_ratio"] is not None:
+        lines.append(
+            f"  HVAC airflow    {h['airflow_m3h']:,.0f} m3/h for {h['airflow_needed_m3h']:,.0f} "
+            f"m3/h at {h['cfm_per_kw']:g} CFM/kW ({h['airflow_ratio'] * 100:.0f}%)"
+        )
+    return lines
+
+
 def summary(model: Model) -> str:
     """What the generator derived, in the user's units."""
     dx, dy, dz = model.domain.size
@@ -987,6 +1008,9 @@ def summary(model: Model) -> str:
         f"  Rack demand     {model.rack_demand_m3s * 3600:,.0f} m3/h "
         f"({model.rack_demand_m3s * 3600 / model.airflow_m3h * 100:.0f}% of supply)",
         f"  Design bulk dT  {model.design_delta_t_k:.1f} K",
+        f"  Site air        {model.altitude_m:.0f} m, {model.pressure_pa / 1000:.1f} kPa, "
+        f"rho {model.rho:.3f} kg/m3",
+        *_hvac_lines(model),
         f"  Turbulence      k {k:.4g} m2/s2, epsilon {epsilon:.4g} m2/s3",
         "",
         "  Internal surfaces built by createBaffles:",

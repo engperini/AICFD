@@ -259,7 +259,7 @@ class MeshTest(unittest.TestCase):
 class DerivedTest(unittest.TestCase):
     def test_design_delta_t_matches_the_load_and_the_flow(self):
         model = build()
-        expected = model.total_load_w / (model.airflow_m3s * m.RHO_AIR * m.CP_AIR)
+        expected = model.total_load_w / (model.airflow_m3s * model.rho * m.CP_AIR)
         self.assertAlmostEqual(model.design_delta_t_k, expected)
 
     def test_zero_airflow_does_not_divide_by_zero(self):

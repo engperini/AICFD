@@ -679,3 +679,46 @@ have duplicated ~2 000 lines and, worse, let the two drift.
 
 What did not change: the checks. A hall passes or fails on the same eleven
 identities as a POD, now summed over units and rows.
+
+---
+
+## ADR-023 — The plant is sized by the design office's rules before any CFD, and the air weighs what it weighs on site
+
+**Decision.** The spec carries the fan wall as the datasheet gives it — units,
+airflow per unit, net sensible capacity per unit, electrical input — and the
+rack's airflow as the design rule the office uses, 158 CFM/kW. The model
+checks installed capacity against IT load and installed airflow against the
+racks' demand, reports both, and *alerts* when either falls short. It never
+blocks a run. The case also carries the site altitude, and the solver runs at
+that pressure.
+
+**Why.** Two of the numbers the previous hall ran on were invented to make the
+loop close: 160 000 m³/h a unit and an 11 K rack rise. A real selection
+(Vertiv CA40NPVG6 for QR2) says 76 650 m³/h, 290,9 kW, 22,1 °C supply, and it
+was selected at 1 880 m — where a cubic metre of air is 24% lighter than at
+the coast, which the sheet states as 56 475 m³/h of standard air. Sizing a
+fan wall count by aisles (17) instead of by capacity (35) was the single
+largest error in the concept, and it is caught by arithmetic, not by CFD. The
+rule-of-thumb checks belong in front of the solve where they cost nothing.
+
+**Consequences.**
+
+- `fanwall.count` decouples the number of units from the number of cold
+  aisles; units are spread evenly along the gallery wall, snapped to the mesh
+  and never overlapping. Left out, the count is one per cold aisle as before.
+- `fanwall.capacity_kw` and `fanwall.power_kw` are shown, summed and compared
+  on the model page, in the CLI summary and in the run report. A shortfall is
+  an alert in a card of its own; a conceptual study wants to see what an
+  undersized plant does, so the button stays live.
+- `racks.airflow_cfm_per_kw` replaces the fixed 11 K rise in sizing the
+  racks' resistance. At sea level 158 CFM/kW *is* 11 K; at 1 880 m it is 14 K,
+  and the return-air temperature the model predicts now matches the
+  datasheet's 37 °C selection rather than the coast's 31.
+- `site.altitude_m` sets the operating pressure of every field, boundary
+  value and reference (standard atmosphere). Densities, mass flows and the
+  rack and grille coefficients all follow from it; nothing is hard-coded at
+  101 325 Pa any more.
+- The alerts are not validation checks. The eleven checks say whether the
+  *field* is to be believed; the alerts say whether the *plant* is big
+  enough. A run can pass all eleven with an undersized plant — it will simply
+  show a hot return — and that is the correct behaviour.

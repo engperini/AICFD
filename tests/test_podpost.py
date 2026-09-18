@@ -396,12 +396,16 @@ class RackResistanceTest(unittest.TestCase):
         face = sum(r.face_area for r in model.racks)
         u = model.airflow_m3s / face
         _d, f = model.racks[0].darcy_forchheimer()
-        expected = 0.5 * M.RHO_AIR * f * u**2 * model.racks[0].depth
+        expected = 0.5 * model.rho * f * u**2 * model.racks[0].depth
         self.assertAlmostEqual(model.rack_pressure_drop_pa, expected, places=6)
 
     def test_it_lands_near_the_nominal_drop_when_flow_matches_rating(self):
-        """The fan moves 5 000 m3/h and the racks want 4 926, so ~25 Pa."""
-        self.assertAlmostEqual(self.model.rack_pressure_drop_pa, 25.8, delta=1.0)
+        """The fan moves 5 000 m3/h and the racks want 4 832 at 158 CFM/kW, so
+        the nominal 25 Pa scaled by the square of that ratio."""
+        ratio = self.model.airflow_m3h / self.model.rack_demand_m3h
+        self.assertAlmostEqual(
+            self.model.rack_pressure_drop_pa, M.RACK_PRESSURE_DROP * ratio**2, delta=0.3
+        )
 
     def test_it_scales_with_the_square_of_the_airflow(self):
         doubled = M.build_model(
@@ -475,7 +479,7 @@ class GrilleAndFanBudgetTest(unittest.TestCase):
         m = self.model
         area = 3 * 0.36
         v = m.airflow_m3s / area
-        self.assertAlmostEqual(m.grille_pressure_drop_pa, 2.4 * 0.5 * M.RHO_AIR * v**2, places=6)
+        self.assertAlmostEqual(m.grille_pressure_drop_pa, 2.4 * 0.5 * m.rho * v**2, places=6)
         self.assertAlmostEqual(m.grille_pressure_drop_pa, 2.4, delta=0.3)
 
     def test_the_measured_grille_drop_is_flow_weighted_across_the_pairs(self):

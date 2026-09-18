@@ -11,7 +11,12 @@ import { viewsFor, drawView, sheetScale } from './drawing.js';
 const PARAMS = [
   { key: 'rack_count', label: 'Racks', unit: 'un', step: 1 },
   { key: 'rack_load_kw', label: 'Carga por rack', unit: 'kW', step: 0.5 },
-  { key: 'airflow_m3h', label: 'Vazão do fan wall', unit: 'm³/h', step: 100 },
+  { key: 'rack_cfm_per_kw', label: 'Ar por kW de rack', unit: 'CFM/kW', step: 1 },
+  { key: 'fan_count', label: 'Fan walls', unit: 'un', step: 1 },
+  { key: 'airflow_m3h', label: 'Vazão por fan wall', unit: 'm³/h', step: 100 },
+  { key: 'fan_capacity_kw', label: 'Capacidade por fan wall', unit: 'kW', step: 1 },
+  { key: 'fan_power_kw', label: 'Potência elétrica por fan wall', unit: 'kW', step: 0.1 },
+  { key: 'altitude_m', label: 'Altitude do site', unit: 'm', step: 10 },
   { key: 'supply_temp_c', label: 'Temperatura de insuflamento', unit: '°C', step: 0.5 },
   { key: 'fan_height', label: 'Altura do fan wall', unit: 'm', step: 0.1 },
   { key: 'cold_aisle', label: 'Corredor frio', unit: 'm', step: 0.1 },
@@ -25,7 +30,12 @@ const PARAMS = [
 const SPEC_PATH = {
   rack_count: ['racks', 'count'],
   rack_load_kw: ['racks', 'load_kw'],
+  rack_cfm_per_kw: ['racks', 'airflow_cfm_per_kw'],
+  fan_count: ['fanwall', 'count'],
   airflow_m3h: ['fanwall', 'airflow_m3h'],
+  fan_capacity_kw: ['fanwall', 'capacity_kw'],
+  fan_power_kw: ['fanwall', 'power_kw'],
+  altitude_m: ['site', 'altitude_m'],
   supply_temp_c: ['fanwall', 'supply_temp_c'],
   fan_height: ['fanwall', 'height'],
   cold_aisle: ['aisles', 'cold'],
@@ -134,6 +144,11 @@ function render() {
       <div id="summary"></div>
     </section>
 
+    <section class="card" id="alerts-card" hidden>
+      <div class="card-head"><span class="card-title">Capacidade do HVAC</span>
+        <span class="card-sub">critérios de projeto; alertam, não impedem a rodada</span></div>
+      <ul class="notes alerts" id="alerts"></ul>
+    </section>
     <section class="card" id="warnings-card" hidden>
       <div class="card-head"><span class="card-title">Ajustes à malha</span></div>
       <ul class="notes" id="warnings"></ul>
@@ -146,6 +161,7 @@ function render() {
   renderParams();
   renderSummary();
   renderWarnings();
+  renderAlerts();
   drawProgress({ iterations: [], series: {} });
 
   document.getElementById('apply').addEventListener('click', applyChanges);
@@ -222,6 +238,16 @@ function renderWarnings() {
   card.hidden = items.length === 0;
   list.innerHTML = items
     .map((w) => `<li><span class="mark">!</span><span>${w}</span></li>`)
+    .join('');
+}
+
+function renderAlerts() {
+  const card = document.getElementById('alerts-card');
+  const list = document.getElementById('alerts');
+  const items = model.alerts || [];
+  card.hidden = items.length === 0;
+  list.innerHTML = items
+    .map((a) => `<li><span class="mark">!</span><span>${a}</span></li>`)
     .join('');
 }
 

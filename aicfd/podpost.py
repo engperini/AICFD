@@ -205,6 +205,9 @@ def analyse(model: Model, case_dir: str | Path, time: str | None = None) -> PodR
         kpis["fan_static_pa"] = available
         kpis["fan_margin"] = round(kpis["fan_rise_pa"] / available, 4)
     kpis["drift_k"] = drift(case)
+    kpis["hvac"] = model.hvac()
+    kpis["hvac_lines"] = [line.strip() for line in _hvac_summary(model)]
+    kpis["alerts"] = list(model.alerts)
     history = read_history(case)
     kpis["places_now"] = history[-1]["places"] if history else []
     return PodResults(
@@ -637,6 +640,13 @@ def _checks(model: Model, step: Path, kpis: dict, grid: dict) -> list[Check]:
     return checks
 
 
+def _hvac_summary(model: Model) -> list[str]:
+    from aicfd.podcase import _hvac_lines
+
+    return [line.replace("HVAC capacity", "capacity").replace("HVAC airflow", "airflow")
+            for line in _hvac_lines(model)]
+
+
 def _buoyant_velocity(model: Model) -> float:
     rise = max(min(model.design_delta_t_k, 30.0), 1.0)
     return float((2 * 9.81 * rise / 293.0 * model.domain.size[2]) ** 0.5)
@@ -1042,6 +1052,9 @@ def report(results: PodResults) -> str:
             if k.get("grille_drop_pa") is not None
             else "open holes (no free area given)"
         ),
+        *(
+            [f"  HVAC sizing     {line}" for line in k.get("hvac_lines", [])]
+        ),
         "",
         "  Place                  Temp    dP vs intake    Speed",
     ]
@@ -1271,6 +1284,8 @@ def _viewer_kpis(model: Model, results: PodResults) -> dict:
         "fans": k.get("fans", []),
         "rows": k.get("rows", []),
         "energy_closure": k["energy_closure"],
+        "hvac": k.get("hvac"),
+        "alerts": k.get("alerts", []),
         "zones": [
             {
                 "name": rack["id"],

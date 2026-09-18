@@ -28,10 +28,27 @@ from dataclasses import dataclass, field
 
 RHO_AIR = 1.19
 CP_AIR = 1005.0
+R_AIR = 287.05
+KELVIN = 273.15
+SEA_LEVEL_PA = 101325.0
 
-#: Temperature rise used to size a rack's own airflow when none is given.
-#: 11 K is typical of enterprise IT at the rack outlet.
-RACK_DELTA_T = 11.0
+#: Airflow a rack needs per kilowatt of IT, the design office's rule of thumb:
+#: 158 CFM/kW. At sea level and 20 degC that is an 11 K rise through the rack;
+#: at altitude the same volume carries less air, and the rise grows.
+CFM_PER_KW = 158.0
+M3H_PER_CFM = 1.699011
+
+
+def air_density(pressure_pa: float, temp_c: float) -> float:
+    return pressure_pa / (R_AIR * (temp_c + KELVIN))
+
+
+def site_pressure(altitude_m: float) -> float:
+    """Standard-atmosphere pressure at ``altitude_m`` -- what the site's air
+    weighs. A fan wall selected for 1 880 m moves 24% less mass per cubic metre
+    than the same unit at the coast, and its datasheet says so twice: actual
+    and standard air."""
+    return SEA_LEVEL_PA * (1.0 - 2.25577e-5 * altitude_m) ** 5.25588
 
 #: Pressure drop across a populated rack at its rated airflow, in Pa.
 #: Manufacturer data ranges roughly 15-40 Pa; 25 is a reasonable middle.
@@ -111,6 +128,10 @@ class Rack:
     airflow_axis: int = 1
     """The axis air passes along, front to back."""
     airflow_sign: int = 1
+    cfm_per_kw: float = CFM_PER_KW
+    """How much air the rack's own fans draw per kilowatt."""
+    rho: float = RHO_AIR
+    """Air density where the rack stands, for its resistance coefficients."""
 
     @property
     def load_w(self) -> float:
@@ -129,13 +150,17 @@ class Rack:
 
     @property
     def rated_airflow_m3s(self) -> float:
-        """What the rack's own fans would move, from its load and RACK_DELTA_T.
+        """What the rack's own fans would move: its load times the CFM/kW rule.
 
         This sizes the flow *resistance*, not the flow. A rack modelled as a
         porous block is a resistance, not a fan (ADR-011): what actually passes
         through it is an outcome of the room's pressure field.
         """
-        return self.load_w / (RACK_DELTA_T * RHO_AIR * CP_AIR)
+        return self.load_kw * self.cfm_per_kw * M3H_PER_CFM / 3600.0
+
+    @property
+    def rated_airflow_m3h(self) -> float:
+        return self.rated_airflow_m3s * 3600.0
 
     @property
     def face_velocity_ms(self) -> float:
@@ -152,7 +177,7 @@ class Rack:
         velocity = self.face_velocity_ms
         if velocity <= 0 or self.depth <= 0:
             return FLOW_AXIS_D, 0.0
-        f = 2.0 * pressure_drop_pa / (RHO_AIR * velocity**2 * self.depth)
+        f = 2.0 * pressure_drop_pa / (self.rho * velocity**2 * self.depth)
         return FLOW_AXIS_D, f
 
 
@@ -222,7 +247,15 @@ class Model:
     """The unit's P-Q curve as (m3/h, Pa) points, flow ascending, if given."""
     grille_free_area: float | None = None
     """Free-area ratio of the return grilles, from their datasheet."""
+    unit_capacity_kw: float | None = None
+    """Net sensible cooling of one fan wall unit, from its datasheet."""
+    unit_power_kw: float | None = None
+    """Electrical input of one unit, from its datasheet."""
+    altitude_m: float = 0.0
     warnings: list[str] = field(default_factory=list)
+    alerts: list[str] = field(default_factory=list)
+    """Design criteria the HVAC does not meet. Alerts, never blockers: a
+    conceptual study wants to see what an undersized plant does."""
 
     # --- the POD's singular names, for the one-row case -------------------------
 
@@ -267,6 +300,72 @@ class Model:
         return self.airflow_m3h / 3600.0
 
     @property
+    def pressure_pa(self) -> float:
+        """Operating pressure of the site's air, from its altitude."""
+        return site_pressure(self.altitude_m)
+
+    @property
+    def rho(self) -> float:
+        """Density of the supply air at the site."""
+        return air_density(self.pressure_pa, self.supply_temp_c)
+
+    # --- HVAC sizing against the design office's rules --------------------------
+
+    @property
+    def rack_demand_m3h(self) -> float:
+        return sum(rack.rated_airflow_m3h for rack in self.racks)
+
+    def hvac(self) -> dict:
+        """Does the plant cover the load, in kilowatts and in cubic metres?
+
+        Two ratios the design office checks before any CFD: installed sensible
+        capacity against IT load, and installed airflow against what the racks
+        draw at their CFM/kW. Both are reported; neither stops a run.
+        """
+        load_kw = self.total_load_w / 1000.0
+        capacity_kw = (
+            self.unit_capacity_kw * self.fan_count if self.unit_capacity_kw else None
+        )
+        demand = self.rack_demand_m3h
+        return {
+            "units": self.fan_count,
+            "unit_capacity_kw": self.unit_capacity_kw,
+            "unit_airflow_m3h": self.unit_airflow_m3h,
+            "unit_power_kw": self.unit_power_kw,
+            "load_kw": round(load_kw, 1),
+            "capacity_kw": round(capacity_kw, 1) if capacity_kw else None,
+            "capacity_ratio": round(capacity_kw / load_kw, 3) if capacity_kw and load_kw else None,
+            "airflow_m3h": round(self.airflow_m3h),
+            "airflow_needed_m3h": round(demand),
+            "airflow_ratio": round(self.airflow_m3h / demand, 3) if demand else None,
+            "cfm_per_kw": self.racks[0].cfm_per_kw if self.racks else CFM_PER_KW,
+            "units_needed": (
+                max(
+                    math.ceil(load_kw / self.unit_capacity_kw) if self.unit_capacity_kw else 0,
+                    math.ceil(demand / self.unit_airflow_m3h) if self.unit_airflow_m3h else 0,
+                )
+            ),
+        }
+
+    def hvac_alerts(self) -> list[str]:
+        h = self.hvac()
+        alerts = []
+        if h["capacity_ratio"] is not None and h["capacity_ratio"] < 1.0:
+            alerts.append(
+                f"Capacidade do HVAC abaixo da carga: {h['units']} x "
+                f"{num(h['unit_capacity_kw'], 1)} kW = {num(h['capacity_kw'], 0)} kW para "
+                f"{num(h['load_kw'], 0)} kW de TI ({num(h['capacity_ratio'] * 100, 0)}%). "
+                f"Precisaria de {h['units_needed']} unidades."
+            )
+        if h["airflow_ratio"] is not None and h["airflow_ratio"] < 1.0:
+            alerts.append(
+                f"Vazão do HVAC abaixo da demanda dos racks: {num(h['airflow_m3h'], 0)} m³/h "
+                f"para {num(h['airflow_needed_m3h'], 0)} m³/h a {h['cfm_per_kw']:g} CFM/kW "
+                f"({num(h['airflow_ratio'] * 100, 0)}%). Precisaria de {h['units_needed']} unidades."
+            )
+        return alerts
+
+    @property
     def total_load_w(self) -> float:
         return sum(rack.load_w for rack in self.racks)
 
@@ -274,7 +373,7 @@ class Model:
     def design_delta_t_k(self) -> float:
         if self.airflow_m3s <= 0:
             return float("inf")
-        return self.total_load_w / (self.airflow_m3s * RHO_AIR * CP_AIR)
+        return self.total_load_w / (self.airflow_m3s * self.rho * CP_AIR)
 
     @property
     def divisions(self) -> tuple[int, int, int]:
@@ -328,7 +427,7 @@ class Model:
             return 0.0
         velocity = self.airflow_m3s / face
         _d, f = self.racks[0].darcy_forchheimer()
-        return 0.5 * RHO_AIR * f * velocity**2 * self.racks[0].depth
+        return 0.5 * self.rho * f * velocity**2 * self.racks[0].depth
 
     @property
     def grille_pressure_drop_pa(self) -> float:
@@ -343,7 +442,7 @@ class Model:
         if not grilles or area <= 0 or grilles[0].resistance is None:
             return 0.0
         velocity = self.airflow_m3s / area
-        return grilles[0].resistance * 0.5 * RHO_AIR * velocity**2
+        return grilles[0].resistance * 0.5 * self.rho * velocity**2
 
     def fan_available_pa(self, flow_m3h: float | None = None) -> float | None:
         """Static pressure the unit can produce at ``flow_m3h``, from its curve.
@@ -513,8 +612,16 @@ def build_model(spec: dict) -> Model:
     cell = parse_cell_size(spec.get("mesh", {}).get("cell_size", 0.10))
     ceiling = float(spec["hall"]["ceiling"])
     fan = spec["fanwall"]
+    altitude = float(spec.get("site", {}).get("altitude_m", 0.0))
+    supply_c = float(fan.get("supply_temp_c", 20.0))
+    rack_spec = dict(
+        cfm_per_kw=float(spec["racks"].get("airflow_cfm_per_kw", CFM_PER_KW)),
+        rho=air_density(site_pressure(altitude), supply_c),
+    )
 
-    layout = _hall_layout(spec, cell) if "pods" in spec else _pod_layout(spec, cell)
+    layout = (
+        _hall_layout(spec, cell, rack_spec) if "pods" in spec else _pod_layout(spec, cell, rack_spec)
+    )
     racks = [rack for row in layout.rows for rack in row.racks]
 
     panels: list[Panel] = list(layout.fans)
@@ -554,8 +661,11 @@ def build_model(spec: dict) -> Model:
         panels=panels,
         # The spec's airflow is per unit, as the datasheet gives it.
         airflow_m3h=float(fan["airflow_m3h"]) * max(1, len(layout.fans)),
-        supply_temp_c=float(fan.get("supply_temp_c", 20.0)),
+        supply_temp_c=supply_c,
         cell_size=cell,
+        unit_capacity_kw=float(fan["capacity_kw"]) if "capacity_kw" in fan else None,
+        unit_power_kw=float(fan["power_kw"]) if "power_kw" in fan else None,
+        altitude_m=altitude,
         fan_static_pa=(
             float(fan["static_pressure_pa"]) if "static_pressure_pa" in fan else None
         ),
@@ -567,6 +677,19 @@ def build_model(spec: dict) -> Model:
     # table that quotes the nominal area while the mesh builds another one is
     # exactly the kind of quiet disagreement this module exists to prevent.
     model.warnings = check_mesh_alignment(model)
+    # The fan placement snaps the unit's width itself (so units can be packed
+    # without overlapping), so the alignment check never sees the nominal one.
+    nominal = float(fan["width"]) if "width" in fan else None
+    if nominal is not None and layout.fans:
+        built = layout.fans[0].extent[0][1] - layout.fans[0].extent[0][0]
+        if abs(built - nominal) > 1e-6:
+            model.warnings.insert(
+                0,
+                f"largura do fan wall: {num(nominal, 3)} m não cai na malha de "
+                f"{num(cell[1])} m; a malha vai usar {num(built)} m "
+                f"({(built - nominal) * 1000:+.0f} mm).",
+            )
+    model.alerts = model.hvac_alerts()
     return snap_to_mesh(model)
 
 
@@ -584,7 +707,7 @@ def _grille_k(spec: dict) -> float | None:
 
 def _make_row(row_id: str, band: tuple[float, float], sign: int, x0: float,
               count: int, size: tuple[float, float, float], load_kw: float,
-              rack_ids) -> Row:
+              rack_ids, rack_spec: dict | None = None) -> Row:
     dx, _dy, dz = size
     racks = [
         Rack(
@@ -593,6 +716,7 @@ def _make_row(row_id: str, band: tuple[float, float], sign: int, x0: float,
             load_kw=load_kw,
             airflow_axis=1,
             airflow_sign=sign,
+            **(rack_spec or {}),
         )
         for i in range(count)
     ]
@@ -658,7 +782,7 @@ def _containment(hot: tuple[float, float], span: tuple[float, float], rack_dz: f
     return panels
 
 
-def _pod_layout(spec: dict, cell) -> _Layout:
+def _pod_layout(spec: dict, cell, rack_spec: dict | None = None) -> _Layout:
     gallery_depth = float(spec["gallery"]["depth"])
     hall_length, hall_width, height = (float(v) for v in spec["hall"]["size"])
     ceiling = float(spec["hall"]["ceiling"])
@@ -677,7 +801,7 @@ def _pod_layout(spec: dict, cell) -> _Layout:
 
     band = (cold, cold + size[1])
     hot_aisle = (cold + size[1], hall_width)
-    row = _make_row("F1", band, +1, start_x, count, size, load_kw, lambda i: f"R{i + 1}")
+    row = _make_row("F1", band, +1, start_x, count, size, load_kw, lambda i: f"R{i + 1}", rack_spec)
     span = (start_x, start_x + count * size[0])
 
     fan = spec["fanwall"]
@@ -715,7 +839,7 @@ def _pod_layout(spec: dict, cell) -> _Layout:
     return _Layout(domain, gallery, hall, [row], [(0.0, cold)], [hot_aisle], fans, grilles, walls)
 
 
-def _hall_layout(spec: dict, cell) -> _Layout:
+def _hall_layout(spec: dict, cell, rack_spec: dict | None = None) -> _Layout:
     """``pods`` pairs of rows across y, a fan wall in front of every cold aisle.
 
     Along x: the gallery, the dividing wall, a perimeter aisle, the rows, a
@@ -765,9 +889,9 @@ def _hall_layout(spec: dict, cell) -> _Layout:
         b = (hot_aisle[1], hot_aisle[1] + rack_dy)
         n = 2 * k
         row_a = _make_row(f"F{n + 1}", a, +1, x0, per_row, size, load_kw,
-                          lambda i, n=n: f"F{n + 1}-{i + 1:02d}")
+                          lambda i, n=n: f"F{n + 1}-{i + 1:02d}", rack_spec)
         row_b = _make_row(f"F{n + 2}", b, -1, x0, per_row, size, load_kw,
-                          lambda i, n=n: f"F{n + 2}-{i + 1:02d}")
+                          lambda i, n=n: f"F{n + 2}-{i + 1:02d}", rack_spec)
         rows += [row_a, row_b]
         hot_aisles.append(hot_aisle)
         for row in (row_a, row_b):
@@ -791,10 +915,16 @@ def _hall_layout(spec: dict, cell) -> _Layout:
 
     fan = spec["fanwall"]
     fan_width = float(fan["width"])
+    count = int(fan.get("count", len(cold_aisles)))
+    extents = (
+        place_fans(cold_aisles, fan_width, width, cell[1])
+        if count == len(cold_aisles)
+        else distribute_fans(count, fan_width, width, cell[1])
+    )
     fans = [
         Panel(f"fan{i + 1}", "fan", axis=0, position=gallery_depth,
               extent=(extent, (0.0, float(fan["height"]))))
-        for i, extent in enumerate(place_fans(cold_aisles, fan_width, width, cell[1]))
+        for i, extent in enumerate(extents)
     ]
     return _Layout(domain, gallery, hall, rows, cold_aisles, hot_aisles, fans, grilles, walls)
 
@@ -809,6 +939,7 @@ def place_fans(aisles: list[tuple[float, float]], width: float, wall: float,
     cell. Every edge lands on the mesh so the snapping later changes nothing.
     """
     snap = lambda v: round(v / cell) * cell  # noqa: E731
+    width = snap(width)
     starts = []
     for lo, hi in aisles:
         start = snap((lo + hi) / 2 - width / 2)
@@ -822,6 +953,29 @@ def place_fans(aisles: list[tuple[float, float]], width: float, wall: float,
         raise ValueError(
             f"{len(aisles)} fan walls of {width:g} m do not fit a {wall:g} m wall"
         )
+    return [(round(s, 6), round(s + width, 6)) for s in starts]
+
+
+def distribute_fans(count: int, width: float, wall: float,
+                    cell: float) -> list[tuple[float, float]]:
+    """``count`` units spread evenly along the wall, whatever the aisles.
+
+    This is how a fan-wall hall is actually built once the plant is sized by
+    capacity rather than by aisle: units side by side along the gallery wall
+    with the gaps the count leaves. Edges land on the mesh; the units may not
+    overlap.
+    """
+    snap = lambda v: round(v / cell) * cell  # noqa: E731
+    width = snap(width)
+    if count * width > wall + 1e-9:
+        raise ValueError(f"{count} fan walls of {width:g} m do not fit a {wall:g} m wall")
+    pitch = wall / count
+    starts = [snap((i + 0.5) * pitch - width / 2) for i in range(count)]
+    for i in range(1, count):
+        starts[i] = max(starts[i], starts[i - 1] + width)
+    starts[-1] = min(starts[-1], snap(wall - width))
+    for i in range(count - 2, -1, -1):
+        starts[i] = min(starts[i], starts[i + 1] - width)
     return [(round(s, 6), round(s + width, 6)) for s in starts]
 
 
@@ -842,7 +996,10 @@ def snap_to_mesh(model: Model) -> Model:
         return (snap(band[0], 1), snap(band[1], 1))
 
     def snap_rack(r: Rack) -> Rack:
-        return Rack(r.id, snap_box(r.box), r.load_kw, r.airflow_axis, r.airflow_sign)
+        return Rack(
+            r.id, snap_box(r.box), r.load_kw, r.airflow_axis, r.airflow_sign,
+            r.cfm_per_kw, r.rho,
+        )
 
     model.rows = [
         Row(row.id, snap_band(row.band), row.front_sign, [snap_rack(r) for r in row.racks])
@@ -1075,6 +1232,7 @@ def summary_rows(model: Model) -> list[tuple[str, str, str]]:
             f"{num(model.rack_pressure_drop_pa)} Pa na vazão do fan wall",
             f"{num(RACK_PRESSURE_DROP, 0)} Pa nominais por rack",
         ),
+        *hvac_rows(model),
         (
             "Pressão do fan wall",
             (
@@ -1093,6 +1251,47 @@ def summary_rows(model: Model) -> list[tuple[str, str, str]]:
             else "-",
         ),
     ]
+
+
+def hvac_rows(model: Model) -> list[tuple[str, str, str]]:
+    """The design office's two sizing checks, as summary rows."""
+    h = model.hvac()
+    rows = [
+        (
+            "Ar do site",
+            f"{num(model.altitude_m, 0)} m de altitude · {num(model.pressure_pa / 1000, 1)} kPa",
+            f"ρ {num(model.rho, 3)} kg/m³ a {num(model.supply_temp_c, 1)} °C",
+        ),
+        (
+            "Demanda de ar dos racks",
+            f"{h['cfm_per_kw']:g} CFM/kW · {num(h['airflow_needed_m3h'], 0)} m³/h",
+            (
+                f"HVAC fornece {num(h['airflow_m3h'], 0)} m³/h "
+                f"({num(h['airflow_ratio'] * 100, 0)}%)"
+                if h["airflow_ratio"] is not None
+                else "-"
+            ),
+        ),
+    ]
+    if h["capacity_kw"] is not None:
+        rows.append(
+            (
+                "Capacidade do HVAC",
+                f"{h['units']} x {num(h['unit_capacity_kw'], 1)} kW = {num(h['capacity_kw'], 0)} kW",
+                f"carga de TI {num(h['load_kw'], 0)} kW ({num(h['capacity_ratio'] * 100, 0)}%)",
+            )
+        )
+    else:
+        rows.append(("Capacidade do HVAC", "não informada (fanwall.capacity_kw)", "-"))
+    if h["unit_power_kw"]:
+        rows.append(
+            (
+                "Potência elétrica do HVAC",
+                f"{h['units']} x {num(h['unit_power_kw'], 1)} kW = {num(h['unit_power_kw'] * h['units'], 0)} kW",
+                f"{num(h['unit_power_kw'] * h['units'] / h['load_kw'] * 100, 1)}% da carga de TI",
+            )
+        )
+    return rows
 
 
 def num(value: float, decimals: int = 2) -> str:
@@ -1190,6 +1389,9 @@ def to_dict(model: Model, spec: dict) -> dict:
             for group in sensors(model)
         ],
         "summary": [list(row) for row in summary_rows(model)],
+        "hvac": model.hvac(),
+        "alerts": model.alerts,
+        "site": {"altitude_m": model.altitude_m, "pressure_pa": round(model.pressure_pa), "rho": round(model.rho, 4)},
         "warnings": model.warnings,
         "spec": spec,
     }

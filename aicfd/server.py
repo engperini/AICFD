@@ -34,6 +34,11 @@ RESULTS_DIR = REPO_ROOT / "results"
 #: has never seen.
 EDITABLE = {
     "airflow_m3h": ("fanwall", "airflow_m3h", float, (100.0, 500_000.0)),
+    "fan_count": ("fanwall", "count", int, (1, 200)),
+    "fan_capacity_kw": ("fanwall", "capacity_kw", float, (0.1, 5_000.0)),
+    "fan_power_kw": ("fanwall", "power_kw", float, (0.0, 500.0)),
+    "rack_cfm_per_kw": ("racks", "airflow_cfm_per_kw", float, (20.0, 400.0)),
+    "altitude_m": ("site", "altitude_m", float, (0.0, 5_000.0)),
     "supply_temp_c": ("fanwall", "supply_temp_c", float, (-10.0, 40.0)),
     "fan_height": ("fanwall", "height", float, (0.5, 20.0)),
     "rack_count": ("racks", "count", int, (1, 60)),

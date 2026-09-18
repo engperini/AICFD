@@ -242,6 +242,8 @@ def _run_pod(spec_path: Path, args) -> int:
     print(podcase.summary(model))
     for warning in model.warnings:
         print(f"  ! {warning}")
+    for alert in model.alerts:
+        print(f"  !! {alert}")
     processors = int(solver.get("processors", 1))
     podcase.build(
         model,
