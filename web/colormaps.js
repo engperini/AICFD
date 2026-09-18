@@ -133,32 +133,53 @@ export class Scale {
    * @param {number} options.min domain minimum
    * @param {number} options.max domain maximum
    * @param {number} [options.center] value pinned to the ramp midpoint (diverging only)
+   * @param {'symmetric'|'independent'} [options.arms] how a diverging domain is
+   *   spread over the two arms. `symmetric` (the default) gives both arms the
+   *   same span, so equal colour distance is equal value distance and the ends
+   *   may reach past the domain that was asked for. `independent` stretches
+   *   each arm over its own half of the domain, so the bar starts and ends
+   *   exactly on `min` and `max` -- the right choice when the domain is a band
+   *   an engineer chose (ADR-024) rather than the range a field happened to
+   *   have, at the cost that a kelvin below the centre is not the same number
+   *   of pixels as a kelvin above it.
    */
-  constructor({ kind, min, max, center }) {
+  constructor({ kind, min, max, center, arms = 'symmetric' }) {
     this.kind = kind;
     this.min = min;
     this.max = max;
     this.center = center;
+    this.arms = arms;
     if (kind === 'diverging') {
-      // Symmetric half-width so the neutral really sits on `center`, and a
-      // floor so a nearly-uniform field does not blow up into full saturation.
-      this.half = Math.max(Math.abs(max - center), Math.abs(center - min), 0.5);
+      // A floor on each arm so a nearly-uniform field does not blow up into
+      // full saturation.
+      if (arms === 'independent') {
+        this.cold = Math.max(center - min, 0.5);
+        this.warm = Math.max(max - center, 0.5);
+      } else {
+        this.cold = this.warm = Math.max(
+          Math.abs(max - center),
+          Math.abs(center - min),
+          0.5,
+        );
+      }
+      this.half = this.warm; // kept for callers that read it
     }
   }
 
   /** Position of `value` on the ramp, in [0, 1]. */
   position(value) {
     if (this.kind === 'diverging') {
-      return clamp01(0.5 + (value - this.center) / (2 * this.half));
+      const arm = value < this.center ? this.cold : this.warm;
+      return clamp01(0.5 + (value - this.center) / (2 * arm));
     }
     return clamp01((value - this.min) / (this.max - this.min || 1));
   }
 
   /** The value at ramp position `t` -- used to label the colorbar. */
   valueAt(t) {
-    return this.kind === 'diverging'
-      ? this.center + (t - 0.5) * 2 * this.half
-      : this.min + t * (this.max - this.min);
+    if (this.kind !== 'diverging') return this.min + t * (this.max - this.min);
+    const arm = t < 0.5 ? this.cold : this.warm;
+    return this.center + (t - 0.5) * 2 * arm;
   }
 
   ticks(count = 5) {

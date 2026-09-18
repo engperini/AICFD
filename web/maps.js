@@ -19,6 +19,23 @@ import { Scale, buildLut } from './colormaps.js';
 
 const ASHRAE_MID = (18 + 27) / 2;
 
+/**
+ * The band every air temperature is coloured against, whatever the run.
+ *
+ * Fixed rather than fitted to each field, because the reader's question is
+ * "how hot is this air" and the answer has to mean the same thing from one
+ * run to the next and from one view to the next. A scale stretched to the
+ * field's own extremes answers a different question every time: one rack
+ * starved at the mouth of an aisle reached 55 °C, and colouring against that
+ * left a 22 °C cold aisle and a 36 °C hot aisle both washed out.
+ *
+ * 10 °C is below any supply anyone would design; 40 °C is above the hot aisle
+ * of a 14 K rise. Air outside the band saturates at the end of the ramp and
+ * the colourbar says so, so nothing is hidden -- only compressed, and the
+ * numeric readout under the cursor is exact either way.
+ */
+export const TEMPERATURE_BAND = { min: 10, max: 40 };
+
 export const FIELDS = {
   temperature: {
     label: 'Temperatura',
@@ -26,10 +43,13 @@ export const FIELDS = {
     kind: 'diverging',
     units: '°C',
     decimals: 1,
-    scaleFor: (results) => {
-      const { min, max } = results.fields.T;
-      return new Scale({ kind: 'diverging', min, max, center: ASHRAE_MID });
-    },
+    scaleFor: () =>
+      new Scale({
+        kind: 'diverging',
+        ...TEMPERATURE_BAND,
+        center: ASHRAE_MID,
+        arms: 'independent',
+      }),
     caption: 'Azul: abaixo do meio da faixa ASHRAE (22,5 °C). Vermelho: acima.',
   },
   speed: {
@@ -250,15 +270,29 @@ export class FieldMaps {
       stops.push(`rgb(${this.lut[k]},${this.lut[k + 1]},${this.lut[k + 2]}) ${(i / 16) * 100}%`);
     }
     ramp.style.background = `linear-gradient(90deg, ${stops.join(', ')})`;
-    // A diverging ramp is symmetric about its centre, so its ends can sit
-    // beyond the data. Say what the field actually spans, so 13,9 degC on the
-    // bar is never read as air that exists.
+    // The bar and the field are two different ranges and both have to be
+    // legible. A ramp fitted to the data can still reach past it (a symmetric
+    // diverging one does), and a fixed band can stop short of it -- so the
+    // caption always states what the air actually spans, and a tick the field
+    // runs past is marked as the saturating end rather than read as a limit.
     const field = this.results.fields[spec.field];
+    const ticks = this.scale.ticks(5);
+    const low = ticks[0].value;
+    const high = ticks[ticks.length - 1].value;
+    const beyond = field.min < low - 1e-9 || field.max > high + 1e-9;
     this.host.querySelector('#map-colorbar-name').textContent =
-      `${spec.label} (${spec.units}) — campo de ${fmt(field.min, spec.decimals)} a ${fmt(field.max, spec.decimals)}`;
-    this.host.querySelector('#map-colorbar-ticks').innerHTML = this.scale
-      .ticks(5)
-      .map(({ value }) => `<span>${fmt(value, spec.decimals)}</span>`)
+      `${spec.label} (${spec.units}) — ` +
+      (beyond ? 'escala fixa, ' : '') +
+      `campo de ${fmt(field.min, spec.decimals)} a ${fmt(field.max, spec.decimals)}` +
+      (beyond ? ' (as pontas saturam)' : '');
+    this.host.querySelector('#map-colorbar-ticks').innerHTML = ticks
+      .map(({ value }, i) => {
+        const saturates =
+          (i === 0 && field.min < low - 1e-9) ||
+          (i === ticks.length - 1 && field.max > high + 1e-9);
+        const mark = saturates ? (i === 0 ? '−' : '+') : '';
+        return `<span>${fmt(value, spec.decimals)}${mark}</span>`;
+      })
       .join('');
   }
 }

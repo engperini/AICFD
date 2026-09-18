@@ -722,3 +722,36 @@ rule-of-thumb checks belong in front of the solve where they cost nothing.
   *field* is to be believed; the alerts say whether the *plant* is big
   enough. A run can pass all eleven with an undersized plant — it will simply
   show a hot return — and that is the correct behaviour.
+
+---
+
+## ADR-024 — Air temperature is coloured against a fixed band, not against each run's own extremes
+
+**Decision.** The temperature map uses a fixed domain of 10 to 40 °C with the
+neutral on the middle of the ASHRAE recommended band (22,5 °C). Air outside
+the band saturates at the end of the ramp; the colourbar marks the saturating
+end and states what the field actually spans. Speed and pressure keep their
+fitted scales.
+
+**Why.** A scale fitted to each field answers a different question every time
+it is drawn. In the 10 MW hall one rack starved at the mouth of an aisle
+reached 55 °C, and colouring against that left a 22 °C cold aisle and a 36 °C
+hot aisle both washed out to nearly the same pale tone — the reader could not
+see the 14 K that the whole design is about. Fixed limits also make two runs
+comparable: the hall before and after a change are the same colours for the
+same air, which is the comparison a conceptual study is for.
+
+**Consequence.** The diverging ramp gained independent arms
+(`arms: 'independent'`): with the neutral at 22,5 °C the cold arm spans 12,5 K
+and the warm arm 17,5 K, so the bar starts and ends exactly on the band that
+was chosen rather than on a symmetric ±17,5 K. The cost is that a kelvin below
+the centre is not the same number of pixels as a kelvin above it. That is
+acceptable here because the question is "how hot is this air against the
+envelope", not "how far from the centre in either direction" — and it is
+stated on the bar, whose ticks are the honest values of each position. The
+default stays symmetric, which is what pressure uses, where the sign and the
+magnitude either side of zero are both meaningful.
+
+The per-rack inlet map keeps an auto-fitted sequential scale: its job is to
+rank 768 racks whose inlets differ by less than a kelvin, and a fixed 30 K
+band would paint all of them the same colour.
