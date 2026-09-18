@@ -202,10 +202,17 @@ cells, minutes rather than half an hour. The results page leads with plan and
 sections over the field (temperature, speed, pressure) using the same drawings
 checked before the run; the 3-D scene is secondary.
 
+The same parts scale to a hall (ADR-022): `pods:` lays out row–HAC–row pairs
+with a fan wall per cold aisle, each unit its own mass-flow pair, walls of a
+kind sharing a zone, and `solver.processors` running the solver under MPI
+with the sampler stitching each write. `cases/hall-10mw.yaml` — 16 PODs, 768
+racks, 17 fan walls, 329 280 cells — is the conceptual-design worked case, and
+the results page paints every rack by the inlet temperature at its top.
+
 Remaining: raised-floor plenums with perforated tiles, in-row and downflow
-CRAC types, rack-level airflow curves, a leakage path for containment that is
-not perfect — real containment is not — and a refinement study upward from the
-working mesh.
+CRAC types, rack-level airflow curves, per-rack loads from a DCIM export, a
+leakage path for containment that is not perfect — real containment is not —
+and a refinement study upward from the working mesh.
 
 ### M6 — BIM import
 IFC (exported from federated Revit) -> filtered geometry -> room spec. Only the

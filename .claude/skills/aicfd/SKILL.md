@@ -40,9 +40,28 @@ There are two generators, and the spec's shape picks one -- there is no flag.
   `aicfd/podcase.py` meshes a box and then operates on it with `topoSet` and
   `createBaffles` (ADR-016). `cases/pod-fanwall.yaml` is the worked example.
 
+- **A data hall** is the POD shape with `pods:` instead of `racks.count`:
+  that many row-HAC-row pairs across the hall, a cold aisle between pairs and a
+  perimeter aisle round the edge, and one fan wall (`fanwall.width`) in front
+  of every cold aisle. `fanwall.airflow_m3h` is *per unit*. The hall's length
+  and width are derived from the arrangement; give `hall.height` and
+  `hall.ceiling` only. `cases/hall-10mw.yaml` is the worked example (ADR-022):
+  16 PODs of 2 x 24 racks, 329 280 cells at 0,6 x 0,3 x 0,25 m, solved on 4
+  cores with `solver.processors: 4`.
+
 Do not mix keys between them. If the user describes a POD -- a fan wall, a
 false ceiling with return grilles, hot-aisle containment, a mechanical gallery
--- start from `cases/pod-fanwall.yaml` and change the numbers.
+-- start from `cases/pod-fanwall.yaml` and change the numbers. If they describe
+a whole hall of such PODs, start from `cases/hall-10mw.yaml`.
+
+**A hall run is read by its racks.** The report and the results page list the
+warmest racks by the inlet temperature *at the top of the rack* (the worst
+point, where recirculating or leaking hot air arrives first) and paint every
+rack by it over the plan. The fan wall line names the most loaded unit; the
+`fan_capacity` check compares that unit against the datasheet. With one rack
+per cell in plan, trust the ranking of racks and the hall-scale pressure and
+temperature distribution; quote a single rack's inlet with 1-2 K of
+uncertainty and do not sign off ASHRAE compliance rack by rack from it.
 
 ## Reading a POD run
 
