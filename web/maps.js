@@ -165,25 +165,37 @@ export class FieldMaps {
     ctx.scale(dpr, dpr);
 
     // Paint the cut: one rectangle per cell, at the cell's own metres.
+    //
+    // A slice comes back with `u` along the lower in-plane axis and `v` along
+    // the higher one (x then y for a plan, y then z for a transverse section).
+    // The view decides which of those runs across the page: a hall's plan is
+    // turned so that y is horizontal, and painting u as horizontal there put
+    // 35 x-cells along an 88 m axis and coloured a third of the hall with the
+    // wrong cells. So each cell is placed in room coordinates first and only
+    // then mapped through the view, exactly as the lines over it are.
     const index = this.results.cellAt(view.normal, at);
     const slice = this.results.slice(spec.field, view.normal, index);
-    const [ax, ay] = [view.h, view.v];
+    const [uAxis, vAxis] = [0, 1, 2].filter((a) => a !== view.normal);
     const n = [this.results.nx, this.results.ny, this.results.nz];
     const origin = this.results.origin;
     const size = this.results.size;
-    const du = size[ax] / n[ax];
-    const dv = size[ay] / n[ay];
+    const du = size[uAxis] / n[uAxis];
+    const dv = size[vAxis] / n[vAxis];
+    const near = [0, 0, 0]; // the cell's low corner, in room metres
+    const far = [0, 0, 0]; // and its high corner
     for (let v = 0; v < slice.height; v += 1) {
-      const y0 = origin[ay] + v * dv;
+      near[vAxis] = origin[vAxis] + v * dv;
+      far[vAxis] = near[vAxis] + dv;
       for (let u = 0; u < slice.width; u += 1) {
         const value = slice.values[v * slice.width + u];
         const t = this.scale.position(value);
         const k = Math.min(255, Math.max(0, Math.round(t * 255))) * 3;
         ctx.fillStyle = `rgb(${this.lut[k]},${this.lut[k + 1]},${this.lut[k + 2]})`;
-        const x0 = origin[ax] + u * du;
-        const px = X(x0);
-        const py = Y(y0 + dv);
-        ctx.fillRect(px, py, X(x0 + du) - px + 0.5, Y(y0) - py + 0.5);
+        near[uAxis] = origin[uAxis] + u * du;
+        far[uAxis] = near[uAxis] + du;
+        const px = X(near[view.h]);
+        const py = Y(far[view.v]);
+        ctx.fillRect(px, py, X(far[view.h]) - px + 0.5, Y(near[view.v]) - py + 0.5);
       }
     }
 
