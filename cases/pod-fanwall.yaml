@@ -27,18 +27,41 @@ fanwall:
   supply_temp_c: 20.0
   height: 4.0
   width: 1.8                  # na largura do corredor frio
-  static_pressure_pa: 100     # pressao estatica externa de datasheet: a
-                              # resistencia do POD tem de caber aqui
+  static_pressure_pa: 100     # pressao estatica externa de datasheet, na vazao nominal
+  # Curva P-Q da unidade (m3/h, Pa). O ponto 5000 @ 100 e o do datasheet; os
+  # demais tem a forma tipica de um fan array EC (queda quase quadratica ate a
+  # descarga livre). SUBSTITUA pela curva do seu datasheet quando a tiver --
+  # ela decide o ponto de operacao sem controle e a margem do controle.
+  curve:
+    - [0, 250]
+    - [2500, 200]
+    - [5000, 100]
+    - [6500, 40]
+    - [7500, 0]
 
 grilles:
   size: 0.60                  # 3 grelhas quadradas, adjacentes, sobre os racks
   count: 3
+  # Grelha de retorno de teto. Datasheet de catalogo (Koolair serie 20.2,
+  # grelha de retorno montada em forro): perda de 4,1 Pa a 2,1 m/s de
+  # velocidade efetiva (Vk), fator de montagem em teto 0,81, ~80% de area
+  # livre. Referido a velocidade de face sobre a area bruta (o que o modelo
+  # usa): v = 2,1 x 0,80 = 1,68 m/s -> K = 2 x 4,1 / (1,2 x 1,68^2) = 2,4.
+  # loss_coefficient vence free_area quando os dois estao presentes; sem ele,
+  # K sai da area livre pela placa fina de Idelchik (subestima grelha com
+  # aletas -- daria 0,54 aqui).
+  free_area: 0.80
+  loss_coefficient: 2.4
 
 containment:
   enabled: true
 
 mesh:
-  cell_size: 0.10
+  # Celula por eixo (x, y, z). 0,20 m em planta resolve um rack de 0,60 m; em z
+  # fica 0,10 m para o forro (6,5 m) e o topo dos racks (2,2 m) cairem em face
+  # de celula. 75.600 celulas: 4x menos que 0,10 m uniforme, e a comparacao
+  # grossa x fina ficou dentro de 0,2 K e 3% (ver docs/experiments).
+  cell_size: [0.20, 0.20, 0.10]
 
 solver:
   max_iterations: 2000        # teto, nao meta: residualControl deve parar antes

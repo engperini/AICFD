@@ -38,7 +38,7 @@ from aicfd.post import ASHRAE_RECOMMENDED, Check, _ashrae_verdict
 
 #: How far the energy balance may miss before the run is not to be believed.
 #: Loose, because it is catching "the field never filled", not modelling error.
-ENERGY_TOLERANCE = 0.10
+ENERGY_TOLERANCE = 0.05
 
 #: Mass has nowhere to go in a closed loop, so this is tight.
 MASS_TOLERANCE = 1.0e-3
@@ -149,6 +149,11 @@ def analyse(model: Model, case_dir: str | Path, time: str | None = None) -> PodR
     kpis["racks"] = rack_temperatures(model, grid)
 
     kpis["rack_drop_pa"] = rack_pressure_drop(model, grid)
+    kpis["grille_drop_pa"] = grille_pressure_drop(step)
+    kpis["grille_drop_asked_pa"] = round(model.grille_pressure_drop_pa, 3)
+    operating = model.fan_operating_point(kpis.get("fan_rise_pa") or 0.0)
+    if operating:
+        kpis["fan_operating_m3h"], kpis["fan_operating_pa"] = operating
     kpis["fan_rise_pa"] = round(
         float(
             np.mean(read_patch_field(step / "p_rgh", FAN_SUPPLY))
@@ -156,15 +161,39 @@ def analyse(model: Model, case_dir: str | Path, time: str | None = None) -> PodR
         ),
         3,
     )
-    if model.fan_static_pa:
-        kpis["fan_static_pa"] = model.fan_static_pa
-        kpis["fan_margin"] = round(kpis["fan_rise_pa"] / model.fan_static_pa, 4)
+    available = model.fan_available_pa()
+    if available:
+        kpis["fan_static_pa"] = available
+        kpis["fan_margin"] = round(kpis["fan_rise_pa"] / available, 4)
     kpis["drift_k"] = drift(case)
     history = read_history(case)
     kpis["places_now"] = history[-1]["places"] if history else []
     return PodResults(
         case_name=model.name, time=time, kpis=kpis, checks=_checks(model, step, kpis, grid)
     )
+
+
+def grille_pressure_drop(step: str | Path) -> float | None:
+    """The jump the field shows across the return grilles, in Pa.
+
+    Each grille is a cyclic pair; the drop is the mean p_rgh on its lower face
+    minus the mean on its upper face, flow-weighted across grilles.
+    """
+    phi_path = Path(step) / "phi"
+    names = [n for n in patch_names(phi_path) if n.endswith("_below")]
+    if not names:
+        return None
+    total_flow, weighted = 0.0, 0.0
+    for below in names:
+        above = below[: -len("_below")] + "_above"
+        flow = abs(float(np.sum(read_patch_field(phi_path, below))))
+        drop = float(
+            np.mean(read_patch_field(Path(step) / "p_rgh", below))
+            - np.mean(read_patch_field(Path(step) / "p_rgh", above))
+        )
+        total_flow += flow
+        weighted += flow * drop
+    return round(weighted / total_flow, 3) if total_flow else None
 
 
 def rack_pressure_drop(model: Model, grid: dict) -> float | None:
@@ -177,8 +206,8 @@ def rack_pressure_drop(model: Model, grid: dict) -> float | None:
     if not model.racks:
         return None
     axis = model.racks[0].airflow_axis
-    lo = model.racks[0].box.lo[axis] - model.cell_size / 2
-    hi = model.racks[0].box.hi[axis] + model.cell_size / 2
+    lo = model.racks[0].box.lo[axis] - model.cell(axis) / 2
+    hi = model.racks[0].box.hi[axis] + model.cell(axis) / 2
     row = model.rack_span()
     coords = (grid["x"], grid["y"], grid["z"])
 
@@ -280,16 +309,17 @@ def recovered_load_w(step: str | Path, model: Model) -> float:
 def read_grid(model: Model, step: str | Path) -> dict:
     """The cell fields as ``[k, j, i]`` grids, with the axis coordinates."""
     step = Path(step)
-    n, divisions, cell = model.n_cells, model.divisions, model.cell_size
+    n, divisions = model.n_cells, model.divisions
+    cx, cy, cz = model.cell_size
     return {
         "T": to_grid(read_field(step / "T", n), divisions) - KELVIN,
         "p_rgh": to_grid(read_field(step / "p_rgh", n), divisions),
         "U": np.stack(
             [to_grid(read_field(step / "U", n)[:, axis], divisions) for axis in range(3)]
         ),
-        "x": (np.arange(divisions[0]) + 0.5) * cell,
-        "y": (np.arange(divisions[1]) + 0.5) * cell,
-        "z": (np.arange(divisions[2]) + 0.5) * cell,
+        "x": (np.arange(divisions[0]) + 0.5) * cx,
+        "y": (np.arange(divisions[1]) + 0.5) * cy,
+        "z": (np.arange(divisions[2]) + 0.5) * cz,
     }
 
 
@@ -300,12 +330,11 @@ def rack_temperatures(model: Model, grid: dict) -> list[dict]:
     row inside it: inside the porous zone the air has already started heating.
     """
     x, y, z = grid["x"], grid["y"], grid["z"]
-    cell = model.cell_size
     rows = []
     for rack in model.racks:
         axis = rack.airflow_axis
-        before = rack.box.lo[axis] - cell / 2
-        after = rack.box.hi[axis] + cell / 2
+        before = rack.box.lo[axis] - model.cell(axis) / 2
+        after = rack.box.hi[axis] + model.cell(axis) / 2
         span = {
             other: (rack.box.lo[other], rack.box.hi[other])
             for other in range(3)
@@ -357,7 +386,9 @@ def _checks(model: Model, step: Path, kpis: dict, grid: dict) -> list[Check]:
     leaks = {
         name: flow
         for name, flow in flows.items()
-        if name not in {FAN_INTAKE, FAN_SUPPLY} and abs(flow) > MASS_TOLERANCE * supply
+        if name not in {FAN_INTAKE, FAN_SUPPLY}
+        and not name.startswith("grille")
+        and abs(flow) > MASS_TOLERANCE * supply
     }
     checks.append(
         Check(
@@ -438,15 +469,35 @@ def _checks(model: Model, step: Path, kpis: dict, grid: dict) -> list[Check]:
             )
         )
 
+    grille_drop, grille_asked = kpis.get("grille_drop_pa"), kpis.get("grille_drop_asked_pa")
+    if grille_drop is not None and grille_asked:
+        ratio = grille_drop / grille_asked
+        checks.append(
+            Check(
+                "grille_resistance",
+                abs(ratio - 1.0) <= RESISTANCE_TOLERANCE,
+                f"the field drops {grille_drop:.2f} Pa across the return grilles "
+                f"where their K at {model.airflow_m3h:,.0f} m3/h asks for "
+                f"{grille_asked:.2f} Pa ({ratio * 100:.0f}%)",
+            )
+        )
+
     rise = kpis.get("fan_rise_pa")
-    available = model.fan_static_pa
+    available = model.fan_available_pa()
     if rise is not None and available:
         checks.append(
             Check(
                 "fan_capacity",
                 rise <= available,
                 f"the POD costs {rise:.1f} Pa and the fan wall's datasheet "
-                f"offers {available:.0f} Pa ({rise / available * 100:.0f}%)"
+                f"offers {available:.0f} Pa at {model.airflow_m3h:,.0f} m3/h "
+                f"({rise / available * 100:.0f}%)"
+                + (
+                    f"; uncontrolled at full speed it would run at "
+                    f"{kpis['fan_operating_m3h']:,.0f} m3/h and {kpis['fan_operating_pa']:.1f} Pa"
+                    if kpis.get("fan_operating_m3h")
+                    else ""
+                )
                 + ("" if rise <= available else " -- the unit cannot deliver this airflow"),
             )
         )
@@ -844,6 +895,12 @@ def report(results: PodResults) -> str:
         "",
         f"  Fan wall rise   {_fan_rise_line(k)}",
         f"  Rack row        {_resistance_line(k, results)}",
+        f"  Return grilles  "
+        + (
+            f"{k['grille_drop_pa']:.2f} Pa in the field, {k['grille_drop_asked_pa']:.2f} Pa from K"
+            if k.get("grille_drop_pa") is not None
+            else "open holes (no free area given)"
+        ),
         "",
         "  Place                  Temp    dP vs intake    Speed",
     ]
@@ -920,11 +977,15 @@ def export(
     out = Path(out_dir)
     out.mkdir(parents=True, exist_ok=True)
 
+    # Pressure ships relative to the fan intake, with the hydrostatic column
+    # out of it: what a manometer would read against the machine's suction.
+    reference = float(np.mean(read_patch_field(step / "p_rgh", FAN_INTAKE)))
     layers = {
         "T": grid["T"],
         "Ux": grid["U"][0],
         "Uy": grid["U"][1],
         "Uz": grid["U"][2],
+        "P": grid["p_rgh"] - reference,
     }
     descriptors = []
     offset = 0
@@ -939,7 +1000,7 @@ def export(
                     "count": int(flat.size),
                     "min": round(float(flat.min()), 4),
                     "max": round(float(flat.max()), 4),
-                    "units": "degC" if name == "T" else "m/s",
+                    "units": {"T": "degC", "P": "Pa"}.get(name, "m/s"),
                 }
             )
             offset += flat.size * 4
@@ -995,7 +1056,7 @@ def export(
             "default_slice": {
                 "axis": 2,
                 "index": int(
-                    round(model.racks[0].box.hi[2] / 2 / model.cell_size)
+                    round(model.racks[0].box.hi[2] / 2 / model.cell(2))
                 )
                 if model.racks
                 else model.divisions[2] // 2,
@@ -1020,6 +1081,12 @@ def export(
         },
         "sensors": sensor_history(model, case),
     }
+    # The page's own drawing code reads the model payload, so the plan and
+    # sections that were checked before the run can be drawn again over the
+    # solved field -- the same lines, now with a colour underneath.
+    from aicfd.model import to_dict
+
+    payload["model"] = to_dict(model, {})
     (out / "viewer.json").write_text(json.dumps(payload, indent=1))
     (out / "report.md").write_text(report(results))
     return results
@@ -1040,6 +1107,9 @@ def _viewer_kpis(model: Model, results: PodResults) -> dict:
         "fan_rise_pa": k.get("fan_rise_pa"),
         "fan_static_pa": k.get("fan_static_pa"),
         "rack_drop_pa": k.get("rack_drop_pa"),
+        "grille_drop_pa": k.get("grille_drop_pa"),
+        "fan_operating_m3h": k.get("fan_operating_m3h"),
+        "fan_operating_pa": k.get("fan_operating_pa"),
         "energy_closure": k["energy_closure"],
         "zones": [
             {

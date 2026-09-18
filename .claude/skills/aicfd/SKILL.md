@@ -80,7 +80,20 @@ Three checks carry the verdict and **none of them is sufficient alone**:
   within 1,5 K of each other. Nothing heats or cools the air between them, so
   at steady state they must agree; a spread is a volume still filling.
 
-A fourth check, `rack_resistance`, is not about convergence: it compares the
+Datasheet inputs the spec takes, and what each buys (ADR-020):
+
+- `fanwall.static_pressure_pa` and `fanwall.curve` (m³/h, Pa points) — the
+  solve still imposes the rated flow, as an EC array under flow control does.
+  The curve feeds `fan_capacity` (margin at the rated flow) and the reported
+  uncontrolled operating point. Ask the user for the real curve; the worked
+  case carries a representative one with the datasheet point on it and says so.
+- `grilles.loss_coefficient` (K on the gross face velocity, from a datasheet
+  dp-at-velocity point) or `grilles.free_area` (Idelchik fallback, under-reads
+  a vaned grille). Feeds `grille_resistance`.
+- `mesh.cell_size` may be `[x, y, z]` (ADR-021). Keep z fine enough that the
+  false ceiling and rack tops land on cell faces; the model warns if not.
+
+Checks that are not about convergence — `rack_resistance` and `grille_resistance`: it compares the
 pressure drop the field delivers across the rack row against the one the rack's
 own curve demands at the airflow the fan is measurably moving. **It currently
 fails** — 5,3 Pa delivered against 25,8 asked. Until it passes, **never quote a

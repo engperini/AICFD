@@ -18,7 +18,7 @@ const PARAMS = [
   { key: 'hot_aisle', label: 'Corredor quente', unit: 'm', step: 0.1 },
   { key: 'ceiling', label: 'Altura do forro', unit: 'm', step: 0.1 },
   { key: 'gallery_depth', label: 'Profundidade da galeria', unit: 'm', step: 0.1 },
-  { key: 'cell_size', label: 'Tamanho de célula', unit: 'm', step: 0.01 },
+  { key: 'cell_size', label: 'Célula (x, y, z)', unit: 'm', step: 0.01, text: true },
   { key: 'max_iterations', label: 'Iterações (teto)', unit: 'un', step: 50 },
 ];
 
@@ -177,14 +177,19 @@ function renderParams() {
     PARAMS.map(
       (p) => `<div class="param">
         <label for="p-${p.key}">${p.label} <span class="unit">${p.unit}</span></label>
-        <input type="number" id="p-${p.key}" step="${p.step}"
-               value="${specValue(p.key)}" />
+        <input type="${p.text ? 'text' : 'number'}" id="p-${p.key}" step="${p.step}"
+               value="${formatValue(specValue(p.key))}" />
       </div>`,
     ).join('') +
     `<div class="param">
        <label for="p-containment">Enclausurar corredor quente</label>
        <input type="checkbox" id="p-containment" ${specValue('containment') ? 'checked' : ''} />
      </div>`;
+}
+
+/** A list in the spec (an anisotropic cell) shows as "0.2, 0.2, 0.1". */
+function formatValue(value) {
+  return Array.isArray(value) ? value.join(', ') : value;
 }
 
 function specValue(key) {
@@ -349,7 +354,8 @@ async function applyChanges() {
   const changes = {};
   for (const p of PARAMS) {
     const input = document.getElementById(`p-${p.key}`);
-    if (input.value !== '') changes[p.key] = Number(input.value);
+    if (input.value === '') continue;
+    changes[p.key] = p.text ? input.value : Number(input.value);
   }
   changes.containment = document.getElementById('p-containment').checked;
 

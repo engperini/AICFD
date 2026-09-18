@@ -5,6 +5,7 @@
 <meta name="viewport" content="width=device-width, initial-scale=1" />
 <link rel="icon" href="data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 32 32'%3E%3Crect width='32' height='32' rx='7' fill='%232a78d6'/%3E%3Cpath d='M7 21h18M7 16h13M7 11h8' stroke='white' stroke-width='2.6' stroke-linecap='round' fill='none'/%3E%3C/svg%3E" />
 <title>AICFD</title>
+<link rel="stylesheet" href="./drawing.css" />
 <style>
   :root {
     color-scheme: light;
@@ -87,42 +88,6 @@
   .view h3{margin:0;font-size:12.5px;font-weight:650;color:var(--text-primary)}
   .view p{margin:1px 0 4px;font-size:11.5px;color:var(--text-muted)}
   .view svg{display:block;max-width:100%;height:auto}
-
-  .dw-gallery{fill:var(--grid);opacity:.30;stroke:var(--axis);stroke-width:1}
-  .dw-hallfill{fill:var(--paper);stroke:var(--solid);stroke-width:1.8}
-  .dw-plenum{fill:var(--cold);opacity:.06}
-  .dw-cold{fill:var(--cold);opacity:.09}
-  .dw-hot{fill:var(--hot);opacity:.07}
-  .dw-rack{fill:var(--rack);stroke:var(--text-primary);stroke-width:1.3}
-  .dw-behind{opacity:.45;stroke-dasharray:3 3}
-  /* solid where the section cuts */
-  .dw-wall{fill:var(--containment);stroke:var(--containment);stroke-width:1}
-  .dw-opening{fill:var(--hot);stroke:var(--hot);stroke-width:1}
-  .dw-fan{fill:var(--cold);stroke:var(--cold);stroke-width:1}
-  /* outline only, and quieter, where it lies off the section plane */
-  .dw-beyond{fill:none;stroke-width:1.2;stroke-dasharray:5 3;opacity:.5}
-  /* a panel seen edge-on projects to a line: draw it as one, heavily, so an
-     opening reads as a gap punched through the wall underneath it */
-  .dw-edge{stroke-width:4.5;stroke-linecap:butt}
-  .dw-edge-beyond{stroke-width:2;stroke-dasharray:5 3;opacity:.55}
-  .dw-edge-label{font-size:9px;font-weight:650;text-anchor:middle;stroke:none}
-  .dw-sensor{stroke:var(--series-4);stroke-width:1.4;fill:none}
-  .dw-sensor-dot{fill:var(--surface);stroke-width:1.2}
-  .dw-sensor-far{opacity:.4}
-  .dw-ceiling{stroke:var(--solid);stroke-width:2.6}
-  .dw-divider{stroke:var(--solid);stroke-width:2.6}
-  .dw-note{fill:var(--text-secondary);font-size:10px;text-anchor:middle;font-weight:600}
-  .dw-cold-t{fill:var(--cold)} .dw-hot-t{fill:var(--hot)}
-  .dw-label{fill:var(--text-primary);font-size:9.5px;font-weight:650;text-anchor:middle}
-  .dw-dim{stroke:var(--text-muted);stroke-width:.8}
-  .dw-dimtext{fill:var(--text-muted);font-size:9.5px;text-anchor:middle;
-    font-variant-numeric:tabular-nums}
-  .dw-axis{fill:var(--text-muted);font-size:10px;text-anchor:middle}
-  .dw-level{fill:var(--text-secondary);font-size:9px;text-anchor:end;
-    font-weight:600}
-  .dw-level-v{fill:var(--text-muted);font-weight:400;
-    font-variant-numeric:tabular-nums}
-  .dw-leader{stroke-dasharray:2 2}
 
   .legend{display:flex;gap:14px;flex-wrap:wrap;padding:8px 16px 12px;
     color:var(--text-secondary);font-size:12px}

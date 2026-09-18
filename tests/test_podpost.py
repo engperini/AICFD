@@ -457,6 +457,68 @@ class FanCapacityTest(unittest.TestCase):
         self.assertIsNone(M.build_model(SPEC).fan_static_pa)
 
 
+class GrilleAndFanBudgetTest(unittest.TestCase):
+    """The datasheet numbers turn into checks, not decoration."""
+
+    def setUp(self):
+        self.model = M.build_model(
+            dict(
+                SPEC,
+                grilles={"size": 0.6, "count": 3, "free_area": 0.8, "loss_coefficient": 2.4},
+                fanwall={**SPEC["fanwall"], "static_pressure_pa": 100,
+                         "curve": [[0, 250], [2500, 200], [5000, 100], [6500, 40], [7500, 0]]},
+            )
+        )
+        self.case = Path(tempfile.mkdtemp())
+
+    def test_the_grille_drop_asked_for_follows_k_and_face_velocity(self):
+        m = self.model
+        area = 3 * 0.36
+        v = m.airflow_m3s / area
+        self.assertAlmostEqual(m.grille_pressure_drop_pa, 2.4 * 0.5 * M.RHO_AIR * v**2, places=6)
+        self.assertAlmostEqual(m.grille_pressure_drop_pa, 2.4, delta=0.3)
+
+    def test_the_measured_grille_drop_is_flow_weighted_across_the_pairs(self):
+        step = self.case / "100"
+        step.mkdir()
+        field(step / "phi", "phi", "0", {
+            "grille1_below": [0.1] * 9, "grille1_above": [-0.1] * 9,
+            "grille2_below": [0.3] * 9, "grille2_above": [-0.3] * 9,
+        })
+        field(step / "p_rgh", "p_rgh", "101325", {
+            "grille1_below": [101327.0] * 9, "grille1_above": [101325.0] * 9,
+            "grille2_below": [101329.0] * 9, "grille2_above": [101325.0] * 9,
+        })
+        # (0.9*2 + 2.7*4) / 3.6 = 3.5
+        self.assertAlmostEqual(podpost.grille_pressure_drop(step), 3.5, places=3)
+
+    def test_no_grille_pairs_means_no_measurement(self):
+        step = self.case / "100"
+        step.mkdir()
+        field(step / "phi", "phi", "0", {FAN_INTAKE: [1.0], FAN_SUPPLY: [-1.0]})
+        self.assertIsNone(podpost.grille_pressure_drop(step))
+
+    def test_grille_pairs_are_not_leaks(self):
+        """A cyclic pair carries the return flow by design."""
+        import inspect
+
+        source = inspect.getsource(podpost._checks)
+        self.assertIn('not name.startswith("grille")', source)
+
+    def test_the_fan_capacity_check_reads_the_curve_at_the_rated_flow(self):
+        self.assertAlmostEqual(self.model.fan_available_pa(), 100.0)
+        q, dp = self.model.fan_operating_point(29.0)
+        self.assertGreater(q, self.model.airflow_m3h)
+        self.assertLess(dp, 100.0)
+
+    def test_the_viewer_gets_pressure_and_the_model(self):
+        import inspect
+
+        source = inspect.getsource(podpost.export)
+        self.assertIn('"P": grid["p_rgh"] - reference', source)
+        self.assertIn('payload["model"]', source)
+
+
 class CompareTest(unittest.TestCase):
     """Two runs of the same case, from different initial fields, must agree."""
 
@@ -517,10 +579,10 @@ class ExportTest(unittest.TestCase):
     def test_the_default_slice_crosses_the_racks(self):
         """Halfway up the box lands above them, where nothing happens."""
         model = self.model
-        index = int(round(model.racks[0].box.hi[2] / 2 / model.cell_size))
+        index = int(round(model.racks[0].box.hi[2] / 2 / model.cell(2)))
         self.assertLess(index, model.divisions[2] // 2)
-        self.assertGreater(index * model.cell_size, 0.0)
-        self.assertLess(index * model.cell_size, model.racks[0].box.hi[2])
+        self.assertGreater(index * model.cell(2), 0.0)
+        self.assertLess(index * model.cell(2), model.racks[0].box.hi[2])
 
     def test_throughflow_is_not_reported_for_a_closed_row(self):
         """It is 100% by construction; quoting it would suggest a measurement."""

@@ -79,6 +79,9 @@ class Panel:
     position: float
     extent: tuple[tuple[float, float], tuple[float, float]]
     """The two in-plane ranges, in axis order, skipping ``axis``."""
+    resistance: float | None = None
+    """Loss coefficient K for an opening that resists the air (a grille):
+    dp = K * rho * v^2 / 2 with v the face velocity over the gross area."""
 
     @property
     def area(self) -> float:
@@ -169,9 +172,16 @@ class Model:
     panels: list[Panel]
     airflow_m3h: float
     supply_temp_c: float
-    cell_size: float
+    cell_size: tuple[float, float, float]
+    """Cell edge along x, y, z. A fan-wall POD wants finer cells in z than in
+    plan -- the false ceiling and rack tops are horizontal planes that must land
+    on cell faces, while a 0,2 m plan cell resolves a 0,6 m rack fine."""
     fan_static_pa: float | None = None
-    """External static pressure from the unit's datasheet, if given."""
+    """External static pressure from the unit's datasheet at the rated flow."""
+    fan_curve: tuple[tuple[float, float], ...] | None = None
+    """The unit's P-Q curve as (m3/h, Pa) points, flow ascending, if given."""
+    grille_free_area: float | None = None
+    """Free-area ratio of the return grilles, from their datasheet."""
     warnings: list[str] = field(default_factory=list)
 
     # --- derived quantities ---------------------------------------------------
@@ -193,7 +203,12 @@ class Model:
     @property
     def divisions(self) -> tuple[int, int, int]:
         size = self.domain.size
-        return tuple(max(1, round(size[a] / self.cell_size)) for a in range(3))  # type: ignore[return-value]
+        return tuple(  # type: ignore[return-value]
+            max(1, round(size[a] / self.cell_size[a])) for a in range(3)
+        )
+
+    def cell(self, axis: int) -> float:
+        return self.cell_size[axis]
 
     @property
     def n_cells(self) -> int:
@@ -234,6 +249,63 @@ class Model:
         velocity = self.airflow_m3s / face
         _d, f = self.racks[0].darcy_forchheimer()
         return 0.5 * RHO_AIR * f * velocity**2 * self.racks[0].depth
+
+    @property
+    def grille_pressure_drop_pa(self) -> float:
+        """What the return grilles cost at the fan's airflow, from their K.
+
+        All of the return passes through them, so the face velocity is the
+        fan's flow over the grilles' gross area and the drop is closed form --
+        the same status as the rack drop: a check on the field, not a repeat.
+        """
+        grilles = [p for p in self.panels if p.name.startswith("grille")]
+        area = sum(p.area for p in grilles)
+        if not grilles or area <= 0 or grilles[0].resistance is None:
+            return 0.0
+        velocity = self.airflow_m3s / area
+        return grilles[0].resistance * 0.5 * RHO_AIR * velocity**2
+
+    def fan_available_pa(self, flow_m3h: float | None = None) -> float | None:
+        """Static pressure the unit can produce at ``flow_m3h``, from its curve.
+
+        With only a rated point on the datasheet this is that point; with the
+        curve it is interpolated. Beyond the curve's last point it is zero --
+        the fan cannot deliver more than free-delivery flow.
+        """
+        flow = self.airflow_m3h if flow_m3h is None else flow_m3h
+        if self.fan_curve:
+            points = self.fan_curve
+            if flow <= points[0][0]:
+                return points[0][1]
+            for (q0, p0), (q1, p1) in zip(points, points[1:]):
+                if q0 <= flow <= q1:
+                    t = (flow - q0) / (q1 - q0) if q1 > q0 else 0.0
+                    return p0 + t * (p1 - p0)
+            return 0.0
+        return self.fan_static_pa
+
+    def fan_operating_point(self, system_rise_pa: float) -> tuple[float, float] | None:
+        """Where the fan would run if nothing controlled its speed.
+
+        The POD's resistance scales with flow squared from the solved point;
+        the fan's curve comes from the datasheet. Their crossing is the flow an
+        uncontrolled unit at full speed would actually deliver. An EC fan wall
+        under flow control holds the rated flow instead, which is what the
+        solve assumes -- this number says how much margin that control has.
+        """
+        if not self.fan_curve or system_rise_pa <= 0 or self.airflow_m3h <= 0:
+            return None
+        system = lambda q: system_rise_pa * (q / self.airflow_m3h) ** 2  # noqa: E731
+        lo, hi = 0.0, self.fan_curve[-1][0]
+        for _ in range(60):
+            mid = (lo + hi) / 2
+            available = self.fan_available_pa(mid) or 0.0
+            if available > system(mid):
+                lo = mid
+            else:
+                hi = mid
+        q = (lo + hi) / 2
+        return (round(q, 1), round(system(q), 2))
 
     @property
     def rack_demand_m3s(self) -> float:
@@ -313,7 +385,7 @@ def sensors(model: Model) -> list[SensorGroup]:
             "Costas do fan wall",
             tuple(
                 (
-                    max(model.hall.lo[0] - 0.3, model.cell_size),
+                    max(model.hall.lo[0] - 0.3, model.cell(0)),
                     mid(fan.extent[0]),
                     fan_top * fraction,
                 )
@@ -327,7 +399,7 @@ def sensors(model: Model) -> list[SensorGroup]:
 def build_model(spec: dict) -> Model:
     """Derive the geometry from a spec mapping (already validated upstream)."""
     name = spec.get("name", "case")
-    cell = float(spec.get("mesh", {}).get("cell_size", 0.10))
+    cell = parse_cell_size(spec.get("mesh", {}).get("cell_size", 0.10))
 
     gallery_depth = float(spec["gallery"]["depth"])
     hall_length, hall_width, height = (float(v) for v in spec["hall"]["size"])
@@ -402,6 +474,14 @@ def build_model(spec: dict) -> Model:
     )
     grille = float(spec["grilles"]["size"])
     grille_count = int(spec["grilles"].get("count", count))
+    free_area = spec["grilles"].get("free_area")
+    free_area = float(free_area) if free_area is not None else None
+    if "loss_coefficient" in spec["grilles"]:
+        grille_k: float | None = float(spec["grilles"]["loss_coefficient"])
+    elif free_area is not None:
+        grille_k = grille_loss_coefficient(free_area)
+    else:
+        grille_k = None
     for i in range(grille_count):
         panels.append(
             Panel(
@@ -413,6 +493,7 @@ def build_model(spec: dict) -> Model:
                     (row[0] + i * grille, row[0] + (i + 1) * grille),
                     (hot_aisle[0], hot_aisle[0] + grille),
                 ),
+                resistance=grille_k,
             )
         )
 
@@ -484,6 +565,8 @@ def build_model(spec: dict) -> Model:
         fan_static_pa=(
             float(fan["static_pressure_pa"]) if "static_pressure_pa" in fan else None
         ),
+        fan_curve=parse_fan_curve(fan.get("curve")),
+        grille_free_area=free_area,
     )
     # Snap to the mesh *before* anyone reads the model. The drawing, the
     # summary table and the solved case then describe the same geometry -- a
@@ -494,16 +577,16 @@ def build_model(spec: dict) -> Model:
 
 
 def snap_to_mesh(model: Model) -> Model:
-    """Move every plane onto the nearest cell face."""
-    cell = model.cell_size
+    """Move every plane onto the nearest cell face, axis by axis."""
 
-    def snap(value: float) -> float:
+    def snap(value: float, axis: int) -> float:
+        cell = model.cell(axis)
         return round(value / cell) * cell
 
     def snap_box(box: Box) -> Box:
         return Box(
-            tuple(snap(v) for v in box.lo),  # type: ignore[arg-type]
-            tuple(snap(v) for v in box.hi),  # type: ignore[arg-type]
+            tuple(snap(v, a) for a, v in enumerate(box.lo)),  # type: ignore[arg-type]
+            tuple(snap(v, a) for a, v in enumerate(box.hi)),  # type: ignore[arg-type]
         )
 
     model.racks = [
@@ -515,15 +598,19 @@ def snap_to_mesh(model: Model) -> Model:
             p.name,
             p.kind,
             p.axis,
-            snap(p.position),
-            tuple((snap(a0), snap(a1)) for a0, a1 in p.extent),  # type: ignore[arg-type]
+            snap(p.position, p.axis),
+            tuple(  # type: ignore[arg-type]
+                (snap(a0, axis), snap(a1, axis))
+                for axis, (a0, a1) in zip(p.in_plane_axes, p.extent)
+            ),
+            p.resistance,
         )
         for p in model.panels
     ]
-    model.cold_aisle = (snap(model.cold_aisle[0]), snap(model.cold_aisle[1]))
-    model.rack_band = (snap(model.rack_band[0]), snap(model.rack_band[1]))
-    model.hot_aisle = (snap(model.hot_aisle[0]), snap(model.hot_aisle[1]))
-    model.ceiling_z = snap(model.ceiling_z)
+    model.cold_aisle = (snap(model.cold_aisle[0], 1), snap(model.cold_aisle[1], 1))
+    model.rack_band = (snap(model.rack_band[0], 1), snap(model.rack_band[1], 1))
+    model.hot_aisle = (snap(model.hot_aisle[0], 1), snap(model.hot_aisle[1], 1))
+    model.ceiling_z = snap(model.ceiling_z, 2)
     return model
 
 
@@ -537,30 +624,30 @@ def check_mesh_alignment(model: Model) -> list[str]:
     user typed.
     """
     warnings: list[str] = []
-    cell = model.cell_size
 
-    def misaligned(value: float) -> bool:
-        steps = value / cell
+    def misaligned(value: float, axis: int) -> bool:
+        steps = value / model.cell(axis)
         return abs(steps - round(steps)) > 1e-9
 
-    checked: list[tuple[str, float]] = [
-        ("altura do forro", model.ceiling_z),
-        ("corredor frio", model.cold_aisle[1]),
-        ("profundidade do rack", model.rack_band[1]),
+    checked: list[tuple[str, float, int]] = [
+        ("altura do forro", model.ceiling_z, 2),
+        ("corredor frio", model.cold_aisle[1], 1),
+        ("profundidade do rack", model.rack_band[1], 1),
     ]
     for axis, label in enumerate(("comprimento", "largura", "altura")):
-        checked.append((f"{label} do domínio", model.domain.size[axis]))
+        checked.append((f"{label} do domínio", model.domain.size[axis], axis))
     for rack in model.racks:
         for axis, label in enumerate(("x", "y", "z")):
-            checked.append((f"rack {rack.id} em {label}", rack.box.hi[axis]))
+            checked.append((f"rack {rack.id} em {label}", rack.box.hi[axis], axis))
     for panel in model.panels:
-        checked.append((f"posição d{article(panel)}", panel.position))
-        for (a0, a1) in panel.extent:
-            checked.append((f"borda d{article(panel)}", a1))
+        checked.append((f"posição d{article(panel)}", panel.position, panel.axis))
+        for axis, (a0, a1) in zip(panel.in_plane_axes, panel.extent):
+            checked.append((f"borda d{article(panel)}", a1, axis))
 
     reported: set[str] = set()
-    for label, value in checked:
-        if misaligned(value) and label not in reported:
+    for label, value, axis in checked:
+        cell = model.cell(axis)
+        if misaligned(value, axis) and label not in reported:
             reported.add(label)
             snapped = round(value / cell) * cell
             warnings.append(
@@ -590,6 +677,40 @@ def article(panel: Panel) -> str:
     if panel.name.startswith("containment_door"):
         return "a porta do enclausuramento"
     return f"o painel {panel.name}"
+
+
+def parse_cell_size(raw) -> tuple[float, float, float]:
+    """``0.1`` or ``[0.2, 0.2, 0.1]`` -> a cell edge per axis."""
+    if isinstance(raw, (int, float)):
+        value = float(raw)
+        return (value, value, value)
+    values = [float(v) for v in raw]
+    if len(values) != 3:
+        raise ValueError(f"mesh.cell_size needs one value or three, got {raw!r}")
+    return (values[0], values[1], values[2])
+
+
+def parse_fan_curve(raw) -> tuple[tuple[float, float], ...] | None:
+    """``[[m3h, Pa], ...]`` from the datasheet, sorted by flow."""
+    if not raw:
+        return None
+    points = sorted((float(q), float(p)) for q, p in raw)
+    return tuple(points)
+
+
+def grille_loss_coefficient(free_area: float) -> float:
+    """K for a thin sharp-edged grille from its free-area ratio (Idelchik).
+
+        K = (0.707 * (1 - s)^0.375 + 1 - s)^2 / s^2
+
+    referred to the face velocity over the gross area. An egg-crate return
+    grille at 80% free area gives K ~ 0.5; a 50% perforated plate ~ 4.4. It is
+    the standard thin-plate correlation and it is what a datasheet's "dp at
+    face velocity" table is usually fitted to; when the datasheet gives K or a
+    dp table directly, ``grilles.loss_coefficient`` overrides this.
+    """
+    s = min(max(free_area, 0.05), 1.0)
+    return (0.707 * (1 - s) ** 0.375 + (1 - s)) ** 2 / s**2
 
 
 def summary_rows(model: Model) -> list[tuple[str, str, str]]:
@@ -645,9 +766,19 @@ def summary_rows(model: Model) -> list[tuple[str, str, str]]:
         (
             f"Grelhas do forro ({len(grilles)})",
             f"{num(grilles[0].extent[0][1] - grilles[0].extent[0][0])} m quadradas"
+            + (
+                f", {num(model.grille_free_area * 100, 0)}% de área livre"
+                if model.grille_free_area
+                else ""
+            )
             if grilles
             else "-",
-            through(grille_area),
+            through(grille_area)
+            + (
+                f" · K {num(grilles[0].resistance)} · {num(model.grille_pressure_drop_pa, 1)} Pa"
+                if grilles and grilles[0].resistance is not None
+                else ""
+            ),
         ),
         (
             "Chaminé do corredor quente",
@@ -663,11 +794,19 @@ def summary_rows(model: Model) -> list[tuple[str, str, str]]:
         ),
         (
             "Pressão do fan wall",
-            f"{num(model.fan_static_pa, 0)} Pa de datasheet"
-            if model.fan_static_pa
+            (
+                f"{num(model.fan_available_pa() or 0, 0)} Pa disponíveis a "
+                f"{num(model.airflow_m3h, 0)} m³/h"
+                + (" (curva)" if model.fan_curve else " (datasheet)")
+            )
+            if model.fan_available_pa()
             else "não informada",
-            f"racks consomem {num(model.rack_pressure_drop_pa / model.fan_static_pa * 100, 0)}%"
-            if model.fan_static_pa
+            (
+                f"racks + grelhas pedem "
+                f"{num(model.rack_pressure_drop_pa + model.grille_pressure_drop_pa, 1)} Pa "
+                f"({num((model.rack_pressure_drop_pa + model.grille_pressure_drop_pa) / model.fan_available_pa() * 100, 0)}%)"
+            )
+            if model.fan_available_pa()
             else "-",
         ),
     ]
@@ -695,7 +834,7 @@ def to_dict(model: Model, spec: dict) -> dict:
     """
     return {
         "name": model.name,
-        "cell_size": model.cell_size,
+        "cell_size": list(model.cell_size),
         "divisions": list(model.divisions),
         "cells": model.n_cells,
         "domain": {"lo": list(model.domain.lo), "hi": list(model.domain.hi)},
@@ -725,6 +864,7 @@ def to_dict(model: Model, spec: dict) -> dict:
                 "position": p.position,
                 "extent": [list(e) for e in p.extent],
                 "area": round(p.area, 4),
+                "resistance": p.resistance,
             }
             for p in model.panels
         ],
@@ -736,6 +876,10 @@ def to_dict(model: Model, spec: dict) -> dict:
             "chimney_velocity_ms": round(
                 model.airflow_m3s / model.chimney_area, 3
             ) if model.chimney_area else None,
+            "rack_drop_pa": round(model.rack_pressure_drop_pa, 2),
+            "grille_drop_pa": round(model.grille_pressure_drop_pa, 2),
+            "fan_available_pa": model.fan_available_pa(),
+            "fan_curve": [list(p) for p in model.fan_curve] if model.fan_curve else None,
         },
         "sensors": [
             {

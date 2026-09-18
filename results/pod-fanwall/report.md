@@ -9,6 +9,7 @@ POD 'pod-fanwall' at iteration 800
 
   Fan wall rise   29.0 Pa of the 100 Pa on the datasheet (29%)
   Rack row        26.6 Pa across the row, in the field
+  Return grilles  open holes (no free area given)
 
   Place                  Temp    dP vs intake    Speed
   Corredor frio           20.0            29.0     0.20
@@ -28,7 +29,7 @@ POD 'pod-fanwall' at iteration 800
     PASS  energy_closure       the return air carries 17.87 kW of the 18.00 kW installed (99%)
     PASS  return_path          nothing heats or cools the air between the rack outlet and the fan intake, so these have to agree: hot_aisle 30.7, plenum 30.7, fan_back 30.6 degC (0.04 K apart)
     PASS  rack_resistance      the field drops 26.6 Pa across the row where the rack curve at 5,000 m3/h asks for 25.8 Pa (103%)
-    PASS  fan_capacity         the POD costs 29.0 Pa and the fan wall's datasheet offers 100 Pa (29%)
+    PASS  fan_capacity         the POD costs 29.0 Pa and the fan wall's datasheet offers 100 Pa at 5,000 m3/h (29%)
     PASS  settled              the places moved at most 0.04 K since the previous sample (settled below 0.25 K)
     PASS  ashrae_inlet         warmest rack inlet 20.8 degC -- within ASHRAE recommended (18.0-27.0 degC)
     PASS  plausible_velocity   peak 2.09 m/s against a plausible 12.05 m/s (peak air 31.1 degC)

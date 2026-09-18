@@ -8,6 +8,7 @@ import { Results } from './data.js';
 import { RoomScene } from './scene.js';
 import { Scale, buildLut } from './colormaps.js';
 import { ConvergenceChart } from './convergence.js';
+import { FieldMaps } from './maps.js';
 
 const ASHRAE_RECOMMENDED = [18, 27];
 
@@ -89,6 +90,17 @@ async function main() {
     : '✕ Validation failed';
 
   root.innerHTML = layoutHtml(meta);
+
+  // Plan and sections over the field are the primary picture for a POD -- the
+  // same drawings that were checked before the run. The 3-D scene stays
+  // available below for anyone who wants to orbit it.
+  let maps = null;
+  if (meta.model) {
+    maps = new FieldMaps(document.getElementById('maps'), results, meta.model, currentMode);
+  } else {
+    document.getElementById('maps-card').hidden = true;
+    document.getElementById('scene-details').open = true;
+  }
   const scene = new RoomScene(document.getElementById('viewport'), results);
   const chart = new ConvergenceChart(
     document.getElementById('convergence'),
@@ -97,7 +109,7 @@ async function main() {
   document.getElementById('legend').innerHTML = chart.legendHtml();
   document.getElementById('residual-table').innerHTML = residualTableHtml(chart);
 
-  setupTheme(scene);
+  setupTheme(scene, maps);
   setupControls(scene, results, meta);
   setupReadout(scene);
 
@@ -171,11 +183,13 @@ function setupReadout(scene) {
   };
 }
 
-function setupTheme(scene) {
+function setupTheme(scene, maps) {
   const button = document.getElementById('theme-toggle');
   const apply = () => {
     const mode = currentMode();
     button.textContent = mode === 'dark' ? 'Light' : 'Dark';
+    // Dark mode is its own ramp, not a flipped one -- repaint the maps.
+    maps?.render();
     const styles = getComputedStyle(document.documentElement);
     scene.applyTheme(mode, {
       axis: styles.getPropertyValue('--axis').trim(),
@@ -234,7 +248,17 @@ function layoutHtml(meta) {
   return `
 <main class="layout">
   <div class="column">
-  <section class="card viewport-card">
+  <section class="card" id="maps-card">
+    <div class="card-head">
+      <span class="card-title">Planta e cortes</span>
+      <span class="card-sub">o campo resolvido sob os mesmos desenhos conferidos antes da rodada; arraste o corte</span>
+    </div>
+    <div id="maps"></div>
+  </section>
+  <details class="card" id="scene-details">
+  <summary class="card-head" style="cursor:pointer"><span class="card-title">Vista 3D</span>
+    <span class="card-sub">a mesma fatia, para orbitar</span></summary>
+  <section class="viewport-card">
     <div class="controls">
       <div class="control">
         <label for="field-view">Show</label>
@@ -271,6 +295,7 @@ function layoutHtml(meta) {
       <div class="colorbar-ticks" id="colorbar-ticks"></div>
     </div>
   </section>
+  </details>
   <section class="card chart-card">
   <div class="card-head">
     <span class="card-title">Convergence</span>

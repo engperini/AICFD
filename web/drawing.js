@@ -136,8 +136,33 @@ export function viewSize(model, view, scale) {
   };
 }
 
-export function drawView(model, view, scale) {
+/**
+ * The pixel transform a view uses, so anything painted under the SVG -- a
+ * field map on a canvas -- lands on exactly the same metres.
+ */
+export function viewTransform(model, view, scale) {
   const { width, height } = viewSize(model, view, scale);
+  const d = model.domain;
+  return {
+    width,
+    height,
+    X: (v) => PAD.left + (v - d.lo[view.h]) * scale,
+    Y: (v) => PAD.top + (d.hi[view.v] - v) * scale,
+  };
+}
+
+/** Where a section is cut by default; exported so a slider can start there. */
+export function defaultCut(model, view) {
+  return sectionAt(model, view);
+}
+
+/**
+ * @param {object} [options]
+ * @param {number} [options.at] cut position along the view's normal, metres
+ * @param {boolean} [options.transparent] no volume fills, for use over a map
+ */
+export function drawView(model, view, scale, options = {}) {
+  const { width, height, X, Y } = viewTransform(model, view, scale);
   const svg = el('svg', {
     width,
     height,
@@ -145,15 +170,11 @@ export function drawView(model, view, scale) {
     role: 'img',
     'aria-label': view.title,
   });
+  if (options.transparent) svg.classList.add('dw-over-map');
 
   const d = model.domain;
   const hSpan = d.hi[view.h] - d.lo[view.h];
-  const ox = PAD.left;
-  const oy = PAD.top;
-
-  const X = (v) => ox + (v - d.lo[view.h]) * scale;
-  const Y = (v) => oy + (d.hi[view.v] - v) * scale;
-  const at = sectionAt(model, view);
+  const at = options.at ?? sectionAt(model, view);
 
   const paint = (lo, hi, cls, label) => {
     const x0 = X(Math.min(lo[view.h], hi[view.h]));

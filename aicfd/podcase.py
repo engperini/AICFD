@@ -217,9 +217,11 @@ def wall_plan(model: Model) -> list[tuple[str, Panel, list[Panel]]]:
     return plan
 
 
-def _face_selection(name: str, panel: Panel, holes: list[Panel], cell: float) -> str:
+def _face_selection(name: str, panel: Panel, holes: list[Panel], cell) -> str:
     """topoSet actions that leave ``name`` holding exactly this panel's faces."""
-    half = cell * 0.25  # thin enough that only faces *on* the plane qualify
+    # thin enough that only faces *on* the plane qualify -- a quarter of the
+    # cell along the panel's own normal, which is the axis that matters
+    half = cell[panel.axis] * 0.25
     eps = 1e-6
     normal = [0, 0, 0]
     normal[panel.axis] = 1
@@ -283,6 +285,11 @@ def topo_set_dict(model: Model) -> str:
         for name, panel, holes in wall_plan(model)
     ]
     actions.append(_face_selection("fan", model.panel("fan"), [], cell))
+    # Each grille is its own zone: it becomes a cyclic pair carrying the
+    # datasheet's pressure loss, not a hole. The forro zone above already has
+    # these faces removed, so nothing is claimed twice.
+    for grille in grilles(model):
+        actions.append(_face_selection(grille.name, grille, [], cell))
 
     for rack in model.racks:
         actions.append(
@@ -329,12 +336,63 @@ def _wall_patch_fields(k: float, epsilon: float) -> str:
             }}"""
 
 
+def grilles(model: Model) -> list[Panel]:
+    return [p for p in model.panels if p.name.startswith("grille")]
+
+
+def _grille_baffle(grille: Panel) -> str:
+    """A return grille as a cyclic pair with a pressure jump across it.
+
+    porousBafflePressure gives dp = -(D mu U + 0.5 I rho |U|^2) L on the
+    pressure the solver works with, here p_rgh. With D = 0 and L = 1 the
+    inertial coefficient *is* the loss coefficient K from the datasheet's
+    free area, referred to the face velocity through the gross opening --
+    exactly what the grille catalogue's dp-vs-velocity table encodes. The
+    cyclic base means every other field passes straight through; only the
+    pressure sees the grille.
+    """
+    K = grille.resistance if grille.resistance is not None else 0.0
+    below, above = f"{grille.name}_below", f"{grille.name}_above"
+    cyclic = "\n".join(
+        f"                    {f:<7} {{ type cyclic; }}"
+        for f in ("U", "T", "p", "k", "epsilon", "nut", "alphat")
+    )
+
+    def side(name: str, other: str) -> str:
+        return f"""            {{
+                name    {name};
+                type    cyclic;
+                neighbourPatch  {other};
+                patchFields
+                {{
+{cyclic}
+                    p_rgh   {{ type porousBafflePressure; patchType cyclic;
+                              D 0; I {K:.4g}; length 1;
+                              jump uniform 0; value uniform 101325; }}
+                }}
+            }}"""
+
+    return f"""    {grille.name}
+    {{
+        // {grille.area:.2f} m2 return grille, K = {K:.3g} on the face velocity
+        type        faceZone;
+        zoneName    {grille.name};
+        patches
+        {{
+            master
+{side(below, above)}
+            slave
+{side(above, below)}
+        }}
+    }}"""
+
+
 def create_baffles_dict(model: Model) -> str:
     k, epsilon = turbulence_initial_values(model)
     supply_k = model.supply_temp_c + KELVIN
     mass_flow = model.airflow_m3s * supply_density(model)
 
-    entries = []
+    entries = [_grille_baffle(g) for g in grilles(model) if g.resistance is not None]
     for name, _panel, _holes in wall_plan(model):
         entries.append(
             f"""    {name}
@@ -646,7 +704,11 @@ relaxationFactors
     equations
     {{
         U               0.3;
-        h               0.3;
+        // The plenum and the gallery converge as a bulk mode -- the whole
+        // volume warms together rather than a front sweeping through -- and
+        // that mode's rate is set by this factor. Measured against 0.3 from the
+        // same state: 2.5x faster to the same answer.
+        h               0.7;
         "(k|epsilon)"   0.3;
     }}
 }}
@@ -683,7 +745,7 @@ def warm_start(model: Model) -> str:
     must agree (ADR-019).
     """
     nx, ny, nz = model.divisions
-    cell = model.cell_size
+    cx, cy, cz = model.cell_size
     supply_k = model.supply_temp_c + KELVIN
     warm_k = supply_k + min(max(model.design_delta_t_k, 1.0), 25.0)
 
@@ -693,11 +755,11 @@ def warm_start(model: Model) -> str:
 
     values = []
     for k in range(nz):
-        z = (k + 0.5) * cell
+        z = (k + 0.5) * cz
         for j in range(ny):
-            y = (j + 0.5) * cell
+            y = (j + 0.5) * cy
             for i in range(nx):
-                x = (i + 0.5) * cell
+                x = (i + 0.5) * cx
                 downstream = (
                     x < gallery_x  # the gallery carries return air
                     or z > model.ceiling_z  # the plenum above the false ceiling
@@ -824,7 +886,9 @@ def summary(model: Model) -> str:
         f"POD '{model.name}'",
         f"  Domain          {dx:g} x {dy:g} x {dz:g} m",
         f"  Mesh            {'x'.join(str(n) for n in model.divisions)} "
-        f"= {model.n_cells:,} cells ({model.cell_size:.3f} m)",
+        f"= {model.n_cells:,} cells ("
+        + " x ".join(f"{c:.2f}" for c in model.cell_size)
+        + " m)",
         f"  IT load         {model.total_load_w / 1000:.1f} kW across "
         f"{len(model.racks)} rack(s)",
         f"  Fan wall        {model.airflow_m3h:,.0f} m3/h at "

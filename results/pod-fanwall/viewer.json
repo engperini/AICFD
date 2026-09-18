@@ -399,6 +399,14 @@
    "min": -1.3514,
    "max": 2.0099,
    "units": "m/s"
+  },
+  {
+   "name": "P",
+   "offset": 4838400,
+   "count": 302400,
+   "min": -1.0,
+   "max": 29.0,
+   "units": "Pa"
   }
  ],
  "kpis": {
@@ -413,6 +421,9 @@
   "fan_rise_pa": 28.999,
   "fan_static_pa": 100.0,
   "rack_drop_pa": 26.606,
+  "grille_drop_pa": null,
+  "fan_operating_m3h": null,
+  "fan_operating_pa": null,
   "energy_closure": 0.993,
   "zones": [
    {
@@ -514,7 +525,7 @@
   {
    "name": "fan_capacity",
    "passed": true,
-   "detail": "the POD costs 29.0 Pa and the fan wall's datasheet offers 100 Pa (29%)",
+   "detail": "the POD costs 29.0 Pa and the fan wall's datasheet offers 100 Pa at 5,000 m3/h (29%)",
    "status": "PASS"
   },
   {
@@ -8498,5 +8509,516 @@
     "fan_rise_pa": 28.999
    }
   ]
+ },
+ "model": {
+  "name": "pod-fanwall",
+  "cell_size": [
+   0.1,
+   0.1,
+   0.1
+  ],
+  "divisions": [
+   90,
+   42,
+   80
+  ],
+  "cells": 302400,
+  "domain": {
+   "lo": [
+    0.0,
+    0.0,
+    0.0
+   ],
+   "hi": [
+    9.0,
+    4.2,
+    8.0
+   ]
+  },
+  "gallery": {
+   "lo": [
+    0.0,
+    0.0,
+    0.0
+   ],
+   "hi": [
+    3.0,
+    4.2,
+    8.0
+   ]
+  },
+  "hall": {
+   "lo": [
+    3.0,
+    0.0,
+    0.0
+   ],
+   "hi": [
+    9.0,
+    4.2,
+    8.0
+   ]
+  },
+  "ceiling_z": 6.5,
+  "aisles": {
+   "cold": [
+    0.0,
+    1.8
+   ],
+   "racks": [
+    1.8,
+    3.0
+   ],
+   "hot": [
+    3.0,
+    4.2
+   ]
+  },
+  "racks": [
+   {
+    "id": "R1",
+    "lo": [
+     5.0,
+     1.8,
+     0.0
+    ],
+    "hi": [
+     5.6000000000000005,
+     3.0,
+     2.2
+    ],
+    "load_kw": 6.0,
+    "airflow_axis": 1
+   },
+   {
+    "id": "R2",
+    "lo": [
+     5.6000000000000005,
+     1.8,
+     0.0
+    ],
+    "hi": [
+     6.2,
+     3.0,
+     2.2
+    ],
+    "load_kw": 6.0,
+    "airflow_axis": 1
+   },
+   {
+    "id": "R3",
+    "lo": [
+     6.2,
+     1.8,
+     0.0
+    ],
+    "hi": [
+     6.800000000000001,
+     3.0,
+     2.2
+    ],
+    "load_kw": 6.0,
+    "airflow_axis": 1
+   }
+  ],
+  "panels": [
+   {
+    "name": "fan",
+    "kind": "fan",
+    "axis": 0,
+    "position": 3.0,
+    "extent": [
+     [
+      0.0,
+      1.8
+     ],
+     [
+      0.0,
+      4.0
+     ]
+    ],
+    "area": 7.2,
+    "resistance": null
+   },
+   {
+    "name": "plenum_opening",
+    "kind": "opening",
+    "axis": 0,
+    "position": 3.0,
+    "extent": [
+     [
+      0.0,
+      4.2
+     ],
+     [
+      6.5,
+      8.0
+     ]
+    ],
+    "area": 6.3,
+    "resistance": null
+   },
+   {
+    "name": "ceiling",
+    "kind": "wall",
+    "axis": 2,
+    "position": 6.5,
+    "extent": [
+     [
+      3.0,
+      9.0
+     ],
+     [
+      0.0,
+      4.2
+     ]
+    ],
+    "area": 25.2,
+    "resistance": null
+   },
+   {
+    "name": "grille1",
+    "kind": "opening",
+    "axis": 2,
+    "position": 6.5,
+    "extent": [
+     [
+      5.0,
+      5.6000000000000005
+     ],
+     [
+      3.0,
+      3.6
+     ]
+    ],
+    "area": 0.36,
+    "resistance": 2.4
+   },
+   {
+    "name": "grille2",
+    "kind": "opening",
+    "axis": 2,
+    "position": 6.5,
+    "extent": [
+     [
+      5.6000000000000005,
+      6.2
+     ],
+     [
+      3.0,
+      3.6
+     ]
+    ],
+    "area": 0.36,
+    "resistance": 2.4
+   },
+   {
+    "name": "grille3",
+    "kind": "opening",
+    "axis": 2,
+    "position": 6.5,
+    "extent": [
+     [
+      6.2,
+      6.800000000000001
+     ],
+     [
+      3.0,
+      3.6
+     ]
+    ],
+    "area": 0.36,
+    "resistance": 2.4
+   },
+   {
+    "name": "rack_top",
+    "kind": "wall",
+    "axis": 2,
+    "position": 2.2,
+    "extent": [
+     [
+      5.0,
+      6.800000000000001
+     ],
+     [
+      1.8,
+      3.0
+     ]
+    ],
+    "area": 2.16,
+    "resistance": null
+   },
+   {
+    "name": "rack_end_5",
+    "kind": "wall",
+    "axis": 0,
+    "position": 5.0,
+    "extent": [
+     [
+      1.8,
+      3.0
+     ],
+     [
+      0.0,
+      2.2
+     ]
+    ],
+    "area": 2.64,
+    "resistance": null
+   },
+   {
+    "name": "rack_end_6_8",
+    "kind": "wall",
+    "axis": 0,
+    "position": 6.800000000000001,
+    "extent": [
+     [
+      1.8,
+      3.0
+     ],
+     [
+      0.0,
+      2.2
+     ]
+    ],
+    "area": 2.64,
+    "resistance": null
+   },
+   {
+    "name": "containment_roofwall",
+    "kind": "wall",
+    "axis": 1,
+    "position": 3.0,
+    "extent": [
+     [
+      5.0,
+      6.800000000000001
+     ],
+     [
+      2.2,
+      6.5
+     ]
+    ],
+    "area": 7.74,
+    "resistance": null
+   },
+   {
+    "name": "containment_door_5",
+    "kind": "wall",
+    "axis": 0,
+    "position": 5.0,
+    "extent": [
+     [
+      3.0,
+      4.2
+     ],
+     [
+      0.0,
+      6.5
+     ]
+    ],
+    "area": 7.8,
+    "resistance": null
+   },
+   {
+    "name": "containment_door_6_8",
+    "kind": "wall",
+    "axis": 0,
+    "position": 6.800000000000001,
+    "extent": [
+     [
+      3.0,
+      4.2
+     ],
+     [
+      0.0,
+      6.5
+     ]
+    ],
+    "area": 7.8,
+    "resistance": null
+   }
+  ],
+  "operating": {
+   "airflow_m3h": 5000.0,
+   "supply_temp_c": 20.0,
+   "load_kw": 18.0,
+   "design_delta_t_k": 10.84,
+   "chimney_velocity_ms": 0.643,
+   "rack_drop_pa": 25.76,
+   "grille_drop_pa": 2.36,
+   "fan_available_pa": 100.0,
+   "fan_curve": [
+    [
+     0.0,
+     250.0
+    ],
+    [
+     2500.0,
+     200.0
+    ],
+    [
+     5000.0,
+     100.0
+    ],
+    [
+     6500.0,
+     40.0
+    ],
+    [
+     7500.0,
+     0.0
+    ]
+   ]
+  },
+  "sensors": [
+   {
+    "name": "cold_aisle",
+    "label": "Corredor frio",
+    "note": "no meio do corredor, \u00e0 altura dos racks",
+    "points": [
+     [
+      5.300000000000001,
+      0.9,
+      1.1
+     ],
+     [
+      5.9,
+      0.9,
+      1.1
+     ],
+     [
+      6.5,
+      0.9,
+      1.1
+     ]
+    ]
+   },
+   {
+    "name": "hot_aisle",
+    "label": "Corredor quente",
+    "note": "dentro do enclausuramento, \u00e0 altura dos racks",
+    "points": [
+     [
+      5.300000000000001,
+      3.6,
+      1.1
+     ],
+     [
+      5.9,
+      3.6,
+      1.1
+     ],
+     [
+      6.5,
+      3.6,
+      1.1
+     ]
+    ]
+   },
+   {
+    "name": "plenum",
+    "label": "Plenum do forro",
+    "note": "acima das grelhas de retorno",
+    "points": [
+     [
+      5.300000000000001,
+      3.6,
+      7.25
+     ],
+     [
+      5.9,
+      3.6,
+      7.25
+     ],
+     [
+      6.5,
+      3.6,
+      7.25
+     ]
+    ]
+   },
+   {
+    "name": "fan_back",
+    "label": "Costas do fan wall",
+    "note": "na galeria, onde o ar de retorno chega ao fan wall",
+    "points": [
+     [
+      2.7,
+      0.9,
+      1.0
+     ],
+     [
+      2.7,
+      0.9,
+      2.0
+     ],
+     [
+      2.7,
+      0.9,
+      3.0
+     ]
+    ]
+   }
+  ],
+  "summary": [
+   [
+    "Dom\u00ednio",
+    "9,00 x 4,20 x 8,00 m",
+    "302.400 c\u00e9lulas"
+   ],
+   [
+    "Galeria mec\u00e2nica",
+    "3,00 m de profundidade",
+    "100,8 m\u00b3"
+   ],
+   [
+    "Data hall",
+    "6,00 m de comprimento",
+    "forro a 6,50 m"
+   ],
+   [
+    "Carga de TI",
+    "3 x 6 kW",
+    "18,0 kW no total"
+   ],
+   [
+    "Vaz\u00e3o",
+    "5.000 m\u00b3/h a 20,0 \u00b0C",
+    "\u0394T de projeto 10,8 K"
+   ],
+   [
+    "Face do fan wall",
+    "1,80 x 4,00 m",
+    "7,20 m\u00b2 \u00b7 0,19 m/s"
+   ],
+   [
+    "Grelhas do forro (3)",
+    "0,60 m quadradas, 80% de \u00e1rea livre",
+    "1,08 m\u00b2 \u00b7 1,29 m/s \u00b7 K 2,40 \u00b7 2,4 Pa"
+   ],
+   [
+    "Chamin\u00e9 do corredor quente",
+    "1,80 x 1,20 x 6,50 m",
+    "2,16 m\u00b2 \u00b7 0,64 m/s"
+   ],
+   [
+    "Abertura para a galeria",
+    "4,20 x 1,50 m",
+    "6,30 m\u00b2 \u00b7 0,22 m/s"
+   ],
+   [
+    "Resist\u00eancia dos racks",
+    "25,76 Pa na vaz\u00e3o do fan wall",
+    "25 Pa nominais por rack"
+   ],
+   [
+    "Press\u00e3o do fan wall",
+    "100 Pa dispon\u00edveis a 5.000 m\u00b3/h (curva)",
+    "racks + grelhas pedem 28,1 Pa (28%)"
+   ]
+  ],
+  "warnings": [],
+  "spec": {}
  }
 }

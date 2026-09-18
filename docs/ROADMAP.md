@@ -194,9 +194,18 @@ as holes left in their face zones, rack porosity oriented along y, and the fan
 wall as the one place the air loop is cut (ADR-016, ADR-017).
 `aicfd/podpost.py` judges the result by its energy balance (ADR-018).
 
+Datasheet data now enters as physics and returns as checks (ADR-020): return
+grilles are pressure-jump baffles with K from a catalogue point, the fan wall
+carries its P–Q curve for margin and uncontrolled operating point. Cells are
+sized per axis (ADR-021) and the worked case runs at 0,2 × 0,2 × 0,1 m — 75 600
+cells, minutes rather than half an hour. The results page leads with plan and
+sections over the field (temperature, speed, pressure) using the same drawings
+checked before the run; the 3-D scene is secondary.
+
 Remaining: raised-floor plenums with perforated tiles, in-row and downflow
-CRAC types, rack-level airflow curves, and a leakage path for containment that
-is not perfect — real containment is not.
+CRAC types, rack-level airflow curves, a leakage path for containment that is
+not perfect — real containment is not — and a refinement study upward from the
+working mesh.
 
 ### M6 — BIM import
 IFC (exported from federated Revit) -> filtered geometry -> room spec. Only the

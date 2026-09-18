@@ -187,13 +187,62 @@ class MeshTest(unittest.TestCase):
     def test_what_is_reported_is_what_gets_built(self):
         """Snapping happens before anyone reads the model (ADR-004's spirit)."""
         model = build(grilles={"size": 0.61, "count": 3})
-        cell = model.cell_size
         for panel in model.panels:
-            for value in (panel.position, *panel.extent[0], *panel.extent[1]):
-                self.assertAlmostEqual(value / cell, round(value / cell), places=6)
+            cell = model.cell(panel.axis)
+            self.assertAlmostEqual(
+                panel.position / cell, round(panel.position / cell), places=6
+            )
+            for axis, extent in zip(panel.in_plane_axes, panel.extent):
+                for value in extent:
+                    c = model.cell(axis)
+                    self.assertAlmostEqual(value / c, round(value / c), places=6)
         for rack in model.racks:
-            for value in (*rack.box.lo, *rack.box.hi):
-                self.assertAlmostEqual(value / cell, round(value / cell), places=6)
+            for axis in range(3):
+                c = model.cell(axis)
+                for value in (rack.box.lo[axis], rack.box.hi[axis]):
+                    self.assertAlmostEqual(value / c, round(value / c), places=6)
+
+    def test_cells_can_differ_per_axis(self):
+        """0,20 m in plan and 0,10 m in height keeps the 6,5 m ceiling exact."""
+        model = build(mesh={"cell_size": [0.2, 0.2, 0.1]})
+        self.assertEqual(model.cell_size, (0.2, 0.2, 0.1))
+        self.assertEqual(model.divisions, (45, 21, 80))
+        self.assertEqual(model.warnings, [])
+        self.assertAlmostEqual(model.ceiling_z, 6.5)
+
+    def test_a_scalar_cell_means_the_same_edge_on_every_axis(self):
+        self.assertEqual(build().cell_size, (0.1, 0.1, 0.1))
+
+    def test_grilles_carry_a_loss_coefficient_from_their_free_area(self):
+        model = build(grilles={"size": 0.6, "count": 3, "free_area": 0.8})
+        grille = model.panel("grille1")
+        self.assertAlmostEqual(grille.resistance, m.grille_loss_coefficient(0.8))
+        self.assertGreater(model.grille_pressure_drop_pa, 0.0)
+
+    def test_a_fully_open_grille_costs_nothing_and_a_half_open_one_a_lot(self):
+        self.assertAlmostEqual(m.grille_loss_coefficient(1.0), 0.0)
+        self.assertGreater(m.grille_loss_coefficient(0.5), 4.0)
+        self.assertLess(m.grille_loss_coefficient(0.8), 0.7)
+
+    def test_a_datasheet_k_overrides_the_free_area_formula(self):
+        model = build(grilles={"size": 0.6, "count": 3, "free_area": 0.8,
+                               "loss_coefficient": 2.5})
+        self.assertEqual(model.panel("grille1").resistance, 2.5)
+
+    def test_the_fan_curve_is_interpolated_and_ends_at_free_delivery(self):
+        model = build(fanwall={**SPEC["fanwall"],
+                               "curve": [[0, 250], [5000, 100], [7500, 0]]})
+        self.assertAlmostEqual(model.fan_available_pa(5000), 100.0)
+        self.assertAlmostEqual(model.fan_available_pa(2500), 175.0)
+        self.assertEqual(model.fan_available_pa(9000), 0.0)
+
+    def test_the_operating_point_sits_on_both_curves(self):
+        model = build(fanwall={**SPEC["fanwall"],
+                               "curve": [[0, 250], [5000, 100], [7500, 0]]})
+        q, dp = model.fan_operating_point(29.0)
+        self.assertAlmostEqual(dp, model.fan_available_pa(q), delta=0.5)
+        self.assertAlmostEqual(dp, 29.0 * (q / 5000) ** 2, delta=0.5)
+        self.assertGreater(q, 5000)  # 29 Pa of resistance is far below the 100 Pa rating
 
     def test_snapping_never_makes_two_racks_overlap(self):
         """Nearest-snapping is monotonic, so adjacency survives it."""

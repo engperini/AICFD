@@ -42,7 +42,7 @@ EDITABLE = {
     "hot_aisle": ("aisles", "hot", float, (0.6, 10.0)),
     "ceiling": ("hall", "ceiling", float, (2.0, 20.0)),
     "gallery_depth": ("gallery", "depth", float, (0.5, 20.0)),
-    "cell_size": ("mesh", "cell_size", float, (0.02, 0.5)),
+    "cell_size": ("mesh", "cell_size", "cell_size", (0.02, 0.5)),
     "max_iterations": ("solver", "max_iterations", int, (10, 20_000)),
     "sensor_interval": ("solver", "sensor_interval", int, (10, 5_000)),
     "warm_start": ("solver", "warm_start", bool, None),
@@ -151,6 +151,21 @@ def apply_changes(spec: dict, changes: dict) -> tuple[dict, list[str]]:
             rejected.append(f"{key}: not an editable parameter")
             continue
         section, field_name, caster, limits = EDITABLE[key]
+        if caster == "cell_size":
+            # One number, or three: "0.2" or "0.2, 0.2, 0.1" (x, y, z).
+            try:
+                parts = [float(v) for v in str(raw).replace(";", ",").split(",") if v.strip()]
+            except ValueError:
+                rejected.append(f"{key}: {raw!r} is not a number or three numbers")
+                continue
+            if len(parts) not in (1, 3):
+                rejected.append(f"{key}: give one value or three (x, y, z)")
+                continue
+            if limits and not all(limits[0] <= v <= limits[1] for v in parts):
+                rejected.append(f"{key}: outside {limits[0]:g}-{limits[1]:g}")
+                continue
+            spec.setdefault(section, {})[field_name] = parts[0] if len(parts) == 1 else parts
+            continue
         try:
             value = caster(raw)
         except (TypeError, ValueError):

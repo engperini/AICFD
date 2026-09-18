@@ -91,7 +91,7 @@ class TopoSetTest(unittest.TestCase):
             thickness = min(
                 abs(float(b) - float(a)) for a, b in zip(lo.split(), hi.split())
             )
-            self.assertLess(thickness, self.model.cell_size)
+            self.assertLess(thickness, min(self.model.cell_size))
 
     def test_each_rack_gets_its_own_cell_zone(self):
         for rack in self.model.racks:
@@ -107,9 +107,25 @@ class BafflesTest(unittest.TestCase):
     def test_nothing_may_reach_the_outer_boundary(self):
         self.assertIn("internalFacesOnly true", self.text)
 
-    def test_the_fan_is_the_only_pair_that_is_not_a_wall(self):
+    def test_walls_are_patch_pairs_and_the_fan_is_explicit(self):
         self.assertEqual(self.text.count("patchPairs"), len(podcase.wall_plan(self.model)))
+        # the fan; grilles only join when they carry a resistance
         self.assertEqual(self.text.count("patches\n        {"), 1)
+
+    def test_a_grille_with_free_area_becomes_a_cyclic_pair_with_a_pressure_jump(self):
+        model = build(grilles={"size": 0.6, "count": 3, "free_area": 0.8})
+        text = podcase.create_baffles_dict(model)
+        self.assertEqual(text.count("porousBafflePressure"), 6)  # 3 grilles x 2 sides
+        self.assertIn("neighbourPatch  grille1_above", text)
+        k = model.panel("grille1").resistance
+        self.assertIn(f"I {k:.4g}", text)
+        # everything but pressure passes straight through
+        self.assertIn("U       { type cyclic; }", text)
+
+    def test_grilles_get_their_own_face_zones(self):
+        model = build(grilles={"size": 0.6, "count": 3, "free_area": 0.8})
+        text = podcase.topo_set_dict(model)
+        self.assertIn("name    grille1;\n        type    faceZoneSet;", text)
 
     def test_both_sides_of_the_fan_move_the_same_mass(self):
         """Volume would not do: the air leaving is warmer and thinner."""
@@ -231,11 +247,11 @@ class WarmStartTest(unittest.TestCase):
     def test_the_cold_aisle_starts_cold_and_the_gallery_warm(self):
         model = self.model
         nx, ny, _nz = model.divisions
-        cell = model.cell_size
+        cx, cy, cz = model.cell_size
         supply = model.supply_temp_c + podcase.KELVIN
 
         def at(x, y, z):
-            i, j, k = (int(v / cell) for v in (x, y, z))
+            i, j, k = int(x / cx), int(y / cy), int(z / cz)
             return self.values[i + j * nx + k * nx * ny]
 
         cold_y = (model.cold_aisle[0] + model.cold_aisle[1]) / 2

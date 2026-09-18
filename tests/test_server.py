@@ -40,6 +40,15 @@ class ApplyChangesTest(unittest.TestCase):
         self.assertEqual(spec["fanwall"]["airflow_m3h"], 5000)
         self.assertTrue(any("float" in r for r in rejected))
 
+    def test_a_cell_size_may_be_one_number_or_three(self):
+        spec, rejected = server.apply_changes(self.spec(), {"cell_size": "0.2, 0.2, 0.1"})
+        self.assertEqual(rejected, [])
+        self.assertEqual(spec["mesh"]["cell_size"], [0.2, 0.2, 0.1])
+        spec, rejected = server.apply_changes(self.spec(), {"cell_size": "0.15"})
+        self.assertEqual(spec["mesh"]["cell_size"], 0.15)
+        _spec, rejected = server.apply_changes(self.spec(), {"cell_size": "0.2, 0.1"})
+        self.assertTrue(rejected)
+
     def test_counts_are_integers(self):
         spec, _ = server.apply_changes(self.spec(), {"rack_count": 7.9})
         self.assertEqual(spec["racks"]["count"], 7)

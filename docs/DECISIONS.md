@@ -555,3 +555,74 @@ the seed satisfies it from iteration one (see ADR-018's second half). The
 `settled` check and the cold/warm comparison are what carry the verdict
 instead. Seeding also makes `aicfd run` twice as expensive when the comparison
 is being done honestly, which is the right price for the claim.
+
+---
+
+## ADR-020 — Datasheet numbers enter as physics, and come back out as checks
+
+**Decision.** The return grilles are cyclic baffle pairs carrying a
+`porousBafflePressure` jump on `p_rgh`, with `D = 0`, `length = 1` and `I`
+equal to the grille's loss coefficient K referred to the face velocity over the
+gross opening. K comes from `grilles.loss_coefficient` when the datasheet gives
+a pressure-drop point, and otherwise from `grilles.free_area` through
+Idelchik's thin-plate correlation. The fan wall takes `fanwall.curve`, its P–Q
+points from the datasheet, in addition to the rated static pressure. Neither
+number changes how the solver drives the flow; both become checks on the solved
+field and a reading of the machine's margin.
+
+**Why the grille is a jump and not a hole.** Until now the grilles were absences
+— faces removed from the false ceiling's zone. A real return grille has a frame
+and vanes: a Koolair series 20.2 ceiling return loses 4,1 Pa at 2,1 m/s
+effective velocity with a 0,81 ceiling factor, which is K ≈ 2,4 on the gross
+face velocity. Idelchik's thin-plate formula at 80% free area gives 0,54, so the
+correlation is a fallback that under-reads a vaned grille by 4×; the datasheet
+point wins whenever it exists, and the spec says so. At this POD's 1,3 m/s face
+velocity the grilles cost about 2,4 Pa — a tenth of the racks, but it is real
+resistance the fan has to produce, and the pressure budget could not close
+against a datasheet with it missing.
+
+`porousBafflePressure` sits on a cyclic base, so every other field passes
+through untouched and only the pressure sees the grille — which is what a
+grille does to air. The cyclic pairs are excluded from `sealed_envelope`,
+because carrying the return flow is their job.
+
+**Why the fan keeps its fixed mass flow.** Continental Fan's application guide
+is explicit that EC fan arrays run closed-loop, either constant airflow or
+constant pressure. A unit under constant-airflow control holds its rated flow
+whatever the POD's resistance turns out to be — which is exactly what the
+supply/intake pair already imposes. The curve therefore does not drive the
+solve. It answers two questions the fixed-flow model cannot: how much static
+pressure is available at the rated flow (`fan_capacity`), and where the unit
+would run if the control were absent — the crossing of its curve with the
+POD's own resistance scaled as flow squared (`fan_operating_point`). On the
+worked case: 29 Pa needed of 100 available, and uncontrolled the fan would
+overshoot to ~6 300 m³/h.
+
+**Consequence.** Both numbers close the loop between datasheet and field.
+`grille_resistance` compares the jump the solver delivers against K at the
+measured flow; `rack_resistance` already did the same for the racks; and the
+sum of the drops has to equal the fan rise the field shows. When a vendor
+sheet is in hand, the spec takes it verbatim; when it is not, the fallback is
+named as a fallback in the summary table rather than dressed as data.
+
+---
+
+## ADR-021 — Cells are sized per axis
+
+**Decision.** `mesh.cell_size` takes one number or three. The worked case runs
+at 0,20 × 0,20 × 0,10 m.
+
+**Why.** A fan-wall POD's geometry is anisotropic in what it asks of the mesh.
+In plan, a 0,6 m rack and a 0,6 m grille are resolved by three 0,2 m cells,
+and the aisles are metres wide. In height, the false ceiling at 6,5 m and the
+rack tops at 2,2 m are planes that must land on cell faces or the surgery
+leaks silently (ADR-016), and 6,5 is not a multiple of 0,2. A uniform 0,1 m
+mesh honours the planes at 302 400 cells; a uniform 0,2 m mesh runs in six
+minutes but builds the ceiling 10 cm low. Per-axis cells give both: 75 600
+cells, every plane exact, and the coarse-versus-fine comparison already showed
+the answer holds to 0,2 K and 3% across that range.
+
+**Consequence.** Everything that turned a coordinate into a cell index —
+snapping, alignment warnings, the face-selection box thickness, the seeded
+field, the readers — now asks for the cell along its own axis. The page's
+cell-size field accepts "0,2" or "0,2, 0,2, 0,1".
