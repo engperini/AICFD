@@ -56965,6 +56965,92 @@
    "rack top position: 2.200 m is not on the 0.25 m grid; the mesh will use 2.25 m (+50 mm).",
    "row end edge: 2.200 m is not on the 0.25 m grid; the mesh will use 2.25 m (+50 mm)."
   ],
-  "spec": {}
+  "spec": {
+   "name": "hall-double-gallery",
+   "site": {
+    "altitude_m": 750
+   },
+   "gallery": {
+    "depth": 9.0,
+    "sides": 2
+   },
+   "hall": {
+    "height": 7.5,
+    "ceiling": 5.5
+   },
+   "pods": 5,
+   "aisles": {
+    "cold": 2.7,
+    "hot": 1.2,
+    "perimeter": 1.8,
+    "transverse": 3.0
+   },
+   "racks": {
+    "per_row": 22,
+    "blocks": 2,
+    "load_kw": 11.59,
+    "size": [
+     0.6,
+     1.2,
+     2.2
+    ],
+    "airflow_cfm_per_kw": 158
+   },
+   "fanwall": {
+    "count": 14,
+    "width": 3.96,
+    "height": 3.67,
+    "airflow_m3h": 104181,
+    "capacity_kw": 432.6,
+    "power_kw": 21.4,
+    "supply_temp_c": 21.9,
+    "static_pressure_pa": 100,
+    "curve": [
+     [
+      0,
+      260
+     ],
+     [
+      60000,
+      210
+     ],
+     [
+      121545,
+      100
+     ],
+     [
+      150000,
+      45
+     ],
+     [
+      170000,
+      0
+     ]
+    ]
+   },
+   "grilles": {
+    "size": 0.6,
+    "coverage": 1.0,
+    "free_area": 0.8,
+    "loss_coefficient": 2.4
+   },
+   "containment": {
+    "enabled": true
+   },
+   "mesh": {
+    "cell_size": [
+     0.6,
+     0.3,
+     0.25
+    ]
+   },
+   "solver": {
+    "max_iterations": 3000,
+    "residual_tolerance": 0.0001,
+    "sensor_interval": 100,
+    "warm_start": true,
+    "processors": 4
+   }
+  }
  }
 }

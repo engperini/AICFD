@@ -1011,3 +1011,60 @@ is published for arm64, so Apple Silicon runs the container natively. What does
 *not* need OpenFOAM — the 208 tests, the page over the tracked results, and the
 Word report — is listed separately, because it is what a reader can run in the
 first minute after a clone.
+
+---
+
+## ADR-030 — A result belongs to the inputs that produced it, and says so
+
+**Decision.** Three things, one rule:
+
+1. **The solve on the page exports.** `aicfd view`'s Run button used to mesh,
+   solve and stop. Nothing wrote `results/<name>/`, so the page's own "See
+   results" opened whatever was there from before — for ever, until someone
+   ran `aicfd post` from a terminal. The worker now exports when the solve
+   ends and reports the checks in its status line.
+2. **The export carries its spec.** `to_dict(model, {})` threw the inputs away.
+   It now carries them, so anything downstream can ask whether an export still
+   belongs to the spec in front of the reader.
+3. **Both pages say what they are showing.** The model page's link is hidden
+   when nothing has been exported, disabled while a run is in flight, and reads
+   *See previous result* — naming the fields that changed — when the export
+   came from different inputs. The results page asks the server whether a run
+   is in flight for its case and, if so, carries a badge saying what is on
+   screen is the previous result.
+
+**Why.** Found by a user on their first real run: they changed the rack load,
+pressed Run, and clicked "See results" while it solved. They got the previous
+run's numbers, under the current case's name, with nothing to say so. Their
+own words — *"não acho correto"*.
+
+They were right, and the defect was bigger than the button. Because the page
+never exported at all, that stale result was not a window of a few minutes; it
+was permanent. Every number on it — the warmest rack, the plant utilisation,
+the eleven checks — belonged to a different design, and the page presented it
+as this one's.
+
+This is the failure the whole tool is built against. The checks exist so a
+result cannot be quoted unless the physics closes (ADR-018); the generated case
+is never hand-edited so the mesh matches the spec (ADR-004); the model snaps to
+the mesh before anyone reads it so the drawing and the solve describe the same
+room. All of that is worth nothing if the *result on screen* can silently
+belong to another set of inputs.
+
+**Why not simply disable the link.** Looking at the previous run on purpose is
+legitimate — it is how you see what a change did. What is not legitimate is
+doing it without knowing. So the link stays, and it tells the truth: which
+state it is in, and which fields differ.
+
+**Why the results page asks the server.** That page is static by design and has
+to work from a plain file server, from disk, or from a copied `results/`
+directory. It asks `/api/progress` and ignores every failure: where a server
+exists the hole is closed, and where one does not there is no run to be
+overtaken by.
+
+**Consequence.** `post.export` takes the spec; `aicfd post` and the page both
+pass it. A run that ends before its first write — an iteration cap below
+`solver.sensor_interval`, or `residualControl` converging first — used to fail
+with `FileNotFoundError: .../0/phi`, because `0/` holds the initial conditions
+and has no flux field. It now says what happened and what to change. The three
+worked results were re-exported so they carry their specs.

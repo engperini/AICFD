@@ -272,9 +272,51 @@ def build_payload(name: str) -> dict:
     # current value out of the spec without a second copy of this table.
     payload["editable"] = {key: list(path) for key, (path, _c, _l) in EDITABLE.items()}
     payload["run"] = STATE.snapshot()
-    payload["has_results"] = (RESULTS_DIR / name / "viewer.json").exists()
+    payload["results"] = results_state(name, spec)
     payload["blocked"] = solver_available(name)
     return payload
+
+
+def spec_differences(before: dict, after: dict, prefix: str = "") -> list[str]:
+    """The dotted keys whose values differ between two specs."""
+    changed = []
+    for key in sorted(set(before) | set(after)):
+        path = f"{prefix}{key}"
+        a, b = before.get(key), after.get(key)
+        if isinstance(a, dict) and isinstance(b, dict):
+            changed += spec_differences(a, b, f"{path}.")
+        elif a != b:
+            changed.append(path)
+    return changed
+
+
+def results_state(name: str, spec: dict) -> dict:
+    """What the exported result is, relative to the spec now on screen.
+
+    The page offers a link to the result, and a link that opens a *superseded*
+    run under the current case's name is worse than no link: it shows numbers
+    that belong to inputs the reader is no longer looking at, and says nothing
+    about it. So the comparison is made here and the page is told what it has
+    (ADR-030).
+    """
+    path = RESULTS_DIR / name / "viewer.json"
+    if not path.exists():
+        return {"exists": False, "matches": False, "note": "nothing exported yet"}
+    try:
+        exported = json.loads(path.read_text())["model"].get("spec") or {}
+    except (OSError, ValueError, KeyError):
+        return {"exists": True, "matches": False,
+                "note": "the exported result could not be read"}
+    if not exported:
+        return {"exists": True, "matches": False,
+                "note": "exported before AICFD recorded the inputs with a result"}
+    changed = spec_differences(exported, spec)
+    if not changed:
+        return {"exists": True, "matches": True, "note": ""}
+    listed = ", ".join(changed[:3]) + (f" and {len(changed) - 3} more"
+                                       if len(changed) > 3 else "")
+    return {"exists": True, "matches": False,
+            "note": f"from different inputs: {listed}"}
 
 
 def start_run(name: str) -> None:
@@ -322,7 +364,22 @@ def start_run(name: str) -> None:
                 solve(target, case.pipeline(processors), on_step=step)
             finally:
                 sampler.stop()
-            STATE.set(stage="done", step="", message="solved")
+            # Export here, not later and not by hand. A solve that leaves no
+            # export leaves results/<name>/ holding the PREVIOUS run, under
+            # this run's name -- so the page's own "See results" opened a
+            # superseded answer and said nothing about it (ADR-030).
+            STATE.set(stage="exporting", step="post", message="")
+            results = post.export(model, target, RESULTS_DIR / name, spec=spec)
+            failed = [c.name for c in results.checks if not c.passed]
+            STATE.set(
+                stage="done",
+                step="",
+                message=(
+                    f"solved, all {len(results.checks)} checks passed"
+                    if not failed
+                    else f"solved, but these checks FAILED: {', '.join(failed)}"
+                ),
+            )
         except FoamCommandFailed as error:
             STATE.set(stage="failed", message=str(error))
         except Exception as error:  # surfaced verbatim on the page

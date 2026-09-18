@@ -54,7 +54,8 @@
   .badge{display:inline-flex;align-items:center;gap:6px;padding:3px 10px;
     border-radius:999px;font-size:12px;font-weight:600;border:1px solid var(--border)}
   .badge[data-stage="idle"]{color:var(--text-secondary)}
-  .badge[data-stage="meshing"],.badge[data-stage="solving"]{color:var(--series-1)}
+  .badge[data-stage="meshing"],.badge[data-stage="solving"],
+  .badge[data-stage="exporting"]{color:var(--series-1)}
   .badge[data-stage="done"]{color:var(--good)}
   .badge[data-stage="failed"]{color:var(--critical)}
   button{font:inherit;font-size:13px;padding:6px 13px;border-radius:8px;cursor:pointer;
@@ -64,6 +65,7 @@
   .linkbutton{font-size:13px;padding:6px 13px;border-radius:8px;text-decoration:none;
     border:1px solid var(--border);color:var(--text-secondary)}
   .linkbutton:hover{color:var(--text-primary)}
+  .linkbutton[aria-disabled="true"]{opacity:.45;pointer-events:none}
   button.primary{background:var(--series-1);border-color:transparent;color:#fff;font-weight:600}
   button.primary:hover:not(:disabled){color:#fff;filter:brightness(1.08)}
 

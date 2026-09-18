@@ -32040,7 +32040,7 @@
   {
    "name": "fan_capacity",
    "passed": true,
-   "detail": "the most loaded unit (fan26) costs 73.2 Pa, the least 67.5 Pa, and the fan wall's datasheet offers 100 Pa at 76,650 m3/h per unit (73%); uncontrolled at full speed it would run at 82,530 m3/h and 84.9 Pa",
+   "detail": "the most loaded unit (fan26) costs 73.2 Pa, the least 67.5 Pa, and the unit's P-Q curve offers 100 Pa at 76,650 m3/h per unit (73%); uncontrolled at full speed it would run at 82,530 m3/h and 84.9 Pa",
    "status": "PASS"
   },
   {
@@ -55176,6 +55176,89 @@
    "rack top position: 2.200 m is not on the 0.25 m grid; the mesh will use 2.25 m (+50 mm).",
    "row end edge: 2.200 m is not on the 0.25 m grid; the mesh will use 2.25 m (+50 mm)."
   ],
-  "spec": {}
+  "spec": {
+   "name": "hall-10mw",
+   "gallery": {
+    "depth": 3.0
+   },
+   "hall": {
+    "height": 8.0,
+    "ceiling": 6.5
+   },
+   "pods": 16,
+   "aisles": {
+    "cold": 1.8,
+    "hot": 1.2,
+    "perimeter": 1.8
+   },
+   "racks": {
+    "per_row": 24,
+    "load_kw": 13.0,
+    "size": [
+     0.6,
+     1.2,
+     2.2
+    ],
+    "airflow_cfm_per_kw": 158
+   },
+   "site": {
+    "altitude_m": 1880
+   },
+   "fanwall": {
+    "count": 35,
+    "width": 2.23,
+    "height": 3.67,
+    "airflow_m3h": 76650,
+    "capacity_kw": 290.9,
+    "power_kw": 16.9,
+    "supply_temp_c": 22.1,
+    "static_pressure_pa": 100,
+    "curve": [
+     [
+      0,
+      250
+     ],
+     [
+      38000,
+      200
+     ],
+     [
+      76650,
+      100
+     ],
+     [
+      100000,
+      40
+     ],
+     [
+      115000,
+      0
+     ]
+    ]
+   },
+   "grilles": {
+    "size": 0.6,
+    "coverage": 1.0,
+    "free_area": 0.8,
+    "loss_coefficient": 2.4
+   },
+   "containment": {
+    "enabled": true
+   },
+   "mesh": {
+    "cell_size": [
+     0.6,
+     0.3,
+     0.25
+    ]
+   },
+   "solver": {
+    "max_iterations": 3000,
+    "residual_tolerance": 0.0001,
+    "sensor_interval": 100,
+    "warm_start": true,
+    "processors": 4
+   }
+  }
  }
 }

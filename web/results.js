@@ -31,6 +31,7 @@ async function main() {
   const meta = results.meta;
   document.getElementById('case-name').textContent =
     `${meta.case} · t = ${meta.time} · ${meta.kpis.cells.toLocaleString()} cells`;
+  announceIfSuperseded(caseName);
   const verdict = document.getElementById('verdict');
   verdict.hidden = false;
   verdict.dataset.state = meta.valid ? 'pass' : 'fail';
@@ -271,4 +272,38 @@ function residualTableHtml(chart) {
       .join('') +
     `</tbody>`
   );
+}
+
+
+/**
+ * Say so when this result has been overtaken by a run still in flight.
+ *
+ * An export is a file. Nothing in it can know that the same case is being
+ * re-solved right now, so a reader opening this page mid-run sees the
+ * PREVIOUS answer with the current case's name on it and no hint of that.
+ *
+ * Asking the server closes that hole where a server exists. It fails silently
+ * on purpose: this page is static by design and has to work from a plain file
+ * server, from disk, or from anywhere `results/` has been copied to -- and
+ * in those places there is no run to be overtaken by (ADR-030).
+ */
+async function announceIfSuperseded(caseName) {
+  let run;
+  try {
+    run = (await (await fetch('../api/progress')).json()).run;
+  } catch {
+    return; // no server, or not ours: nothing to say
+  }
+  if (!run || run.case !== caseName) return;
+  if (!['meshing', 'solving', 'exporting'].includes(run.stage)) return;
+  const bar = document.querySelector('.topbar');
+  const note = document.createElement('span');
+  note.className = 'badge';
+  note.dataset.state = 'fail';
+  note.textContent = '⟳ a run is in flight — this is the previous result';
+  note.title =
+    `Case "${caseName}" is being solved again (${run.stage}). What is on this ` +
+    'page is the export from before that run, and it will be replaced when ' +
+    'the run finishes.';
+  bar.insertBefore(note, document.getElementById('verdict').nextSibling);
 }

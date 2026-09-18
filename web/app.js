@@ -176,11 +176,8 @@ function render() {
           model.blocked ? `cannot run: ${model.blocked}` : 'nothing running'
         }</span>
         <span class="spacer" style="flex:1"></span>
-        ${
-          model.has_results
-            ? `<a class="linkbutton" href="./results.html?case=${model.name}">See results</a>`
-            : ''
-        }
+        <a class="linkbutton" id="see-results"
+           href="./results.html?case=${model.name}" hidden>See results</a>
         <button id="run" class="primary" type="button">Run simulation</button>
       </div>
       <div id="progress"></div>
@@ -509,6 +506,43 @@ async function startRun() {
   }
 }
 
+/**
+ * The link to the exported result, told apart from the run on screen.
+ *
+ * Three states, because there are three things it can be, and opening the
+ * wrong one silently is the failure this exists to prevent:
+ *
+ *  - nothing exported yet          -> no link at all
+ *  - a run is in flight            -> disabled; whatever is on disk is about
+ *                                     to be replaced by it
+ *  - exported from other inputs    -> live, but it says so on the button and
+ *                                     names what changed, because looking at
+ *                                     the previous run on purpose is a
+ *                                     legitimate thing to do
+ */
+function renderResultsLink(stage) {
+  const link = document.getElementById('see-results');
+  if (!link) return;
+  const state = model.results || { exists: false, matches: false, note: '' };
+  link.hidden = !state.exists;
+  if (!state.exists) return;
+  const busy = ['meshing', 'solving', 'exporting'].includes(stage);
+  const stale = !state.matches;
+  link.textContent = busy
+    ? 'Results after the run'
+    : stale
+      ? 'See previous result'
+      : 'See results';
+  link.setAttribute('aria-disabled', busy ? 'true' : 'false');
+  link.title = busy
+    ? `A run is in flight. What is on disk is the previous result${
+        state.note ? ` (${state.note})` : ''
+      }; it is replaced when this run finishes.`
+    : stale
+      ? `This result is ${state.note}. Run again to replace it.`
+      : '';
+}
+
 function setStage(run) {
   if (!run) return;
   const badge = document.getElementById('stage');
@@ -517,26 +551,43 @@ function setStage(run) {
     idle: 'ready to run',
     meshing: `meshing${run.step ? ` · ${run.step}` : ''}`,
     solving: 'solving',
+    exporting: 'reading the result',
     done: 'solved',
     failed: 'failed',
   };
   badge.textContent = labels[run.stage] || run.stage;
   const button = document.getElementById('run');
   if (button) {
-    const busy = run.stage === 'meshing' || run.stage === 'solving';
+    const busy = ['meshing', 'solving', 'exporting'].includes(run.stage);
     button.disabled = busy || Boolean(model.blocked);
     button.title = model.blocked || '';
   }
+  renderResultsLink(run.stage);
   const note = document.getElementById('progress-note');
-  if (note && run.stage === 'failed') note.textContent = run.message;
+  if (note && (run.stage === 'failed' || run.stage === 'done') && run.message) {
+    note.textContent = run.message;
+  }
 }
 
 // --- progress ----------------------------------------------------------------
+
+let lastStage = null;
 
 async function poll() {
   clearTimeout(pollTimer);
   try {
     const status = await fetchJson('/api/progress');
+    // The results state was read when the page loaded. A run that has just
+    // finished replaced the export, so ask again -- once, on the transition,
+    // rather than parsing the export on every tick.
+    if (lastStage !== status.run?.stage && status.run?.stage === 'done') {
+      try {
+        model.results = (await fetchJson('/api/model')).results;
+      } catch {
+        /* keep the stale state rather than losing the link entirely */
+      }
+    }
+    lastStage = status.run?.stage ?? lastStage;
     setStage(status.run);
     drawProgress(status.residuals);
     renderSensors(status.sensors);
@@ -547,7 +598,7 @@ async function poll() {
   } catch {
     /* the server may be mid-restart; try again on the next tick */
   }
-  const busy = ['meshing', 'solving'].includes(
+  const busy = ['meshing', 'solving', 'exporting'].includes(
     document.getElementById('stage')?.dataset.stage,
   );
   pollTimer = setTimeout(poll, busy ? 2000 : 8000);

@@ -207,7 +207,22 @@ def written_times(case_dir: str | Path) -> list[str]:
 def analyse(model: Model, case_dir: str | Path, time: str | None = None) -> PodResults:
     case = Path(case_dir)
     sample(model, case)  # make sure the latest write has been read
-    time = time or (written_times(case)[-1] if written_times(case) else "0")
+    available = written_times(case)
+    if time is None:
+        if not available:
+            # `0/` holds the initial conditions, not a solution: it has no phi,
+            # so every flux, balance and check would fail on a missing file
+            # rather than on the real problem. Reachable whenever the run ends
+            # before its first write -- an iteration cap below
+            # `solver.sensor_interval`, or residualControl converging first.
+            raise ValueError(
+                f"{case} has no solved time directory: the run ended before it "
+                f"wrote a field. The solver writes every "
+                f"solver.sensor_interval iterations, so either raise "
+                f"solver.max_iterations above it or lower the interval, and "
+                f"run again."
+            )
+        time = available[-1]
     step = case / time
 
     flows = patch_flows(step)
@@ -1224,6 +1239,7 @@ def export(
     case_dir: str | Path,
     out_dir: str | Path,
     time: str | None = None,
+    spec: dict | None = None,
 ) -> PodResults:
     """Write the 3-D viewer's payload for a solved POD.
 
@@ -1354,7 +1370,12 @@ def export(
     # solved field -- the same lines, now with a colour underneath.
     from aicfd.model import to_dict
 
-    payload["model"] = to_dict(model, {})
+    # The spec travels with the result. A result is only meaningful against
+    # the inputs that produced it, and without them nothing downstream can
+    # tell whether an export still belongs to the spec on screen -- which is
+    # how a page ends up showing a superseded run under the current name
+    # (ADR-030).
+    payload["model"] = to_dict(model, spec or {})
     (out / "viewer.json").write_text(json.dumps(payload, indent=1))
     (out / "report.md").write_text(report(results))
     return results

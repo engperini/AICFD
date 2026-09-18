@@ -319,15 +319,25 @@ def _post(args) -> int:
     if not spec.exists():
         print(f"error: no spec at {spec} to read the run with", file=sys.stderr)
         return 1
+    import yaml
+
     model, _solver = load_spec(spec)
-    return _export(model, run, args.name, args.time)
+    return _export(model, run, args.name, args.time,
+                   yaml.safe_load(spec.read_text()))
 
 
-def _export(model, run: Path, name: str, time: str | None) -> int:
+def _export(model, run: Path, name: str, time: str | None,
+            spec: dict | None = None) -> int:
     from aicfd import post
 
     out = RESULTS_DIR / name
-    results = post.export(model, run, out, time)
+    try:
+        results = post.export(model, run, out, time, spec)
+    except ValueError as error:
+        # A run with nothing solved in it is a normal mistake, not a crash:
+        # say what to change rather than printing a traceback at someone.
+        print(f"error: {error}", file=sys.stderr)
+        return 1
     print()
     print(post.report(results))
     print(f"Wrote {out}/viewer.json, fields.bin, report.md")

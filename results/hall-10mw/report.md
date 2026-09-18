@@ -78,7 +78,7 @@ Case 'hall-10mw' at iteration 500
     PASS  return_path          nothing heats or cools the air between the rack outlet and the fan intake, so these have to agree: hot_aisle 36.2, plenum 35.9, fan_back 36.0 degC (0.31 K apart)
     PASS  rack_resistance      the field drops 26.8 Pa across the rows where the rack curve at 2,682,750 m3/h asks for 25.0 Pa (107%) (rows 26.5 to 28.0 Pa)
     PASS  grille_resistance    the field drops 9.20 Pa across the return grilles where their K at 2,682,750 m3/h asks for 8.30 Pa (111%)
-    PASS  fan_capacity         the most loaded unit (fan26) costs 73.2 Pa, the least 67.5 Pa, and the fan wall's datasheet offers 100 Pa at 76,650 m3/h per unit (73%); uncontrolled at full speed it would run at 82,530 m3/h and 84.9 Pa
+    PASS  fan_capacity         the most loaded unit (fan26) costs 73.2 Pa, the least 67.5 Pa, and the unit's P-Q curve offers 100 Pa at 76,650 m3/h per unit (73%); uncontrolled at full speed it would run at 82,530 m3/h and 84.9 Pa
     PASS  settled              the places moved at most 0.03 K since the previous sample (settled below 0.25 K)
     PASS  ashrae_inlet         warmest rack inlet 22.8 degC at the top of F1-05 -- within ASHRAE recommended (18.0-27.0 degC)
     PASS  plausible_velocity   peak 9.45 m/s against a plausible 13.69 m/s (peak air 55.2 degC)
