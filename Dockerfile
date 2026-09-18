@@ -14,13 +14,35 @@ RUN apt-get update -qq && apt-get install -y --no-install-recommends \
         openfoam-examples \
         python3 \
         python3-numpy \
+        python3-yaml \
+        python3-matplotlib \
+        python3-docx \
     && rm -rf /var/lib/apt/lists/*
 
 WORKDIR /app
 COPY . /app
 
-# Fail fast at build time if the solvers are not where ADR-002 expects them.
-RUN python3 -m aicfd doctor
+# Fail fast at build time, on the versions THIS image has.
+#
+# `doctor` alone is not enough: it needs neither PyYAML nor a spec, so an image
+# missing the Python layer's own dependencies built green and failed on the
+# user's first real command. Each line below is a whole path exercised end to
+# end instead of an import checked in isolation:
+#
+#   doctor   the solvers are where ADR-002 expects them
+#   build    a spec is read, the geometry derived and an OpenFOAM case written
+#   report   the Word deliverable is produced -- every figure rendered and the
+#            document assembled, on the distribution's matplotlib and
+#            python-docx rather than on the versions it was developed against
+#   tests    the 208 unit tests, which need no OpenFOAM
+#
+# It costs about a minute and it is the difference between an image that builds
+# and an image that works.
+RUN python3 -m aicfd doctor \
+    && python3 -m aicfd build cases/pod-fanwall.yaml --out /tmp/smoke \
+    && python3 -m aicfd report pod-fanwall --out /tmp/smoke.docx \
+    && python3 -m unittest discover tests \
+    && rm -rf /tmp/smoke /tmp/smoke.docx
 
 EXPOSE 8000
 CMD ["python3", "-m", "aicfd", "view", "--port", "8000", "--no-browser"]

@@ -22,15 +22,43 @@ python3 -m aicfd verify --solve
 
 ## 1. Install and prove it works
 
-Ubuntu or WSL2 (the reference environment; the Docker image is the same thing
-packaged):
+**Any machine, including macOS — Docker.** This is the recommended path and the
+only one on a Mac: OpenFOAM v1912 has no native macOS build, and the image
+carries it, the Python layer and the three worked results.
+
+```bash
+git clone https://github.com/engperini/AICFD.git
+cd AICFD
+docker compose build        # ~10 min the first time; OpenFOAM is a big package
+docker compose up           # the page, at http://localhost:8000
+```
+
+The build is not just an install: it runs `doctor`, generates a case from a
+spec, produces a Word report and runs the 208 unit tests **inside the image, on
+the versions that image has**. If it builds, it works — and if a dependency is
+missing it says so at build time rather than on your first real command.
+
+Apple Silicon needs nothing special: `openfoam` v1912 is published for arm64,
+so the container runs natively rather than under emulation.
+
+With the container up, `cases/`, `runs/` and `results/` are shared with the
+clone, so anything you run is on your disk afterwards:
+
+```bash
+docker compose run --rm aicfd python3 -m aicfd verify
+docker compose run --rm aicfd python3 -m aicfd run cases/pod-fanwall.yaml
+docker compose run --rm aicfd python3 -m aicfd report pod-fanwall
+```
+
+**Ubuntu or WSL2 — native.** The reference environment; the image is this,
+packaged.
 
 ```bash
 sudo apt-get install -y openfoam openfoam-examples
 pip install -r requirements.txt
 
 python3 -m aicfd doctor      # is OpenFOAM usable here?
-python3 -m aicfd verify      # tests + install + mesh both worked cases (~1 min)
+python3 -m aicfd verify      # tests + install + mesh every worked case (~1 min)
 python3 -m aicfd verify --solve   # the above, plus a short solve and its checks
 ```
 
@@ -39,6 +67,16 @@ install check, a full mesh of every case in `cases/` (including the internal
 surgery that builds the containment and the fan walls), and — with `--solve` —
 a short run of the worked POD that has to pass all eleven physical checks.
 Anything that fails names itself and stops.
+
+**What runs with no OpenFOAM at all**, natively on macOS, straight after the
+clone — useful for reading a result or checking a spec without the container:
+
+```bash
+pip install -r requirements.txt
+python3 -m unittest discover tests          # all 208, no solver needed
+python3 -m aicfd view --case hall-double-gallery   # the three solved results
+python3 -m aicfd report hall-double-gallery        # the Word document
+```
 
 ## 2. Run a case
 

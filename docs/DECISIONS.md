@@ -969,3 +969,45 @@ table needs and the page can now show too — an addition the reference study in
 `docs/reference-report-parameters.md` made obviously necessary: a hall uniform
 in the mean can still have one unit at the end of a row moving half again the
 flow of its neighbours, and only the per-unit table shows it.
+
+---
+
+## ADR-029 — The image's build is its test, not its install
+
+**Decision.** The Docker build runs, after installing, four things inside the
+image it has just made: `aicfd doctor`, `aicfd build` on a worked spec,
+`aicfd report` on a worked result, and the full unit-test suite. Any of them
+failing fails the build. `results/` is copied into the image, so the page has
+something to show the moment a container starts.
+
+**Why.** The image installed `python3-numpy` and not `python3-yaml`. The build
+succeeded — its only check was `aicfd doctor`, which reads no spec and imports
+no YAML — and the first real command a user typed died on
+`ModuleNotFoundError: No module named 'yaml'`. The image was green and the tool
+was unusable, which is the worst arrangement available: it moves the failure
+from the person who can fix it to the person who cannot.
+
+An import check would have caught that one and would not catch the next. What
+the build now runs is four *paths*, end to end: a spec read and an OpenFOAM
+case written, a document assembled with every figure rendered, and the tests.
+It costs about a minute of build time.
+
+**On the versions the image actually has.** Ubuntu 24.04 ships matplotlib 3.6.3
+and python-docx 1.1.0; development was on 3.11 and 1.2. Running the report
+inside the build is what says those versions work, rather than a floor in
+`requirements.txt` asserting it. The floors there are now the distribution's,
+because that is what is exercised.
+
+**Why this matters more than it looks.** The tool's claim is that a result can
+be reproduced and disbelieved by someone else (ADR-004, ADR-025). Someone else
+starts by cloning and building. A build that succeeds and then does not run
+breaks that claim before any physics is involved, and it breaks it for
+precisely the reader the project is for — an engineer who will reasonably
+conclude the tool is broken rather than that one apt package is missing.
+
+**Consequence.** On macOS, where OpenFOAM v1912 has no native build, Docker is
+the only path and the README says so first rather than last. `openfoam` v1912
+is published for arm64, so Apple Silicon runs the container natively. What does
+*not* need OpenFOAM — the 208 tests, the page over the tracked results, and the
+Word report — is listed separately, because it is what a reader can run in the
+first minute after a clone.

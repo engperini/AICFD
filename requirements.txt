@@ -7,5 +7,9 @@ PyYAML>=6.0
 # The Word deliverable only (`aicfd report`). Everything else -- building a
 # case, solving it, the eleven checks, the page -- runs without these, and
 # imports them nowhere. Install them when you need the document.
+#
+# The floors are what Ubuntu 24.04 ships, because that is what the Docker image
+# installs and what its build-time smoke test therefore exercises; development
+# was on matplotlib 3.11 and python-docx 1.2.
 python-docx>=1.1
-matplotlib>=3.7
+matplotlib>=3.6
