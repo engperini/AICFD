@@ -4,6 +4,16 @@ services:
     image: aicfd:latest
     ports:
       - "8000:8000"
+    # Which case the MODEL page opens on. It has to be named here: that page
+    # asks the server for its model, and the server fixes the case when it
+    # starts -- `?case=` in the URL is read only by the results page, which is
+    # static and resolves it against results/ itself.
+    #
+    # Without this, `aicfd view` falls back to the newest spec by modification
+    # time, and on a fresh clone that is whatever order the checkout happened
+    # to write the files in: `docker compose up` would open one case on one
+    # machine and another on the next.
+    command: python3 -m aicfd view --case hall-double-gallery --port 8000 --no-browser
     volumes:
       # Cases, runs and results live on the host so nothing is lost when the
       # container is recreated.

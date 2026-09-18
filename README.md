@@ -33,6 +33,16 @@ docker compose build        # ~10 min the first time; OpenFOAM is a big package
 docker compose up           # the page, at http://localhost:8000
 ```
 
+Two pages, and they take the case differently:
+
+| | address | |
+|---|---|---|
+| **model** | `http://localhost:8000/web/` | the spec and the geometry it implies, before any solve. The case is the one the server was started with, because this page asks the server for it — `docker compose up` opens `hall-double-gallery`; change the line in `docker-compose.yml`, or run `aicfd view --case <name>`. |
+| **results** | `http://localhost:8000/web/results.html?case=hall-double-gallery` | a solved result. This page is static and resolves `?case=` against `results/` itself, so any name with an export works: `hall-double-gallery`, `hall-10mw`, `pod-fanwall`. |
+
+The three worked results ship with the clone, so the results page has something
+to show before you have solved anything.
+
 The build is not just an install: it runs `doctor`, generates a case from a
 spec, produces a Word report and runs the 208 unit tests **inside the image, on
 the versions that image has**. If it builds, it works — and if a dependency is
