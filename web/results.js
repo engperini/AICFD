@@ -125,13 +125,23 @@ function setupControls(scene, results, meta) {
     caption.textContent = view.caption;
   };
 
+  // A case may say where the interesting cut is. A POD does: halfway up the
+  // box lands above the racks, where nothing happens.
+  const preferred = meta.geometry.default_slice;
+  if (preferred) axisSelect.value = String(preferred.axis);
+  let firstSlice = true;
+
   const applySlice = () => {
     const axis = Number(axisSelect.value);
     const divisions = meta.grid.divisions[axis];
     if (Number(slider.max) !== divisions - 1) {
       slider.max = divisions - 1;
-      slider.value = Math.floor(divisions / 2);
+      slider.value =
+        firstSlice && preferred && preferred.axis === axis
+          ? preferred.index
+          : Math.floor(divisions / 2);
     }
+    firstSlice = false;
     scene.setSlice(axis, Number(slider.value));
     readoutValue.textContent = scene.sliceLabel();
   };
@@ -298,6 +308,27 @@ function layoutHtml(meta) {
         ${tile('Bulk ΔT', kpis.bulk_delta_t_k.toFixed(2), 'K')}
         ${tile('Peak air temp', kpis.temp_max_c.toFixed(1), '°C')}
         ${tile('Peak air speed', kpis.speed_max_ms.toFixed(2), 'm/s')}
+        ${
+          kpis.fan_rise_pa == null
+            ? ''
+            : tile(
+                kpis.fan_static_pa
+                  ? `Fan wall (of ${kpis.fan_static_pa.toFixed(0)} Pa)`
+                  : 'Fan wall',
+                kpis.fan_rise_pa.toFixed(1),
+                'Pa',
+              )
+        }
+        ${
+          kpis.rack_drop_pa == null
+            ? ''
+            : tile('Across the racks', kpis.rack_drop_pa.toFixed(1), 'Pa')
+        }
+        ${
+          kpis.energy_closure == null
+            ? ''
+            : tile('Load in return air', (kpis.energy_closure * 100).toFixed(0), '%')
+        }
       </div>
     </section>
 

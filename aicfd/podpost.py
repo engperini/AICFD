@@ -890,3 +890,181 @@ def convergence(model: Model, case_dir: str | Path) -> list[dict]:
             }
         )
     return rows
+
+
+# --- viewer payload -----------------------------------------------------------
+
+
+def export(
+    model: Model,
+    case_dir: str | Path,
+    out_dir: str | Path,
+    time: str | None = None,
+) -> PodResults:
+    """Write the 3-D viewer's payload for a solved POD.
+
+    The same two files the M1 viewer already reads -- ``viewer.json`` for
+    geometry, KPIs and checks, ``fields.bin`` for the fields themselves as
+    float32 in [k, j, i] order -- plus the one thing a POD has that a plain
+    room does not: its internal surfaces. Without them the viewer would show a
+    slice through an empty box and leave the reader to imagine where the
+    containment was, which is exactly the thing a picture is for.
+    """
+    from aicfd.foam import solverlog
+    from aicfd.model import sensors
+
+    case = Path(case_dir)
+    results = analyse(model, case, time)
+    step = case / results.time
+    grid = read_grid(model, step)
+    out = Path(out_dir)
+    out.mkdir(parents=True, exist_ok=True)
+
+    layers = {
+        "T": grid["T"],
+        "Ux": grid["U"][0],
+        "Uy": grid["U"][1],
+        "Uz": grid["U"][2],
+    }
+    descriptors = []
+    offset = 0
+    with (out / "fields.bin").open("wb") as handle:
+        for name, array in layers.items():
+            flat = np.ascontiguousarray(array, dtype=np.float32).ravel()
+            handle.write(flat.tobytes())
+            descriptors.append(
+                {
+                    "name": name,
+                    "offset": offset,
+                    "count": int(flat.size),
+                    "min": round(float(flat.min()), 4),
+                    "max": round(float(flat.max()), 4),
+                    "units": "degC" if name == "T" else "m/s",
+                }
+            )
+            offset += flat.size * 4
+
+    log = _solver_log(case, solverlog)
+    payload = {
+        "case": results.case_name,
+        "time": results.time,
+        "valid": results.valid,
+        "grid": {
+            "divisions": list(model.divisions),
+            "origin": list(model.domain.lo),
+            "size": list(model.domain.size),
+            "order": "kji",
+        },
+        "geometry": {
+            "room": {"lo": list(model.domain.lo), "hi": list(model.domain.hi)},
+            "zones": [
+                {
+                    "name": rack.id,
+                    "lo": list(rack.box.lo),
+                    "hi": list(rack.box.hi),
+                    "load_w": rack.load_w,
+                }
+                for rack in model.racks
+            ],
+            # A POD is its internal surfaces. Handing them over lets the viewer
+            # draw the containment, the false ceiling and the fan wall instead
+            # of an empty box.
+            "panels": [
+                {
+                    "name": panel.name,
+                    "kind": panel.kind,
+                    "axis": panel.axis,
+                    "position": panel.position,
+                    "lo": list(panel.box().lo),
+                    "hi": list(panel.box().hi),
+                }
+                for panel in model.panels
+            ],
+            "sensors": [
+                {
+                    "name": group.name,
+                    "label": group.label,
+                    "points": [list(point) for point in group.points],
+                }
+                for group in sensors(model)
+            ],
+            # Where to cut first. The middle of the box is a poor default for
+            # a POD -- at 4 m it sits above the racks, in the one part of the
+            # hall where nothing happens. Rack mid-height crosses the cold
+            # aisle, the row and the contained hot aisle in a single plane.
+            "default_slice": {
+                "axis": 2,
+                "index": int(
+                    round(model.racks[0].box.hi[2] / 2 / model.cell_size)
+                )
+                if model.racks
+                else model.divisions[2] // 2,
+            },
+            "patches": [FAN_SUPPLY, FAN_INTAKE],
+            "inlet_patch": None,  # the fan wall is internal, not a domain face
+        },
+        "fields": descriptors,
+        "kpis": _viewer_kpis(model, results),
+        "checks": [
+            {"name": c.name, "passed": c.passed, "detail": c.detail, "status": c.status}
+            for c in results.checks
+        ],
+        "warnings": list(model.warnings),
+        "residuals": {
+            "iterations": log.iterations if log else [],
+            "series": {
+                name: [None if v != v else v for v in values]
+                for name, values in (log.residuals.items() if log else {})
+            },
+            "continuity": log.continuity if log else [],
+        },
+        "sensors": sensor_history(model, case),
+    }
+    (out / "viewer.json").write_text(json.dumps(payload, indent=1))
+    (out / "report.md").write_text(report(results))
+    return results
+
+
+def _viewer_kpis(model: Model, results: PodResults) -> dict:
+    """The KPI names the M1 viewer already knows, filled from a POD."""
+    k = results.kpis
+    return {
+        "cells": model.n_cells,
+        "total_load_w": model.total_load_w,
+        "supply_flow_m3h": k["supply_m3h"],
+        "supply_temp_c": k["supply_temp_c"],
+        "return_temp_c": k["return_temp_c"],
+        "bulk_delta_t_k": k["delta_t_k"],
+        "temp_max_c": k["peak_air_temp_c"],
+        "speed_max_ms": k["peak_speed_ms"],
+        "fan_rise_pa": k.get("fan_rise_pa"),
+        "fan_static_pa": k.get("fan_static_pa"),
+        "rack_drop_pa": k.get("rack_drop_pa"),
+        "energy_closure": k["energy_closure"],
+        "zones": [
+            {
+                "name": rack["id"],
+                "load_w": rack["load_kw"] * 1000,
+                "inlet_temp_c": rack["inlet_c"],
+                "peak_temp_c": rack["outlet_c"],
+                # With the row closed every cubic metre the fan moves crosses
+                # the racks, so there is no starvation ratio to report: it is
+                # 100% by construction, and saying so would suggest the
+                # simulation measured something it did not.
+                "throughflow_ratio": None,
+                "ashrae": rack["ashrae"],
+            }
+            for rack in k["racks"]
+        ],
+    }
+
+
+def _solver_log(case: Path, solverlog):
+    for name in ("log.buoyantSimpleFoam",):
+        path = case / name
+        if path.exists():
+            try:
+                return solverlog.parse(path)
+            except Exception:
+                return None
+    return None

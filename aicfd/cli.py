@@ -274,9 +274,11 @@ def _run_pod(spec_path: Path, args) -> int:
     print(f"Solved in {sum(s.seconds for s in steps):.1f}s")
     if args.no_post:
         return 0
-    results = podpost.analyse(model, target)
+    out = RESULTS_DIR / name
+    results = podpost.export(model, target, out)
     print()
     print(podpost.report(results))
+    print(f"Wrote {out}/viewer.json, fields.bin, report.md")
     return 0 if results.valid else 2
 
 
@@ -293,8 +295,11 @@ def _post(args) -> int:
         from aicfd import podpost
 
         model, _solver = _load_pod(spec)
-        results = podpost.analyse(model, case, args.time)
+        out = RESULTS_DIR / args.name
+        results = podpost.export(model, case, out, args.time)
         print(podpost.report(results))
+        print(f"Wrote {out}/viewer.json, fields.bin, report.md")
+        print(f"View with:  aicfd view --case {args.name}")
         return 0 if results.valid else 2
 
     out = RESULTS_DIR / args.name

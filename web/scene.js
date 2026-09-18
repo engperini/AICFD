@@ -57,6 +57,7 @@ export class RoomScene {
     this.scene.add(key);
 
     this.#buildRoom();
+    this.#buildPanels();
     this.#buildZones();
     this.#buildSlice();
 
@@ -137,6 +138,43 @@ export class RoomScene {
     }
   }
 
+  /**
+   * A POD's internal surfaces: the dividing wall, the false ceiling, the
+   * hot-aisle containment, the fan wall and the openings through them.
+   *
+   * Without these the viewer shows a slice through an empty box and leaves the
+   * reader to imagine where the containment was, which is the one thing the
+   * picture exists to settle. They are drawn flat and faint, so they frame the
+   * field rather than hide it -- and openings are drawn in their own colour,
+   * because "there is a hole here" is as much of the geometry as the wall is.
+   */
+  #buildPanels() {
+    this.panelMeshes = [];
+    const panels = this.results.meta.geometry.panels || [];
+    for (const panel of panels) {
+      const size = panel.hi.map((h, i) => Math.max(h - panel.lo[i], 0.01));
+      const centre = panel.lo.map((l, i) => l + (panel.hi[i] - l) / 2);
+      const opening = panel.kind !== 'wall';
+      const geometry = new THREE.BoxGeometry(...size).translate(...centre);
+      const mesh = new THREE.Mesh(
+        geometry,
+        new THREE.MeshLambertMaterial({
+          transparent: true,
+          opacity: opening ? 0.28 : 0.09,
+          depthWrite: false,
+          side: THREE.DoubleSide,
+        }),
+      );
+      const edges = new THREE.LineSegments(
+        new THREE.EdgesGeometry(geometry),
+        new THREE.LineBasicMaterial({ transparent: true, opacity: 0.5 }),
+      );
+      mesh.userData.panel = panel;
+      this.scene.add(mesh, edges);
+      this.panelMeshes.push({ mesh, edges, panel, opening });
+    }
+  }
+
   #buildSlice() {
     this.sliceTexture = null;
     this.sliceMesh = new THREE.Mesh(
@@ -181,6 +219,12 @@ export class RoomScene {
     for (const { mesh, edges } of this.zoneMeshes) {
       mesh.material.color.set(tokens.zoneFill);
       edges.material.color.set(tokens.zoneEdge);
+    }
+    for (const { mesh, edges, opening } of this.panelMeshes || []) {
+      // A wall and a hole in it are different facts about the geometry, so
+      // they are different colours.
+      mesh.material.color.set(opening ? tokens.accent : tokens.zoneEdge);
+      edges.material.color.set(opening ? tokens.accent : tokens.axis);
     }
     this.setField(this.fieldName, this.scaleOptions);
   }

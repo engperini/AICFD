@@ -497,6 +497,41 @@ class CompareTest(unittest.TestCase):
         self.assertIn("no samples", result["reason"])
 
 
+class ExportTest(unittest.TestCase):
+    """The viewer payload, in the shape the M1 viewer already reads."""
+
+    def setUp(self):
+        self.model = M.build_model(SPEC)
+        self.case = Path(tempfile.mkdtemp())
+        self.out = Path(tempfile.mkdtemp())
+
+    def test_a_pod_carries_its_internal_surfaces_to_the_viewer(self):
+        """Without them the viewer draws a slice through an empty box."""
+        names = {p.name for p in self.model.panels}
+        self.assertIn("ceiling", names)  # the forro
+        self.assertIn("fan", names)
+        self.assertTrue(any(n.startswith("containment") for n in names))
+        self.assertTrue(any(n.startswith("grille") for n in names))
+        self.assertTrue(any(n.startswith("rack_") for n in names))
+
+    def test_the_default_slice_crosses_the_racks(self):
+        """Halfway up the box lands above them, where nothing happens."""
+        model = self.model
+        index = int(round(model.racks[0].box.hi[2] / 2 / model.cell_size))
+        self.assertLess(index, model.divisions[2] // 2)
+        self.assertGreater(index * model.cell_size, 0.0)
+        self.assertLess(index * model.cell_size, model.racks[0].box.hi[2])
+
+    def test_throughflow_is_not_reported_for_a_closed_row(self):
+        """It is 100% by construction; quoting it would suggest a measurement."""
+        import inspect
+
+        from aicfd import podpost as pp
+
+        source = inspect.getsource(pp._viewer_kpis)
+        self.assertIn('"throughflow_ratio": None', source)
+
+
 class ToleranceTest(unittest.TestCase):
     def test_mass_is_held_tighter_than_energy(self):
         """Mass has nowhere to go; the thermal field merely takes time."""

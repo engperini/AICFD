@@ -251,13 +251,45 @@ The solved field gives exactly that. Rack inlets sit 0,6 to 1,0 K above the
 supply, which is the containment doing its job: with the row closed there is no
 path from the hot aisle back to a rack face.
 
+## Seed and mesh, answered in one run
+
+ADR-019 asks for the same case from a uniform field, to show the seed did not
+choose the answer. Run at full resolution that is half an hour. Run at 0,20 m
+cells it is six minutes — 37 800 cells against 302 400 — and it answers the
+mesh question at the same time, because a coarser grid that finds the same flow
+is evidence on both counts.
+
+|  | coarse, cold start | fine, seeded | gap |
+|---|---|---|---|
+| return air | 30,70 °C | 30,63 °C | 0,07 K |
+| bulk ΔT | 10,70 K | 10,63 K | 0,07 K |
+| energy closure | 99,9% | 99,3% | |
+| drop across the racks | 25,99 Pa | 26,61 Pa | 2,4% |
+| fan wall rise | 28,26 Pa | 29,00 Pa | 2,6% |
+| peak speed | 2,00 m/s | 2,09 m/s | 4% |
+| R1 / R2 / R3 inlet | 20,37 / 20,62 / 20,49 °C | 20,49 / 20,82 / 20,59 °C | ≤ 0,20 K |
+
+Both runs pass all nine checks. A uniform start and a seeded start, on grids
+eight times apart in cell count, land within 0,2 K on every temperature and 3%
+on every pressure.
+
+Two honest limits on that. The coarse grid cannot place the false ceiling at
+6,50 m, so it builds it at 6,40 m and its plenum is 7% shorter — the model
+warns, and the agreement suggests those 10 cm do not matter, but it is not
+literally the same geometry. And going *coarser* and finding the same answer is
+good evidence, not a refinement study: it shows the solution is not an artefact
+of this particular grid, not that the grid is fine enough to have converged.
+
 ## Open
 
-- The cold/warm agreement test (ADR-019) has not been run on the corrected
-  geometry. Until it has, the seeded field is unproven for this case.
 - The ceiling grilles are modelled as fully open holes. A real return grille
   has a free area around 50% and a loss coefficient, so some of the 71 Pa of
   headroom against the datasheet is resistance that is simply not in the model
   yet.
+- Nothing here has been compared against a measurement. Every validation is an
+  identity the physics must satisfy — mass closes, energy closes, the return
+  path is isothermal, the rack resistance matches its own curve. That class of
+  check caught three real faults in this session. It cannot tell you the real
+  POD will behave this way.
 - `settled` is a speed test and `return_path` a distance test; both pass here,
   but neither would catch a field drifting as a whole. No check yet does.
