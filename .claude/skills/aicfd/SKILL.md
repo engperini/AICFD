@@ -19,6 +19,7 @@ aicfd build cases/NAME.yaml -> runs/NAME/case    (generate only, no solve)
 aicfd run cases/NAME.yaml   -> runs/NAME         (generate, solve, sample, export)
 aicfd post NAME             -> results/NAME/{viewer.json,fields.bin,report.md}
 aicfd view --case NAME      -> http://localhost:8000/web/?case=NAME
+aicfd report NAME           -> results/NAME/NAME.docx  (the Word deliverable)
 aicfd doctor                # when something looks broken
 aicfd verify [--solve]      # the audit; run it first in a fresh sandbox
 ```
@@ -145,6 +146,23 @@ against one such study of a real hall:
   today is a pressure check, not this;
 - **a per-rack load map**, including unloaded positions;
 - **PDU or other ancillary heat** outside the racks.
+
+## The Word report
+
+`aicfd report <name>` turns an export into the document that gets circulated
+(ADR-028). Offer it whenever the user says report, relatório, deliverable,
+cliente, diretoria, or asks for something to send to someone -- it is the form
+every consultancy study of this kind arrives in.
+
+It reads `results/<name>/` only, so `aicfd post` has to have run. `--client`
+and `--author` fill the cover. It needs `python-docx` and `matplotlib`; if
+they are missing the command says so and nothing else in the tool is affected.
+
+Do not paraphrase the document's limitations section away when summarising it
+to the user. It says, in the document, that the run is one scenario, one load
+per rack, the catalogue capacity rather than the capacity the coil actually
+has, perfect containment and a conceptual mesh carrying 1 to 2 K on any single
+rack. Those sentences are the reason the rest can be trusted.
 
 ## Rules
 

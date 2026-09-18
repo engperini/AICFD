@@ -211,7 +211,7 @@ def analyse(model: Model, case_dir: str | Path, time: str | None = None) -> PodR
     step = case / time
 
     flows = patch_flows(step)
-    fans = fan_flows(step, flows)
+    fans = fan_flows(step, flows, model.supply_temp_c)
     supply = sum(f["supply_kg_s"] for f in fans)  # stated positive, into the hall
     intake = sum(f["intake_kg_s"] for f in fans)
 
@@ -285,8 +285,18 @@ def grille_pressure_drop(step: str | Path) -> float | None:
     return round(weighted / total_flow, 3) if total_flow else None
 
 
-def fan_flows(step: str | Path, flows: dict[str, float] | None = None) -> list[dict]:
-    """What each fan wall moves and has to push against, from its own patches."""
+def fan_flows(step: str | Path, flows: dict[str, float] | None = None,
+              supply_temp_c: float | None = None) -> list[dict]:
+    """What each fan wall moves, returns and has to push against.
+
+    Per unit, because that is the level a plant is judged at: a hall whose
+    units look uniform in the mean can still have one at the end of a row
+    taking half again the flow of its neighbours, and only the per-unit table
+    shows it. With ``supply_temp_c`` each unit also reports the mixed-mean
+    temperature of the air it draws and the heat that air carries -- the same
+    enthalpy balance the hall-wide `energy_closure` check uses, one unit at a
+    time.
+    """
     step = Path(step)
     flows = flows or patch_flows(step)
     units = []
@@ -302,9 +312,34 @@ def fan_flows(step: str | Path, flows: dict[str, float] | None = None) -> list[d
                 "intake_kg_s": round(flows.get(intake, 0.0), 5),
                 "backflow_kg_s": round(backflow(step, intake), 5),
                 "rise_pa": round(rise, 3),
+                **_unit_return(step, intake, supply_temp_c),
             }
         )
     return units
+
+
+def _unit_return(step: Path, intake: str, supply_temp_c: float | None) -> dict:
+    """One unit's mixed-mean return temperature and the heat it removes.
+
+    Flow-weighted over the intake's own faces, exactly as the hall-wide
+    `return_temperature` is: a patch where half the area carries most of the
+    flow has an area average that describes no air that ever existed.
+    """
+    if supply_temp_c is None:
+        return {}
+    phi = read_patch_field(step / "phi", intake)
+    temperature = read_patch_field(step / "T", intake)
+    if phi.size == 0 or temperature.size <= 1:
+        return {}
+    leaving = np.clip(phi, 0, None)
+    if leaving.sum() <= 0:
+        return {}
+    mixed_k = float((leaving * temperature).sum() / leaving.sum())
+    heat_w = float(CP_AIR * (phi * (temperature - (supply_temp_c + KELVIN))).sum())
+    return {
+        "return_temp_c": round(mixed_k - KELVIN, 2),
+        "heat_kw": round(heat_w / 1000, 1),
+    }
 
 
 def rack_pressure_drop(model: Model, grid: dict) -> tuple[float | None, list[dict]]:
@@ -814,7 +849,7 @@ def measure(model: Model, step: str | Path, iteration: int) -> dict:
     step = Path(step)
     grid = read_grid(model, step)
     flows = patch_flows(step)
-    fans = fan_flows(step, flows)
+    fans = fan_flows(step, flows, model.supply_temp_c)
     supply = sum(f["supply_kg_s"] for f in fans)
     intake = sum(f["intake_kg_s"] for f in fans)
     recovered = recovered_load_w(step, model)

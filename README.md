@@ -45,6 +45,7 @@ Anything that fails names itself and stops.
 ```bash
 python3 -m aicfd run cases/pod-fanwall.yaml    # one POD, 8 min on one core
 python3 -m aicfd view --case pod-fanwall       # the page, at localhost:8000
+python3 -m aicfd report pod-fanwall            # the Word report, for circulation
 ```
 
 The two worked cases in `cases/` are the reference results, and both are
@@ -149,6 +150,14 @@ POD at 0,20 m cells for that.
   velocities, pressure drops, HVAC sizing against load and CFM/kW), the
   mesh-snapping warnings, and a Run button. This is where a mistake is caught
   *before* paying for a solve.
+- **The Word report** — `aicfd report <name>` writes a .docx from the same
+  export: cover, summary with the basis of design, methodology with the
+  geometry and the boundary conditions, then the checks, the convergence, the
+  field maps, every rack and every unit, the conclusions and — in the document
+  itself, not a footnote — what this model cannot be asked (ADR-028). It reads
+  `results/<name>/` and nothing else, so a figure in the document and a view on
+  the screen are two renderings of one result. It is the only part of AICFD
+  that needs `python-docx` and `matplotlib`.
 - **Results page** — the same three drawings with the solved field underneath
   (temperature, speed, pressure) in contour bands with the ASHRAE limits drawn
   on the legend (ADR-024); every rack painted by the temperature of the air it
@@ -166,6 +175,9 @@ aicfd/
   post.py      the analysis: patch flows, the eleven checks, per-rack inlets,
                live sampling during a run, the viewer export
   run.py       the only place that shells out to OpenFOAM (isolated env, ADR-002)
+  report.py    the Word deliverable, built from the export and nothing else
+  figures.py   its figures: plan, sections and charts, all 2-D
+  palette.py   the page's colour ramps in Python, checked against the original
   server.py    the page's backend: model payload, parameter edits, run control
   cli.py       every command, including `verify`
   foam/        readers for OpenFOAM's own formats (fields, polyMesh, solver log)

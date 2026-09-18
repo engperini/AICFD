@@ -911,3 +911,61 @@ strips all count blocks rather than assuming one run of racks. The worked case
 is `cases/hall-double-gallery.yaml`, written against a real 5 MW hall of this
 shape (Ascenty VIN03) so the tool's answer can be held against an independent
 study of the same room.
+
+---
+
+## ADR-028 — The deliverable is a Word document, built from the export
+
+**Decision.** `aicfd report <name>` writes a Word (.docx) technical report for
+an exported result: cover, contents, summary with the basis of design and the
+headline numbers, methodology with the geometry, the mesh and the boundary
+conditions, results with the checks, the convergence, the field maps, the
+per-rack table and the per-unit table, then conclusions and limitations.
+
+It reads `results/<name>/viewer.json` and `fields.bin` and nothing else — the
+same two files the page reads — so a figure in the document and a view on the
+screen are two renderings of one export. Figures are rendered with matplotlib;
+the document is assembled with python-docx. Both are listed in
+`requirements.txt` under a comment saying they are for the report alone, both
+are imported late, and the model, the case generator, the solve and the eleven
+checks import neither.
+
+**Why a document at all.** A study is finished when someone who was not in the
+room can read it, disagree with it and check it. `report.md` and the page are
+for the person driving the tool; the document is what gets attached to an
+email, marked up by a reviewer, and filed against a design decision. Every
+consultancy study of this kind arrives as one, and a tool whose output cannot
+be circulated that way is a tool whose results stay with whoever ran it.
+
+**Why not HTML, or the page printed.** The page is interactive — sliders,
+hover readouts, a live run — and printing it produces a worse version of
+itself. And a reviewer marks up a document, not a web page.
+
+**Two rules the writer holds to, and they are what make it worth trusting.**
+
+1. *Every number comes from the export.* Nothing in `aicfd/report.py` computes
+   physics. Where a quantity is not in the export, the document says the tool
+   does not produce it — as it does for the coil capacity available at the
+   return temperature the room actually reaches, which is exactly the number a
+   reader coming from a consultancy report will look for first.
+2. *The limits sit with the result, not in a footnote.* Section 5 states, in
+   the document itself, that this is one scenario, one load per rack, the
+   catalogue capacity rather than the available one, perfect containment and a
+   conceptual-design mesh carrying 1 to 2 K on any single rack. A coarse model
+   that ranks racks correctly is a useful instrument or a misleading one
+   depending entirely on whether the reader was told which it is.
+
+**Two colour rules are carried over from the page rather than re-invented.**
+`aicfd/palette.py` is a port of `web/colormaps.js`, and `tests/test_palette.py`
+runs the JavaScript under node and compares every step of both ramps, so the
+two cannot drift. The field maps use the fixed 10–40 °C band with the ASHRAE
+limits on the bar (ADR-024); the per-rack map uses a *fitted* scale and says so
+in its caption, because on the fixed band every rack in a healthy hall falls
+inside one 2,5 K step — true, and useless for ranking them.
+
+**Consequence.** `aicfd post` now points at `aicfd report`. `fan_flows` gained
+the per-unit return temperature and heat removed, which the document's unit
+table needs and the page can now show too — an addition the reference study in
+`docs/reference-report-parameters.md` made obviously necessary: a hall uniform
+in the mean can still have one unit at the end of a row moving half again the
+flow of its neighbours, and only the per-unit table shows it.

@@ -3,3 +3,9 @@
 # hand rather than by a schema library (ADR-010).
 numpy>=1.24
 PyYAML>=6.0
+
+# The Word deliverable only (`aicfd report`). Everything else -- building a
+# case, solving it, the eleven checks, the page -- runs without these, and
+# imports them nowhere. Install them when you need the document.
+python-docx>=1.1
+matplotlib>=3.7

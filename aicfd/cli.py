@@ -63,6 +63,16 @@ def main(argv: list[str] | None = None) -> int:
     post_parser.add_argument("name", help="run name under runs/")
     post_parser.add_argument("--time", help="time directory (default: the latest)")
 
+    report_parser = sub.add_parser(
+        "report", help="write the Word report for an exported result"
+    )
+    report_parser.add_argument("name", help="result name under results/")
+    report_parser.add_argument(
+        "--out", help="output .docx (default: results/<name>/<name>.docx)"
+    )
+    report_parser.add_argument("--client", help="who the study is for, on the cover")
+    report_parser.add_argument("--author", help="who ran it, on the cover")
+
     view_parser = sub.add_parser("view", help="serve the page")
     view_parser.add_argument("--port", type=int, default=8000)
     view_parser.add_argument(
@@ -319,7 +329,27 @@ def _export(model, run: Path, name: str, time: str | None) -> int:
     print(post.report(results))
     print(f"Wrote {out}/viewer.json, fields.bin, report.md")
     print(f"View with:  aicfd view --case {name}")
+    print(f"Word report:  aicfd report {name}")
     return 0 if results.valid else 2
+
+
+def _report(args) -> int:
+    """The Word deliverable, built from an exported result and nothing else."""
+    from aicfd.report import build
+
+    source = RESULTS_DIR / args.name
+    if not (source / "viewer.json").exists():
+        print(
+            f"error: no exported result at {source}. Run 'aicfd post {args.name}' "
+            "first.",
+            file=sys.stderr,
+        )
+        return 1
+    out = Path(args.out) if args.out else source / f"{args.name}.docx"
+    written = build(source, out, client=args.client, author=args.author)
+    print(f"Wrote {written}")
+    print(f"Figures in {source / 'figures'}")
+    return 0
 
 
 def _view(args) -> int:
