@@ -61,10 +61,14 @@ are what says the second gallery is a mirror rather than a hopeful copy.
 
 ## What the run did
 
-3 000 iterations on 4 cores, about 2,2 s each. The field was settled by
-iteration 600: the return temperature has not moved from 33,3 °C since, and
-`settled` reports the instrumented places moving less than 0,01 K between
-samples.
+3 000 iterations on 4 cores: 2 150 s of solver time, about 0,7 s per
+iteration. **The field was settled by iteration 600** — the return temperature
+has not moved from 33,3 °C since, and `settled` reports the instrumented
+places moving less than 0,01 K between samples — so the useful run is about
+seven minutes and the rest was spent confirming it. `residualControl` did not
+stop the run because p_rgh levels off near 8 × 10⁻⁴; that is the normal
+behaviour of a room this size and is exactly why the checks, not the
+residuals, decide when a run is finished (ADR-018).
 
 All eleven checks pass.
 
@@ -76,7 +80,10 @@ All eleven checks pass.
 | rack resistance | field 29,4 Pa where the rack curve asks 28,4 (104 %) |
 | grille resistance | field 8,99 Pa where K asks 8,59 (105 %) |
 | backflow | 0,000 kg/s |
-| warmest rack intake | 22,4 °C at the top of a middle-row rack, 4,6 K below the ASHRAE recommended limit |
+| warmest rack intake | 22,45 °C at the top of F6B2-03, 4,55 K below the ASHRAE recommended limit |
+| every rack | 22,0 to 22,45 °C at the top; none above the recommended band |
+| per unit | 362,7 to 366,0 kW removed, 5 099 kW in all; return 33,30 to 33,41 °C |
+| rise per unit | 52,8 to 56,3 Pa, of the 131 Pa the curve offers at this airflow |
 
 The `return_path` check is the one that matters most here, because it is the
 only thing that would catch a *second* plenum pretending to be one: the hot
@@ -90,16 +97,18 @@ and really does feed both ends.
 |---|---|---|
 | cells | 275 400 | 21 600 000 |
 | cost | 11 min on 4 cores | a cluster |
-| warmest rack intake | 22,4 °C | 22,33 °C (normal), 22,34 °C (N) |
-| mixed return air | 33,3 °C | 32,39 °C |
+| warmest rack intake | 22,45 °C | 22,33 °C (normal), 22,34 °C (N) |
+| mixed return air | 33,35 °C | 32,39 °C |
 | return spread across units | 0,11 K | 1,35 K |
-| heat removed per unit | 363–366 kW | 331–397 kW |
-| margin to ASHRAE recommended | 4,6 K | 4,7 K |
+| heat removed per unit | 362,7–366,0 kW | 331–397 kW |
+| margin to ASHRAE recommended | 4,55 K | 4,7 K |
 
 The two agree on the answer the study was asked for — **the air reaching the
 IT equipment is comfortably inside the recommended band, with about 4,6 K of
-margin** — on a mesh 78 times coarser and in eleven minutes. That is the
-result worth having from this run.
+margin** — on a mesh 78 times coarser, from a 95-line spec, in a run that was
+settled after seven minutes. That is the result worth having here, and the
+0,12 K between the two warmest rack intakes is well inside the 1 to 2 K this
+mesh is honestly worth on any single rack.
 
 Two of the differences are ours and are explained by the load:
 
@@ -117,8 +126,8 @@ Two of the differences are ours and are explained by the load:
 
 ## The finding that is not in the numbers this run produced
 
-Every unit here removes 363–366 kW, which is **84 % of the 432,6 kW catalogue
-rating**, and the report says so. On the catalogue figures the plant has
+Every unit here removes 362,7 to 366,0 kW, which is **84 % of the 432,6 kW
+catalogue rating**, and the report says so. On the catalogue figures the plant has
 ample margin, and that is the sentence a reader will take away.
 
 The reference study is about why that sentence is wrong. A chilled-water
@@ -142,11 +151,12 @@ failure scenario, are what close it. Both are written up in
 
 Seven units share a 32,4 m wall in front of six cold aisles, so they cannot
 all be centred on one. In the first gallery the units that land on a cold
-aisle run at 53,0–53,2 Pa and those that land in front of a rack row at
-55,5–56,2 Pa — about 2,5 Pa, or 5 %, for facing the wrong thing. In the second
-gallery the pattern is weaker and not monotonic. At 6 % of the total rise, on
-a 0,30 m mesh, this is at the edge of what the run can be asked, and it is
-recorded as something to look for on a finer mesh rather than as a result.
+aisle run near 53 Pa and those that land in front of a rack row near 56 Pa —
+about 2,5 Pa, or 5 %, for facing the wrong thing. In the second gallery the
+pattern is weaker and not monotonic. The whole spread is 52,8 to 56,3 Pa, 6 %
+of the rise, on a 0,30 m mesh: that is at the edge of what this run can be
+asked, and it is recorded as something to look for on a finer mesh rather
+than as a result.
 
 ## What this run establishes
 
