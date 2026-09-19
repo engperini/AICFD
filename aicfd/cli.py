@@ -284,6 +284,7 @@ def _print_notes(model) -> None:
 
 def _run(args) -> int:
     from aicfd import case, post
+    from aicfd import run as run_module
     from aicfd.run import FoamCommandFailed, FoamNotInstalled, solve
 
     spec_path = Path(args.spec)
@@ -318,7 +319,18 @@ def _run(args) -> int:
     sampler = post.Sampler(model, target)
     sampler.start()
     try:
-        steps = solve(target, case.pipeline(options["processors"]), on_step=step)
+        def pass_done(record):
+            print(f"  coil: {record.summary()}", flush=True)
+
+        steps, passes = run_module.solve_coupled(
+            target, case.pipeline(options["processors"]), model,
+            segment=int(solver.get("coupling_segment", 300)),
+            max_passes=int(solver.get("coupling_passes", 5)),
+            on_step=step,
+            on_pass=pass_done if solver.get("couple", True) else None,
+        ) if solver.get("couple", True) else (
+            solve(target, case.pipeline(options["processors"]), on_step=step), []
+        )
     except (FoamNotInstalled, FoamCommandFailed) as error:
         print(f"error: {error}", file=sys.stderr)
         if isinstance(error, FoamCommandFailed):
@@ -328,6 +340,14 @@ def _run(args) -> int:
         sampler.stop()
 
     print(f"Solved in {sum(s.seconds for s in steps):.1f}s")
+    if passes:
+        last = passes[-1]
+        print(
+            f"Coil coupling: {len(passes)} pass(es); the supply air temperature "
+            f"is a result, not an input"
+            + (f", settled to {last.moved_k:.3f} K" if last.converged else
+               f", still moving {last.moved_k:.3f} K at the pass limit")
+        )
     if args.no_post:
         return 0
     return _export(model, target, name, time=None, spec=spec)

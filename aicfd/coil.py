@@ -47,18 +47,29 @@ counterflow relation lands within 0,03 K where crossflow-unmixed misses by
 0,06 K, and crossflow can only fit the selections by putting 99 % of the
 resistance on the air side, which is not a coil.
 
+**One selection describes the unit; the rest are reference.** A unit carries
+a `design` selection -- the duty the plant was actually bought on -- and that
+is what every default and every water limit comes from. The manufacturer's
+other rows are kept as reference and as the data the fit is made from, never
+as an operating curve: the selection program was free to ask for more water
+at each of them, so they answer "what machine would I need?" and not "what
+will this machine do?".
+
+That split also buys a standing test. The design selection is deliberately
+left OUT of the fit, so every unit carries a live blind check of its own coil
+model -- `design_error_k`. For the worked CA80NPVG6 it is 0,014 K.
+
 **What the model still cannot know.** How much water the branch can actually
-pass. The coil's own limit is taken as the largest flow the manufacturer
-selected it at -- they issued that selection for this machine, so the machine
-can take it -- but the pump, the balancing valve and the available differential
-pressure are a piping decision this model has no sight of. Where that limit
-matters, it is an input, not a guess.
+pass. The limit is taken as the design selection's own flow, which is what
+the pump, the balancing valve and the pipe were sized for; whether the
+installed hydraulics really deliver it is a piping question this model has no
+sight of. Where it matters, it is an input, not a guess.
 """
 
 from __future__ import annotations
 
 import math
-from dataclasses import dataclass
+from dataclasses import dataclass, replace
 
 from aicfd.model import CP_AIR, air_density, site_pressure
 
@@ -155,6 +166,11 @@ class Coil:
     """RMS error of the fit against the selections, in K of supply air."""
     air_split: float
     """Fraction of the resistance on the air side, at the design selection."""
+    design_error_k: float | None = None
+    """Error against the unit's OWN design selection, which is deliberately
+    kept out of the fit. Not a claim in a docstring: every unit carrying a
+    design selection carries a live blind test of its own coil model, and a
+    number that drifts says the selections stopped describing one machine."""
 
     # --- the machine ----------------------------------------------------------
 
@@ -323,7 +339,7 @@ def fit(unit) -> Coil:
         if best is None or error < best[0]:
             best = (error, split, k_air, k_water)
     error, split, k_air, k_water = best
-    return Coil(
+    fitted = Coil(
         water_c=float(water_in),
         water_rise_k=rise,
         k_air=k_air,
@@ -334,3 +350,18 @@ def fit(unit) -> Coil:
         residual_k=math.sqrt(error / len(points)),
         air_split=split,
     )
+    design = unit.design or {}
+    if not design.get("nscc_kw"):
+        return fitted
+    # The water the plant was actually bought to circulate to this unit. The
+    # reference rows reach a larger flow -- the selection program was free to
+    # ask for more water at every one of them -- but the branch, the valve and
+    # the pump were sized on the design selection, so that is this coil's
+    # limit (ADR-040).
+    water = float(design["nscc_kw"]) / rise
+    air = air_capacity_rate(float(design["airflow_m3h"]),
+                            float(design["return_c"]), altitude)
+    predicted = float(design["return_c"]) - fitted.epsilon(air, water) * (
+        float(design["return_c"]) - water_in)
+    return replace(fitted, water_max=water,
+                   design_error_k=abs(predicted - float(design["supply_c"])))

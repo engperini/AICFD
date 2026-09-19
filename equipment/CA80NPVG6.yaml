@@ -25,13 +25,31 @@ fans:
   modulation: 87.4            # % of full speed, at the selection point
 
 selection:
-  # The conditions every row of `capacity` was selected at. Change any of them
-  # and the table is no longer this unit's: ask the manufacturer for a new set.
+  # The conditions every selection of this unit was taken at. Change any of
+  # them and none of the numbers below are this unit's: ask the manufacturer
+  # for a new set.
   elevation_m: 750
   esp_pa: 100                 # external static pressure
   entering_water_c: 18
   leaving_water_c: 28
   entering_air_rh: 30         # %
+
+design:
+  # THE selection. One machine at one duty -- the one this plant was bought
+  # on -- and the anchor for everything the software computes. The rows under
+  # `capacity` are NOT an operating curve and are not used as one: the
+  # selection program re-sized the water flow at every one of them, so they
+  # answer "what machine would I need?" rather than "what will this machine
+  # do?" (ADR-039). They are kept as reference, and as what the coil model is
+  # fitted to.
+  #
+  # Ascenty SP06, issued by Lucca Mendonca (Vertiv), 2026-05-07.
+  return_c: 34                # entering air, dry bulb
+  supply_c: 21.9              # leaving air
+  airflow_m3h: 121545         # unit return airflow
+  nscc_kw: 432.6              # NET sensible (454.0 kW gross less 21.4 kW of
+                              # fan power returned to the air)
+  power_kw: 21.4              # electrical input
 
 capacity:
   # return_c   the air the unit RECEIVES (dry bulb)

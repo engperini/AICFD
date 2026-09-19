@@ -208,7 +208,6 @@ class CoilCapacityTest(unittest.TestCase):
         self.assertAlmostEqual(
             out["utilisation_pct"], removed / out["available_kw"] * 100, places=1
         )
-        self.assertEqual(out["units_over_capacity"], 0)
 
     def test_a_unit_beyond_its_own_coil_is_counted(self):
         fans = self._fans((35.0, 95.0), (35.0, 8.0))

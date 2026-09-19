@@ -680,6 +680,24 @@ def equipment_for(spec: dict):
     from aicfd import equipment as library
 
     unit = library.load(name)
+    # The one condition a plant changes without changing the machine, and the
+    # one the supply air temperature follows almost one for one once the
+    # valve is open. A study at another chilled water temperature is an
+    # ordinary thing to want, and it is the same unit (ADR-040).
+    water = fan.get("entering_water_c")
+    if water is not None:
+        import dataclasses
+
+        # The FIT is left alone. The manufacturer's selections were taken at
+        # the water they were taken at, and re-reading them at another
+        # temperature would silently change the water flow behind every row
+        # and corrupt the conductance recovered from them. What moves is only
+        # the water this plant circulates -- the machine is the same machine.
+        fitted = unit.coil
+        if fitted is not None:
+            unit = dataclasses.replace(
+                unit, _coil=dataclasses.replace(fitted, water_c=float(water))
+            )
     point = unit.design_point(fan.get("design_return_c"))
     defaults = {
         "airflow_m3h": point["airflow_m3h"],

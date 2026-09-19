@@ -552,9 +552,14 @@ def capacity(export: Export, out: Path) -> Path | None:
     kw = [r["nscc_kw"] for r in rows]
 
     fig, ax = plt.subplots(figsize=(7.2, 3.0))
-    ax.plot(temps, kw, color=FAN, linewidth=1.6, marker="o", markersize=3.5,
-            markerfacecolor=FAN, markeredgecolor="white", markeredgewidth=0.8,
-            label="manufacturer's selections", zorder=3)
+    # The manufacturer's rows are REFERENCE, drawn small and muted: they are a
+    # sizing exercise -- the water flow was re-sized at every one of them -- and
+    # reading them as an operating curve is the mistake this figure exists to
+    # prevent. The line that carries the report's numbers is the modelled one
+    # below (ADR-039, ADR-040).
+    ax.plot(temps, kw, color=MUTED, linewidth=0.9, marker="o", markersize=3.0,
+            markerfacecolor="white", markeredgecolor=MUTED, markeredgewidth=0.9,
+            label="manufacturer's sizing selections (reference)", zorder=3)
     # Zero-based, because this is a magnitude: a truncated axis would make a
     # 45 % rise look like a tenfold one.
     ax.set_ylim(0, max(kw) * 1.18)
@@ -567,8 +572,7 @@ def capacity(export: Export, out: Path) -> Path | None:
     modelled = _modelled_curve(export, unit, fans, temps)
     if modelled:
         xs, ys, note = modelled
-        ax.plot(xs, ys, color=GOOD, linewidth=1.6, linestyle=(0, (5, 2)),
-                label=note, zorder=2)
+        ax.plot(xs, ys, color=FAN, linewidth=2.0, label=note, zorder=2)
     # Returns the table does not cover still belong on the axis. A figure that
     # silently cropped them would hide the one thing the reader has to know:
     # this hall ran off the end of the machine's characterisation (ADR-036).
@@ -667,4 +671,5 @@ def _modelled_curve(export: Export, unit, fans: list, selection_temps: list):
     xs = [low + (high - low) * i / 60 for i in range(61)]
     ys = [coil.operate(x, air).ceiling_kw for x in xs]
     share = air / coil.air_fitted
-    return xs, ys, f"this plant's coil, at {share:.0%} of that air flow"
+    return xs, ys, (f"this unit's coil, modelled, at the air flow this hall "
+                    f"gives it ({share:.0%})")

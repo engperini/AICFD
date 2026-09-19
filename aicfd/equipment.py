@@ -60,6 +60,9 @@ class Equipment:
     """Rows sorted by ``return_c``, each carrying every key of QUANTITIES."""
     fans: dict
     curve: dict
+    design: dict = None
+    """THE selection this unit is described by, or {} for a unit that names
+    none. `capacity` is reference: see aicfd.coil."""
     weight_kg: float | None = None
     source: Path | None = None
     _coil: object = None
@@ -135,10 +138,17 @@ class Equipment:
     def design_point(self, return_c: float | None = None) -> dict:
         """Every quantity at one return temperature, for sizing before a solve.
 
-        With no temperature, the warmest selection: it is the one a plant is
-        normally sized on, and it is the only row that is a choice rather than
-        an interpolation.
+        With no temperature, the unit's own design selection where it has
+        one, and otherwise the warmest reference row.
         """
+        if return_c is None and self.design.get("return_c") is not None:
+            # The one selection this unit is described by. Preferred over any
+            # row of `capacity`, which is reference (ADR-039).
+            return {"return_c": float(self.design["return_c"]),
+                    "nscc_kw": float(self.design["nscc_kw"]),
+                    "airflow_m3h": float(self.design["airflow_m3h"]),
+                    "power_kw": float(self.design.get("power_kw") or 0.0),
+                    "supply_c": float(self.design["supply_c"])}
         target = self.span[1] if return_c is None else return_c
         return {"return_c": target,
                 **{q: self.at(target, q) for q in QUANTITIES}}
@@ -151,6 +161,7 @@ class Equipment:
             "weight_kg": self.weight_kg,
             "fans": self.fans,
             "selection": self.selection,
+            "design": self.design,
             "capacity": [dict(row) for row in self.capacity],
             "curve": self.curve,
             "span": list(self.span),
@@ -217,6 +228,7 @@ def parse(raw: dict, source: Path | None = None) -> Equipment:
         capacity=tuple(table),
         fans=dict(raw.get("fans") or {}),
         curve=dict(raw.get("curve") or {}),
+        design=dict(raw.get("design") or {}),
         weight_kg=raw.get("weight_kg"),
         source=source,
         _coil=_UNFITTED,
@@ -239,6 +251,11 @@ EDITABLE = (
     "selection.entering_water_c",
     "selection.leaving_water_c",
     "selection.entering_air_rh",
+    "design.return_c",
+    "design.supply_c",
+    "design.airflow_m3h",
+    "design.nscc_kw",
+    "design.power_kw",
     "curve.measured",
 )
 

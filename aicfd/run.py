@@ -10,6 +10,7 @@ poisons ``WM_PROJECT_*`` so that every solver dies with a misleading
 from __future__ import annotations
 
 import os
+import re
 import shutil
 import subprocess
 from dataclasses import dataclass
@@ -210,3 +211,107 @@ def stop_requested(case_dir: str | Path) -> bool:
     """Whether a stop has already been asked for on this case."""
     control = Path(case_dir) / "system" / "controlDict"
     return control.is_file() and STOP_NOW in control.read_text()
+
+
+# --- solving the room and the machine together ---------------------------------
+
+
+def solve_coupled(
+    case_dir: str | Path,
+    pipeline: tuple,
+    model,
+    segment: int = 300,
+    max_passes: int = 5,
+    tolerance: float = 0.02,
+    on_step=None,
+    on_pass=None,
+) -> tuple[list[StepResult], list]:
+    """Solve, then let each fan wall's coil set its own supply temperature.
+
+    The first segment is the run as it would have been: the iteration cap the
+    spec asks for, at the supply temperature it states. Every pass after it
+    reads each unit's own return off the solved field, puts it through the
+    unit's coil, writes the answer back as that unit's supply temperature and
+    continues from the field already there. It stops when no unit's supply
+    moves more than `tolerance`.
+
+    So coupling is an addition to the run, never a reduction of it: the flow
+    is solved exactly as far as before, and the passes are what it costs to
+    make the supply temperature a result instead of an assumption (ADR-040).
+
+    Falls back to a plain `solve` -- with no passes and no warning -- when the
+    case names no unit or its selections support no coil. There is nothing to
+    couple to, and a run that quietly did nothing different is the honest
+    outcome.
+    """
+    from aicfd import coupled as loop
+
+    unit = getattr(model, "equipment", None)
+    if unit is None or unit.coil is None:
+        return solve(case_dir, pipeline, on_step=on_step), []
+
+    case = Path(case_dir)
+    before, solver, after = _split_at_solver(pipeline)
+    results = []
+    for entry in before:
+        command, args, log_name = _entry(entry)
+        if on_step:
+            on_step(log_name or command)
+        results.append(run_command(case, command, args=args, log_name=log_name))
+
+    end = _end_time(case)
+    passes, previous = [], None
+    for number in range(1, max_passes + 1):
+        command, args, log_name = _entry(solver)
+        if on_step:
+            on_step(log_name or command)
+        results.append(run_command(case, command, args=args, log_name=log_name))
+        # Reconstructed before it is read: a decomposed run keeps its fields
+        # per processor, and every reader downstream works on whole patches.
+        if any(case.glob("processor*")):
+            results.append(run_command(case, "reconstructPar", args=["-latestTime"]))
+        time = loop.latest_time(case)
+        if time is None:
+            break
+        supplies, returns, saturated = loop.supply_temperatures(model, case / time)
+        if not supplies:
+            break
+        moved = (max(abs(supplies[k] - previous[k]) for k in supplies if k in previous)
+                 if previous else float("inf"))
+        settled = moved <= tolerance
+        record = loop.Pass(number=number, iterations=end, supplies_c=supplies,
+                           returns_c=returns, moved_k=min(moved, 99.0),
+                           converged=settled, saturated=saturated)
+        passes.append(record)
+        if on_pass:
+            on_pass(record)
+        previous = supplies
+        if settled or number == max_passes:
+            break
+        loop.apply_supplies(case, time, supplies)
+        end += segment
+        loop.set_end_time(case, end, latest=True)
+
+    for entry in after:
+        command, args, log_name = _entry(entry)
+        if on_step:
+            on_step(log_name or command)
+        results.append(run_command(case, command, args=args, log_name=log_name))
+    return results, passes
+
+
+def _split_at_solver(pipeline: tuple) -> tuple[list, object, list]:
+    """(before, the solver entry, after). The solver is the one whose log is
+    named after a Foam solver -- which is how it is named whether it runs
+    bare or under mpirun."""
+    for i, entry in enumerate(pipeline):
+        command, _, log_name = _entry(entry)
+        if (log_name or command).endswith("Foam"):
+            return list(pipeline[:i]), entry, list(pipeline[i + 1:])
+    raise ValueError("this pipeline has no solver to couple to")
+
+
+def _end_time(case_dir: str | Path) -> int:
+    text = (Path(case_dir) / "system" / "controlDict").read_text()
+    found = re.search(r"^endTime\s+(\S+);", text, re.MULTILINE)
+    return int(float(found.group(1))) if found else 0

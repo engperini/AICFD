@@ -1483,3 +1483,65 @@ side is named in the limitations as something this model does not see.
 **The exponents are held, not fitted.** Air-side 0,6, water-side 0,8. Seven
 selections at one air flow cannot identify the air-side exponent, and fitting
 it would hide the assumption inside a number.
+
+## ADR-040 — The supply air temperature is solved, not imposed
+
+*2026-09-19*
+
+A fan wall does not decide what air it delivers. Its coil does, from the air
+the room gives it. Imposing a supply temperature and solving once answers a
+question about a machine whose delivered temperature is independent of the
+room feeding it — which is no machine. The room and the machine are solved
+together now.
+
+**How.** The room is solved in segments. After each, every unit's own return
+temperature is read off the solved field, put through that unit's coil, and
+written back as that unit's supply temperature; the next segment continues
+from the field already there. It stops when no unit's supply moves more than
+0,02 K. Coupling is an *addition* to the run, never a reduction: the first
+segment is the iteration cap the spec asks for, unchanged, and the passes are
+what it costs to make the supply a result.
+
+**Why it converges in two or three passes.** The room fixes the temperature
+rise across itself — load over mass flow — so a change in supply moves the
+return one for one, and the coil passes back only (1 − ε) of it. With ε near
+0,8 the loop gain is about 0,2 and each pass cuts the error five-fold. The
+loop does not rely on that: it measures what actually moved and stops on it.
+Measured on the worked hall: two passes, 308 s, converged to 0,000 K.
+
+**Why segments and not a self-computing boundary condition.** OpenFOAM's
+`codedFixedValue` would do this inside the solve, and that is how it is
+usually written up. It compiles C++ at run time, which needs a toolchain the
+*packaged* OpenFOAM installs do not ship — this container has `g++` but no
+`wmake`. A clone that runs everywhere cannot depend on it. Segments need
+nothing but the solver and reach the same fixed point from outside.
+
+**Each unit gets its own temperature.** Not the plant's average. A unit at the
+end of a row returning warmer air delivers warmer air, and giving every unit
+the mean would smear away exactly the imbalance a hall is simulated to find.
+
+**What it found on the worked hall: nothing, and that is the result.** All
+fourteen valves have authority, so the coil delivers the 21,9 °C the run
+imposed and the coupled answer equals the uncoupled one. The difference is
+that this is now *shown* rather than assumed. Change the chilled water to
+20 °C and the valves run out: the supply floats to 22,8 °C and every
+temperature in the hall goes with it.
+
+**One selection describes the unit; the manufacturer's others are reference.**
+A unit now carries a `design` block — the duty the plant was bought on — and
+every default and the coil's water limit come from it. The other rows stay as
+reference and as the data the fit is made from, never as an operating curve:
+the selection program was free to ask for more water at each of them.
+
+**That split buys a standing test.** The design selection is deliberately kept
+*out* of the fit, so every unit carries a live blind check of its own coil
+model. For the CA80NPVG6 it is 0,014 K. A number that drifts says the
+selections have stopped describing one machine.
+
+**Chilled water temperature is an input.** `fanwall.entering_water_c`. It is
+the one condition a plant changes without changing the machine, and the one
+the supply follows at about 0,8 K per K once the valve is open — by far the
+dominant sensitivity. It moves only the water the plant circulates: the fit
+stays anchored to the selections as issued, because re-reading them at
+another water temperature would change the flow inferred behind every row and
+quietly turn the machine into a different machine.
