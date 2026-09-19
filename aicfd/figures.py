@@ -29,6 +29,7 @@ MUTED = "#898781"
 GRID = "#e1e0d9"
 RACK_EDGE = "#6f6e6a"
 FAN = "#2a78d6"
+CONTAINMENT = "#1baf7a"
 GOOD = "#0ca30c"
 WARN = "#fab219"
 BAD = "#d03b3b"
@@ -243,6 +244,16 @@ def _outline(ax, lo, hi, h, v, **kwargs):
     )
 
 
+def _containment(ax, x0, y0, dx, dy):
+    """The contained volume, outlined. Dashed because the walls that bound it
+    lie off the section plane; outlined because a wash over a temperature
+    field would tint the temperatures."""
+    from matplotlib.patches import Rectangle
+
+    ax.add_patch(Rectangle((x0, y0), dx, dy, fill=False, edgecolor=CONTAINMENT,
+                           linewidth=1.4, linestyle=(0, (4, 2))))
+
+
 def _fan_body(ax, x0, y0, dx, dy):
     """The unit's envelope, set back into the gallery behind its face.
 
@@ -346,6 +357,28 @@ def section(export: Export, out: Path, normal: int, at: float, title: str,
         for x in export.model.get("dividers", []):
             if abs(x - at) < 1e-6:
                 pass
+    # The containment, the way the page draws it (ADR-047). Looking along the
+    # hall the plane passes BETWEEN the two walls of an aisle, so neither is
+    # cut and both project onto one rectangle -- rack top to ceiling over the
+    # block -- which is the contained volume itself. Looking across the hall
+    # they are edge-on and each is the chimney wall beside a rack row. Dashed,
+    # because in both views the surface lies off the plane; outlined, because
+    # a wash would tint the temperatures underneath.
+    drawn = set()
+    for panel in export.panels("containment_wall", "containment_roofwall"):
+        lo, hi = panel["lo"], panel["hi"]
+        if normal == 1:
+            key = (lo[0], hi[0], lo[2], hi[2])
+            if key in drawn:
+                continue
+            drawn.add(key)
+            _containment(ax, lo[0], lo[2], hi[0] - lo[0], hi[2] - lo[2])
+        elif lo[0] - 1e-6 <= at <= hi[0] + 1e-6:
+            # Looking across the hall the plane cuts the wall along its length,
+            # so this one is solid: the chimney beside a rack row, seen edge-on.
+            ax.plot([panel["position"]] * 2, [lo[2], hi[2]],
+                    color=CONTAINMENT, linewidth=1.8, solid_capstyle="butt")
+
     depth = export.fan_depth
     for panel in export.panels("fan"):
         if normal == 0 and abs(panel["position"] - at) > 1e-6:

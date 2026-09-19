@@ -23,6 +23,14 @@
 .dw-fanbody{fill:var(--cold);opacity:.16;stroke:var(--cold);stroke-width:1}
 /* outline only, and quieter, where it lies off the section plane */
 .dw-beyond{fill:none;stroke-width:1.2;stroke-dasharray:5 3;opacity:.5}
+/* The contained volume, where the section plane passes between the two walls
+   that enclose it. It is what a section of a contained hall is read for, and
+   every edge of it lands on something already drawn -- the ceiling above, the
+   end doors either side, the rack tops below -- so an outline alone showed
+   nothing. A wash says volume, the way the aisle tints do; dashed, because
+   the walls themselves lie off the plane. */
+.dw-contained{fill:var(--hot);fill-opacity:.09;stroke:var(--containment);
+  stroke-width:2.2;stroke-dasharray:5 3;stroke-opacity:.9}
 /* a panel seen edge-on projects to a line: draw it as one, heavily, so an
    opening reads as a gap punched through the wall underneath it */
 .dw-edge{stroke-width:4.5;stroke-linecap:butt}
@@ -54,6 +62,7 @@ svg.dw-over-map .dw-cold,svg.dw-over-map .dw-hot{fill:none;stroke:var(--text-pri
 /* The fan wall's envelope outlines over a field map like every other volume:
    a translucent fill would tint the temperatures underneath it. */
 svg.dw-over-map .dw-fanbody{fill:none;stroke:var(--cold);stroke-width:1.2;opacity:.9}
+svg.dw-over-map .dw-contained{fill:none;stroke-opacity:.95}
 svg.dw-over-map .dw-rack{fill:none;stroke-width:1.6}
 svg.dw-over-map .dw-label{paint-order:stroke;stroke:var(--surface);stroke-width:3px}
 svg.dw-over-map .dw-note,svg.dw-over-map .dw-edge-label{paint-order:stroke;

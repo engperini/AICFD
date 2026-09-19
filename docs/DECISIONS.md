@@ -1844,3 +1844,25 @@ show where the containment is.
 rows and ends with them. A cold aisle is fed by the fan wall and opens onto
 the room; its air is the room's air, and the tint says which volume is which
 rather than where a wall stands.
+
+**A section along a hot aisle shows the containment it is inside.** The plane
+passes BETWEEN the two walls that contain the aisle, so neither is cut and
+both project onto one rectangle — rack top to ceiling, over the length of the
+block. That rectangle is the contained volume, and it was drawn at the weight
+everything off the plane shares: a thin dash whose every edge landed on
+something already on the page, the ceiling line along its top, the end doors
+down its sides, the rack tops along its bottom. It showed nothing. The one
+view that has no aisle tints — the only one where y is off screen — was also
+the one view with no sign of the containment in it.
+
+It now carries the hot aisle's own tint inside the containment's green, which
+is what the plan shows in the same place, drawn after the room's own lines so
+it is not buried under them. Only in that view: where the aisle bands of the
+step above are on screen they already say which volume is which, and a second
+wash over them says it twice. Over a field map the wash goes and the outline
+stays, because a wash would tint the temperatures underneath.
+
+The report's figures are matplotlib and had no containment in a section at
+all. They now draw the same two things: the contained rectangle looking along
+the hall, dashed; and looking across it, the chimney beside each rack row,
+solid, because there the plane cuts the wall along its length.

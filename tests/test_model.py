@@ -408,3 +408,36 @@ class HotAisleExtentTest(unittest.TestCase):
         self.assertIn("rackBlocks(model)", js)
         self.assertNotIn("...hotAisles(model).map((band) => [band, 'dw-hot'])", js,
                          "the hot tint must not run the hall's length again")
+
+
+class ContainmentInSectionTest(unittest.TestCase):
+    """A section along a hot aisle passes between the walls that contain it.
+
+    Neither is cut, so both were drawn at the weight everything off the plane
+    shares -- a thin dash whose every edge landed on something already on the
+    page. The one view with no aisle tints was also the one with no sign of
+    the containment in it (ADR-047).
+    """
+
+    WEB = Path(__file__).resolve().parent.parent / "web"
+
+    def test_the_page_draws_the_contained_volume(self):
+        js = (self.WEB / "drawing.js").read_text()
+        css = (self.WEB / "drawing.css").read_text()
+        self.assertIn("dw-contained", js)
+        self.assertIn(".dw-contained", css)
+        self.assertIn("svg.dw-over-map .dw-contained{fill:none", css,
+                      "a wash over a field map would tint the temperatures")
+
+    def test_it_is_drawn_only_where_the_aisle_tints_are_not(self):
+        js = (self.WEB / "drawing.js").read_text()
+        self.assertIn("!(view.h === 1 || view.v === 1)", js,
+                      "where the aisle bands are on screen they already say it")
+
+    def test_the_report_sections_draw_it_too(self):
+        """The report's figures are matplotlib, so the containment had to be
+        written twice; leaving one out is how the two drift."""
+        py = (Path(__file__).resolve().parent.parent / "aicfd" / "figures.py").read_text()
+        body = py[py.index("def section("):py.index("def rack_map(")]
+        self.assertIn("containment_wall", body)
+        self.assertIn("CONTAINMENT", body)

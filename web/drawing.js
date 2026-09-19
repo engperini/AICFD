@@ -359,12 +359,21 @@ export function drawView(model, view, scale, options = {}) {
   // section went through it, which is the one thing these drawings exist to
   // make unambiguous.
   const seen = {};
+  const enclosing = new Map();
   for (const panel of model.panels) {
     if (panel.name === 'ceiling') continue; // drawn as the heavy line below
     if (ofRack(panel)) continue; // it IS the rack; see below
     if (panel.axis !== view.normal) continue;
     const { lo, hi } = panelBounds(panel);
     const cut = Math.abs(panel.position - at) < 1e-6;
+    if (!cut && panel.kind === 'wall' && !(view.h === 1 || view.v === 1)) {
+      // The containment, held back to step 6.6 -- see there. Both walls of an
+      // aisle project onto the same rectangle, and ten of them stacked would
+      // turn a 10% wash into an opaque one, so each is kept once.
+      const id = [lo[view.h], hi[view.h], lo[view.v], hi[view.v]].join();
+      if (!enclosing.has(id)) enclosing.set(id, [lo, hi]);
+      continue;
+    }
     paint(lo, hi, cut ? klass(panel) : `${klass(panel)} dw-beyond`,
       cut ? null : PANEL_LABEL[panel.name] ?? fanLabel(panel, seen));
   }
@@ -419,6 +428,26 @@ export function drawView(model, view, scale, options = {}) {
       paint(a, b, cut ? 'dw-fanbody' : 'dw-fanbody dw-beyond');
     }
   }
+
+  // 6.6 — the containment the section plane sits inside.
+  //
+  // A section along a hot aisle passes BETWEEN the two walls that contain it,
+  // so neither is cut and both project onto the same rectangle: rack top to
+  // ceiling, over the length of the block. That rectangle is the contained
+  // volume, and it is what a section of a contained hall is read for.
+  //
+  // Drawn here rather than with the other panels because every edge of it
+  // lands on something already on the page -- the ceiling line along its top,
+  // the end doors down its sides, the rack tops along its bottom -- so as an
+  // outline alone it was invisible. Painted the way the plan paints the same
+  // thing: the hot aisle's own tint inside the containment's green. Over a
+  // field map it goes back to an outline, where a wash would tint the
+  // temperatures underneath it.
+  //
+  // Only in the view that carries no aisle tints. Where y is on screen the
+  // bands in step 2 already say which volume is which, and a second wash over
+  // them says it twice.
+  for (const [lo, hi] of enclosing.values()) paint(lo, hi, 'dw-contained');
 
   // 7 — panels the section sees edge-on. These project to a line, so a
   // rectangle would collapse to a hairline and disappear under the wall it
