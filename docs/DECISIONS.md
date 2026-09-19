@@ -1607,3 +1607,39 @@ close when nothing moves — so the loop is followable without the source.
 Conclusions 5, Limitations 6. A test now asserts that every `section N` the
 document cites is a section the document has, because renumbering a template
 is exactly where stale cross-references breed.
+
+## ADR-042 — One selection describes a unit
+
+*2026-09-19*
+
+The coil is recovered from the unit's **design selection**: return and supply
+air, airflow, net sensible capacity, and the water it was selected at. Those
+fix the effectiveness at that point, the effectiveness fixes the conductance,
+and the unit then answers at any condition a room presents. That is the whole
+input an engineer provides, and it is what a manufacturer sends.
+
+A unit may also carry further manufacturer selections. They set how the
+resistance divides between air and water, and the model then reproduces them
+to a stated error — 0,026 K on the worked CA80NPVG6. A unit carrying its
+design selection alone uses `DEFAULT_AIR_SPLIT`, 0,78, which is the value a
+full set recovers for a finned chilled-water coil, and which a manufacturer's
+own figure overrides through `coil.air_split`. The two paths agree to 0,01 %
+across the range: the extra selections refine a second-order term.
+
+**The report stops counting selections.** It gives the design selection, the
+coil recovered from it, and — where the unit carries them — the further
+selections and the error against them. Every sentence that reported how many
+selections were used, that a return fell outside them, or that a point was
+missing from a curve has gone: those belong to the work that produced the
+method, and this record is where that lives.
+
+**The capacity figure shows two curves and no table.** The coil at the air
+flow it was selected for, with the design selection sitting on it, and the
+same coil at the air flow this hall gives it, with every unit marked where it
+ran. A coil's capacity depends on the air flow through it as much as on the
+air's temperature, and drawing selections taken at a third air flow on either
+line would mislead.
+
+**The user judges the curve.** The design selection is an input; the curve
+that follows is the machine. Where a manufacturer issues the unit's own
+capacity curve, it replaces the recovered one.

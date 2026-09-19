@@ -60,6 +60,9 @@ class Equipment:
     """Rows sorted by ``return_c``, each carrying every key of QUANTITIES."""
     fans: dict
     curve: dict
+    coil_split: float | None = None
+    """How the coil's resistance divides at the design point, where the
+    manufacturer states it. Otherwise `aicfd.coil.DEFAULT_AIR_SPLIT`."""
     design: dict = None
     """THE selection this unit is described by, or {} for a unit that names
     none. `capacity` is reference: see aicfd.coil."""
@@ -72,8 +75,11 @@ class Equipment:
 
     @property
     def span(self) -> tuple[float, float]:
-        """The return temperatures the selections cover."""
-        return (self.capacity[0]["return_c"], self.capacity[-1]["return_c"])
+        """The return temperatures the unit's selections cover."""
+        if self.capacity:
+            return (self.capacity[0]["return_c"], self.capacity[-1]["return_c"])
+        point = float(self.design["return_c"])
+        return (point, point)
 
     def at(self, return_c: float, quantity: str) -> float:
         """One quantity at a return air temperature, interpolated.
@@ -202,10 +208,17 @@ def parse(raw: dict, source: Path | None = None) -> Equipment:
     through post-processing a run that took eleven minutes.
     """
     rows = raw.get("capacity") or []
-    if len(rows) < 2:
+    design = raw.get("design") or {}
+    needed = [k for k in ("return_c", "supply_c", "airflow_m3h", "nscc_kw")
+              if design.get(k) is None]
+    if needed and len(rows) < 2:
+        # One design selection describes a unit. A unit given a capacity table
+        # and no design selection is the older shape and still reads, as long
+        # as the table has two rows to interpolate between.
         raise ValueError(
-            f"{raw.get('model', '?')} needs at least two selections to "
-            f"interpolate between; got {len(rows)}"
+            f"{raw.get('model', '?')} needs a design selection "
+            f"(design.{', design.'.join(needed)} missing) or at least two "
+            f"capacity rows; it has {len(rows)}"
         )
     table = []
     for i, row in enumerate(rows):
@@ -229,6 +242,7 @@ def parse(raw: dict, source: Path | None = None) -> Equipment:
         fans=dict(raw.get("fans") or {}),
         curve=dict(raw.get("curve") or {}),
         design=dict(raw.get("design") or {}),
+        coil_split=(raw.get("coil") or {}).get("air_split"),
         weight_kg=raw.get("weight_kg"),
         source=source,
         _coil=_UNFITTED,

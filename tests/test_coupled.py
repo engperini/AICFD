@@ -346,7 +346,7 @@ class WaterTemperatureTest(unittest.TestCase):
         self.assertAlmostEqual(moved.k_air, base.k_air)
         self.assertAlmostEqual(moved.k_water, base.k_water)
         self.assertAlmostEqual(moved.water_max, base.water_max)
-        self.assertAlmostEqual(moved.residual_k, base.residual_k)
+        self.assertEqual(moved.reference_returns, base.reference_returns)
 
     def test_warm_water_is_what_takes_the_supply_out_of_control(self):
         """The finding the whole coupling exists to be able to produce."""

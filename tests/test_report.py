@@ -330,7 +330,7 @@ class UnitReportTest(_UnitReport):
         model's own: what it was fitted to, and what the valve can draw."""
         self.assertNotIn("catalogue capacity, not the capacity it actually has",
                          self.text)
-        self.assertIn("fitted to the manufacturer's selections", self.text)
+        self.assertIn("recovered from the unit's design selection", self.text)
         self.assertIn("water valve wide open", self.text)
         self.assertIn("is a different machine", self.text)
 
@@ -338,10 +338,10 @@ class UnitReportTest(_UnitReport):
         """The method belongs in the document. Every margin in section 4 rests
         on it, and a reader who disagrees has to be able to see what was
         assumed rather than take it on trust."""
-        self.assertIn("counterflow coil they describe", self.text)
+        self.assertIn("characterises the counterflow coil", self.text)
         self.assertIn("Resistance on the air side", self.cells)
-        self.assertIn("Error against those selections", self.cells)
-        self.assertIn("recovered from the stated entering and leaving water",
+        self.assertIn("Design return air", self.cells)
+        self.assertIn("recovered from its stated entering and leaving water",
                       self.text)
         # and the physics itself is stated once, in the introduction
         self.assertIn("counterflow heat exchanger", self.text)
@@ -370,11 +370,11 @@ class OutsideTheTableReportTest(_UnitReport):
     ROWS_BELOW = False
     WATER = False
 
-    def test_it_says_what_it_could_not_read_and_why(self):
-        self.assertIn("outside the selections this machine was characterised at",
+    def test_it_says_what_it_left_out_and_what_would_answer(self):
+        self.assertIn("capacity table covers", self.text)
+        self.assertIn("left out of the figures above", self.text)
+        self.assertIn("A design selection for this unit gives its coil",
                       self.text)
-        self.assertIn("cannot state the plant's true margin", self.text)
-        self.assertIn("refuses to extrapolate", self.text)
 
     def test_it_still_names_the_unit(self):
         self.assertIn("CA80NPVG6", self.text)

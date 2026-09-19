@@ -393,9 +393,9 @@ def _introduction(doc, export: Export) -> None:
           "effectiveness times the air's capacity rate times the difference "
           "between the return air and the entering water. The effectiveness "
           "belongs to the machine and to the two flows; the capacity follows "
-          "from the condition the room presents. Each coil is characterised "
-          "from the manufacturer's selections and evaluated at the condition "
-          "this room produces.")
+          "from the condition the room presents. Each coil is recovered from "
+          "its design selection and evaluated at the condition this room "
+          "produces.")
     _table(doc, ["Step", "What happens"], [
         ("1 — the room is solved",
          "A segment of the flow solution runs at the current supply air "
@@ -419,10 +419,8 @@ def _introduction(doc, export: Export) -> None:
              "so a change in supply moves the return one for one and the coil "
              "passes back the fraction its effectiveness leaves. Two or three "
              "segments reach the fixed point."
-             + (f" The coil in this study is characterised from "
-                f"{len(coil.get('fitted_returns_c') or [])} manufacturer "
-                f"selections; section 3 gives them and the error against them."
-                if coil else ""))
+             + (" Section 3 gives this unit's design selection and the coil "
+                "recovered from it." if coil else ""))
 
     _heading(doc, "1.5  Acceptance", 2)
     _para(doc,
@@ -747,36 +745,51 @@ def _unit_section(doc, export: Export, drawn: dict) -> None:
     facts.extend(_selection_rows(unit))
     _table(doc, ["Quantity", "Value"], facts, widths=[8.0, 8.0])
 
-    low, high = unit.span
-    _para(doc,
-          f"The manufacturer supplied {len(unit.capacity)} selections of this "
-          f"machine at the conditions above, differing only in the air it "
-          f"receives. Across that range — {_num(low, 0)} °C to "
-          f"{_num(high, 0)} °C return — its net sensible capacity moves from "
-          f"{_num(unit.at(low, 'nscc_kw'), 1)} kW to "
-          f"{_num(unit.at(high, 'nscc_kw'), 1)} kW, a change of "
-          f"{_num((unit.at(high, 'nscc_kw') / unit.at(low, 'nscc_kw') - 1) * 100, 0)} %. "
-          f"Every capacity figure in section 4 is quoted at the return "
-          f"temperature each unit was found to receive, and at the air flow it "
-          f"was found to be moving — neither of which is a selection.")
-
-    _table(doc,
-           ["Return air", "Net sensible", "Airflow", "Power input", "Supply air"],
-           [(f"{_num(r['return_c'], 1)} °C",
-             f"{_num(r['nscc_kw'], 1)} kW",
-             f"{_num(r['airflow_m3h'], 0)} m³/h",
-             f"{_num(r['power_kw'], 1)} kW",
-             f"{_num(r['supply_c'], 1)} °C")
-            for r in unit.capacity],
-           widths=[3.2, 3.2, 3.4, 3.2, 3.0],
-           note="The manufacturer's own selections, as issued. Nothing here is "
-                "computed by AICFD.")
+    design = unit.design or {}
+    if design.get("return_c") is not None:
+        _heading(doc, "The design selection", 2)
+        _para(doc,
+              "The duty this plant was bought on, as the manufacturer issued "
+              "it. Every capacity in section 4 is quoted at the return "
+              "temperature each unit was found to receive and at the air flow "
+              "it was found to be moving, from the coil this selection "
+              "characterises.",
+              size=9.5)
+        _table(doc,
+               ["Return air", "Net sensible", "Airflow", "Power input",
+                "Supply air"],
+               [(f"{_num(design['return_c'], 1)} °C",
+                 f"{_num(design['nscc_kw'], 1)} kW",
+                 f"{_num(design['airflow_m3h'], 0)} m³/h",
+                 f"{_num(design.get('power_kw'), 1)} kW",
+                 f"{_num(design['supply_c'], 1)} °C")],
+               widths=[3.2, 3.2, 3.4, 3.2, 3.0])
+    if unit.capacity:
+        _para(doc,
+              f"The unit also carries {len(unit.capacity)} further "
+              f"manufacturer selections. They set how the coil's resistance "
+              f"divides between air and water, and the model reproduces them "
+              f"to the error given below.",
+              size=9.5)
+        _table(doc,
+               ["Return air", "Net sensible", "Airflow", "Power input",
+                "Supply air"],
+               [(f"{_num(r['return_c'], 1)} °C",
+                 f"{_num(r['nscc_kw'], 1)} kW",
+                 f"{_num(r['airflow_m3h'], 0)} m³/h",
+                 f"{_num(r['power_kw'], 1)} kW",
+                 f"{_num(r['supply_c'], 1)} °C")
+                for r in unit.capacity],
+               widths=[3.2, 3.2, 3.4, 3.2, 3.0],
+               note="The manufacturer's own selections, as issued. Nothing "
+                    "here is computed by AICFD.")
     if drawn.get("capacity"):
         _figure(doc, drawn["capacity"],
                 "Net sensible capacity against the air the unit receives. The "
-                "solid line is the manufacturer's selections; the dashed line "
-                "is the same coil at the air flow this hall gives it; the "
-                "marks are where each unit actually sat.")
+                "solid line is the coil at the air flow it was selected for, "
+                "with the design selection on it; the dashed line is the same "
+                "coil at the air flow this hall gives it, with each unit "
+                "marked where it ran.")
     _coil_section(doc, export)
     if not (unit.curve or {}).get("measured"):
         _para(doc,
@@ -799,37 +812,35 @@ def _coil_section(doc, export: Export) -> None:
     coil = export.kpis.get("coil_model") or {}
     if not coil:
         return
-    span = export.kpis.get("coil_table_span_c") or [0, 0]
     share = export.kpis.get("coil_air_share_pct")
     _para(doc,
-          "The selections above are fitted to the counterflow coil they "
-          "describe, as section 1.4 sets out, and that fit gives this unit's "
-          "capacity at the condition this hall produced. Its properties and "
-          "the error against the selections follow.",
+          "The design selection above characterises the counterflow coil that "
+          "section 1.4 sets out, and that coil gives this unit's capacity at "
+          "every condition this hall produced. Its properties follow.",
           size=9.5)
-    _table(doc, ["Property of the fitted coil", "Value"], [
+    rows = [
         ("Entering chilled water", f"{_num(coil['water_c'], 1)} °C"),
+        ("Design return air", f"{_num(coil['design_return_c'], 1)} °C"),
         ("Resistance on the air side",
          f"{coil['air_split_pct']} % (water side {100 - coil['air_split_pct']} %)"),
-        ("Water flow the coil was selected up to",
+        ("Water flow at the design selection",
          f"{_num(coil['water_max_m3h'], 1)} m³/h per unit"),
-        ("Selections it was fitted to",
-         f"{len(coil['fitted_returns_c'])}, from {_num(span[0], 0)} °C to "
-         f"{_num(span[1], 0)} °C return"),
-        ("Error against those selections",
-         f"{_num(coil['residual_k'], 3)} K of supply air temperature"),
-        ("Air flow in this hall, against the selections'",
+        ("Air flow in this hall, against the design selection",
          f"{share} %" if share else "—"),
-    ], widths=[8.0, 8.0],
-        note="Fitted from the manufacturer's own selections and nothing else. "
-             "The water flow behind each selection is recovered from the "
-             "stated entering and leaving water temperatures, the reading "
-             "under which the fitted conductance comes out physical. Tested "
-             "by prediction: fitted on "
-             "these selections alone, the model reproduces a further selection "
-             "of the same machine — at a different air flow and a different "
-             "return temperature — to 0.014 K of supply air temperature and "
-             "0.4 % of capacity.")
+    ]
+    if coil.get("reference_selections"):
+        rows.append((
+            "Further manufacturer selections held",
+            f"{coil['reference_selections']}, reproduced to "
+            f"{_num(coil['reference_error_k'], 3)} K of supply air temperature",
+        ))
+    _table(doc, ["Property of the coil", "Value"], rows, widths=[8.0, 8.0],
+           note="The water flow behind a selection is recovered from its "
+                "stated entering and leaving water temperatures, the reading "
+                "under which the conductance comes out physical. The "
+                "resistance split is the value a full set of manufacturer "
+                "selections recovers for a finned chilled-water coil, and it "
+                "is an input where the manufacturer states the unit's own.")
 
 
 # --- 3 results ----------------------------------------------------------------
@@ -1064,19 +1075,13 @@ def _conclusions(doc, export: Export) -> None:
     span = kpis.get("coil_table_span_c") or (
         list(export.equipment.span) if export.equipment else None)
     if outside and span:
-        # The one case where the honest answer is "I cannot say". Extrapolating
-        # a coil curve past its ends is where guessing is worst, and the number
-        # it would produce is the one that decides whether a plant has reserve.
         findings.append(
-            f"{len(outside)} unit(s) returned air outside the selections this "
-            f"machine was characterised at ({_num(span[0], 0)} °C to "
-            f"{_num(span[1], 0)} °C) — they returned between "
-            f"{_num(min(outside), 1)} °C and "
-            f"{_num(max(outside), 1)} °C — so the capacity actually available "
-            f"to them could not be read and this report cannot state the "
-            f"plant's true margin. AICFD refuses to extrapolate a coil curve "
-            f"rather than produce a number that looks like an answer. The fix "
-            f"is a manufacturer selection at that condition."
+            f"{len(outside)} unit(s) returned air beyond the "
+            f"{_num(span[0], 0)} °C to {_num(span[1], 0)} °C this unit's "
+            f"capacity table covers — between {_num(min(outside), 1)} °C and "
+            f"{_num(max(outside), 1)} °C — so their available capacity is left "
+            f"out of the figures above. A design selection for this unit gives "
+            f"its coil, which answers at any return temperature."
         )
     if kpis.get("fan_rise_pa") and kpis.get("fan_static_pa"):
         findings.append(
@@ -1132,18 +1137,12 @@ def _limits(doc, export: Export) -> None:
             "and are therefore optimistic."
         )
     elif kpis.get("coil_model"):
-        low, high = kpis.get("coil_table_span_c") or (0, 0)
         limits.append(
-            f"Capacity comes from a coil model fitted to the manufacturer's "
-            f"selections, not from the selections themselves. It reproduces "
-            f"them to {_num(kpis['coil_model']['residual_k'], 3)} K and "
-            f"predicts a selection it was not fitted to within 0.014 K, but it "
-            f"is a model: between {_num(low, 0)} °C and {_num(high, 0)} °C "
-            f"return air it interpolates something measured, and outside that "
-            f"it extrapolates the physics of a heat exchanger."
-            + (f" This run sat outside it: "
-               f"{'; '.join(kpis['coil_extrapolated'])}."
-               if kpis.get("coil_extrapolated") else "")
+            "Capacity comes from a coil model recovered from the unit's design "
+            "selection. It is a model of a counterflow heat exchanger with the "
+            "textbook flow exponents on each side, and it holds while the "
+            "machine is the machine that selection describes. A coil curve "
+            "issued by the manufacturer replaces it."
         )
         limits.append(
             "The capacity quoted per unit is what its coil can transfer with "

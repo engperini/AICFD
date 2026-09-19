@@ -535,111 +535,62 @@ def convergence(export: Export, out: Path) -> Path:
 
 
 def capacity(export: Export, out: Path) -> Path | None:
-    """The unit's capacity against the air it receives, with this hall on it.
+    """The unit's capacity curve, and where this hall sat on it.
 
-    The point of the figure is the slope. A reader who has only seen the
-    datasheet believes the machine has one capacity; the curve shows it moving
-    by tens of per cent across a few kelvin, and the marker shows which part
-    of it this hall actually asked for. Everything the report says about
-    margin is read off this line (ADR-036).
+    Two lines, because a coil's capacity depends on the air flow through it as
+    well as on the air's temperature: the machine at the air flow it was
+    selected for, and the same machine at the air flow this hall gives it. The
+    design selection sits on the first; every unit in the hall sits on the
+    second (ADR-039, ADR-040).
     """
     unit = export.equipment
-    if unit is None:
+    coil = getattr(unit, "coil", None) if unit is not None else None
+    if coil is None:
         return None
     plt = _pyplot()
-    rows = list(unit.capacity)
-    temps = [r["return_c"] for r in rows]
-    kw = [r["nscc_kw"] for r in rows]
+    fans = export.kpis.get("fans") or []
+    design = unit.design or {}
+
+    here = [(f["return_temp_c"], f["available_kw"]) for f in fans
+            if f.get("return_temp_c") is not None and f.get("available_kw")]
+    marks = [coil.design_return_c, *(t for t, _ in here)]
+    low, high = min(marks) - 2.0, max(marks) + 6.0
+    xs = [low + (high - low) * i / 80 for i in range(81)]
 
     fig, ax = plt.subplots(figsize=(7.2, 3.0))
-    # The manufacturer's rows are REFERENCE, drawn small and muted: they are a
-    # sizing exercise -- the water flow was re-sized at every one of them -- and
-    # reading them as an operating curve is the mistake this figure exists to
-    # prevent. The line that carries the report's numbers is the modelled one
-    # below (ADR-039, ADR-040).
-    ax.plot(temps, kw, color=MUTED, linewidth=0.9, marker="o", markersize=3.0,
-            markerfacecolor="white", markeredgecolor=MUTED, markeredgewidth=0.9,
-            label="manufacturer's sizing selections (reference)", zorder=3)
-    # Zero-based, because this is a magnitude: a truncated axis would make a
-    # 45 % rise look like a tenfold one.
-    ax.set_ylim(0, max(kw) * 1.18)
-    fans = export.kpis.get("fans") or []
+    selected = [coil.operate(x, coil.air_fitted).ceiling_kw for x in xs]
+    ax.plot(xs, selected, color=FAN, linewidth=2.0, zorder=3,
+            label=f"the unit's coil, at its selected air flow "
+                  f"({design.get('airflow_m3h', 0):,.0f} m³/h)")
 
-    # The line the report's numbers are actually read off: the same coil at
-    # the air flow THIS hall gives it, which is never the air flow the
-    # selections were taken at. The gap between the two lines is the reason a
-    # capacity cannot be looked up (ADR-039).
-    modelled = _modelled_curve(export, unit, fans, temps)
-    if modelled:
-        xs, ys, note = modelled
-        ax.plot(xs, ys, color=FAN, linewidth=2.0, label=note, zorder=2)
-    # Returns the table does not cover still belong on the axis. A figure that
-    # silently cropped them would hide the one thing the reader has to know:
-    # this hall ran off the end of the machine's characterisation (ADR-036).
-    off = [t for t in (export.kpis.get("coil_outside_table_c") or [])]
-    # Every unit's own return belongs on the axis whether or not the
-    # selections reach it. A figure cropped to the table would hide the one
-    # thing the reader has to see: where this hall actually sat (ADR-039).
-    here = [f["return_temp_c"] for f in fans if f.get("return_temp_c") is not None]
-    left = min([*temps, *off, *here]) - 0.4
-    right = max([*temps, *off, *here]) + 0.4
-    ax.set_xlim(left, right)
+    flows = [f["intake_kg_s"] for f in fans if f.get("intake_kg_s")]
+    if flows:
+        air = sum(flows) / len(flows) * 1.005
+        ax.plot(xs, [coil.operate(x, air).ceiling_kw for x in xs],
+                color=GOOD, linewidth=1.8, linestyle=(0, (5, 2)), zorder=2,
+                label=f"the same coil, at the air flow this hall gives it "
+                      f"({air / coil.air_fitted:.0%})")
 
-    rating = (export.model.get("operating") or {}).get("unit_capacity_kw")
-    if rating:
-        ax.axhline(rating, color=MUTED, linewidth=1.0, linestyle=(0, (4, 3)),
-                   zorder=1)
-        # Labelled at the right-hand end, where the curve has climbed well
-        # clear of the line and the text has room.
-        ax.annotate(f"catalogue figure quoted in the spec, {rating:,.0f} kW",
-                    xy=(right, rating), xytext=(-2, 5), ha="right",
-                    textcoords="offset points", fontsize=6.5, color=SECOND)
-
-    if off:
-        # Shade whichever side of the table the hall actually fell off. Both
-        # are possible -- a hall can return air colder than the coldest
-        # selection or hotter than the warmest -- and saying the wrong one
-        # would be worse than saying nothing.
-        below = [v for v in off if v < min(temps)]
-        above = [v for v in off if v > max(temps)]
-        if below:
-            ax.axvspan(left, min(temps), color="#f4ecec", zorder=0)
-            ax.axvline(min(temps), color=BAD, linewidth=1.0,
-                       linestyle=(0, (3, 2)), zorder=2)
-        if above:
-            ax.axvspan(max(temps), right, color="#f4ecec", zorder=0)
-            ax.axvline(max(temps), color=BAD, linewidth=1.0,
-                       linestyle=(0, (3, 2)), zorder=2)
-        for temperature in off:
-            ax.axvline(temperature, color=BAD, linewidth=0.6, alpha=0.5,
-                       zorder=2)
-        side = ("below" if below and not above
-                else "above" if above and not below
-                else "outside")
-        ax.annotate(
-            f"this hall returned {min(off):.1f}–{max(off):.1f} °C, {side} the "
-            f"selections — capacity not read",
-            xy=(min(temps) if below else left, max(kw) * 1.06),
-            xytext=(5, 0), ha="left",
-            textcoords="offset points", fontsize=6.5, color=BAD)
-
-    operating = [(f.get("return_temp_c"), f.get("available_kw"))
-                 for f in fans
-                 if f.get("return_temp_c") is not None and f.get("available_kw")]
-    if operating:
-        ax.scatter([t for t, _ in operating], [c for _, c in operating],
-                   s=26, color=BAD, edgecolor="white", linewidth=0.8, zorder=4,
+    if design.get("return_c") is not None:
+        ax.scatter([design["return_c"]], [design["nscc_kw"]], s=46, marker="D",
+                   color=FAN, edgecolor="white", linewidth=1.0, zorder=5,
+                   label="design selection")
+    if here:
+        ax.scatter([t for t, _ in here], [c for _, c in here], s=26, color=BAD,
+                   edgecolor="white", linewidth=0.8, zorder=6,
                    label="this hall, unit by unit")
-        warmest = max(operating)
+        warmest = max(here)
         ax.annotate(f"{warmest[1]:,.0f} kW at {warmest[0]:.1f} °C",
-                    xy=warmest, xytext=(6, -12), textcoords="offset points",
+                    xy=warmest, xytext=(6, -14), textcoords="offset points",
                     fontsize=7, color=BAD)
 
+    ax.set_xlim(low, high)
+    ax.set_ylim(0, max(selected) * 1.15)
     ax.set_xlabel("Return air temperature at the unit (°C)")
     ax.set_ylabel("Net sensible capacity (kW)")
     ax.set_title(f"{unit.family} {unit.model} — capacity against return air",
                  loc="left")
-    ax.legend(frameon=False, fontsize=6.5, loc="lower right")
+    ax.legend(frameon=False, fontsize=6.5, loc="upper left")
     ax.grid(axis="y", color=GRID, linewidth=0.6)
     ax.set_axisbelow(True)
     for side in ("top", "right"):
@@ -648,28 +599,3 @@ def capacity(export: Export, out: Path) -> Path | None:
     fig.savefig(out, dpi=DPI, bbox_inches="tight")
     plt.close(fig)
     return out
-
-
-def _modelled_curve(export: Export, unit, fans: list, selection_temps: list):
-    """The coil's ceiling against return air, at this hall's own air flow.
-
-    Returns (temperatures, kW, legend) or None where no coil could be fitted.
-    Drawn across the whole range the figure shows -- including past the
-    selections -- because that is where the hall actually sits and the model
-    is the only thing that can say what happens there.
-    """
-    coil = getattr(unit, "coil", None)
-    if coil is None or not fans:
-        return None
-    flows = [f["intake_kg_s"] for f in fans if f.get("intake_kg_s")]
-    if not flows:
-        return None
-    air = sum(flows) / len(flows) * 1.005  # kW/K, the mass the solve moved
-    returns = [f["return_temp_c"] for f in fans if f.get("return_temp_c") is not None]
-    low = min([*selection_temps, *returns]) - 0.4
-    high = max([*selection_temps, *returns]) + 0.4
-    xs = [low + (high - low) * i / 60 for i in range(61)]
-    ys = [coil.operate(x, air).ceiling_kw for x in xs]
-    share = air / coil.air_fitted
-    return xs, ys, (f"this unit's coil, modelled, at the air flow this hall "
-                    f"gives it ({share:.0%})")

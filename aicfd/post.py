@@ -330,7 +330,7 @@ def coil_capacity(model: Model, fans: list[dict], kpis: dict) -> dict:
     per_unit = model.unit_airflow_m3h
     setpoint = model.supply_temp_c
     available = removed = 0.0
-    saturated, warmest_supply, notes, seen, air_seen = 0, setpoint, set(), [], 0.0
+    saturated, warmest_supply, seen, air_seen = 0, setpoint, [], 0.0
     for fan in fans:
         temperature = fan.get("return_temp_c")
         if temperature is None:
@@ -361,8 +361,6 @@ def coil_capacity(model: Model, fans: list[dict], kpis: dict) -> dict:
         if point.saturated:
             saturated += 1
             warmest_supply = max(warmest_supply, point.supply_c)
-        if point.extrapolated:
-            notes.add(point.extrapolated)
     if not available:
         return {}
     return {
@@ -377,13 +375,14 @@ def coil_capacity(model: Model, fans: list[dict], kpis: dict) -> dict:
         # point, and quoting one for the other is the mistake this exists to
         # stop.
         "catalogue_kw": round((model.unit_capacity_kw or 0) * len(fans), 1) or None,
-        "coil_table_span_c": [coil.returns_fitted[0], coil.returns_fitted[-1]],
         "coil_model": {
             "water_c": coil.water_c,
+            "design_return_c": coil.design_return_c,
             "air_split_pct": round(coil.air_split * 100),
-            "residual_k": round(coil.residual_k, 3),
             "water_max_m3h": round(coil.water_max / 4.18 * 3.6, 1),
-            "fitted_returns_c": list(coil.returns_fitted),
+            "reference_selections": len(coil.reference_returns),
+            "reference_error_k": (round(coil.reference_error_k, 3)
+                                  if coil.reference_error_k is not None else None),
         },
         # The whole point of modelling the machine: the supply temperature is
         # an output, and where the valve runs out it stops matching the one
@@ -392,7 +391,6 @@ def coil_capacity(model: Model, fans: list[dict], kpis: dict) -> dict:
         "coil_water_m3h": round(sum(f.get("coil_water_m3h") or 0 for f in fans), 1),
         "coil_supply_setpoint_c": round(setpoint, 2),
         "coil_supply_needed_c": round(warmest_supply, 2),
-        "coil_extrapolated": sorted(notes) or None,
         "coil_return_span_c": [round(min(seen), 2), round(max(seen), 2)] if seen else None,
         # On the mass the solve actually moved, the same basis every other
         # number here uses. Deriving it from the nominal volume flow instead
@@ -420,20 +418,6 @@ def _coil_alerts(kpis: dict) -> list[str]:
             f"{kpis['coil_supply_needed_c']:.1f} degC at the return they "
             f"receive. Every temperature in this result is that much "
             f"optimistic -- re-run at the higher supply temperature."
-        )
-    notes = kpis.get("coil_extrapolated") or []
-    if notes:
-        span = kpis.get("coil_return_span_c") or []
-        where = (f" The units returned {span[0]:.1f} to {span[1]:.1f} degC at "
-                 f"{kpis['coil_air_share_pct']:.0f}% of the selections' air flow."
-                 if span else "")
-        out.append(
-            f"The coil model was used beyond the manufacturer's selections: "
-            f"{'; '.join(notes)}.{where} There it extrapolates on the heat "
-            f"exchanger's physics; the measured range is "
-            f"{kpis['coil_table_span_c'][0]:.0f} to "
-            f"{kpis['coil_table_span_c'][1]:.0f} degC return, which the model "
-            f"reproduces to {kpis['coil_model']['residual_k']:.02f} K."
         )
     return out
 
@@ -1468,8 +1452,8 @@ def _coil_line(kpis: dict) -> str:
     if outside:
         low, high = kpis["coil_table_span_c"]
         line += (
-            f". {len(outside)} unit(s) return air outside the {low:g}-{high:g} degC "
-            f"the selections cover and are not counted"
+            f". {len(outside)} unit(s) return air beyond the {low:g}-{high:g} degC "
+            f"this unit's table covers and are left out"
         )
     return line + "."
 
@@ -1778,7 +1762,6 @@ def _viewer_kpis(model: Model, results: PodResults) -> dict:
         "coil_saturated_units": k.get("coil_saturated_units"),
         "coil_supply_setpoint_c": k.get("coil_supply_setpoint_c"),
         "coil_supply_needed_c": k.get("coil_supply_needed_c"),
-        "coil_extrapolated": k.get("coil_extrapolated"),
         "coil_return_span_c": k.get("coil_return_span_c"),
         "coil_air_share_pct": k.get("coil_air_share_pct"),
         "coil_water_m3h": k.get("coil_water_m3h"),

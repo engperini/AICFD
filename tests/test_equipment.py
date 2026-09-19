@@ -224,22 +224,23 @@ class CoilCapacityTest(unittest.TestCase):
         self.assertAlmostEqual(out["catalogue_kw"], 622.7)
         self.assertNotAlmostEqual(out["available_kw"], out["catalogue_kw"], places=1)
 
-    def test_a_return_below_the_selections_is_answered_not_refused(self):
-        """The table stopped at 35 degC and a real hall returns cooler than
-        that. Refusing left the plant's margin unstated; the coil answers, and
-        says it is extrapolating."""
-        fans = self._fans((33.0, 31.0), (38.0, 31.0))
+    def test_a_capacity_is_given_at_any_return_the_room_produces(self):
+        """The unit is a machine, not a table: every condition a room presents
+        has an answer, whether or not a selection was taken at it."""
+        fans = self._fans((28.0, 31.0), (33.0, 31.0), (38.0, 31.0), (46.0, 31.0))
         out = post.coil_capacity(self.model, fans, {"recovered_kw": 900.0})
-        self.assertIn("available_kw", fans[0])
-        self.assertLess(fans[0]["available_kw"], fans[1]["available_kw"])
-        self.assertTrue(out["coil_extrapolated"])
-        self.assertIn("below the coldest selection", out["coil_extrapolated"][0])
+        capacities = [f["available_kw"] for f in fans]
+        self.assertEqual(len(capacities), 4)
+        self.assertEqual(capacities, sorted(capacities), "warmer air, more heat")
         self.assertNotIn("coil_outside_table_c", out)
 
-    def test_many_units_in_one_condition_raise_one_finding(self):
-        fans = self._fans(*[(33.0, 31.0)] * 14)
-        out = post.coil_capacity(self.model, fans, {"recovered_kw": 5600.0})
-        self.assertEqual(len(out["coil_extrapolated"]), 1)
+    def test_the_coil_is_reported_by_what_it_is(self):
+        fans = self._fans((33.0, 31.0))
+        out = post.coil_capacity(self.model, fans, {"recovered_kw": 400.0})
+        coil = out["coil_model"]
+        self.assertIn("design_return_c", coil)
+        self.assertIn("air_split_pct", coil)
+        self.assertIn("water_max_m3h", coil)
 
     def test_the_valve_and_the_water_it_draws_are_reported(self):
         """So the hydraulic side stays checkable: a coil's ceiling is real for
