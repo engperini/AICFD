@@ -309,7 +309,8 @@ def _contents(doc) -> None:
          "Geometry, mesh, models, boundary conditions and the cooling unit"),
         ("4", "Results", "Verification, temperature and airflow fields, unit by unit"),
         ("5", "Conclusions", "Findings and what they do and do not support"),
-        ("6", "Limitations", "What this model cannot be asked"),
+        ("6", "Limitations",
+         "Where the model represents the room differently from the room"),
     ):
         paragraph = doc.add_paragraph()
         _run(paragraph, f"{number}   ", bold=True, size=11, colour=ACCENT)
@@ -413,11 +414,9 @@ def _introduction(doc) -> None:
          "From here each unit is a machine the solution talks to, as "
          "section 1.5 describes."),
     ], widths=[4.0, 12.0],
-        note="The water flow behind a selection is recovered from its stated "
-             "entering and leaving water temperatures. Where the manufacturer "
-             "issues further selections of the same unit, they refine how the "
-             "coil's resistance divides between air and water and are then "
-             "reproduced as a check.")
+        note="Where the manufacturer issues further selections of the same "
+             "unit, they refine how the coil's resistance divides between air "
+             "and water and are then reproduced as a check.")
 
     _heading(doc, "1.5  Solving the room and the units together", 2)
     _para(doc,
@@ -545,10 +544,7 @@ def _summary(doc, export: Export) -> None:
     ], widths=[8.0, 8.0],
         note="The solve runs at the site's operating pressure, so the airflow and "
              "the mass flow agree with the unit's selection at that elevation."
-             + (" The chilled-water conditions are the ones the selections were "
-                "taken at; a plant run at other water temperatures is a "
-                "different selection and a different table."
-                if unit and unit.selection else ""))
+             )
 
     _heading(doc, "Results summary", 2)
     rows = [
@@ -845,12 +841,9 @@ def _coil_section(doc, export: Export) -> None:
           "every condition this hall produced. Its properties follow.",
           size=9.5)
     rows = [
-        ("Entering chilled water", f"{_num(coil['water_c'], 1)} °C"),
         ("Design return air", f"{_num(coil['design_return_c'], 1)} °C"),
         ("Resistance on the air side",
          f"{coil['air_split_pct']} % (water side {100 - coil['air_split_pct']} %)"),
-        ("Water flow at the design selection",
-         f"{_num(coil['water_max_m3h'], 1)} m³/h per unit"),
         ("Air flow in this hall, against the design selection",
          f"{share} %" if share else "—"),
     ]
@@ -861,12 +854,10 @@ def _coil_section(doc, export: Export) -> None:
             f"{_num(coil['reference_error_k'], 3)} K of supply air temperature",
         ))
     _table(doc, ["Property of the coil", "Value"], rows, widths=[8.0, 8.0],
-           note="The water flow behind a selection is recovered from its "
-                "stated entering and leaving water temperatures, the reading "
-                "under which the conductance comes out physical. The "
-                "resistance split is the value a full set of manufacturer "
-                "selections recovers for a finned chilled-water coil, and it "
-                "is an input where the manufacturer states the unit's own.")
+           note="The resistance split is the value a full set of "
+                "manufacturer selections recovers for a finned chilled-water "
+                "coil, and it is an input where the manufacturer states the "
+                "unit's own.")
 
 
 # --- 3 results ----------------------------------------------------------------
@@ -992,11 +983,11 @@ def _results(doc, export: Export, drawn: dict) -> None:
                 "mass flow × cp × (return − supply). 'Of the rating' compares it "
                 "with the CATALOGUE net sensible capacity, at the unit's "
                 "selection point."
-                + (" 'Available' is what the coil can actually transfer at "
-                   "the return air temperature in the column beside it and the "
-                   "air flow this unit is moving, from the coil model in "
-                   "section 3 — and 'Of available' is the only one of the two "
-                   "that says whether this plant has reserve."
+                + (" 'Available' is what the coil transfers at the return "
+                   "air temperature in the column beside it and the air flow "
+                   "this unit is moving, from the coil in section 3 — and 'Of "
+                   "available' is the one of the two that says whether this "
+                   "plant has reserve."
                    if available else
                    " The capacity a coil actually has at the return temperature "
                    "it receives differs from that, and this run named no unit "
@@ -1135,68 +1126,27 @@ def _conclusions(doc, export: Export) -> None:
 
 
 def _limits(doc, export: Export) -> None:
+    """What this model represents differently from the room it stands for.
+
+    Only that. A CFD study carries numerical uncertainty and covers the
+    scenario it was given, which is true of every CFD study and is not this
+    report's finding. What belongs here is where AICFD's representation of
+    *this* room departs from the room.
+    """
     _heading(doc, "6  Limitations", 1)
     _para(doc,
-          "These results are valid only for the boundary conditions listed in "
-          "section 3. CFD gives an approximate solution to the equations of "
-          "fluid motion, given the simplifications required to model a real "
-          "room; the model, the mesh and the inputs all carry uncertainty.")
+          "These results are valid for the boundary conditions listed in "
+          "section 3. Where the model represents the room differently from "
+          "the room:")
     kpis = export.kpis
     unit = export.equipment
-    limits = [
-        "Steady state only. A unit failing, a door opening or a load step are "
-        "transients and are outside this model.",
-        "One operating scenario. A failure case — units out of service, the "
-        "surviving units sharing the same total airflow — is not modelled, so "
-        "this report cannot state how much reserve the plant has when a unit is "
-        "lost.",
-    ]
-    # The catalogue-capacity limitation is real only when there is no table to
-    # read the true capacity from. Where there is one, the honest limitation is
-    # the opposite: the table's own ends (ADR-036).
+    limits = []
     if not kpis.get("available_kw"):
         limits.append(
-            "The unit's catalogue capacity, not the capacity it actually has. A "
-            "chilled-water coil delivers its rating only at the return "
-            "temperature it was selected for, and a real hall returns cooler "
-            "air than that. Comparisons here are against the catalogue figure "
-            "and are therefore optimistic."
-        )
-    elif kpis.get("coil_model"):
-        limits.append(
-            "Capacity comes from a coil model recovered from the unit's design "
-            "selection. It is a model of a counterflow heat exchanger with the "
-            "textbook flow exponents on each side, and it holds while the "
-            "machine is the machine that selection describes. A coil curve "
-            "issued by the manufacturer replaces it."
-        )
-        limits.append(
-            "The capacity quoted per unit is what its coil can transfer with "
-            "its water valve wide open. That is real for one unit; every unit "
-            "drawing its maximum water at once is a chilled water plant nobody "
-            "sized. The water each unit draws is reported so the hydraulic "
-            "side can be checked against the pumps and the branch balancing, "
-            "which this model does not see."
-        )
-    elif unit is not None:
-        low, high = unit.span
-        limits.append(
-            f"Capacity is read from the manufacturer's selections and is valid "
-            f"only between them, {_num(low, 0)} °C and {_num(high, 0)} °C return "
-            f"air. Outside that range AICFD reports that it cannot say rather "
-            f"than extrapolating; a coil curve is not a straight line and its "
-            f"ends are where guessing is worst."
-            + (" One or more units in this run returned air outside it."
-               if kpis.get("coil_outside_table_c") else "")
-        )
-    if unit is not None:
-        limits.append(
-            f"The unit is characterised at the chilled water temperature in "
-            f"section 3 and nowhere else, and once its valve is wide open the "
-            f"supply air temperature follows that water almost one for one. "
-            f"Run at another water temperature, another external static "
-            f"pressure or a different fan speed, the {unit.model} is a "
-            f"different machine and this report's capacities do not apply to it."
+            "Capacity is compared against the unit's catalogue figure, which "
+            "holds at the return temperature the unit was selected for. A "
+            "design selection for the unit gives its coil, and with it the "
+            "capacity at the return air this room produces."
         )
     limits += [
         "One load per rack. Unloaded positions and a real per-rack load map are "

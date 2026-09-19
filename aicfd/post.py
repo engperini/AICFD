@@ -349,11 +349,10 @@ def coil_capacity(model: Model, fans: list[dict], kpis: dict) -> dict:
         point = coil.operate(temperature, air, setpoint)
         fan["available_kw"] = round(point.ceiling_kw, 1)
         fan["coil_supply_c"] = round(point.supply_c, 2)
+        # How much of its water-side authority the unit is using: the number
+        # that says whether it can still hold its supply temperature. The flow
+        # itself is a hydraulic question this tool does not answer.
         fan["coil_valve_pct"] = round(point.valve * 100, 0)
-        # The water this unit is drawing, so the hydraulic side stays
-        # checkable: the coil's ceiling is real for one unit, but every unit
-        # taking its ceiling at once is a chilled water plant nobody sized.
-        fan["coil_water_m3h"] = round(point.water_m3h, 1)
         available += point.ceiling_kw
         if fan.get("heat_kw") is not None:
             removed += fan["heat_kw"]
@@ -388,7 +387,6 @@ def coil_capacity(model: Model, fans: list[dict], kpis: dict) -> dict:
         # an output, and where the valve runs out it stops matching the one
         # the run imposed. Then every temperature in the result is optimistic.
         "coil_saturated_units": saturated,
-        "coil_water_m3h": round(sum(f.get("coil_water_m3h") or 0 for f in fans), 1),
         "coil_supply_setpoint_c": round(setpoint, 2),
         "coil_supply_needed_c": round(warmest_supply, 2),
         "coil_return_span_c": [round(min(seen), 2), round(max(seen), 2)] if seen else None,
@@ -1764,7 +1762,6 @@ def _viewer_kpis(model: Model, results: PodResults) -> dict:
         "coil_supply_needed_c": k.get("coil_supply_needed_c"),
         "coil_return_span_c": k.get("coil_return_span_c"),
         "coil_air_share_pct": k.get("coil_air_share_pct"),
-        "coil_water_m3h": k.get("coil_water_m3h"),
         # Which units returned air the selections do not cover. Carried because
         # it is the reason a capacity is missing, and a missing number without
         # its reason reads as an oversight rather than a refusal (ADR-036).

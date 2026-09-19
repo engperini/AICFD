@@ -185,11 +185,21 @@ class DocumentTest(unittest.TestCase):
         self.assertIn(warmest["name"], self.text)
 
     def test_the_limits_are_in_the_document_not_only_in_the_readme(self):
-        """A report circulated without its limits is a report that will be
-        over-read. These are the four the tool cannot yet answer."""
-        for phrase in ("failure case", "catalogue capacity",
-                       "One load per rack", "conceptual-design mesh"):
+        """A report circulated without its limits is over-read. These are
+        where the model represents the room differently from the room."""
+        for phrase in ("One load per rack", "conceptual-design mesh",
+                       "Containment is modelled as perfect",
+                       "No comparison against measurement"):
             self.assertIn(phrase, self.text)
+
+    def test_the_limits_leave_out_what_is_true_of_every_cfd_study(self):
+        """Numerical uncertainty and a single modelled scenario are properties
+        of the method, not findings of this study."""
+        limits = self.text[self.text.index("6  Limitations"):]
+        for phrase in ("all carry uncertainty", "Steady state only",
+                       "One operating scenario", "chilled water plant nobody",
+                       "branch balancing"):
+            self.assertNotIn(phrase, limits)
 
     def test_it_says_whether_the_result_may_be_quoted(self):
         import json
@@ -340,11 +350,9 @@ class UnitReportTest(_UnitReport):
         """It would be false to keep saying capacity is the catalogue's when
         the report just modelled the true one. The honest limitations are the
         model's own: what it was fitted to, and what the valve can draw."""
-        self.assertNotIn("catalogue capacity, not the capacity it actually has",
-                         self.text)
-        self.assertIn("recovered from the unit's design selection", self.text)
-        self.assertIn("water valve wide open", self.text)
-        self.assertIn("is a different machine", self.text)
+        limits = self.text[self.text.index("6  Limitations"):]
+        self.assertNotIn("catalogue", limits)
+        self.assertNotIn("water", limits)
 
     def test_the_coil_model_is_described_where_its_numbers_are_used(self):
         """The method belongs in the document. Every margin in section 4 rests
@@ -353,10 +361,9 @@ class UnitReportTest(_UnitReport):
         self.assertIn("characterises the counterflow coil", self.text)
         self.assertIn("Resistance on the air side", self.cells)
         self.assertIn("Design return air", self.cells)
-        self.assertIn("recovered from its stated entering and leaving water",
-                      self.text)
+        self.assertIn("Entering chilled water", self.cells)
         # and the physics itself is stated once, in the introduction
-        self.assertIn("counterflow heat exchanger", self.text)
+        self.assertIn("counterflow heat exchanger", self.cells)
 
     def test_capacity_is_reported_at_this_hall_not_at_the_selection(self):
         """The whole point: the units did not run at any selection, and the
@@ -395,8 +402,10 @@ class OutsideTheTableReportTest(_UnitReport):
         table = next(t for t in self.doc.tables if t.rows[0].cells[0].text == "Unit")
         self.assertNotIn("Of available", [c.text for c in table.rows[0].cells])
 
-    def test_the_catalogue_limitation_stays(self):
-        self.assertIn("catalogue capacity, not the capacity it actually has",
+    def test_naming_a_unit_is_offered_where_none_was_named(self):
+        """The one limitation a reader can act on: the capacity compared
+        against is the catalogue's, and naming the unit gives its coil."""
+        self.assertIn("A design selection for the unit gives its coil",
                       self.text)
 
 

@@ -242,18 +242,15 @@ class CoilCapacityTest(unittest.TestCase):
         self.assertIn("air_split_pct", coil)
         self.assertIn("water_max_m3h", coil)
 
-    def test_the_valve_and_the_water_it_draws_are_reported(self):
-        """So the hydraulic side stays checkable: a coil's ceiling is real for
-        one unit, but every unit at its ceiling at once is a chilled water
-        plant nobody sized."""
+    def test_how_much_authority_each_unit_has_left_is_reported(self):
+        """The number that says whether a unit can still hold its supply
+        temperature. The water flow itself is a hydraulic question this tool
+        does not answer."""
         fans = self._fans((36.0, 31.0))
-        out = post.coil_capacity(self.model, fans, {"recovered_kw": 400.0})
+        post.coil_capacity(self.model, fans, {"recovered_kw": 400.0})
         self.assertGreater(fans[0]["coil_valve_pct"], 0)
         self.assertLessEqual(fans[0]["coil_valve_pct"], 100)
-        self.assertAlmostEqual(out["coil_water_m3h"], fans[0]["coil_water_m3h"], 1)
-        # 31 kg/s from 36 to 21.8 degC is 443 kW; at the selections' 10 K
-        # water rise that is about 38 m3/h, and the coil should ask for it.
-        self.assertAlmostEqual(fans[0]["coil_water_m3h"], 38.0, delta=5.0)
+        self.assertNotIn("coil_water_m3h", fans[0])
 
     def test_a_supply_the_coil_cannot_hold_is_reported_not_hidden(self):
         """The reason a fixed supply air temperature is an assumption and not

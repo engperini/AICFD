@@ -1656,3 +1656,30 @@ line would mislead.
 **The user judges the curve.** The design selection is an input; the curve
 that follows is the machine. Where a manufacturer issues the unit's own
 capacity curve, it replaces the recovered one.
+
+
+## ADR-043 — Limitations are where the model differs from the room
+
+*2026-09-19*
+
+Section 6 lists where AICFD's representation of a room departs from the room,
+and nothing else. It carries five items: one load per rack, ancillary losses
+outside the racks, containment modelled as perfect, a conceptual-design mesh,
+and no comparison against measurement. Where a run has no coil to read a
+capacity from, a sixth says so and names the input that fixes it.
+
+**What came out, and why.** Numerical uncertainty, steady state, and a single
+modelled scenario are properties of CFD and of the run that was asked for.
+Every CFD study carries them, no reader is asking, and listing them reads as a
+disclaimer rather than a finding. Likewise the coil model's own provenance:
+section 1.4 says how a unit is described and section 3 gives this unit's
+numbers, so repeating it under Limitations argued with a method the document
+had already set out.
+
+**The chilled water flow came out with them.** AICFD does not judge whether a
+branch is balanced or whether the pumps deliver what a coil could draw, so
+reporting the flow each unit takes invited a reading the tool does not support.
+What remains is the valve position — how much authority a unit has left, which
+is what decides whether it can still hold its supply air temperature — and the
+entering water temperature, which is an input and the temperature every
+capacity is measured from.
