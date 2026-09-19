@@ -23,6 +23,7 @@ The air loop the geometry has to close:
 
 from __future__ import annotations
 
+import dataclasses
 import math
 from dataclasses import dataclass, field
 
@@ -105,6 +106,12 @@ class Panel:
     hall is at higher x), -1 when the gallery is at higher x. A hall with a
     gallery at each end carries both, and the sign is what tells the fan wall
     which half of its baffle pair is the intake (ADR-027)."""
+    of_rack: bool = False
+    """This face belongs to the rack row, not to the room: the rack's own lid
+    and ends, which exist so the porous zone breathes front to back and not
+    out of its sides. They lie exactly on the rack box, which the drawings
+    already show, so they are the rack there rather than a wall of their own
+    (ADR-045). The solver does not read this."""
 
     @property
     def area(self) -> float:
@@ -686,8 +693,6 @@ def equipment_for(spec: dict):
     # ordinary thing to want, and it is the same unit (ADR-040).
     water = fan.get("entering_water_c")
     if water is not None:
-        import dataclasses
-
         # The FIT is left alone. The manufacturer's selections were taken at
         # the water they were taken at, and re-reading them at another
         # temperature would silently change the water flow behind every row
@@ -877,6 +882,7 @@ def _row_walls(row: Row, span: tuple[float, float], rack_dz: float, suffix: str 
             axis=2,
             position=rack_dz,
             extent=((span[0], span[1]), (row.band[0], row.band[1])),
+            of_rack=True,
         )
     ]
     for edge in span:
@@ -887,6 +893,7 @@ def _row_walls(row: Row, span: tuple[float, float], rack_dz: float, suffix: str 
                 axis=0,
                 position=edge,
                 extent=((row.band[0], row.band[1]), (0.0, rack_dz)),
+                of_rack=True,
             )
         )
     return walls
@@ -1193,18 +1200,18 @@ def snap_to_mesh(model: Model) -> Model:
         for row in model.rows
     ]
     model.racks = [rack for row in model.rows for rack in row.racks]
+    # `replace` rather than a fresh Panel: rebuilding one field by field means
+    # every field added later has to be remembered here, and the one that is
+    # not comes back silently as its default. That is how `of_rack` arrived
+    # false on every panel the first time.
     model.panels = [
-        Panel(
-            p.name,
-            p.kind,
-            p.axis,
-            snap(p.position, p.axis),
-            tuple(  # type: ignore[arg-type]
+        dataclasses.replace(
+            p,
+            position=snap(p.position, p.axis),
+            extent=tuple(  # type: ignore[arg-type]
                 (snap(a0, axis), snap(a1, axis))
                 for axis, (a0, a1) in zip(p.in_plane_axes, p.extent)
             ),
-            p.resistance,
-            p.sign,
         )
         for p in model.panels
     ]
@@ -1568,6 +1575,7 @@ def to_dict(model: Model, spec: dict) -> dict:
                 "area": round(p.area, 4),
                 "resistance": p.resistance,
                 "sign": p.sign,
+                "of_rack": p.of_rack,
             }
             for p in model.panels
         ],

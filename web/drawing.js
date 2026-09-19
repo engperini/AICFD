@@ -130,6 +130,20 @@ const fanLabel = (panel, seen) => {
   return 'fan wall';
 };
 
+/**
+ * Does this face belong to the rack row rather than to the room?
+ *
+ * The rack's own lid and ends are real surfaces -- they stop the cold aisle
+ * entering the porous zone sideways -- but they lie exactly on the rack box,
+ * which these drawings already show. Drawn again as walls they take the
+ * containment colour and put a wall where the room has a rack (ADR-045).
+ *
+ * The model says so. An export written before it said so does not, and the
+ * results page draws from whatever export it was handed, so the name answers
+ * for those and only those: `??` keeps an explicit `false` explicit.
+ */
+const ofRack = (panel) => panel.of_rack ?? /^rack_(top|end)(_|$)/.test(panel.name);
+
 const coldAisles = (model) => model.cold_aisles || [model.aisles.cold];
 const hotAisles = (model) => model.hot_aisles || [model.aisles.hot];
 
@@ -330,6 +344,7 @@ export function drawView(model, view, scale, options = {}) {
   const seen = {};
   for (const panel of model.panels) {
     if (panel.name === 'ceiling') continue; // drawn as the heavy line below
+    if (ofRack(panel)) continue; // it IS the rack; see below
     if (panel.axis !== view.normal) continue;
     const { lo, hi } = panelBounds(panel);
     const cut = Math.abs(panel.position - at) < 1e-6;
@@ -369,6 +384,13 @@ export function drawView(model, view, scale, options = {}) {
   const seenEdge = {};
   for (const panel of model.panels) {
     if (panel.name === 'ceiling' || panel.axis === view.normal) continue;
+    // The rack's own lid and ends lie exactly on the rack box, which step 5
+    // has already drawn. Drawn again as walls they read as containment: in
+    // the transverse section the lid came out as a heavy green line across
+    // the top of the rack, meeting the chimney wall in an L and putting a
+    // wall where the room has a rack. The chimney now lands on the rack,
+    // which is what it does (ADR-045).
+    if (ofRack(panel)) continue;
     const { lo, hi } = panelBounds(panel);
     const along = panel.axis === view.h ? view.v : view.h;
     const cut = straddles(lo, hi, view.normal, at);

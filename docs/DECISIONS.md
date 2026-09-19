@@ -1744,3 +1744,38 @@ than twelve positions; below that, section 4.4 already carries them all.
 A test asserts the document never mentions a CSV, the results page or a
 download, because that kind of pointer creeps back in whenever a table looks
 long.
+
+---
+
+## ADR-045 — The rack's own faces are the rack, not a wall
+
+**Decision.** `rack_top` and `rack_end` carry `of_rack`, and the drawings skip
+them. The solver does not read the flag: every face is meshed and blocked
+exactly as before.
+
+**Why they exist.** A rack is a porous box that has to breathe front to back.
+Leave its lid or its ends open and the cold aisle gets into the porous zone
+sideways, along a path that is almost free — a few cells of blocked axis
+against 1,2 m of the flow axis. Measured as each was closed, the share of the
+fan's duty entering through the rack fronts went 22%, then 57%, then the rest.
+So they are real surfaces, and they stay.
+
+**Why drawing them was wrong.** They lie exactly on the rack box, which the
+drawings already show. Drawn again as walls they took the containment colour,
+and in the transverse section the lid came out as a heavy green line across
+the top of the rack, meeting the chimney wall in an L. That reads as a
+containment duct hanging above the rack with a horizontal roof — a wall where
+the room has a rack, in the one drawing whose job is to make the containment
+unambiguous. In the plan the lids were worse: twenty dashed rectangles lying
+exactly over the racks, saying nothing the rack outline did not.
+
+The chimney now comes down and lands on the rack, which is what it does.
+
+**Why a flag and not the name.** `name.startswith('rack_')` would have worked
+today and broken the first time a surface was renamed, silently and in the
+drawing only. The model says what a face belongs to; the drawing asks.
+
+**What it cost to find.** The flag came back false on every panel: the
+mesh-snapping pass rebuilt each `Panel` field by field and stopped one short,
+so a field added later arrived as its default. That pass now uses
+`dataclasses.replace`, which cannot drop a field it has not been told about.

@@ -10,6 +10,7 @@ from __future__ import annotations
 
 import copy
 import unittest
+from pathlib import Path
 
 import yaml
 
@@ -297,6 +298,55 @@ class SerialisationTest(unittest.TestCase):
         self.assertEqual(fan["axis"], 0)
         self.assertEqual(len(fan["extent"]), 2)
         self.assertAlmostEqual(fan["area"], 7.2)
+
+
+class RackFacesTest(unittest.TestCase):
+    """The rack's lid and ends are the rack, and say so (ADR-045).
+
+    They are real surfaces the solver blocks, but they lie exactly on the
+    rack box the drawings already show. Drawn again as walls they take the
+    containment colour and put a wall where the room has a rack.
+    """
+
+    def payload(self) -> dict:
+        return m.to_dict(build(), SPEC)
+
+    def test_the_rack_keeps_its_lid_and_its_ends(self):
+        names = {p["name"] for p in self.payload()["panels"]}
+        self.assertTrue(any(n.startswith("rack_top") for n in names),
+                        "the lid is what stops the cold aisle entering from above")
+        self.assertTrue(any(n.startswith("rack_end") for n in names))
+
+    def test_they_are_marked_as_the_rack_and_the_room_is_not(self):
+        panels = self.payload()["panels"]
+        for panel in panels:
+            with self.subTest(panel=panel["name"]):
+                self.assertEqual(
+                    panel["of_rack"],
+                    panel["name"].startswith(("rack_top", "rack_end")),
+                    "only the rack's own faces belong to the rack",
+                )
+
+    def test_containment_is_never_marked(self):
+        marked = [p["name"] for p in self.payload()["panels"]
+                  if p["of_rack"] and "containment" in p["name"]]
+        self.assertEqual(marked, [], "the chimney is a wall of the room")
+
+    def test_the_flag_survives_mesh_snapping(self):
+        """It did not: the snapping pass rebuilt each Panel field by field and
+        stopped one short, so the flag came back false on every panel."""
+        model = build()
+        self.assertTrue(
+            [p for p in model.panels if p.of_rack],
+            "snapping must not drop a field it was not told about",
+        )
+
+    def test_the_drawing_skips_them(self):
+        js = (Path(__file__).resolve().parent.parent / "web" / "drawing.js").read_text()
+        self.assertEqual(js.count("ofRack(panel)"), 2,
+                         "both the face-on and the edge-on pass have to skip them")
+        self.assertIn("panel.of_rack ??", js,
+                      "an export written before the flag falls back to the name")
 
 
 if __name__ == "__main__":
