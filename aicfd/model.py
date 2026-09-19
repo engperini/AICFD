@@ -143,6 +143,17 @@ class Rack:
     airflow_sign: int = 1
     cfm_per_kw: float = CFM_PER_KW
     """How much air the rack's own fans draw per kilowatt."""
+    resistance_kw: float | None = None
+    """The load this cabinet's flow resistance is calibrated at, where that
+    differs from what it dissipates.
+
+    A cabinet's resistance is a property of the cabinet, not of how much heat
+    it makes. An unloaded position is blanked -- that is what blanking plates
+    are for -- so it resists like the cabinets either side of it and simply
+    dissipates nothing. Left calibrated at its own zero load it became a hole
+    through the row instead, and in the worked POD a third of the row open to
+    the hot aisle dropped the measured resistance to 6% of the closed form
+    (ADR-054)."""
     rho: float = RHO_AIR
     """Air density where the rack stands, for its resistance coefficients."""
 
@@ -172,12 +183,19 @@ class Rack:
         return self.load_kw * self.cfm_per_kw * M3H_PER_CFM / 3600.0
 
     @property
+    def resistance_airflow_m3s(self) -> float:
+        """The flow its resistance is calibrated at: what a cabinet like this
+        one draws when it is populated, whatever this one dissipates."""
+        kw = self.load_kw if self.resistance_kw is None else self.resistance_kw
+        return kw * self.cfm_per_kw * M3H_PER_CFM / 3600.0
+
+    @property
     def rated_airflow_m3h(self) -> float:
         return self.rated_airflow_m3s * 3600.0
 
     @property
     def face_velocity_ms(self) -> float:
-        return self.rated_airflow_m3s / self.face_area if self.face_area else 0.0
+        return self.resistance_airflow_m3s / self.face_area if self.face_area else 0.0
 
     def darcy_forchheimer(self, pressure_drop_pa: float = RACK_PRESSURE_DROP):
         """Resistance coefficients (d, f) along the rack's flow axis.
@@ -480,8 +498,23 @@ class Model:
         if face <= 0:
             return 0.0
         velocity = self.airflow_m3s / face
-        _d, f = self.racks[0].darcy_forchheimer()
-        return 0.5 * self.rho * f * velocity**2 * self.racks[0].depth
+        # Any cabinet gives the coefficient, because they all carry the same
+        # one: an unloaded position is blanked, so it resists like the ones
+        # either side of it and only its heat is missing (ADR-054). The guard
+        # is for a hall whose standard is itself zero -- nothing installed
+        # anywhere, so there is nothing to ask of the fan.
+        reference = next(
+            (rack for rack in self.racks if rack.resistance_airflow_m3s > 0), None
+        )
+        if reference is None:
+            return 0.0
+        _d, f = reference.darcy_forchheimer()
+        return 0.5 * self.rho * f * velocity**2 * reference.depth
+
+    @property
+    def unloaded_racks(self) -> int:
+        """Positions the hall has and does not load."""
+        return sum(1 for rack in self.racks if rack.load_kw <= 0)
 
     @property
     def grille_pressure_drop_pa(self) -> float:
@@ -963,20 +996,56 @@ def _grille_k(spec: dict) -> float | None:
 
 def _make_row(row_id: str, band: tuple[float, float], sign: int, x0: float,
               count: int, size: tuple[float, float, float], load_kw: float,
-              rack_ids, rack_spec: dict | None = None) -> Row:
+              rack_ids, rack_spec: dict | None = None,
+              loads: dict | None = None) -> Row:
+    """One row of racks, each carrying the hall's load unless it says otherwise.
+
+    ``loads`` is the per-position override, by rack id. A hall is specified by
+    one load per rack because that is how a hall is bought, but no hall is
+    filled that way: positions are reserved, staged, or left for growth, and
+    where they sit decides how evenly the units load (ADR-054). Zero is a
+    position that exists and dissipates nothing.
+    """
     dx, _dy, dz = size
-    racks = [
-        Rack(
-            id=rack_ids(i),
+    overrides = loads or {}
+
+    def racked(i: int) -> Rack:
+        rack_id = rack_ids(i)
+        return Rack(
+            id=rack_id,
             box=Box((x0 + i * dx, band[0], 0.0), (x0 + (i + 1) * dx, band[1], dz)),
-            load_kw=load_kw,
+            load_kw=float(overrides.get(rack_id, load_kw)),
+            # The cabinet resists like every other cabinet in the row; only
+            # what it dissipates is its own.
+            resistance_kw=load_kw,
             airflow_axis=1,
             airflow_sign=sign,
             **(rack_spec or {}),
         )
-        for i in range(count)
-    ]
-    return Row(row_id, band, sign, racks)
+
+    return Row(row_id, band, sign, [racked(i) for i in range(count)])
+
+
+def rack_loads(spec: dict) -> dict[str, float]:
+    """The per-position loads a case states, by rack id.
+
+    Empty for a hall filled to its nominal load everywhere, which is most of
+    them. A value outside 0 and the sanity ceiling is refused here rather than
+    silently clamped: a typo in a rack id is a position that never gets the
+    load the engineer meant to give it, and a silent default hides that.
+    """
+    raw = (spec.get("racks") or {}).get("loads") or {}
+    out = {}
+    for rack_id, value in raw.items():
+        if value is None:
+            continue
+        load = float(value)
+        if not 0 <= load <= 200:
+            raise ValueError(
+                f"racks.loads[{rack_id}]: {load:g} kW is outside 0-200 kW"
+            )
+        out[str(rack_id)] = load
+    return out
 
 
 def _row_walls(row: Row, span: tuple[float, float], rack_dz: float, suffix: str = "") -> list[Panel]:
@@ -1059,7 +1128,8 @@ def _pod_layout(spec: dict, cell, rack_spec: dict | None = None) -> _Layout:
 
     band = (cold, cold + size[1])
     hot_aisle = (cold + size[1], hall_width)
-    row = _make_row("F1", band, +1, start_x, count, size, load_kw, lambda i: f"R{i + 1}", rack_spec)
+    row = _make_row("F1", band, +1, start_x, count, size, load_kw,
+                    lambda i: f"R{i + 1}", rack_spec, rack_loads(spec))
     span = (start_x, start_x + count * size[0])
 
     fan = spec["fanwall"]
@@ -1162,6 +1232,7 @@ def _hall_layout(spec: dict, cell, rack_spec: dict | None = None) -> _Layout:
         x += block_length + transverse
 
     rows: list[Row] = []
+    loads = rack_loads(spec)  # per position, where the case states one
     hot_aisles: list[tuple[float, float]] = []
     cold_aisles: list[tuple[float, float]] = [(0.0, perimeter)]
     walls: list[Panel] = []
@@ -1188,7 +1259,8 @@ def _hall_layout(spec: dict, cell, rack_spec: dict | None = None) -> _Layout:
                 row_id = f"F{n + offset}{tag}"
                 pair.append(
                     _make_row(row_id, band, front, span[0], per_row, size, load_kw,
-                              lambda i, row_id=row_id: f"{row_id}-{i + 1:02d}", rack_spec)
+                              lambda i, row_id=row_id: f"{row_id}-{i + 1:02d}",
+                              rack_spec, loads)
                 )
             rows += pair
             for row in pair:
@@ -1305,10 +1377,12 @@ def snap_to_mesh(model: Model) -> Model:
         return (snap(band[0], 1), snap(band[1], 1))
 
     def snap_rack(r: Rack) -> Rack:
-        return Rack(
-            r.id, snap_box(r.box), r.load_kw, r.airflow_axis, r.airflow_sign,
-            r.cfm_per_kw, r.rho,
-        )
+        # `replace` rather than a positional rebuild, for the same reason the
+        # panels use it: a field added later lands in the wrong slot and the
+        # value it displaces is gone. `resistance_kw`, inserted before `rho`,
+        # arrived holding the air density -- 1,2 kW of cabinet -- which made
+        # every rack forty times too resistive and nothing raised a thing.
+        return dataclasses.replace(r, box=snap_box(r.box))
 
     model.rows = [
         Row(row.id, snap_band(row.band), row.front_sign, [snap_rack(r) for r in row.racks])

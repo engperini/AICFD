@@ -223,3 +223,46 @@ class WiringTest(unittest.TestCase):
 
 if __name__ == "__main__":
     unittest.main()
+
+
+class NestedBlockTest(unittest.TestCase):
+    """`set_map` writes a block a file does not have yet, and takes it away
+    again when it is empty (ADR-054)."""
+
+    TEXT = (
+        "racks:\n"
+        "  count: 3          # per row\n"
+        "  load_kw: 6.0\n"
+        "\n"
+        "mesh:\n"
+        "  cell_size: 0.1\n"
+    )
+
+    def edit(self, text, values):
+        from aicfd import yamledit
+
+        lines = text.split("\n")
+        yamledit.set_map(lines, ["racks", "loads"], values)
+        return "\n".join(lines)
+
+    def test_the_block_lands_at_the_end_of_its_parent(self):
+        out = self.edit(self.TEXT, {"R2": 0})
+        self.assertIn("  load_kw: 6.0\n  loads:\n    R2: 0\n\nmesh:", out)
+        self.assertIn("# per row", out, "a hand-written comment was rewritten")
+
+    def test_removing_it_restores_the_file(self):
+        with_block = self.edit(self.TEXT, {"R2": 0, "R7": 4.5})
+        self.assertEqual(self.edit(with_block, {}), self.TEXT)
+
+    def test_it_works_when_the_parent_is_the_last_block(self):
+        text = "mesh:\n  cell_size: 0.1\nracks:\n  load_kw: 6.0\n"
+        out = self.edit(text, {"R2": 0})
+        self.assertTrue(out.endswith("  load_kw: 6.0\n  loads:\n    R2: 0\n"), out)
+        self.assertEqual(self.edit(out, {}), text)
+
+    def test_a_missing_parent_is_an_error_rather_than_a_new_block(self):
+        from aicfd import yamledit
+
+        with self.assertRaises(ValueError):
+            lines = "mesh:\n  cell_size: 0.1\n".split("\n")
+            yamledit.set_map(lines, ["racks", "loads"], {"R2": 0})

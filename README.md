@@ -204,7 +204,7 @@ POD at 0,20 m cells for that.
 
 ## 5. Reading the page
 
-`aicfd view` serves three pages. Everything in the software is in English
+`aicfd view` serves five pages. Everything in the software is in English
 (ADR-026).
 
 - **Model page** — the input template on the right and what it implies on the
@@ -236,6 +236,28 @@ POD at 0,20 m cells for that.
   water it was selected with — fixes the conductance, and from there the unit
   answers at any return temperature and any airflow the room gives it. Edit
   those five numbers and every capacity in the next run follows.
+
+- **Components page** — `http://localhost:8000/web/components.html`, or
+  `components ▸` beside the return-air group on the model page. The surfaces
+  the air passes through, each described by one number — its open area over
+  its gross area — with the loss coefficient that follows shown live beside
+  it: the grilles in the false ceiling, the woven mesh closing the return
+  plenum into a mechanical gallery, the plates of a raised floor, the leakage
+  a containment has, and the share of the IT load that power distribution
+  dissipates. These are house standards rather than per-case numbers, so
+  saving one changes every element of that kind in every case that names it
+  (ADR-048). Three of them are marked as not yet read by the solver, and the
+  page says what a run answers instead.
+
+- **Rack page** — `http://localhost:8000/web/racks.html`, or `positions ▸`
+  beside the rack group. The hall's standard load at the top and every
+  position below it, each free to carry its own — zero included, which is a
+  cabinet that exists and dissipates nothing (ADR-054). Filter to a row or a
+  block and set what it shows in one go. The case file stores only the
+  positions that differ, so raising the standard later moves every rack that
+  never disagreed with it, and everything here reaches the solver: a
+  position's load is its own heat source. An empty one keeps the row's
+  resistance, because an empty cabinet is blanked rather than left open.
 
 - **The Word report** — `aicfd report <name>`, or the **Word report** button on
   the results page, writes a .docx from the same export: cover, summary with the

@@ -537,3 +537,109 @@ class SensorChartLegendTest(unittest.TestCase):
                     re.finditer(r"--(series-\d|sensor):\s*(#[0-9a-fA-F]{6})", text)}
 
         self.assertEqual(tokens("index.html"), tokens("results.html"))
+
+
+class PerRackLoadTest(unittest.TestCase):
+    """A hall is specified by one load per rack and never filled that way.
+
+    Positions are reserved, staged or left for growth, and where the gaps sit
+    decides how evenly the units load (ADR-054).
+    """
+
+    def spec(self) -> dict:
+        import yaml
+
+        return yaml.safe_load(
+            (Path(__file__).resolve().parents[1] / "cases" / "hall-double-gallery.yaml")
+            .read_text()
+        )
+
+    def test_a_position_can_carry_its_own_load(self):
+        spec = self.spec()
+        spec["racks"]["loads"] = {"F1B1-03": 4.0}
+        by = {r.id: r.load_kw for r in m.build_model(spec).racks}
+        self.assertEqual(by["F1B1-03"], 4.0)
+        self.assertEqual(by["F1B1-02"], spec["racks"]["load_kw"])
+
+    def test_a_position_can_carry_nothing(self):
+        spec = self.spec()
+        spec["racks"]["loads"] = {"F1B1-03": 0}
+        model = m.build_model(spec)
+        empty = next(r for r in model.racks if r.id == "F1B1-03")
+        self.assertEqual(empty.load_w, 0.0)
+        self.assertEqual(empty.rated_airflow_m3s, 0.0)
+        self.assertEqual(model.unloaded_racks, 1)
+
+    def test_the_total_is_the_sum_and_not_the_count_times_the_standard(self):
+        spec = self.spec()
+        standard = float(spec["racks"]["load_kw"])
+        spec["racks"]["loads"] = {"F1B1-03": 0, "F1B1-04": 0}
+        model = m.build_model(spec)
+        self.assertAlmostEqual(
+            model.total_load_w / 1000,
+            standard * (len(model.racks) - 2),
+            places=6,
+        )
+
+    def test_an_empty_cabinet_is_still_in_the_model(self):
+        """It is an obstruction, a cell zone and a porous block; what it loses
+        is the source. Deleting it instead would leave the row a cabinet short
+        and the air would take the gap."""
+        from aicfd import case as c
+
+        spec = self.spec()
+        spec["racks"]["loads"] = {"F1B1-03": 0}
+        model = m.build_model(spec)
+        self.assertIn("F1B1-03", [r.id for r in model.racks])
+        options = c.fv_options(model)
+        self.assertIn("F1B1-03Porosity", options)
+        self.assertNotIn("F1B1-03Heat", options)
+        self.assertIn("F1B1-02Heat", options)
+
+    def test_an_empty_position_resists_like_the_row(self):
+        """Blanked, not open: it is calibrated at the hall's standard however
+        little it dissipates, so the row stays one resistance and the closed
+        form is the same with gaps in it as without."""
+        spec = self.spec()
+        uniform = m.build_model(spec).rack_pressure_drop_pa
+        self.assertGreater(uniform, 0)
+        spec["racks"]["loads"] = {"F1B1-01": 0, "F1B1-02": 0}
+        mixed = m.build_model(spec)
+        self.assertAlmostEqual(mixed.rack_pressure_drop_pa, uniform, places=6)
+        self.assertEqual(mixed.unloaded_racks, 2)
+        for rack in mixed.racks:
+            self.assertAlmostEqual(rack.darcy_forchheimer()[1],
+                                   mixed.racks[-1].darcy_forchheimer()[1], places=6)
+
+    def test_resistance_is_calibrated_on_the_standard_not_the_load(self):
+        """The field that made every rack forty times too resistive when a
+        positional rebuild filled it with the air density (ADR-054)."""
+        spec = self.spec()
+        spec["racks"]["loads"] = {"F1B1-01": 0}
+        model = m.build_model(spec)
+        standard = float(spec["racks"]["load_kw"])
+        for rack in model.racks:
+            self.assertEqual(rack.resistance_kw, standard)
+
+    def test_a_hall_with_nothing_installed_asks_for_no_drop(self):
+        """Every position empty still resists -- they are blanked. A standard
+        of zero is the hall that has nothing in it at all."""
+        spec = self.spec()
+        spec["racks"]["loads"] = {r.id: 0 for r in m.build_model(spec).racks}
+        blanked = m.build_model(spec)
+        self.assertGreater(blanked.rack_pressure_drop_pa, 0.0)
+        self.assertEqual(blanked.total_load_w, 0.0)
+
+        spec = self.spec()
+        spec["racks"]["load_kw"] = 0.0
+        nothing = m.build_model(spec)
+        self.assertEqual(nothing.rack_pressure_drop_pa, 0.0)
+        self.assertEqual(nothing.total_load_w, 0.0)
+
+    def test_a_load_outside_the_sane_range_is_refused(self):
+        for bad in (-1, 500):
+            with self.subTest(load=bad), self.assertRaises(ValueError):
+                m.rack_loads({"racks": {"loads": {"F1B1-03": bad}}})
+
+    def test_a_case_that_states_nothing_has_no_overrides(self):
+        self.assertEqual(m.rack_loads(self.spec()), {})

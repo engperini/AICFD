@@ -501,3 +501,97 @@ class ComponentChoiceTest(unittest.TestCase):
         for key in ("'grille_free_area'", "'grille_k'"):
             self.assertNotIn(key, js, f"{key} duplicates the component")
         self.assertIn("componentRows()", js)
+
+
+class RackPageTest(unittest.TestCase):
+    """The page that sets a load per position (ADR-054)."""
+
+    CASE = "hall-double-gallery"
+
+    def setUp(self):
+        self.path = server.CASES_DIR / f"{self.CASE}.yaml"
+        self.before = self.path.read_text()
+
+    def tearDown(self):
+        self.path.write_text(self.before)
+
+    def test_it_lists_every_position_with_what_it_carries(self):
+        payload = server.read_racks(self.CASE)
+        self.assertEqual(payload["totals"]["positions"], len(payload["racks"]))
+        self.assertEqual(payload["totals"]["unloaded"], 0)
+        self.assertAlmostEqual(payload["totals"]["load_kw"],
+                               payload["totals"]["nominal_kw"], places=1)
+        for rack in payload["racks"][:3]:
+            self.assertFalse(rack["stated"], "a fresh case states no overrides")
+
+    def test_a_position_set_to_zero_is_written_and_counted(self):
+        first = server.read_racks(self.CASE)["racks"][0]["id"]
+        payload = server.write_racks(self.CASE, {"loads": {first: 0}})
+        self.assertEqual(payload["rejected"], [])
+        self.assertEqual(payload["totals"]["unloaded"], 1)
+        got = next(r for r in payload["racks"] if r["id"] == first)
+        self.assertEqual(got["load_kw"], 0.0)
+        self.assertTrue(got["stated"])
+
+    def test_the_file_states_only_what_differs(self):
+        """So that raising the standard later moves every position that never
+        disagreed with it."""
+        import yaml
+
+        racks = server.read_racks(self.CASE)["racks"]
+        standard = server.read_racks(self.CASE)["standard"]["load_kw"]
+        server.write_racks(self.CASE, {"loads": {r["id"]: standard for r in racks}})
+        spec = yaml.safe_load(self.path.read_text())
+        self.assertNotIn("loads", spec["racks"])
+
+    def test_a_position_edited_back_to_the_standard_stops_being_stated(self):
+        first = server.read_racks(self.CASE)["racks"][0]["id"]
+        standard = server.read_racks(self.CASE)["standard"]["load_kw"]
+        server.write_racks(self.CASE, {"loads": {first: 0}})
+        payload = server.write_racks(self.CASE, {"loads": {first: standard}})
+        self.assertEqual(payload["totals"]["unloaded"], 0)
+        self.assertFalse(next(r for r in payload["racks"] if r["id"] == first)["stated"])
+
+    def test_an_unknown_position_is_refused_rather_than_written(self):
+        payload = server.write_racks(self.CASE, {"loads": {"NOT-A-RACK": 0}})
+        self.assertEqual(len(payload["rejected"]), 1)
+        self.assertIn("NOT-A-RACK", payload["rejected"][0])
+        self.assertEqual(payload["totals"]["unloaded"], 0)
+
+    def test_a_load_outside_the_range_is_refused(self):
+        first = server.read_racks(self.CASE)["racks"][0]["id"]
+        payload = server.write_racks(self.CASE, {"loads": {first: 500}})
+        self.assertEqual(len(payload["rejected"]), 1)
+        self.assertEqual(payload["totals"]["unloaded"], 0)
+
+    def test_the_standard_moves_every_position_that_has_no_load_of_its_own(self):
+        payload = server.write_racks(self.CASE, {"load_kw": 8.0})
+        self.assertEqual(payload["standard"]["load_kw"], 8.0)
+        self.assertTrue(all(r["load_kw"] == 8.0 for r in payload["racks"]))
+
+    def test_a_save_keeps_every_comment_in_the_case(self):
+        """A case file is hand-written and the comment beside a number is
+        what says where the number came from. Re-dumping the parsed document
+        would save the right values and lose all of that (ADR-048)."""
+        commented = [
+            line for line in self.before.split("\n")
+            if "#" in line and not line.strip().startswith("#")
+        ]
+        self.assertTrue(commented, "this case has no trailing comments to lose")
+        first = server.read_racks(self.CASE)["racks"][0]["id"]
+        server.write_racks(self.CASE, {"loads": {first: 0}})
+        after = self.path.read_text()
+        for line in commented:
+            self.assertIn(line, after, "a hand-written line was rewritten")
+
+    def test_a_save_that_changes_nothing_leaves_the_file_alone(self):
+        standard = server.read_racks(self.CASE)["standard"]["load_kw"]
+        server.write_racks(self.CASE, {"load_kw": standard, "loads": {}})
+        self.assertEqual(self.path.read_text(), self.before)
+
+    def test_clearing_the_last_override_takes_the_block_with_it(self):
+        first = server.read_racks(self.CASE)["racks"][0]["id"]
+        server.write_racks(self.CASE, {"loads": {first: 0}})
+        self.assertIn("loads:", self.path.read_text())
+        server.write_racks(self.CASE, {"loads": {first: None}})
+        self.assertEqual(self.path.read_text(), self.before)

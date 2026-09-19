@@ -649,6 +649,27 @@ def check_fan_orientation(case_dir: str | Path, model: Model | None = None) -> l
 # --- physics ------------------------------------------------------------------
 
 
+def heat_source(rack) -> str:
+    """One rack's IT load, as an absolute source on enthalpy."""
+    return f"""{rack.id}Heat
+{{
+    type            scalarSemiImplicitSource;
+    active          yes;
+    scalarSemiImplicitSourceCoeffs
+    {{
+        selectionMode   cellZone;
+        cellZone        {rack.id};
+        volumeMode      absolute;
+        injectionRateSuSp
+        {{
+            // {rack.load_kw:g} kW of IT load. The field is h because
+            // thermophysicalProperties uses sensibleEnthalpy.
+            h           ({rack.load_w:g} 0);
+        }}
+    }}
+}}"""
+
+
 def fv_options(model: Model) -> str:
     blocks = []
     for rack in model.racks:
@@ -692,26 +713,15 @@ def fv_options(model: Model) -> str:
             }}
         }}
     }}
-}}
-
-{rack.id}Heat
-{{
-    type            scalarSemiImplicitSource;
-    active          yes;
-    scalarSemiImplicitSourceCoeffs
-    {{
-        selectionMode   cellZone;
-        cellZone        {rack.id};
-        volumeMode      absolute;
-        injectionRateSuSp
-        {{
-            // {rack.load_kw:g} kW of IT load. The field is h because
-            // thermophysicalProperties uses sensibleEnthalpy.
-            h           ({rack.load_w:g} 0);
-        }}
-    }}
 }}"""
         )
+        # A position carrying no load gets the porous block above and no
+        # source: the cabinet is there and blanked, so it resists like the
+        # rest of the row and only its heat is missing. `h (0 0)` would be a
+        # source injecting nothing while claiming there is IT in the cabinet
+        # (ADR-054).
+        if rack.load_w > 0:
+            blocks.append(heat_source(rack))
     return f"""{_header(model, "dictionary", "fvOptions")}
 {chr(10).join(blocks)}
 """

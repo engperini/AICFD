@@ -49,6 +49,9 @@ const SECTIONS = [
   },
   {
     title: 'Racks',
+    // The load is one number for the hall here; the page behind this link is
+    // where a position says otherwise, zero included (ADR-054).
+    racksLink: true,
     params: [
       { key: 'rack_count', label: 'Racks in the row', unit: '', step: 1 },
       { key: 'racks_per_row', label: 'Racks per row, per block', unit: '', step: 1 },
@@ -367,6 +370,19 @@ function componentsLink() {
     + 'the floor plates and the containment">components \u25b8</a>';
 }
 
+/**
+ * The way through to the rack positions, from the group that sets their load.
+ *
+ * One load per rack is how a hall is bought; what each position actually
+ * carries is a list, and a list does not belong in a form (ADR-054).
+ */
+function racksLink() {
+  const positions = (model.racks || []).length;
+  const off = (model.racks || []).filter((r) => (r.load_kw ?? 1) <= 0).length;
+  return `<a class="group-link" href="./racks.html" title="the load each of the `
+    + `${positions} positions carries">${off ? `${off} empty · ` : ''}positions \u25b8</a>`;
+}
+
 function wireMeshPreset() {
   const box = document.getElementById('p-cell_size');
   const preset = document.getElementById('p-cell-preset');
@@ -397,7 +413,7 @@ function renderParams() {
           section.title
         }</span>${section.equipment ? equipmentLink() : ''}${
           section.componentsLink ? componentsLink() : ''
-        }${
+        }${section.racksLink ? racksLink() : ''}${
           section.note ? `<span class="group-note">${section.note}</span>` : ''
         }</div>
         ${section.components ? componentRows() : ''}

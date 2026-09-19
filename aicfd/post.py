@@ -888,6 +888,10 @@ def _checks(model: Model, step: Path, kpis: dict, grid: dict) -> list[Check]:
                 f"the field drops {delivered:.1f} Pa across the row{'s' if len(rows) > 1 else ''} "
                 f"where the rack curve at {model.airflow_m3h:,.0f} m3/h asks for "
                 f"{asked:.1f} Pa ({ratio * 100:.0f}%){spread}"
+                + (f" -- {model.unloaded_racks} of {len(model.racks)} positions "
+                   f"carry no load; blanked, they resist like the rest, so the "
+                   f"row is still one resistance and only the heat is missing"
+                   if model.unloaded_racks else "")
                 + (
                     ""
                     if abs(ratio - 1.0) <= RESISTANCE_TOLERANCE

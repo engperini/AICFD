@@ -22,6 +22,7 @@ from pathlib import Path
 import yaml
 
 from aicfd import model as model_module
+from aicfd import yamledit
 
 REPO_ROOT = Path(__file__).resolve().parents[1]
 CASES_DIR = REPO_ROOT / "cases"
@@ -403,6 +404,136 @@ def read_equipment(model: str | None) -> dict:
     return {"models": models, "unit": unit.to_dict()}
 
 
+def read_racks(name: str) -> dict:
+    """Every rack position in this case, with the load it actually carries.
+
+    A hall is specified by one load per rack because that is how a hall is
+    bought. No hall is filled that way: positions are reserved, staged, or
+    left for growth, and where the gaps sit decides how evenly the units load
+    (ADR-054). So the standard is here, and beside it every position with its
+    own figure.
+    """
+    from aicfd import model as m
+
+    case = name
+    spec = load_spec(case)
+    model = m.build_model(spec)
+    standard = float(spec["racks"]["load_kw"])
+    stated = m.rack_loads(spec)
+    rows = []
+    for row in model.rows:
+        for position, rack in enumerate(row.racks, start=1):
+            rows.append({
+                "id": rack.id,
+                "row": row.id,
+                "position": position,
+                "load_kw": rack.load_kw,
+                "stated": rack.id in stated,
+                "airflow_m3h": round(rack.rated_airflow_m3h),
+            })
+    loaded = [r for r in rows if r["load_kw"] > 0]
+    return {
+        "case": case,
+        "standard": {
+            "load_kw": standard,
+            "size": list(spec["racks"]["size"]),
+            "cfm_per_kw": spec["racks"].get("airflow_cfm_per_kw"),
+        },
+        "racks": rows,
+        "totals": {
+            "positions": len(rows),
+            "loaded": len(loaded),
+            "unloaded": len(rows) - len(loaded),
+            "load_kw": round(sum(r["load_kw"] for r in rows), 1),
+            "nominal_kw": round(standard * len(rows), 1),
+            "airflow_m3h": round(sum(r["airflow_m3h"] for r in rows)),
+        },
+    }
+
+
+def write_racks(name: str, body: dict) -> dict:
+    """Write the standard and the per-position loads back to the case.
+
+    A position set to the standard is removed from the list rather than
+    written as a value equal to it: a case should say what differs, so that
+    changing the standard later moves every position that never disagreed
+    with it.
+    """
+    from aicfd import model as m
+
+    case = name
+    spec = load_spec(case)
+    rejected: list[str] = []
+
+    standard = body.get("load_kw")
+    if standard is not None:
+        try:
+            value = float(standard)
+        except (TypeError, ValueError):
+            rejected.append(f"load_kw: {standard!r} is not a number")
+        else:
+            if 0.1 <= value <= 200:
+                spec["racks"]["load_kw"] = value
+            else:
+                rejected.append(f"load_kw: {value:g} is outside 0.1-200")
+
+    if "loads" in body:
+        known = {rack.id for rack in m.build_model(spec).racks}
+        loads: dict[str, float] = {}
+        for rack_id, raw in (body.get("loads") or {}).items():
+            if rack_id not in known:
+                rejected.append(f"{rack_id}: no such rack position")
+                continue
+            if raw is None or raw == "":
+                continue  # back to the standard
+            try:
+                value = float(raw)
+            except (TypeError, ValueError):
+                rejected.append(f"{rack_id}: {raw!r} is not a number")
+                continue
+            if not 0 <= value <= 200:
+                rejected.append(f"{rack_id}: {value:g} kW is outside 0-200")
+                continue
+            if value != float(spec["racks"]["load_kw"]):
+                loads[rack_id] = value
+        if loads:
+            spec["racks"]["loads"] = loads
+        else:
+            spec["racks"].pop("loads", None)
+
+    _save_case_racks(case, spec)
+    out = read_racks(case)
+    out["rejected"] = rejected
+    return out
+
+
+def _save_case_racks(name: str, spec: dict) -> None:
+    """Write the rack block back, leaving the rest of the case untouched.
+
+    A case file is hand-written: the comment beside `airflow_cfm_per_kw` is
+    what tells the next person that the number sizes the resistance. Re-dumping
+    the parsed document would save the right values and lose all of that, so
+    only the two lines this page owns are rewritten -- the standard, and the
+    block of positions that disagree with it (ADR-048, ADR-054).
+    """
+    path = CASES_DIR / f"{name}.yaml"
+    lines = path.read_text().split("\n")
+    on_disk = yaml.safe_load("\n".join(lines)) or {}
+    # Only where it actually moved: rendering `6.0` back as `6` is the same
+    # number and a diff on a file nobody changed.
+    if float(on_disk.get("racks", {}).get("load_kw", 0)) != float(spec["racks"]["load_kw"]):
+        yamledit.set_scalar(lines, ["racks", "load_kw"], spec["racks"]["load_kw"])
+    yamledit.set_map(lines, ["racks", "loads"], spec["racks"].get("loads") or {})
+    text = "\n".join(lines)
+    # Parsed back before it is written, for the same reason a component save
+    # is: a save path that can corrupt a file corrupts it before anything
+    # reads it (ADR-048).
+    written = yaml.safe_load(text) or {}
+    if (written.get("racks") or {}) != (spec.get("racks") or {}):
+        raise ValueError("the rack block did not survive the edit; nothing was written")
+    path.write_text(text)
+
+
 def read_component(chosen: str | None) -> dict:
     """One component out of the library, or the list of them by role.
 
@@ -699,6 +830,8 @@ class Handler(SimpleHTTPRequestHandler):
     def do_GET(self):  # noqa: N802
         if self.path.startswith("/api/model"):
             return self._json(self._safely(build_payload, self.case_name))
+        if self.path.startswith("/api/racks"):
+            return self._json(self._safely(read_racks, self._query("case") or self.case_name))
         if self.path.startswith("/api/components"):
             return self._json(self._safely(read_component, self._query("id")))
         if self.path.startswith("/api/equipment"):
@@ -731,6 +864,10 @@ class Handler(SimpleHTTPRequestHandler):
 
             return self._json(self._safely(update))
 
+        if self.path.startswith("/api/racks"):
+            return self._json(
+                self._safely(write_racks, self._query("case") or self.case_name, body)
+            )
         if self.path.startswith("/api/components"):
             return self._json(
                 self._safely(write_component, self._query("id"), body)

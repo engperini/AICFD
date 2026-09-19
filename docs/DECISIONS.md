@@ -2117,3 +2117,67 @@ candidate passed on white and collapsed against the dark theme's blue at
 re-stepping that slot for a chart would have repainted every sensor in every
 drawing. It has its own token now, holding exactly the colour it already had,
 and the drawings are untouched.
+
+---
+
+## ADR-054 — A hall is specified by one load and filled by a list
+
+**Decision.** `racks.load_kw` stays the hall's standard, and `racks.loads` is
+a map of position to its own load, zero included. A page of its own carries
+both: the standard at the top, every position below it. The case file stores
+only the positions that disagree, so raising the standard later moves every
+rack that never had one of its own.
+
+**Why it is not a detail.** A hall is bought at one load per rack and no hall
+is ever filled that way — positions are reserved, staged, or left for growth.
+Where the gaps sit decides how evenly the units load, and a study that assumes
+every cabinet is full answers a question about a hall nobody has yet.
+
+**What a zero is.** A cabinet that exists and dissipates nothing. It keeps its
+cell zone and its porous block, and loses its heat source: writing `h (0 0)`
+would be a source injecting nothing while claiming there is IT in the cabinet.
+It is *not* a hole through the row. An empty position is blanked — that is
+what blanking plates are for, and a hall that leaves them off has a problem
+worth its own study, not a default. So the cabinet resists like the ones
+either side of it and only the heat is missing.
+
+**Resistance is a property of the cabinet, not of its load.** `Rack` carries
+`resistance_kw` beside `load_kw`: the load its flow resistance is calibrated
+at, where that differs from what it dissipates. Row building sets it to the
+hall's standard for every position, so a zeroed cabinet keeps the row's
+coefficient. Calibrating it at its own zero instead made its own fans draw
+nothing, its inertial term zero, and the position an open path: in the worked
+POD, one of three positions emptied that way dropped the measured drop across
+the row to 1,7 Pa against the 26,8 Pa the curve asks for — 6% — and
+`rack_resistance` rightly failed. The first attempt answered that by narrowing
+the closed form to the loaded positions, which is the wrong fix: it makes the
+check agree with a model that is wrong about the hardware.
+
+**What the check says now.** The row is still one resistance, so the closed
+form still takes one coefficient and the whole face, and it holds with gaps
+anywhere in the row. It quotes how many positions carry no load beside its
+verdict, so a hall below its nominal load is never read as one at it.
+
+**A field added in the middle of a dataclass, again.** `resistance_kw` went in
+before `rho`, and `snap_rack` rebuilt every rack positionally — so each rack
+came back calibrated at 1,2 kW, the air density. `f` read 7 567 instead of
+301, the closed form asked 672 Pa instead of 26,8, and nothing raised a thing.
+This is ADR-045 for the second time. Every rebuild of a model dataclass is
+`dataclasses.replace` now; a positional one in this codebase is a bug waiting
+for the next field.
+
+**Why the table sends every position and not the edits.** The server drops the
+ones equal to the standard. A position edited back to the standard therefore
+stops being stated and follows it again, which is what "back to the standard"
+has to mean for the file to stay a statement of what differs.
+
+**The case keeps its comments.** A case file is hand-written, and the comment
+beside `airflow_cfm_per_kw` is what tells the next person that the number
+sizes the rack's resistance. Saving from this page rewrites the two lines it
+owns — the standard, and the block of positions — through the same textual
+editor the libraries use (ADR-048), and leaves every other byte alone. The
+block is written the first time a position disagrees and removed when the
+last one stops, so clearing the table gives back the file that was there
+before. The save is parsed and compared against what was asked before it is
+written; a rack block that did not survive the edit is refused rather than
+saved.

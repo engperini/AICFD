@@ -158,3 +158,57 @@ def replace_list(lines: list[str], path: list[str], rows: list[str]) -> None:
     while end < len(lines) and lines[end].lstrip().startswith("- "):
         end += 1
     lines[first:end] = rows
+
+
+def set_map(lines: list[str], path: list[str], values: dict) -> None:
+    """Write a nested mapping under ``path``, or remove it when empty.
+
+    `set_scalar` can only change a key the file already has. A case states
+    per-position rack loads in a block that is absent from most files, appears
+    the first time a position disagrees with the standard, and has to go away
+    again when the last one stops disagreeing -- so the block is created,
+    rewritten and deleted here, and every other line of the case is left as
+    the person who wrote it left it (ADR-054).
+
+    The new block goes at the end of its parent, after the parent's own keys
+    and the comments that belong to them.
+    """
+    parent, key = path[:-1], path[-1]
+    level = len(parent)
+    index = find(lines, path)
+    if index is not None:
+        end = index + 1
+        while end < len(lines) and (
+            not lines[end].strip()
+            or len(lines[end]) - len(lines[end].lstrip()) > level * len(INDENT)
+        ):
+            end += 1
+        # A trailing blank line belongs to whatever comes next, not to this
+        # block, so removing the block must not take the separator with it.
+        while end - 1 > index and not lines[end - 1].strip():
+            end -= 1
+    else:
+        if not values:
+            return
+        start = find(lines, parent) if parent else None
+        if parent and start is None:
+            raise ValueError(f"no {'.'.join(parent)} block to write into")
+        # `start or -1` would read the first line of the file as "not found",
+        # and the block would be written above the document it belongs to.
+        anchor = -1 if start is None else start
+        end = anchor + 1
+        while end < len(lines) and (
+            not lines[end].strip()
+            or len(lines[end]) - len(lines[end].lstrip()) >= level * len(INDENT)
+        ):
+            end += 1
+        while end - 1 > anchor and not lines[end - 1].strip():
+            end -= 1
+        index = end
+    block = []
+    if values:
+        block = [f"{INDENT * level}{key}:"] + [
+            f"{INDENT * (level + 1)}{name}: {render(value)}"
+            for name, value in values.items()
+        ]
+    lines[index:end] = block
