@@ -2049,3 +2049,38 @@ paid for.
 plates and the distribution losses carry the same tag the components page
 gives them. A reader deciding whether a case is set up correctly should not
 have to open another page to learn that one of its numbers is inert.
+
+---
+
+## ADR-052 — The room is cold, and the captions are set on a halo
+
+**One rule for the volumes.** The hall below the false ceiling is cold-side
+air. That is what the fan wall fills it with and what a person standing in it
+breathes, so it is the room's default state and the contained hot aisles are
+the exception painted over it. The return plenum above the ceiling is the hot
+side: it carries the air the racks have just heated, on its way to the units.
+
+**What that replaces.** A list of tinted bands — a strip per cold aisle, a
+strip per hot aisle — with everything else left as bare paper. The space above
+a rack was white. The transverse aisle between two blocks was white. The whole
+longitudinal section was white, because that view has no y axis on screen and
+the bands were keyed to y. White reads as a gap in the drawing rather than as
+the room, and the special case added to patch the plan's gaps then had to be
+switched off in the section where it had no width. The hall's own fill covers
+all of it, and the special case is gone.
+
+**The hot tint is painted over the cold room now**, not over paper, so it had
+to carry against it: at the weight it had, a chimney came out a muddy lilac
+that read as neither side of the loop.
+
+**Every caption is set on a halo** of the page's own background, painted under
+the glyphs so the letters keep their shape. The drawings are dense exactly
+where the captions have to sit — `chimney` on the chimney, `cold aisle` in the
+aisle — and a label that has to be deciphered against the thing it labels is
+not doing its job.
+
+**A panel's caption sits near the top of its rectangle**, not in the middle.
+The middle of a fan wall in section is where the racks and the sensor markers
+are, so `fan wall` was set across a rack with a sensor drawn through it. The
+top of the same rectangle is clear. A rack's own id stays centred: the
+rectangle is the rack, and there is nothing else in it.

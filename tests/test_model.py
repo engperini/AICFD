@@ -473,8 +473,25 @@ class SectionDrawsEachThingOnceTest(unittest.TestCase):
         self.assertIn("svg.dw-over-map .dw-cold,svg.dw-over-map .dw-hot{display:none}",
                       css)
 
-    def test_the_floor_between_two_blocks_is_room_rather_than_paper(self):
+    def test_the_room_is_cold_and_the_hot_aisles_are_the_exception(self):
+        """One rule instead of a list of regions. Tinting the aisle bands alone
+        left everything that was neither an aisle nor a rack as bare paper --
+        above a rack, between two blocks, the whole longitudinal section --
+        and white read as a gap in the drawing (ADR-052)."""
         js = (self.WEB / "drawing.js").read_text()
-        self.assertIn("function openFloor(model)", js)
-        self.assertIn("view.h === 0 || view.v === 0 ? openFloor(model) : []", js,
-                      "looking along x the strip has no width on the page")
+        self.assertIn("model.ceiling_z],\n    'dw-cold',", js,
+                      "the hall below the false ceiling is the cold fill")
+        self.assertNotIn("openFloor", js,
+                         "the hall's own fill covers what that patched")
+
+    def test_the_plenum_is_the_hot_side_of_the_loop(self):
+        """It carries the air the racks just heated, and it was tinted like
+        the cold room."""
+        css = (self.WEB / "drawing.css").read_text()
+        self.assertIn(".dw-plenum{fill:var(--hot)", css)
+
+    def test_a_caption_is_set_on_a_halo(self):
+        """The drawings are dense where the captions have to sit: `fan wall`
+        lands on the wall it names."""
+        css = (self.WEB / "drawing.css").read_text()
+        self.assertIn("paint-order:stroke;stroke:var(--paper)", css)

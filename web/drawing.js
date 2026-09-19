@@ -152,24 +152,6 @@ const ofRack = (panel) => panel.of_rack ?? /^rack_(top|end)(_|$)/.test(panel.nam
 const rackBlocks = (model) =>
   model.blocks?.length ? model.blocks : [rackSpan(model)];
 
-/**
- * The x ranges inside the hall that no rack block occupies: the transverse
- * aisle between two blocks, and the clearance at each end.
- */
-function openFloor(model) {
-  const blocks = rackBlocks(model)
-    .slice()
-    .sort((a, b) => a[0] - b[0]);
-  const gaps = [];
-  let edge = model.hall.lo[0];
-  for (const [lo, hi] of blocks) {
-    if (lo - edge > 1e-6) gaps.push([edge, lo]);
-    edge = Math.max(edge, hi);
-  }
-  if (model.hall.hi[0] - edge > 1e-6) gaps.push([edge, model.hall.hi[0]]);
-  return gaps;
-}
-
 const coldAisles = (model) => model.cold_aisles || [model.aisles.cold];
 const hotAisles = (model) => model.hot_aisles || [model.aisles.hot];
 
@@ -306,7 +288,7 @@ export function drawView(model, view, scale, options = {}) {
    */
   const painted = new Set();
 
-  const paint = (lo, hi, cls, label) => {
+  const paint = (lo, hi, cls, label, options = {}) => {
     const x0 = X(Math.min(lo[view.h], hi[view.h]));
     const x1 = X(Math.max(lo[view.h], hi[view.h]));
     const y0 = Y(Math.max(lo[view.v], hi[view.v]));
@@ -332,9 +314,16 @@ export function drawView(model, view, scale, options = {}) {
     // 0,6 m rack passes 26 px long before its own id fits, and the labels run
     // into each other across the whole row.
     if (label && x1 - x0 > Math.max(26, label.length * 5.8 + 4) && y1 - y0 > 13) {
-      svg.append(
-        el('text', { x: (x0 + x1) / 2, y: (y0 + y1) / 2 + 3.5, class: 'dw-label' }, label),
-      );
+      // A panel's caption sits near the top of its rectangle rather than in
+      // the middle of it. The middle of a fan wall in section is where the
+      // racks and the sensors are, so `fan wall` was set across a rack with a
+      // sensor marker through it; the top of the same rectangle is clear
+      // (ADR-052). A rack's own id stays centred: the rectangle IS the rack,
+      // and there is nothing else in it.
+      const y = options.labelAtTop
+        ? y0 + 11
+        : (y0 + y1) / 2 + 3.5;
+      svg.append(el('text', { x: (x0 + x1) / 2, y, class: 'dw-label' }, label));
     }
     return { x0, y0, x1, y1 };
   };
@@ -354,46 +343,34 @@ export function drawView(model, view, scale, options = {}) {
     paint(box.lo, box.hi, cls);
   }
 
-  // 2 — aisle tints, only where the y axis is on screen, and only in the hall
+  // 2 — what volume is what.
+  //
+  // One rule: the hall below the false ceiling is cold-side air. That is what
+  // the fan wall fills it with and what a person standing in it breathes, so
+  // it is the room's default state and the contained hot aisles are the
+  // exception painted over it.
+  //
+  // Tinting the aisle bands alone left everything that was neither an aisle
+  // nor a rack as bare paper -- the space above a rack, the transverse aisle
+  // between two blocks, the whole of the longitudinal section. White read as
+  // a gap in the drawing rather than as the room (ADR-052).
+  paint(
+    [model.hall.lo[0], model.domain.lo[1], model.domain.lo[2]],
+    [model.hall.hi[0], model.domain.hi[1], model.ceiling_z],
+    'dw-cold',
+  );
+  // The hot aisles, where the y axis is on screen to show them. They stop
+  // where the rack rows stop: an aisle is the space between two rows, and
+  // beyond the last rack there are no rows to be between.
   if (view.h === 1 || view.v === 1) {
-    const bands = [
-      // Both stop where the rack rows stop: an aisle is the space between two
-      // rows, and beyond the last rack there are no rows to be between. The
-      // floor there is open room, filled below -- full width, so the two are
-      // complementary and no strip is tinted twice.
-      ...coldAisles(model).map((band) => [band, 'dw-cold', rackBlocks(model)]),
-      // A hot aisle is the pocket between two rack rows, and it stops where
-      // the rows do. Painted the hall's length it ran past the end of the
-      // row and straight across the transverse aisle between two blocks,
-      // tinting bare floor as though the containment reached it.
-      ...hotAisles(model).map((band) => [band, 'dw-hot', rackBlocks(model)]),
-    ];
-    for (const [band, cls, spans] of bands) {
-      for (const [x0, x1] of spans) {
-        const lo = [x0, band[0], model.domain.lo[2]];
-        const hi = [
-          x1,
-          band[1],
-          view.v === 2 ? model.ceiling_z : model.domain.hi[2],
-        ];
-        paint(lo, hi, cls);
+    for (const band of hotAisles(model)) {
+      for (const [x0, x1] of rackBlocks(model)) {
+        paint(
+          [x0, band[0], model.domain.lo[2]],
+          [x1, band[1], view.v === 2 ? model.ceiling_z : model.domain.hi[2]],
+          'dw-hot',
+        );
       }
-    }
-    // The floor between two rack blocks, and between a block and the wall, is
-    // open room on the cold side of the racks -- a person walks down it. The
-    // aisle bands stop at the blocks, so on a plan those strips came out as
-    // bare paper: a white gap across every row that read as something missing
-    // from the drawing rather than as floor (ADR-050).
-    // Only where x is on screen. Looking ALONG x -- the transverse section --
-    // a strip between two blocks has no width on the page, so painting it
-    // covered the whole section in cold and washed the hot aisles out of it.
-    for (const [x0, x1] of (view.h === 0 || view.v === 0 ? openFloor(model) : [])) {
-      paint(
-        [x0, model.domain.lo[1], model.domain.lo[2]],
-        [x1, model.domain.hi[1],
-         view.v === 2 ? model.ceiling_z : model.domain.hi[2]],
-        'dw-cold',
-      );
     }
   }
 
@@ -429,7 +406,8 @@ export function drawView(model, view, scale, options = {}) {
       continue;
     }
     paint(lo, hi, cut ? klass(panel) : `${klass(panel)} dw-beyond`,
-      cut ? null : PANEL_LABEL[panel.name] ?? fanLabel(panel, seen));
+      cut ? null : PANEL_LABEL[panel.name] ?? fanLabel(panel, seen),
+      { labelAtTop: true });
   }
 
   // 5 — racks.
