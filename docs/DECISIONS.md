@@ -1234,6 +1234,16 @@ Miss one and the write succeeds, the page confirms it, and the file is gone at
 the next `docker compose down` — the same silent class of failure this ADR
 exists to remove, arriving a day later instead of immediately.
 
+**The browser is the last copy that can go stale.** Moving the drawings'
+layout into `drawing.css` broke the results page for anyone whose browser
+still held the previous copy of that file: new HTML, old stylesheet, and the
+rules that had moved between them belonged to neither. The page came apart in
+a way that reads as the change being wrong rather than absent — this ADR's own
+failure, one layer further out, and the pull was not even at fault. The
+viewer now sends `Cache-Control: no-cache` on everything it serves that does
+not already say otherwise, so a reload revalidates. It is revalidation, not
+re-download: the conditional request still answers 304 from `Last-Modified`.
+
 **Why `reference/` is mounted read-only.** So that "the tool never writes to
 the reference results" (ADR-032) is enforced by the filesystem rather than
 promised by the code.

@@ -329,3 +329,83 @@ class ComposeMountsTest(unittest.TestCase):
 
     def test_the_worked_results_stay_read_only(self):
         self.assertIn("ro", self.mounts()["reference"].split(","))
+
+
+class StaleAssetTest(unittest.TestCase):
+    """The browser must not keep a stylesheet or a page across a pull.
+
+    The clone is the application (ADR-034), so `git pull` has to take effect
+    on the next reload. A browser holding the previous `drawing.css` while
+    the server hands it the new HTML loses whichever rules moved between the
+    two and breaks the page -- and that reads as the change being wrong
+    rather than absent, which sends everyone looking in the wrong place.
+    """
+
+    def serve(self, path: str):
+        """Headers this handler would send for `path`, without a socket."""
+        import http.server
+        import io
+
+        class Probe(server.Handler):
+            def __init__(self):  # no socket, no request parsing
+                self.wfile = io.BytesIO()
+                self.rfile = io.BytesIO()
+                self.request_version = "HTTP/1.0"
+                self.requestline = f"GET {path} HTTP/1.0"
+                self.client_address = ("127.0.0.1", 0)
+                self.command = "GET"
+                self.path = path
+                self.headers = http.server.BaseHTTPRequestHandler.MessageClass(
+                    io.StringIO(""))
+                self.directory = str(server.REPO_ROOT)
+
+        probe = Probe()
+        head = probe.send_head()
+        if head:
+            head.close()
+        sent = probe.wfile.getvalue().decode("latin-1")
+        return [line.split(":", 1)[1].strip()
+                for line in sent.splitlines()
+                if line.lower().startswith("cache-control:")]
+
+    def test_a_static_file_is_revalidated_every_time(self):
+        for path in ("/web/drawing.css", "/web/results.html", "/web/app.js"):
+            with self.subTest(path=path):
+                self.assertEqual(self.serve(path), ["no-cache"])
+
+    def test_one_directive_only(self):
+        """Two Cache-Control headers is an argument the browser resolves."""
+        self.assertEqual(len(self.serve("/web/index.html")), 1)
+
+
+class SharedDrawingStylesTest(unittest.TestCase):
+    """The drawings' layout lives in one file, loaded by both pages.
+
+    `drawing.css` exists so the model page and the results page cannot drift.
+    A rule that only one of them carries is how they would.
+    """
+
+    def css(self) -> str:
+        return (server.REPO_ROOT / "web" / "drawing.css").read_text()
+
+    def test_both_pages_load_it(self):
+        for page in ("index.html", "results.html"):
+            with self.subTest(page=page):
+                self.assertIn(
+                    'href="./drawing.css"',
+                    (server.REPO_ROOT / "web" / page).read_text(),
+                    f"{page} draws with drawing.css and must load it",
+                )
+
+    def test_it_carries_the_layout_the_pages_stopped_carrying(self):
+        css = self.css()
+        for rule in (".view-head", ".map-head", ".view-zoom", ".map-zoom",
+                     ".view-scroll", ".map-scroll", ".view-stage", ".map-stage"):
+            with self.subTest(rule=rule):
+                self.assertIn(rule, css)
+
+    def test_a_magnified_drawing_scrolls_inside_its_own_card(self):
+        css = self.css()
+        self.assertIn("min-width:0", css,
+                      "without it a magnified drawing widens its grid column")
+        self.assertIn("overflow:auto", css)

@@ -609,6 +609,32 @@ def start_run(name: str) -> None:
 class Handler(SimpleHTTPRequestHandler):
     case_name = "pod-fanwall"
 
+    #: Set while a response has already declared its own caching, so the
+    #: default below does not send a second, contradictory header.
+    _cache_control_sent = False
+
+    def send_header(self, keyword, value):
+        if keyword.lower() == "cache-control":
+            self._cache_control_sent = True
+        super().send_header(keyword, value)
+
+    def end_headers(self):
+        """Never let the browser keep a page or a stylesheet across a pull.
+
+        The clone is the application (ADR-034): `git pull` has to take effect
+        on the next reload, and a browser holding yesterday's `drawing.css`
+        while the server hands it today's HTML breaks the page in a way that
+        looks like the change being wrong rather than absent -- the exact
+        failure that ADR exists to remove, one layer further out.
+
+        `no-cache` is revalidate, not re-download: the conditional request
+        still answers 304 from `Last-Modified`, so nothing is fetched twice.
+        """
+        if not self._cache_control_sent:
+            super().send_header("Cache-Control", "no-cache")
+        self._cache_control_sent = False
+        super().end_headers()
+
     def _query(self, key: str) -> str | None:
         from urllib.parse import parse_qs, urlparse
 
