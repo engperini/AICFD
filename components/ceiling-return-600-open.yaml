@@ -1,0 +1,13 @@
+id: ceiling-return-600-open
+name: Ceiling return, fully open (modelling aid)
+role: ceiling_return
+
+# Not a product. A 600 x 600 opening with nothing in it, for the study that
+# asks what the grilles are costing: run the hall against this and against the
+# specified grille, and the difference is the answer.
+size: [0.6, 0.6]
+aperture: open aperture, no core
+free_area: 1                   # a hole, nothing in it
+note: >
+  A hole in the false ceiling with no grille in it. Point a case at this to
+  separate what the ceiling grilles cost from everything else in the loop.

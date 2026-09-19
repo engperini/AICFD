@@ -1,0 +1,13 @@
+id: containment-panel
+name: Aisle containment panel
+role: containment
+
+# Containment is built to close an aisle, and it never closes it completely:
+# doors, cable entries, the gap where a panel meets a rack. The specification
+# carries that as a permeability rather than pretending the aisle is sealed.
+aperture: panel joints, door seals and cable entries
+free_area: 0.05
+note: >
+  Applies to hot and cold aisle containment alike. It is leakage, not a
+  designed opening, and it is the reason a contained aisle never reaches the
+  temperature a sealed one would.

@@ -107,15 +107,20 @@ class BafflesTest(unittest.TestCase):
     def test_nothing_may_reach_the_outer_boundary(self):
         self.assertIn("internalFacesOnly true", self.text)
 
-    def test_walls_are_patch_pairs_and_the_fan_is_explicit(self):
+    def test_walls_are_patch_pairs_and_the_rest_are_explicit_patches(self):
         self.assertEqual(self.text.count("patchPairs"), len(case.wall_plan(self.model)))
-        # the fan; grilles only join when they carry a resistance
-        self.assertEqual(self.text.count("patches\n        {"), 1)
+        # the fan, plus every perforated surface: the ceiling grilles and the
+        # mesh closing the plenum where it opens into the gallery (ADR-048)
+        self.assertEqual(self.text.count("patches\n        {"),
+                         1 + len(case.porous(self.model)))
 
     def test_a_grille_with_free_area_becomes_a_cyclic_pair_with_a_pressure_jump(self):
         model = build(grilles={"size": 0.6, "count": 3, "free_area": 0.8})
         text = case.create_baffles_dict(model)
-        self.assertEqual(text.count("porousBafflePressure"), 6)  # 3 grilles x 2 sides
+        # two sides each, for the three grilles and the one gallery opening
+        self.assertEqual(text.count("porousBafflePressure"),
+                         2 * len(case.porous(model)))
+        self.assertEqual(len(case.porous(model)), 4)
         self.assertIn("neighbourPatch  grille1_above", text)
         k = model.panel("grille1").resistance
         self.assertIn(f"I {k:.4g}", text)
@@ -137,7 +142,10 @@ class BafflesTest(unittest.TestCase):
     def test_nothing_can_blow_backwards_through_the_fan(self):
         """A pressure-driven intake let 2.3x the net flow reverse through it."""
         self.assertNotIn("type pressureInletOutletVelocity", self.text)
-        intake = self.text[self.text.index(case.FAN_INTAKE) : self.text.index("slave")]
+        # The fan's own entry, not whatever the first `slave` in the file
+        # belongs to: the perforated surfaces are written before it.
+        start = self.text.index(case.FAN_INTAKE)
+        intake = self.text[start : self.text.index("slave", start)]
         self.assertIn("flowRateOutletVelocity", intake)
         # The patch is written as inletOutlet only so it stores a value the
         # energy balance can read; what it would admit is supply air, never a

@@ -80,6 +80,10 @@ const SECTIONS = [
   },
   {
     title: 'Return grilles and containment',
+    // The surfaces themselves -- what free area each has, and what that costs
+    // -- are a house standard rather than a per-case number, so they live on
+    // their own page (ADR-048).
+    componentsLink: true,
     params: [
       { key: 'grille_size', label: 'Grille size', unit: 'm', step: 0.05 },
       { key: 'grille_count', label: 'Grilles', unit: '', step: 1 },
@@ -347,6 +351,20 @@ function equipmentLink() {
   }">${named ? `${named} ▸` : 'equipment ▸'}</a>`;
 }
 
+/**
+ * The way through to the surfaces the air passes, from the section that uses
+ * them.
+ *
+ * A grille's free area is a house standard rather than a number typed per
+ * case -- every hall built to the specification uses the same one -- so it is
+ * one click away rather than in this form (ADR-048).
+ */
+function componentsLink() {
+  return '<a class="group-link" href="./components.html" '
+    + 'title="free area of the ceiling grilles, the mesh into the gallery, '
+    + 'the floor plates and the containment">components \u25b8</a>';
+}
+
 function wireMeshPreset() {
   const box = document.getElementById('p-cell_size');
   const preset = document.getElementById('p-cell-preset');
@@ -376,6 +394,8 @@ function renderParams() {
         <div class="param-group-head"><span class="group-title">${
           section.title
         }</span>${section.equipment ? equipmentLink() : ''}${
+          section.componentsLink ? componentsLink() : ''
+        }${
           section.note ? `<span class="group-note">${section.note}</span>` : ''
         }</div>
         ${section.params.map(inputHtml).join('')}

@@ -498,6 +498,23 @@ class Model:
         velocity = self.airflow_m3s / area
         return grilles[0].resistance * 0.5 * self.rho * velocity**2
 
+    @property
+    def mesh_pressure_drop_pa(self) -> float | None:
+        """What the mesh closing the plenum into a gallery costs, from its K.
+
+        All of the return passes through it too, once, so it is the same
+        closed form as the grilles -- and it is worth stating separately
+        because nothing else in the loop is paid for by a surface nobody
+        chose (ADR-048). None where the case has no such opening.
+        """
+        openings = [p for p in self.panels
+                    if p.name.startswith("plenum_opening") and p.resistance is not None]
+        area = sum(p.area for p in openings)
+        if not openings or area <= 0:
+            return None
+        velocity = self.airflow_m3s / area
+        return openings[0].resistance * 0.5 * self.rho * velocity**2
+
     def fan_available_pa(self, flow_m3h: float | None = None) -> float | None:
         """Static pressure the unit can produce at ``flow_m3h``, from its curve.
 
@@ -663,6 +680,38 @@ class _Layout:
     blocks: list[tuple[float, float]] = field(default_factory=list)
 
 
+#: What a case uses where it names nothing. The house specification: the
+#: surfaces are standards, and a case that quietly used others would produce a
+#: fan duty nobody could reproduce (ADR-048).
+DEFAULT_COMPONENTS = {
+    "gallery_mesh": "gallery-mesh-13",
+    "ceiling_return": "ceiling-return-600",
+    "floor_tile": "floor-tile-600",
+    "containment": "containment-panel",
+}
+
+
+def component_for(spec: dict, role: str):
+    """The component filling one role in this case, or None.
+
+    A case names components under `components:`; anything it leaves out takes
+    the house default. `components: {role: null}` is how a case says it has
+    none of that surface at all.
+    """
+    from aicfd import components as library
+
+    named = spec.get("components") or {}
+    if role in named and named[role] is None:
+        return None
+    chosen = named.get(role) or DEFAULT_COMPONENTS.get(role)
+    if not chosen:
+        return None
+    try:
+        return library.load(chosen)
+    except library.UnknownComponent:
+        return None
+
+
 def fan_depth(spec: dict) -> float | None:
     """How far a fan wall unit reaches back into the mechanical gallery.
 
@@ -776,6 +825,11 @@ def build_model(spec: dict) -> Model:
     # plenum: the volume above the false ceiling is continuous across the hall,
     # so it collects from every hot aisle and feeds both galleries (ADR-027).
     dividers = [layout.hall.lo[0], layout.hall.hi[0]][: len(layout.galleries)]
+    # The opening is closed with a woven security mesh, and every cubic metre
+    # the plant moves passes through it once. Nothing about it is a choice --
+    # it is the building -- but the fan still pays for it, so it carries the
+    # mesh's loss coefficient rather than standing open (ADR-048).
+    mesh = component_for(spec, "gallery_mesh")
     for i, x in enumerate(dividers):
         panels.append(
             Panel(
@@ -784,6 +838,7 @@ def build_model(spec: dict) -> Model:
                 axis=0,
                 position=x,
                 extent=((0.0, layout.domain.hi[1]), (ceiling, layout.domain.hi[2])),
+                resistance=mesh.k if mesh else None,
                 sign=1 if i == 0 else -1,
             )
         )
@@ -849,13 +904,25 @@ def build_model(spec: dict) -> Model:
 
 
 def _grille_free_area(spec: dict) -> float | None:
+    """Open area of the ceiling return grilles.
+
+    The case wins where it states one -- a study of a hall already built uses
+    what is in it. Otherwise the component the case names, or the house
+    standard (ADR-048).
+    """
     free_area = spec["grilles"].get("free_area")
-    return float(free_area) if free_area is not None else None
+    if free_area is not None:
+        return float(free_area)
+    grille = component_for(spec, "ceiling_return")
+    return grille.free_area if grille else None
 
 
 def _grille_k(spec: dict) -> float | None:
     if "loss_coefficient" in spec["grilles"]:
         return float(spec["grilles"]["loss_coefficient"])
+    grille = component_for(spec, "ceiling_return")
+    if grille is not None and spec["grilles"].get("free_area") is None:
+        return grille.k  # its datasheet K where it has one, its free area where not
     free_area = _grille_free_area(spec)
     return grille_loss_coefficient(free_area) if free_area is not None else None
 

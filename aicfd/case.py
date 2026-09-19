@@ -338,8 +338,8 @@ def topo_set_dict(model: Model) -> str:
     # Each grille is its own zone: it becomes a cyclic pair carrying the
     # datasheet's pressure loss, not a hole. The forro zone above already has
     # these faces removed, so nothing is claimed twice.
-    for grille in grilles(model):
-        actions.append(_face_selection(grille.name, [grille], [], cell))
+    for surface in porous(model):
+        actions.append(_face_selection(surface.name, [surface], [], cell))
 
     for rack in model.racks:
         actions.append(
@@ -386,12 +386,22 @@ def _wall_patch_fields(k: float, epsilon: float, p0: float) -> str:
             }}"""
 
 
-def grilles(model: Model) -> list[Panel]:
-    return [p for p in model.panels if p.name.startswith("grille")]
+def porous(model: Model) -> list[Panel]:
+    """Every surface the air passes THROUGH at a cost, in zone order.
+
+    A ceiling return grille and the woven mesh closing the plenum where it
+    opens into a gallery are the same thing to the solver: a hole in a wall
+    that is also a pressure jump. Each is a hole in its wall's zone so the
+    wall does not block it, and a face zone of its own so the jump has
+    somewhere to live (ADR-048).
+    """
+    return [p for p in model.panels
+            if p.resistance is not None
+            and (p.name.startswith("grille") or p.name.startswith("plenum_opening"))]
 
 
-def _grille_baffle(grille: Panel, p0: float) -> str:
-    """A return grille as a cyclic pair with a pressure jump across it.
+def _porous_baffle(grille: Panel, p0: float) -> str:
+    """A perforated surface as a cyclic pair with a pressure jump across it.
 
     porousBafflePressure gives dp = -(D mu U + 0.5 I rho |U|^2) L on the
     pressure the solver works with, here p_rgh. With D = 0 and L = 1 the
@@ -450,7 +460,7 @@ def create_baffles_dict(model: Model) -> str:
     k, epsilon = turbulence_initial_values(model)
 
     p0 = model.pressure_pa
-    entries = [_grille_baffle(g, p0) for g in grilles(model) if g.resistance is not None]
+    entries = [_porous_baffle(s, p0) for s in porous(model)]
     for name, _panels, _holes in wall_plan(model):
         entries.append(
             f"""    {name}

@@ -502,12 +502,18 @@ class GrilleAndFanBudgetTest(unittest.TestCase):
         field(step / "phi", "phi", "0", {FAN_INTAKE: [1.0], FAN_SUPPLY: [-1.0]})
         self.assertIsNone(post.grille_pressure_drop(step))
 
-    def test_grille_pairs_are_not_leaks(self):
-        """A cyclic pair carries the return flow by design."""
+    def test_the_perforated_surfaces_are_not_leaks(self):
+        """A cyclic pair carries the return flow by design.
+
+        Both of them: the ceiling return grilles and the woven mesh closing
+        the plenum where it opens into a mechanical gallery. Leaving the mesh
+        out made the sealed-envelope check fail on a hall that was sealed
+        (ADR-048).
+        """
         import inspect
 
         source = inspect.getsource(post._checks)
-        self.assertIn('not name.startswith("grille")', source)
+        self.assertIn('not name.startswith(("grille", "plenum_opening"))', source)
 
     def test_the_fan_capacity_check_reads_the_curve_at_the_rated_flow(self):
         self.assertAlmostEqual(self.model.fan_available_pa(), 100.0)

@@ -269,6 +269,9 @@ def _analyse(model: Model, case_dir: str | Path, time: str | None = None) -> Pod
     kpis["rack_drop_pa"], kpis["rows"] = rack_pressure_drop(model, grid)
     kpis["grille_drop_pa"] = grille_pressure_drop(step)
     kpis["grille_drop_asked_pa"] = round(model.grille_pressure_drop_pa, 3)
+    kpis["mesh_drop_pa"] = grille_pressure_drop(step, "plenum_opening")
+    kpis["mesh_drop_asked_pa"] = round(model.mesh_pressure_drop_pa, 3) \
+        if model.mesh_pressure_drop_pa is not None else None
     # The rise that sizes the machine is the one the most loaded unit has to
     # produce; a hall's units do not all see the same resistance.
     rises = [f["rise_pa"] for f in fans]
@@ -467,14 +470,21 @@ def _coil_from_table(model: Model, unit, fans: list[dict]) -> dict:
     }
 
 
-def grille_pressure_drop(step: str | Path) -> float | None:
-    """The jump the field shows across the return grilles, in Pa.
+def grille_pressure_drop(step: str | Path, prefix: str = "grille") -> float | None:
+    """The jump the field shows across one kind of perforated surface, in Pa.
 
-    Each grille is a cyclic pair; the drop is the mean p_rgh on its lower face
-    minus the mean on its upper face, flow-weighted across grilles.
+    Each is a cyclic pair; the drop is the mean p_rgh on its lower face minus
+    the mean on its upper face, flow-weighted across the surfaces of that kind.
+
+    ``prefix`` matters. Every cyclic pair in the case ends `_below`, so taking
+    them all mixed the ceiling return grilles with the woven mesh closing the
+    plenum into the gallery -- two surfaces with different open areas -- into
+    one weighted mean, which then matched neither one's K. Each is measured
+    against its own (ADR-048).
     """
     phi_path = Path(step) / "phi"
-    names = [n for n in patch_names(phi_path) if n.endswith("_below")]
+    names = [n for n in patch_names(phi_path)
+             if n.endswith("_below") and n.startswith(prefix)]
     if not names:
         return None
     total_flow, weighted = 0.0, 0.0
@@ -787,11 +797,15 @@ def _checks(model: Model, step: Path, kpis: dict, grid: dict) -> list[Check]:
         )
     )
 
+    # A perforated surface is meant to carry flow: a ceiling return grille and
+    # the woven mesh closing the plenum into a mechanical gallery are both
+    # holes with a pressure jump, not walls (ADR-048). Everything else that
+    # carries flow is a leak, which is what this check is for.
     leaks = {
         name: flow
         for name, flow in flows.items()
         if not _is_fan_patch(name)
-        and not name.startswith("grille")
+        and not name.startswith(("grille", "plenum_opening"))
         and abs(flow) > MASS_TOLERANCE * supply
     }
     checks.append(

@@ -1,0 +1,15 @@
+id: floor-tile-600
+name: Perforated floor plate, 600 x 600
+role: floor_tile
+
+# Halls supplied through a raised floor use perforated plates at this
+# permeability. The plate carries a damper, so the figure below is the
+# specification's design value rather than the plate's maximum.
+size: [0.6, 0.6]              # one tile of the floor grid, metres
+aperture: perforated steel plate on a folded column base, with damper
+free_area: 0.54
+adjustable: [0.35, 0.70]      # what the damper can be set to on site
+note: >
+  Delivers supply air into a cold aisle from the underfloor plenum. The damper
+  is what balances one aisle against another, so a plate is worth editing one
+  at a time where a study is about balancing.

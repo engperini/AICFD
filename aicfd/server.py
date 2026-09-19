@@ -388,6 +388,36 @@ def read_equipment(model: str | None) -> dict:
     return {"models": models, "unit": unit.to_dict()}
 
 
+def read_component(chosen: str | None) -> dict:
+    """One component out of the library, or the list of them by role.
+
+    The surfaces the air passes through -- ceiling return grilles, the mesh
+    closing the plenum into a gallery, raised floor plates, the leakage a
+    containment has -- are standards rather than per-case choices, so they
+    live in a library the way a fan wall does (ADR-048).
+    """
+    from aicfd import components as library
+
+    every = [library.load(name).to_dict() for name in library.available()]
+    listing = {"components": every,
+               "roles": [{"role": r, "label": label} for r, label in library.ROLES.items()]}
+    if not chosen:
+        return listing
+    return {**listing, "component": library.load(chosen).to_dict()}
+
+
+def write_component(chosen: str, body: dict) -> dict:
+    """Write the page's draft back over one component.
+
+    A component marked `fixed` refuses: it is the building rather than a
+    choice, and the library says so rather than the page hiding the field.
+    """
+    from aicfd import components as library
+
+    library.save(chosen, body)
+    return read_component(chosen)
+
+
 def write_equipment(model: str, body: dict) -> dict:
     """Write the page's draft back, over this unit or into a new one.
 
@@ -654,6 +684,8 @@ class Handler(SimpleHTTPRequestHandler):
     def do_GET(self):  # noqa: N802
         if self.path.startswith("/api/model"):
             return self._json(self._safely(build_payload, self.case_name))
+        if self.path.startswith("/api/components"):
+            return self._json(self._safely(read_component, self._query("id")))
         if self.path.startswith("/api/equipment"):
             return self._json(self._safely(read_equipment, self._query("model")))
         if self.path.startswith("/api/commands"):
@@ -684,6 +716,10 @@ class Handler(SimpleHTTPRequestHandler):
 
             return self._json(self._safely(update))
 
+        if self.path.startswith("/api/components"):
+            return self._json(
+                self._safely(write_component, self._query("id"), body)
+            )
         if self.path.startswith("/api/equipment"):
             return self._json(
                 self._safely(write_equipment, self._query("model"), body)

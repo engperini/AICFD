@@ -1,0 +1,20 @@
+id: gallery-mesh-13
+name: Woven security mesh, 13 mm aperture
+role: gallery_mesh
+fixed: true                   # architecture, not a choice: the same opening
+                              # closed the same way in every hall built to
+                              # this specification, so it is not offered for
+                              # editing (ADR-048).
+
+# The return plenum opens into each mechanical gallery along the whole width
+# of the hall, above the false ceiling. The opening is closed with a woven
+# stainless mesh, which is a security boundary first and a flow resistance
+# second -- but the air has to pass through it, so the plant pays for it.
+aperture: 13 x 13 mm openings, 3 mm wire, woven stainless
+free_area: 0.65               # the standard assumed here. A 13/3 weave gives
+                              # 66% and a 12.7/3 weave 65.4%, so 65% is the
+                              # conservative round number of the pair.
+note: >
+  Closes the return plenum where it opens into a mechanical gallery. Every
+  cubic metre the plant moves passes through it once, so its resistance is
+  added to the fan duty even though nothing about it is a choice.

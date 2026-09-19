@@ -1866,3 +1866,68 @@ The report's figures are matplotlib and had no containment in a section at
 all. They now draw the same two things: the contained rectangle looking along
 the hall, dashed; and looking across it, the chimney beside each rack row,
 solid, because there the plane cuts the wall along its length.
+
+---
+
+## ADR-048 — The surfaces the air passes through are a library, not a case field
+
+**Decision.** A component library beside the equipment one, `components/`,
+holding the perforated surfaces: the grilles in the false ceiling, the woven
+mesh that closes the return plenum where it opens into a mechanical gallery,
+the plates of a raised floor, and the leakage a containment has. Each is one
+number — open area over gross area — and the loss coefficient follows from it.
+A case names a component; the component says what it is. They have their own
+page, and saving one changes every element of that kind in every case that
+names it.
+
+**Why not a case field.** Because they are standards. A house specification
+fixes the ceiling return grilles at 65 %, the floor plates at 54 % and the
+containment leakage at 5 %, and every hall built to it uses those numbers. Left
+as a field per case, the third hall gets 0,8 because that is what the template
+said, and its fan duty is then not comparable with the first two and nobody
+notices. One place to state a standard is what makes a set of studies a set.
+
+**Why the gallery mesh is fixed.** The opening is closed with a woven security
+mesh in every hall built this way — it is the building, not a choice — so the
+library marks it `fixed`, the page shows it without editing it, and the save
+path refuses it rather than the page merely hiding the field. What it is not
+is free: every cubic metre the plant moves passes through it once, and until
+now the model let it through for nothing. It now carries its loss coefficient
+like any other surface.
+
+**What that cost to wire.** Three things, each a real consequence rather than
+a detail:
+
+1. The porous baffle was selected by the name `grille`. It is now selected by
+   *having a resistance*, because a hole in a wall with a pressure jump across
+   it is one thing whatever it is called.
+2. `sealed_envelope` reads every surface that is not a fan and not a grille as
+   a leak. The mesh carries the whole return by design, so it failed a hall
+   that was sealed. The check now excludes the perforated surfaces as a class.
+3. The measured grille drop took every cyclic pair in the case, and every pair
+   ends `_below`. With the mesh added it averaged two surfaces of different
+   open areas together and then matched neither one's K — `grille_resistance`
+   read 53 %. Each surface is now measured against its own.
+
+The second and third were found by solving, not by reading. A resistance added
+to a model and not verified against the field it produces is a number nobody
+has checked.
+
+**A free area is typed, a K is shown.** The page takes the open area and shows
+the loss coefficient live beside it, because the consequence of the change is
+what the engineer is choosing and it should be visible before a solve rather
+than after one. Where a datasheet states K directly it wins: a measurement
+beats a correlation.
+
+**Fully open is a component.** `ceiling-return-600-open` is a 600 × 600 hole
+with nothing in it. It is not a product; it is the control case. Run a hall
+against it and against the specified grille, and the difference is what the
+grilles cost.
+
+**The save is checked before it lands.** The editor rewrites lines in place to
+keep the comments, and a rule that mishandles one shape of value damages the
+*file* rather than the value: a folded note whose continuation lines were left
+behind swallowed the keys under it and the library stopped loading. That
+happened, on the save path, where the damage is written before anything reads
+it back. A save is now parsed back into a component before the file is
+written, and refused if it cannot be.

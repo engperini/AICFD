@@ -1,0 +1,14 @@
+id: ceiling-return-600-eggcrate
+name: Ceiling return grille, 600 x 600, open egg-crate
+role: ceiling_return
+
+# The open end of what the market offers: a 1/2 in. aluminium egg-crate core
+# in a 600 x 600 frame, as the usual catalogues list it. Kept beside the house
+# standard so a study can show what the choice of grille is worth.
+size: [0.6, 0.6]
+aperture: 1/2 in. aluminium egg-crate core, 600 x 600 frame
+free_area: 0.9
+note: >
+  An open egg-crate core costs almost nothing in pressure and takes almost no
+  ceiling area out of service. Where the specification allows it in place of
+  the house standard, this is the case to run.

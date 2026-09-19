@@ -1,0 +1,13 @@
+id: ceiling-return-600
+name: Ceiling return grille, 600 x 600
+role: ceiling_return
+
+# Halls that return air through the void above the false ceiling, contained
+# or not, use return grilles at this permeability.
+size: [0.6, 0.6]              # one tile of the ceiling grid, metres
+aperture: egg-crate core in a 600 x 600 frame
+free_area: 0.65
+note: >
+  Sits in the false ceiling over a hot aisle and takes the return air into the
+  plenum. The number that matters is the free area: the pressure it costs
+  follows from it, and the count and coverage decide how much face there is.
