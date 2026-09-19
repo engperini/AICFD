@@ -389,3 +389,129 @@ class FieldSupplyTest(unittest.TestCase):
         with tempfile.TemporaryDirectory() as tmp:
             self.assertEqual(post.supply_temperature(tmp, 21.9), 21.9)
             self.assertIsNone(post.supply_temperature(tmp))
+
+
+class ReconstructionLockTest(unittest.TestCase):
+    """Exclusive access to a case's reconstructed time directories.
+
+    The readers that matter are other *programs*: `aicfd post` on a case that
+    is still solving, or the results page refreshed mid-run. A thread lock
+    leaves exactly those unprotected, which is what made the first fix
+    incomplete (ADR-040).
+    """
+
+    def setUp(self):
+        import tempfile
+
+        self.tmp = tempfile.TemporaryDirectory()
+        self.case = Path(self.tmp.name)
+
+    def tearDown(self):
+        self.tmp.cleanup()
+
+    def test_it_is_re_entrant_within_one_thread(self):
+        """Analysing a result reads and samples, and the sampling
+        reconstructs. A plain lock would deadlock on its own call stack."""
+        from aicfd.post import reconstruction_lock
+
+        with reconstruction_lock(self.case):
+            with reconstruction_lock(self.case):
+                with reconstruction_lock(self.case):
+                    pass
+
+    def test_two_threads_do_not_hold_it_at_once(self):
+        import threading
+        import time
+
+        from aicfd.post import reconstruction_lock
+
+        inside, overlapped = [], []
+
+        def worker():
+            with reconstruction_lock(self.case):
+                overlapped.append(len(inside) > 0)
+                inside.append(1)
+                time.sleep(0.05)
+                inside.pop()
+
+        threads = [threading.Thread(target=worker) for _ in range(4)]
+        for t in threads:
+            t.start()
+        for t in threads:
+            t.join()
+        self.assertEqual(overlapped, [False] * 4)
+
+    def test_two_processes_do_not_hold_it_at_once(self):
+        """The whole point. Run as separate interpreters, because that is what
+        `aicfd post` beside `aicfd run` actually is."""
+        import subprocess
+        import sys
+
+        script = (
+            "import sys, time, pathlib;"
+            "sys.path.insert(0, %r);"
+            "from aicfd.post import reconstruction_lock;"
+            "case = pathlib.Path(sys.argv[1]);"
+            "log = case / 'order.txt';"
+            "\nwith reconstruction_lock(case):\n"
+            "    log.open('a').write('in ' + sys.argv[2] + '\\n')\n"
+            "    time.sleep(0.6)\n"
+            "    log.open('a').write('out ' + sys.argv[2] + '\\n')\n"
+        ) % str(Path(__file__).resolve().parents[1])
+        procs = [
+            subprocess.Popen([sys.executable, "-c", script, str(self.case), name])
+            for name in ("a", "b")
+        ]
+        for p in procs:
+            self.assertEqual(p.wait(timeout=30), 0)
+        lines = (self.case / "order.txt").read_text().split()
+        # in X out X in Y out Y -- never interleaved
+        self.assertEqual(lines[0], "in")
+        self.assertEqual(lines[2], "out")
+        self.assertEqual(lines[1], lines[3], "the first in must be the first out")
+        self.assertEqual(lines[4], "in")
+        self.assertNotEqual(lines[1], lines[5])
+
+    def test_it_leaves_its_lock_file_beside_the_case(self):
+        from aicfd.post import LOCK_NAME, reconstruction_lock
+
+        with reconstruction_lock(self.case):
+            pass
+        self.assertTrue((self.case / LOCK_NAME).exists())
+
+    def test_a_case_it_cannot_write_to_still_works(self):
+        """A read-only checkout gets the thread lock and no more, rather than
+        an exception from somewhere deep in post-processing."""
+        from aicfd.post import reconstruction_lock
+
+        with reconstruction_lock(self.case / "does" / "not" / "exist" / "\0bad"):
+            pass
+
+
+class FirstPassTest(unittest.TestCase):
+    """The first pass has nothing to compare against, and says so.
+
+    It used to report `moved 99.000 K`, a sentinel that read as a
+    measurement -- and a reader who took it for one would think the loop had
+    diverged when it had not started.
+    """
+
+    def _pass(self, moved, converged=False):
+        return coupled.Pass(number=1, iterations=300,
+                            supplies_c={"fan1": 21.9}, returns_c={"fan1": 33.3},
+                            moved_k=moved, converged=converged, saturated=[])
+
+    def test_the_first_pass_says_so_instead_of_a_number(self):
+        summary = self._pass(None).summary()
+        self.assertIn("nothing to compare against", summary)
+        self.assertNotIn("99", summary)
+        self.assertNotIn("moved", summary)
+
+    def test_a_later_pass_reports_what_it_moved(self):
+        summary = self._pass(0.031).summary()
+        self.assertIn("moved 0.031 K", summary)
+
+    def test_a_first_pass_is_never_called_converged(self):
+        """Nothing moved because nothing has been compared, which is not the
+        same as nothing moving."""
+        self.assertNotIn("converged", self._pass(None).summary())

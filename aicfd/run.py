@@ -274,9 +274,9 @@ def solve_coupled(
         # drops the older ones, so without it two reconstructions of the same
         # time race -- and a reader between them sees half a field, which is
         # how this died on `300/phi: no boundaryField`.
-        from aicfd.post import RECONSTRUCT_LOCK
+        from aicfd.post import reconstruction_lock
 
-        with RECONSTRUCT_LOCK:
+        with reconstruction_lock(case):
             if any(case.glob("processor*")):
                 results.append(
                     run_command(case, "reconstructPar", args=["-latestTime"])
@@ -290,10 +290,10 @@ def solve_coupled(
             if not supplies:
                 break
         moved = (max(abs(supplies[k] - previous[k]) for k in supplies if k in previous)
-                 if previous else float("inf"))
-        settled = moved <= tolerance
+                 if previous else None)
+        settled = moved is not None and moved <= tolerance
         record = loop.Pass(number=number, iterations=end, supplies_c=supplies,
-                           returns_c=returns, moved_k=min(moved, 99.0),
+                           returns_c=returns, moved_k=moved,
                            converged=settled, saturated=saturated)
         passes.append(record)
         if on_pass:
@@ -301,7 +301,7 @@ def solve_coupled(
         previous = supplies
         if settled or number == max_passes:
             break
-        with RECONSTRUCT_LOCK:
+        with reconstruction_lock(case):
             loop.apply_supplies(case, time, supplies)
         end += segment
         loop.set_end_time(case, end, latest=True)

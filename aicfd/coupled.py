@@ -64,8 +64,12 @@ class Pass:
     iterations: int
     supplies_c: dict[str, float]
     returns_c: dict[str, float]
-    moved_k: float
-    """The largest change in any unit's supply temperature this pass."""
+    moved_k: float | None
+    """The largest change in any unit's supply temperature this pass, or None
+    on the first, which has nothing to be compared against. None rather than a
+    sentinel number: `moved 99.000 K` read as a measurement, and a reader who
+    took it for one would think the loop had diverged when it had not
+    started."""
     converged: bool
     saturated: list[str]
     """Units whose valve is wide open: their supply is no longer a setpoint."""
@@ -74,7 +78,9 @@ class Pass:
         warm = max(self.supplies_c.values()) if self.supplies_c else 0.0
         return (
             f"pass {self.number}: {len(self.supplies_c)} units, warmest supply "
-            f"{warm:.2f} degC, moved {self.moved_k:.3f} K"
+            f"{warm:.2f} degC, "
+            + ("the first, nothing to compare against yet"
+               if self.moved_k is None else f"moved {self.moved_k:.3f} K")
             + (" (converged)" if self.converged else "")
             + (f", {len(self.saturated)} at full water" if self.saturated else "")
         )

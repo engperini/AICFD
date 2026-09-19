@@ -24,10 +24,17 @@ is how a perfectly sealed POD first looked like it was leaking 37% of its air.
 
 from __future__ import annotations
 
+import contextlib
 import json
 import re
 import shutil
 import threading
+import time as time_module
+
+try:  # POSIX only; on anything else the thread lock is what there is
+    import fcntl
+except ImportError:  # pragma: no cover - not a platform this tool runs on
+    fcntl = None
 from dataclasses import dataclass
 from pathlib import Path
 
@@ -205,6 +212,14 @@ def written_times(case_dir: str | Path) -> list[str]:
 
 
 def analyse(model: Model, case_dir: str | Path, time: str | None = None) -> PodResults:
+    # Under the reconstruction lock for its whole length: this is the reader a
+    # torn field would mislead, and it is routinely run against a case that is
+    # still solving.
+    with reconstruction_lock(case_dir):
+        return _analyse(model, case_dir, time)
+
+
+def _analyse(model: Model, case_dir: str | Path, time: str | None = None) -> PodResults:
     case = Path(case_dir)
     sample(model, case)  # make sure the latest write has been read
     available = written_times(case)
@@ -1036,12 +1051,81 @@ def sample(model: Model, case_dir: str | Path) -> list[dict]:
     return history
 
 
-#: Held while anything reconstructs a decomposed time directory. Two
-#: reconstructions of the same time write the same files at the same moment,
-#: and a reader between them sees half a field -- which is how a coupled run
-#: died on `300/phi: no boundaryField` with the sampler and the coupling loop
-#: both rebuilding time 300 (ADR-040).
-RECONSTRUCT_LOCK = threading.Lock()
+#: Between threads. The cross-process half is a lock file beside the case,
+#: because the readers that matter are other *programs*: `aicfd post` or the
+#: results page opened while a solve is still running.
+_RECONSTRUCT_GUARD = threading.RLock()
+_RECONSTRUCT_DEPTH = threading.local()
+
+#: What the lock file is called. Beside the case rather than in it, so a
+#: `runs/<case>/` that is copied or cleaned does not carry a stale lock.
+LOCK_NAME = ".aicfd-reconstruct.lock"
+
+
+@contextlib.contextmanager
+def reconstruction_lock(case_dir: str | Path, timeout: float = 180.0):
+    """Exclusive access to a case's reconstructed time directories.
+
+    Held by whoever rebuilds one and by whoever reads one. Two reconstructions
+    of the same time write the same files at the same moment and a reader
+    between them sees half a field -- which is how a coupled run died on
+    `300/phi: no boundaryField`, with the sampler and the coupling loop both
+    rebuilding time 300 (ADR-040).
+
+    Across processes as well as threads, because the readers that matter are
+    other programs: `aicfd post` on a case that is still solving, or the
+    results page refreshed mid-run. A thread lock alone leaves exactly those
+    unprotected.
+
+    Re-entrant, since analysing a result reads and samples and the sampling
+    reconstructs. Advisory: after `timeout` it proceeds anyway rather than
+    fail a solve that has already cost half an hour, and says nothing -- a
+    reader that waited three minutes for a reconstruction has a worse problem
+    than a torn field.
+    """
+    depth = getattr(_RECONSTRUCT_DEPTH, "value", 0)
+    if depth:
+        _RECONSTRUCT_DEPTH.value = depth + 1
+        try:
+            yield
+        finally:
+            _RECONSTRUCT_DEPTH.value -= 1
+        return
+
+    _RECONSTRUCT_GUARD.acquire()
+    handle = None
+    try:
+        if fcntl is not None:
+            path = Path(case_dir) / LOCK_NAME
+            try:
+                path.parent.mkdir(parents=True, exist_ok=True)
+                handle = path.open("w")
+            except (OSError, ValueError):
+                # A read-only checkout, or a path the filesystem will not take.
+                # The thread lock is then what there is; refusing to lock is
+                # not a reason to refuse to post-process.
+                handle = None
+        if handle is not None:
+            deadline = time_module.monotonic() + timeout
+            while True:
+                try:
+                    fcntl.flock(handle, fcntl.LOCK_EX | fcntl.LOCK_NB)
+                    break
+                except OSError:
+                    if time_module.monotonic() >= deadline:
+                        break
+                    time_module.sleep(0.2)
+        _RECONSTRUCT_DEPTH.value = 1
+        yield
+    finally:
+        _RECONSTRUCT_DEPTH.value = 0
+        if handle is not None:
+            try:
+                fcntl.flock(handle, fcntl.LOCK_UN)
+            except OSError:
+                pass
+            handle.close()
+        _RECONSTRUCT_GUARD.release()
 
 
 def reconstruct_new_times(case: Path, keep: int = 3) -> list[str]:
@@ -1058,7 +1142,7 @@ def reconstruct_new_times(case: Path, keep: int = 3) -> list[str]:
     from aicfd.run import FoamCommandFailed, run_command
 
     done = []
-    with RECONSTRUCT_LOCK:
+    with reconstruction_lock(case):
         for entry in sorted(processors[0].iterdir(), key=lambda e: _sort_key(e.name)):
             if not entry.is_dir() or not _is_number(entry.name) or float(entry.name) == 0:
                 continue

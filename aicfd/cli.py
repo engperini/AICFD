@@ -346,7 +346,9 @@ def _run(args) -> int:
             f"Coil coupling: {len(passes)} pass(es); the supply air temperature "
             f"is a result, not an input"
             + (f", settled to {last.moved_k:.3f} K" if last.converged else
-               f", still moving {last.moved_k:.3f} K at the pass limit")
+               f", still moving {last.moved_k:.3f} K at the pass limit"
+               if last.moved_k is not None else
+               ", on a single pass with nothing to compare it against")
         )
     if args.no_post:
         return 0

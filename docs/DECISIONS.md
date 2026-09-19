@@ -1538,6 +1538,22 @@ the selection program was free to ask for more water at each of them.
 model. For the CA80NPVG6 it is 0,014 K. A number that drifts says the
 selections have stopped describing one machine.
 
+**The lock is across processes, not just threads.** The first version used a
+thread lock, which fixed the sampler racing the coupling loop inside one run
+and left untouched the readers that actually matter: `aicfd post` on a case
+that is still solving, or the results page refreshed mid-run. Those are other
+*programs*. It is now an advisory lock file beside the case, taken by whoever
+rebuilds a time directory and by whoever reads one — `analyse` included, for
+its whole length. Re-entrant, because analysing a result samples it and
+sampling reconstructs. After three minutes it proceeds anyway: a reader that
+has waited that long has a worse problem than a torn field, and failing a
+solve that already cost half an hour to protect it would be the wrong trade.
+
+**The first coupling pass says it is the first.** It used to report
+`moved 99.000 K` — a sentinel that reads as a measurement, and a reader who
+took it for one would think the loop had diverged when it had not started.
+It is None now, and prints as such.
+
 **Chilled water temperature is an input.** `fanwall.entering_water_c`. It is
 the one condition a plant changes without changing the machine, and the one
 the supply follows at about 0,8 K per K once the valve is open — by far the
