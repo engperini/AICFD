@@ -1572,8 +1572,21 @@ disagrees with a conclusion has to be able to see what was solved, with what,
 and under what assumptions, without being sent to a manual that may not travel
 with the document.
 
-It carries five things and stops: scope, the solver, the room, the cooling
-plant, acceptance.
+It carries six things and stops: scope, the solver, the room, the cooling
+unit and what the engineer enters, the coupled solve, acceptance.
+
+**It is fixed text and takes no result.** `_introduction(doc)` has nothing to
+read a study from, which is the guarantee rather than a convention, and a test
+asserts the signature. Section 1 describes how AICFD models a data hall; the
+study begins at section 2. A number from the run leaking into the method would
+make the method look like a finding.
+
+**Section 1.4 is the engineer's path, in five steps.** The selection is
+entered as the manufacturer issued it; the software checks it against itself —
+the stated air flow between the stated temperatures has to carry the stated
+capacity — and refuses one whose own numbers disagree; the coil is built from
+it; the curve it produces is reviewed, and kept or replaced with the
+manufacturer's own; then the model runs. Section 1.5 is the coupled solve.
 
 **Sections 1 to 5 are written in the affirmative, and tests enforce it.** A
 method stated by negation reads as a defence, and a reader of a consultancy

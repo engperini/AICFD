@@ -96,8 +96,20 @@ class DocumentTest(unittest.TestCase):
         )
         for phrase in ("OpenFOAM v1912", "buoyantSimpleFoam", "SIMPLE algorithm",
                        "k-epsilon", "counterflow heat exchanger",
-                       "The supply air temperature is solved from the coil",
+                       "The supply air temperature is an output",
                        "accepted on physical grounds"):
+            self.assertIn(phrase, whole)
+
+    def test_the_introduction_walks_the_engineer_through_the_input(self):
+        """The method has to say how a unit gets into the software: one
+        selection, checked, turned into a coil, and a curve to review."""
+        whole = self.text + "\n" + "\n".join(
+            c.text for tb in self.tables for r in tb.rows for c in r.cells
+        )
+        for phrase in ("A unit is described by one manufacturer selection",
+                       "the selection is entered", "the selection is checked",
+                       "the coil is built", "the curve is reviewed",
+                       "replaces it with the manufacturer's own capacity curve"):
             self.assertIn(phrase, whole)
 
     def test_the_document_states_things_rather_than_contrasting_them(self):
@@ -386,3 +398,62 @@ class OutsideTheTableReportTest(_UnitReport):
     def test_the_catalogue_limitation_stays(self):
         self.assertIn("catalogue capacity, not the capacity it actually has",
                       self.text)
+
+
+@unittest.skipUnless(HAVE_EXTRAS, "python-docx and matplotlib are not installed")
+class FixedIntroductionTest(unittest.TestCase):
+    """Section 1 is the software's method, printed identically every time.
+
+    It describes how AICFD models a data hall, so a reader meets the method
+    before meeting any result that rests on it. A number from the study
+    leaking into it would make the method look like a finding.
+    """
+
+    def _rendered(self):
+        import docx
+
+        from aicfd.report import _introduction
+
+        doc = docx.Document()
+        _introduction(doc)
+        text = "\n".join(p.text for p in doc.paragraphs)
+        cells = "\n".join(c.text for t in doc.tables for r in t.rows for c in r.cells)
+        return text + "\n" + cells
+
+    def test_it_takes_no_result_at_all(self):
+        """The signature is the guarantee: with nothing to read from, nothing
+        from a study can reach it."""
+        import inspect
+
+        from aicfd.report import _introduction
+
+        self.assertEqual(list(inspect.signature(_introduction).parameters), ["doc"])
+
+    def test_it_renders_the_same_text_every_time(self):
+        first, second = self._rendered(), self._rendered()
+        self.assertEqual(first, second)
+        self.assertIn("1  Introduction", first)
+        self.assertIn("1.6  Acceptance", first)
+
+    def test_the_report_prints_exactly_that_text(self):
+        """What the document carries is what the fixed section says, with no
+        case-specific sentence spliced in."""
+        import tempfile
+        from pathlib import Path
+
+        import docx
+
+        from aicfd.report import build
+
+        if not (RESULT / "viewer.json").exists():
+            self.skipTest("no exported result")
+        with tempfile.TemporaryDirectory() as tmp:
+            path = build(RESULT, Path(tmp) / "r.docx")
+            document = docx.Document(str(path))
+            text = "\n".join(p.text for p in document.paragraphs)
+            section = text[text.index("1  Introduction"):text.index("2  Summary")]
+        for line in self._rendered().splitlines():
+            if line.strip() and not line.startswith("1  Introduction"):
+                self.assertIn(line.strip(), section + "\n" + "\n".join(
+                    c.text for t in document.tables for r in t.rows for c in r.cells
+                ))

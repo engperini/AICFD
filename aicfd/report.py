@@ -208,7 +208,7 @@ def build(results_dir: str | Path, out_path: str | Path,
     doc.add_page_break()
     _contents(doc)
     doc.add_page_break()
-    _introduction(doc, export)
+    _introduction(doc)
     doc.add_page_break()
     _summary(doc, export)
     doc.add_page_break()
@@ -302,7 +302,8 @@ def _contents(doc) -> None:
     _heading(doc, "Contents", 1)
     for number, name, note in (
         ("1", "Introduction",
-         "Scope, the solver, the room, the cooling plant and acceptance"),
+         "The method: scope, solver, room, cooling unit, coupled solve, "
+         "acceptance"),
         ("2", "Summary", "Scope, objectives, basis of design and headline results"),
         ("3", "Methodology",
          "Geometry, mesh, models, boundary conditions and the cooling unit"),
@@ -316,27 +317,25 @@ def _contents(doc) -> None:
         _run(paragraph, f"\n      {note}", size=8.5, colour=MUTED)
 
 
-def _introduction(doc, export: Export) -> None:
-    """The method, stated once, in the document that rests on it.
+def _introduction(doc) -> None:
+    """The method the software uses, printed identically in every report.
 
-    Fixed across every report AICFD writes. Declarative throughout: it says
-    what is solved and how. What the study does not cover belongs in section
-    6, and how the method came to be belongs in the decision record.
+    Fixed text, and deliberately free of this study's numbers: it describes
+    how AICFD models a data hall, so a reader meets the method before meeting
+    any result that rests on it. The study begins at section 2.
     """
-    coil = export.kpis.get("coil_model") or {}
-
     _heading(doc, "1  Introduction", 1)
     _heading(doc, "1.1  Scope", 2)
     _para(doc,
-          "This is a steady-state CFD analysis of the hall at full load with "
-          "every cooling unit in service — the operating point that governs "
-          "sizing, layout and containment decisions. It establishes:")
+          "This is a steady-state CFD analysis of a data hall at full load "
+          "with every cooling unit in service — the operating point that "
+          "governs sizing, layout and containment decisions. It establishes:")
     _bullets(doc, [
         "the temperature of the air entering every rack, against the ASHRAE "
         "class A1 recommended band;",
         "that the air loop closes — the units move the mass they are given, "
         "the envelope holds, and the return air carries the installed load;",
-        "what each cooling unit delivers at the air this room presents to it;",
+        "what each cooling unit delivers at the air the room presents to it;",
         "what the room costs the units in static pressure, against what their "
         "fans produce at the airflow they move.",
     ])
@@ -365,8 +364,8 @@ def _introduction(doc, export: Export) -> None:
          "Gravity is active. Hot air rises out of a contained aisle, and "
          "containment leakage appears as warm air arriving above the racks."),
     ], widths=[4.0, 12.0],
-        note="Air speeds in the room stay under 2 % of the speed of sound, so "
-             "compressibility enters through the density's dependence on "
+        note="Air speeds in a data hall stay under 2 % of the speed of sound, "
+             "so compressibility enters through the density's dependence on "
              "temperature.")
 
     _heading(doc, "1.3  The room", 2)
@@ -386,16 +385,45 @@ def _introduction(doc, export: Export) -> None:
         "and re-enters the hall through its supply.",
     ])
 
-    _heading(doc, "1.4  The cooling plant", 2)
+    _heading(doc, "1.4  The cooling unit, and what the engineer enters", 2)
     _para(doc,
-          "The supply air temperature is solved from the coil. A chilled-water "
-          "coil is a counterflow heat exchanger: what it transfers is its "
-          "effectiveness times the air's capacity rate times the difference "
-          "between the return air and the entering water. The effectiveness "
-          "belongs to the machine and to the two flows; the capacity follows "
-          "from the condition the room presents. Each coil is recovered from "
-          "its design selection and evaluated at the condition this room "
-          "produces.")
+          "A unit is described by one manufacturer selection. The engineer "
+          "enters it as issued, the software checks it against itself — the "
+          "stated air flow carrying air between the stated temperatures has to "
+          "give the stated capacity — and builds the unit's coil from it.")
+    _table(doc, ["Step", "What happens"], [
+        ("1 — the selection is entered",
+         "Return and supply air, air flow, net sensible capacity, electrical "
+         "input, and the chilled water the unit was selected at."),
+        ("2 — the selection is checked",
+         "Air flow times the temperature difference has to carry the stated "
+         "capacity. A selection whose own numbers disagree is refused before "
+         "anything is solved."),
+        ("3 — the coil is built",
+         "A chilled-water coil is a counterflow heat exchanger: what it "
+         "transfers is its effectiveness times the air's capacity rate times "
+         "the difference between the return air and the entering water. The "
+         "selection fixes the effectiveness at that point, and the "
+         "effectiveness fixes the conductance."),
+        ("4 — the curve is reviewed",
+         "The coil answers at any return air temperature and any air flow, "
+         "which is the curve printed in section 3. The engineer keeps it, or "
+         "replaces it with the manufacturer's own capacity curve."),
+        ("5 — the model runs",
+         "From here each unit is a machine the solution talks to, as "
+         "section 1.5 describes."),
+    ], widths=[4.0, 12.0],
+        note="The water flow behind a selection is recovered from its stated "
+             "entering and leaving water temperatures. Where the manufacturer "
+             "issues further selections of the same unit, they refine how the "
+             "coil's resistance divides between air and water and are then "
+             "reproduced as a check.")
+
+    _heading(doc, "1.5  Solving the room and the units together", 2)
+    _para(doc,
+          "The supply air temperature is an output. A fan wall delivers what "
+          "its coil gives it, from the air the room returns, so the room and "
+          "the machines are solved as one problem.")
     _table(doc, ["Step", "What happens"], [
         ("1 — the room is solved",
          "A segment of the flow solution runs at the current supply air "
@@ -418,11 +446,9 @@ def _introduction(doc, export: Export) -> None:
         note="The room fixes its own temperature rise — load over mass flow — "
              "so a change in supply moves the return one for one and the coil "
              "passes back the fraction its effectiveness leaves. Two or three "
-             "segments reach the fixed point."
-             + (" Section 3 gives this unit's design selection and the coil "
-                "recovered from it." if coil else ""))
+             "segments reach the fixed point.")
 
-    _heading(doc, "1.5  Acceptance", 2)
+    _heading(doc, "1.6  Acceptance", 2)
     _para(doc,
           "A run is accepted on physical grounds. Eleven identities the "
           "solution has to satisfy are evaluated on the converged field: mass "
