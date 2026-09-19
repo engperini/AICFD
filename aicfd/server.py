@@ -78,6 +78,10 @@ EDITABLE = {
     "grille_size": (("grilles", "size"), float, (0.1, 3.0)),
     "grille_count": (("grilles", "count"), int, (1, 200)),
     "grille_coverage": (("grilles", "coverage"), float, (0.05, 1.0)),
+    # Which component fills each role. Validated against the library rather
+    # than a range: a name that is not in it is not a value out of bounds, it
+    # is a case pointing at nothing (ADR-048).
+    "ceiling_return": (("components", "ceiling_return"), "component", "ceiling_return"),
     "grille_free_area": (("grilles", "free_area"), float, (0.05, 1.0)),
     "grille_k": (("grilles", "loss_coefficient"), float, (0.0, 100.0)),
     "containment": (("containment", "enabled"), bool, None),
@@ -194,6 +198,17 @@ def apply_changes(spec: dict, changes: dict) -> tuple[dict, list[str]]:
             rejected.append(f"{key}: not an editable parameter")
             continue
         path, caster, limits = EDITABLE[key]
+        if caster == "component":
+            from aicfd import components as library
+
+            choice = str(raw or "").strip()
+            if choice and choice not in library.for_role(limits):
+                rejected.append(
+                    f"{key}: the library has no {limits} component called {choice!r}"
+                )
+                continue
+            _place(spec, path, choice or None)
+            continue
         if caster in ("cell_size", "vector3"):
             # "0.2" or "0.2, 0.2, 0.1" -- one value or three (x, y, z).
             try:

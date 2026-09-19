@@ -79,17 +79,19 @@ const SECTIONS = [
     ],
   },
   {
-    title: 'Return grilles and containment',
-    // The surfaces themselves -- what free area each has, and what that costs
-    // -- are a house standard rather than a per-case number, so they live on
-    // their own page (ADR-048).
+    title: 'Return air and containment',
+    note: 'how much face there is, and what it is made of',
+    // What each surface is made of -- its free area, and what that costs --
+    // is a house standard rather than a per-case number, so it is chosen here
+    // and edited on its own page (ADR-048, ADR-051). The two fields that used
+    // to state it by hand are gone: they said the same thing as the component
+    // and could disagree with it.
     componentsLink: true,
+    components: true,
     params: [
       { key: 'grille_size', label: 'Grille size', unit: 'm', step: 0.05 },
       { key: 'grille_count', label: 'Grilles', unit: '', step: 1 },
       { key: 'grille_coverage', label: 'Ceiling covered over each hot aisle', unit: '0-1', step: 0.05 },
-      { key: 'grille_free_area', label: 'Free area', unit: '0-1', step: 0.05, optional: true },
-      { key: 'grille_k', label: 'Loss coefficient K', unit: '', step: 0.1, optional: true },
       { key: 'containment', label: 'Contain the hot aisle', check: true, optional: true },
     ],
   },
@@ -398,11 +400,70 @@ function renderParams() {
         }${
           section.note ? `<span class="group-note">${section.note}</span>` : ''
         }</div>
+        ${section.components ? componentRows() : ''}
         ${section.params.map(inputHtml).join('')}
       </div>`,
     )
     .join('');
   wireMeshPreset();
+  wireComponentPickers();
+}
+
+/**
+ * What each surface in this case is made of, on one line each.
+ *
+ * The card used to carry the free area and the loss coefficient as two typed
+ * fields. They said the same thing as the component the case uses and could
+ * disagree with it, which is a drawing and a number arguing in front of the
+ * reader. So the choice is here -- a name, and what it costs -- and the
+ * numbers behind it are a click away on the page that owns them (ADR-051).
+ *
+ * A role with one option is a line rather than a select: there is nothing to
+ * choose, and a select with one entry invites a reader to look for a second.
+ */
+function componentRows() {
+  const roles = model.components || [];
+  if (!roles.length) return '';
+  return `<div class="components">${roles.map((role) => {
+    const cost = role.kind === 'load'
+      ? `${(role.share * 100).toFixed(1)} % of the IT load`
+      : `${(role.free_area * 100).toFixed(0)} % free · K ${role.k.toFixed(2)}`;
+    const name = (role.options.find((o) => o.id === role.chosen) || {}).name || '—';
+    const picker = role.options.length > 1 && !role.fixed
+      ? `<select data-component-role="${role.role}" aria-label="${role.label}">${
+          role.options.map((o) => `<option value="${o.id}"${
+            o.id === role.chosen ? ' selected' : ''}>${o.name}</option>`).join('')
+        }</select>`
+      : `<span class="component-name" title="${name}">${name}</span>`;
+    const tag = role.fixed ? '<span class="component-tag">fixed</span>'
+      : role.applied ? '' : '<span class="component-tag pending">not in the solver</span>';
+    return `<div class="component-row">
+      <span class="component-role">${role.label}</span>
+      ${picker}
+      <span class="component-cost">${cost}</span>${tag}
+    </div>`;
+  }).join('')}</div>`;
+}
+
+/**
+ * Choosing a component is an edit to the spec, so it waits for Apply like
+ * every other field rather than saving on change. The cost beside it updates
+ * at once: what the choice costs is the reason for making it, and seeing it
+ * only after a round trip makes the select feel like it did nothing.
+ */
+function wireComponentPickers() {
+  for (const select of document.querySelectorAll('[data-component-role]')) {
+    select.addEventListener('change', () => {
+      const role = (model.components || []).find(
+        (r) => r.role === select.dataset.componentRole);
+      const option = role?.options.find((o) => o.id === select.value);
+      const cost = select.parentElement.querySelector('.component-cost');
+      if (option && cost && option.free_area != null) {
+        cost.textContent =
+          `${(option.free_area * 100).toFixed(0)} % free · K ${option.k.toFixed(2)}`;
+      }
+    });
+  }
 }
 
 /**
@@ -683,6 +744,11 @@ async function applyChanges() {
         changes[p.key] = p.text ? input.value : Number(input.value);
       }
     }
+  }
+  // Which component fills a role travels with the rest: the server names the
+  // field after the role, and validates it against the library (ADR-051).
+  for (const select of document.querySelectorAll('[data-component-role]')) {
+    changes[select.dataset.componentRole] = select.value;
   }
 
   try {

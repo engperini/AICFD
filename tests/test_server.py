@@ -450,3 +450,54 @@ class SharedDrawingStylesTest(unittest.TestCase):
                          "sheetScale must clamp the view's height to the window")
         self.assertIn("window.innerHeight * 0.8", js,
                       "the scroller is capped at 80vh in drawing.css")
+
+
+class ComponentChoiceTest(unittest.TestCase):
+    """Which component fills a role is a per-case choice; what it is made of
+    is not (ADR-051)."""
+
+    def spec(self) -> dict:
+        import yaml
+
+        return yaml.safe_load(
+            (server.REPO_ROOT / "cases" / "hall-double-gallery.yaml").read_text()
+        )
+
+    def test_a_case_can_choose_another_ceiling_grille(self):
+        spec, rejected = server.apply_changes(
+            self.spec(), {"ceiling_return": "ceiling-return-600-perforated"})
+        self.assertEqual(rejected, [])
+        self.assertEqual(spec["components"]["ceiling_return"],
+                         "ceiling-return-600-perforated")
+
+    def test_a_name_the_library_does_not_have_is_refused(self):
+        spec, rejected = server.apply_changes(self.spec(), {"ceiling_return": "nope"})
+        self.assertEqual(len(rejected), 1)
+        self.assertIn("nope", rejected[0])
+        self.assertNotIn("components", spec)
+
+    def test_a_component_of_the_wrong_role_is_refused(self):
+        """A floor plate is not a ceiling grille, however valid its file."""
+        _spec, rejected = server.apply_changes(
+            self.spec(), {"ceiling_return": "floor-tile-600"})
+        self.assertEqual(len(rejected), 1)
+
+    def test_the_page_is_told_what_each_role_uses_and_what_else_there_is(self):
+        from aicfd import components as library
+        from aicfd import model as m
+
+        spec = self.spec()
+        roles = {r["role"]: r for r in m.components_in_use(spec)}
+        self.assertEqual(set(roles), set(library.ROLES))
+        for role, entry in roles.items():
+            with self.subTest(role=role):
+                self.assertIsNotNone(entry["chosen"], "every role has a house default")
+                self.assertTrue(entry["options"])
+                self.assertIn(entry["chosen"], [o["id"] for o in entry["options"]])
+
+    def test_the_card_no_longer_states_a_free_area_of_its_own(self):
+        """It said the same thing as the component and could disagree with it."""
+        js = (server.REPO_ROOT / "web" / "app.js").read_text()
+        for key in ("'grille_free_area'", "'grille_k'"):
+            self.assertNotIn(key, js, f"{key} duplicates the component")
+        self.assertIn("componentRows()", js)

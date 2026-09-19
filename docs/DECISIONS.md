@@ -2013,3 +2013,39 @@ Painted only where x is on the page. Looking along x the strip has no width
 there, and painting it covered the whole transverse section in cold and washed
 the hot aisles out of it — found by looking at the drawing after the fix, not
 before.
+
+---
+
+## ADR-051 — The card names the choice; the page owns the numbers
+
+**Decision.** The model page's group for return air carries, per role, which
+component this case uses and what it costs — a select where the library offers
+more than one, a line where it offers one. The two fields that used to state a
+free area and a loss coefficient by hand are gone.
+
+**Why they had to go.** They said the same thing as the component the case
+uses, in a second place, and could disagree with it: a card reading 80 % free
+above a drawing solved at 65 % is a page arguing with itself in front of the
+reader, and neither number says which one the solver read. One place to state
+a thing is what makes it checkable.
+
+**Why the choice stays.** Which grille a hall is built with is a per-case
+decision — it is what a study is often about. What that grille IS, the open
+area and what it costs, is a house standard. So the card names the machine and
+the components page describes it, which is the split the fan wall already has:
+`CA80NPVG6 ▸` on the model page, the selections and the curve behind it.
+
+**The cost is shown beside the name, and updates on the select.** What a
+choice costs is the reason for making it. Seeing it only after Apply and a
+round trip makes the control feel like it did nothing, and sends the reader to
+another page to answer the question they were already looking at.
+
+**A role with one option is a line, not a select.** There is nothing to choose,
+and a select with one entry invites a reader to look for a second. The line
+still carries the cost, because the mesh closing the plenum is fixed and still
+paid for.
+
+**What is not applied says so here too.** The containment's leakage, the floor
+plates and the distribution losses carry the same tag the components page
+gives them. A reader deciding whether a case is set up correctly should not
+have to open another page to learn that one of its numbers is inert.

@@ -688,6 +688,7 @@ DEFAULT_COMPONENTS = {
     "ceiling_return": "ceiling-return-600",
     "floor_tile": "floor-tile-600",
     "containment": "containment-panel",
+    "distribution_loss": "pdu-distribution-loss",
 }
 
 
@@ -710,6 +711,39 @@ def component_for(spec: dict, role: str):
         return library.load(chosen)
     except library.UnknownComponent:
         return None
+
+
+def components_in_use(spec: dict) -> list[dict]:
+    """Which component fills each role in this case, and what else could.
+
+    The model page names the choice and shows what it costs; the numbers
+    behind it are edited on the components page (ADR-048). A role the library
+    has nothing for is left out rather than shown empty.
+    """
+    from aicfd import components as library
+
+    out = []
+    for role, label in library.ROLES.items():
+        options = [library.load(name) for name in library.for_role(role)]
+        if not options:
+            continue
+        chosen = component_for(spec, role)
+        out.append({
+            "role": role,
+            "label": label,
+            "chosen": chosen.id if chosen else None,
+            "fixed": bool(chosen and chosen.fixed),
+            "applied": bool(chosen and chosen.applied),
+            "kind": chosen.kind if chosen else "surface",
+            "free_area": chosen.free_area if chosen else None,
+            "share": chosen.share if chosen else None,
+            "k": round(chosen.k, 3) if chosen and chosen.k is not None else None,
+            "options": [{"id": c.id, "name": c.name,
+                         "free_area": c.free_area, "share": c.share,
+                         "k": round(c.k, 3) if c.k is not None else None}
+                        for c in options],
+        })
+    return out
 
 
 def fan_depth(spec: dict) -> float | None:
@@ -1640,6 +1674,9 @@ def to_dict(model: Model, spec: dict) -> dict:
         # drawing that leaves a 1,5 m deep machine as a line gives a reader
         # checking whether the gallery holds it nothing to measure (ADR-046).
         "fan_depth_m": fan_depth(spec),
+        # Which perforated surface each role uses here, and what else the
+        # library offers. The model page picks; the components page edits.
+        "components": components_in_use(spec),
         "racks": [
             {
                 "id": r.id,
