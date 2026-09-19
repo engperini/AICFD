@@ -80,8 +80,6 @@ function clone(source) {
 function render() {
   document.getElementById('unit-name').textContent =
     `${unit.family} ${unit.model}`;
-  const [low, high] = span('return_c');
-  const rise = span('nscc_kw');
   document.getElementById('root').innerHTML = `
     <div class="layout">
       <div class="column">
@@ -91,15 +89,6 @@ function render() {
             <span class="card-sub">against the air the unit receives</span>
           </div>
           <div id="chart"></div>
-          <p class="prose">
-            <b>${fmt(rise[0], 1)} kW at ${fmt(low, 0)} °C and
-            ${fmt(rise[1], 1)} kW at ${fmt(high, 0)} °C</b> — the same machine,
-            at the same water temperature, static pressure and fan speed. The
-            only thing that changed is the air reaching the coil, and the
-            capacity moved by ${fmt((rise[1] / rise[0] - 1) * 100, 0)} %.
-            That is why a result is judged against this table and not against
-            one catalogue figure.
-          </p>
         </section>
 
         <section class="card">
@@ -368,12 +357,6 @@ function factsTable(rows) {
   return `<table class="facts"><tbody>${rows
     .map(([a, b]) => `<tr><td>${a}</td><td style="text-align:right">${b}</td></tr>`)
     .join('')}</tbody></table>`;
-}
-
-/** Lowest and highest value of one column, over the draft. */
-function span(key) {
-  const values = draft.capacity.map((row) => Number(row[key])).filter(Number.isFinite);
-  return [Math.min(...values), Math.max(...values)];
 }
 
 // --- the chart ---------------------------------------------------------------
