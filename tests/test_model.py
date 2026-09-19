@@ -495,3 +495,45 @@ class SectionDrawsEachThingOnceTest(unittest.TestCase):
         lands on the wall it names."""
         css = (self.WEB / "drawing.css").read_text()
         self.assertIn("paint-order:stroke;stroke:var(--paper)", css)
+
+
+class SensorChartLegendTest(unittest.TestCase):
+    """Four places on one chart, three of them within a kelvin (ADR-053)."""
+
+    WEB = Path(__file__).resolve().parent.parent / "web"
+
+    def test_a_label_carries_a_mark_in_its_series_colour(self):
+        """The text stays in ink. Colouring it was the intent and never
+        worked: the class sets `fill`, and a CSS rule beats a presentation
+        attribute, so every name came out the same grey."""
+        js = (self.WEB / "app.js").read_text()
+        self.assertIn('class="chart-mark"', js)
+        self.assertNotIn('fill="${colour}">${g.label}', js,
+                         "a class sets fill; the attribute never applied")
+
+    def test_a_displaced_label_keeps_a_thread_to_its_line(self):
+        js = (self.WEB / "app.js").read_text()
+        self.assertIn('class="chart-leader"', js)
+        self.assertIn(".chart-leader{", (self.WEB / "index.html").read_text())
+
+    def test_a_sensor_marker_has_a_colour_of_its_own(self):
+        """It is an instrument on a drawing, not a series on a chart. While it
+        borrowed a categorical slot, re-stepping that slot for a chart
+        repainted every sensor in every drawing."""
+        css = (self.WEB / "drawing.css").read_text()
+        self.assertIn("stroke:var(--sensor)", css)
+        self.assertNotIn("var(--series-4)", css)
+        for page in ("index.html", "results.html"):
+            with self.subTest(page=page):
+                self.assertIn("--sensor", (self.WEB / page).read_text())
+
+    def test_both_pages_define_the_same_series_colours(self):
+        """A reader moves between them comparing the same places."""
+        import re
+
+        def tokens(page):
+            text = (self.WEB / page).read_text()
+            return {m.group(1): m.group(2).lower() for m in
+                    re.finditer(r"--(series-\d|sensor):\s*(#[0-9a-fA-F]{6})", text)}
+
+        self.assertEqual(tokens("index.html"), tokens("results.html"))

@@ -166,7 +166,7 @@ function render() {
         <span><i class="swatch" style="background:var(--hot)"></i>grilles and return</span>
         <span><i class="swatch" style="background:var(--containment)"></i>containment</span>
         <span><i class="swatch" style="background:var(--rack);border:1px solid var(--text-primary)"></i>racks</span>
-        <span><i class="swatch" style="background:var(--series-4)"></i>sensors</span>
+        <span><i class="swatch" style="background:var(--sensor)"></i>sensors</span>
         <span>dashed = beyond the section plane</span>
       </div>
     </section>
@@ -667,7 +667,9 @@ function balanceStrip(b) {
 function drawSensorChart(history) {
   const W = 640;
   const H = 180;
-  const pad = { left: 44, right: 132, top: 10, bottom: 26 };
+  // Room on the right for the longest place name, its colour mark and the
+  // gap before it: `Behind the fan wall` is the one that has to fit.
+  const pad = { left: 44, right: 154, top: 10, bottom: 26 };
   const its = history.iterations;
   const series = history.groups.filter((g) => g.temp_c?.length);
   if (!series.length || its.length < 2) return '';
@@ -708,9 +710,26 @@ function drawSensorChart(history) {
         .join('');
       const colour = `var(--series-${(i % 8) + 1})`;
       const end = g.temp_c.length - 1;
+      const endY = Y(g.temp_c[end]);
+      const markX = X(end) + 8;
+      // The label carries a mark in the series colour and its text in ink.
+      // Colouring the text was the intent here and never worked -- the class
+      // sets `fill`, and a CSS rule beats a presentation attribute, so the
+      // three stacked names came out the same grey and identified nothing
+      // (ADR-053). A mark also survives being read in print or by someone
+      // who cannot separate the hues, which coloured text does not.
+      const mark = `<rect class="chart-mark" x="${markX}" y="${labelY[i] - 1.5}"
+        width="11" height="3" rx="1.5" fill="${colour}"/>`;
+      // A label pushed off its own line needs a thread back to it, or the
+      // stack is three names beside four lines and the reader guesses.
+      const leader = Math.abs(labelY[i] - endY) < 1.5 ? ''
+        : `<path class="chart-leader" stroke="${colour}"
+             d="M${X(end).toFixed(1)},${endY.toFixed(1)}
+                L${(markX - 3).toFixed(1)},${labelY[i].toFixed(1)}"/>`;
       return `<path class="chart-line" d="${d}" stroke="${colour}"/>
-        <text class="chart-tick" x="${X(end) + 6}" y="${labelY[i] + 4}"
-          fill="${colour}">${g.label}</text>`;
+        ${leader}${mark}
+        <text class="chart-tick" x="${markX + 16}" y="${labelY[i] + 4}"
+          >${g.label}</text>`;
     })
     .join('');
 

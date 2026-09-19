@@ -2084,3 +2084,36 @@ The middle of a fan wall in section is where the racks and the sensor markers
 are, so `fan wall` was set across a rack with a sensor drawn through it. The
 top of the same rectangle is clear. A rack's own id stays centred: the
 rectangle is the rack, and there is nothing else in it.
+
+---
+
+## ADR-053 — A direct label is a mark and a name, and the palette is measured
+
+**The chart.** Four places are monitored while a run settles, and three of
+them sit within a kelvin of each other at steady state. Their end labels were
+stacked apart so they would not overlap, which left three names beside four
+lines and nothing saying which was which.
+
+**Each label now carries a mark in its series colour and its name in ink**,
+and a label pushed off its own line keeps a thin leader back to where that
+line ends. Colouring the text was the original intent and it never worked: the
+class sets `fill`, and a CSS rule beats an SVG presentation attribute, so every
+name came out the same grey. A mark is the better answer anyway — it survives
+print, and it survives a reader who cannot separate the hues, which coloured
+text does not.
+
+**The palette was measured, not judged.** Two of the four series failed the
+normal-vision floor: `#eda100` against `#eb6834` at ΔE 13,7 where 15 is the
+floor — "hard to tell apart even with full colour vision". Those were two of
+the three bunched lines, so the complaint and the measurement were the same
+fault. The fourth slot is re-stepped to a magenta, `#a3166b` on the light
+surface and `#cf62b0` on the dark, chosen by searching the colour space for a
+step that passes every pair in both themes rather than by eye. Dark is its own
+step from the same family, not the light one flipped: the obvious purple
+candidate passed on white and collapsed against the dark theme's blue at
+ΔE 1,9 under protanopia.
+
+**A sensor marker is not a series.** It had been drawn in `--series-4`, so
+re-stepping that slot for a chart would have repainted every sensor in every
+drawing. It has its own token now, holding exactly the colour it already had,
+and the drawings are untouched.
