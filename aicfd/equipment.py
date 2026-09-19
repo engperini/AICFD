@@ -35,6 +35,11 @@ QUANTITIES = {
 }
 
 
+#: "nobody has tried to fit a coil to this unit yet", as distinct from None,
+#: which means "tried, and the selections do not support one".
+_UNFITTED = object()
+
+
 class UnknownModel(LookupError):
     """No file in the library for this model name."""
 
@@ -57,6 +62,8 @@ class Equipment:
     curve: dict
     weight_kg: float | None = None
     source: Path | None = None
+    _coil: object = None
+    """Filled on first use by `coil`; `_UNFITTED` until then."""
 
     # --- the table ------------------------------------------------------------
 
@@ -99,6 +106,27 @@ class Equipment:
         this evaluated at the selection point and nowhere else.
         """
         return self.at(return_c, "nscc_kw")
+
+    @property
+    def coil(self):
+        """The heat exchanger behind the table, or None.
+
+        Fitted from the selections themselves rather than asked for: what a
+        manufacturer sends is a set of selections, and a tool that needed
+        anything more would be a tool nobody could feed. With it the unit can
+        be asked what it does at a condition it was never selected at, which
+        is every condition a real room produces (ADR-039).
+        """
+        if self._coil is not _UNFITTED:
+            return self._coil
+        from aicfd import coil as model
+
+        try:
+            fitted = model.fit(self)
+        except model.CannotFit:
+            fitted = None
+        object.__setattr__(self, "_coil", fitted)
+        return fitted
 
     def covers(self, return_c: float) -> bool:
         low, high = self.span
@@ -191,6 +219,7 @@ def parse(raw: dict, source: Path | None = None) -> Equipment:
         curve=dict(raw.get("curve") or {}),
         weight_kg=raw.get("weight_kg"),
         source=source,
+        _coil=_UNFITTED,
     )
 
 

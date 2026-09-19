@@ -551,7 +551,7 @@ def capacity(export: Export, out: Path) -> Path | None:
     temps = [r["return_c"] for r in rows]
     kw = [r["nscc_kw"] for r in rows]
 
-    fig, ax = plt.subplots(figsize=(7.2, 2.8))
+    fig, ax = plt.subplots(figsize=(7.2, 3.0))
     ax.plot(temps, kw, color=FAN, linewidth=1.6, marker="o", markersize=3.5,
             markerfacecolor=FAN, markeredgecolor="white", markeredgewidth=0.8,
             label="manufacturer's selections", zorder=3)
@@ -559,12 +559,26 @@ def capacity(export: Export, out: Path) -> Path | None:
     # 45 % rise look like a tenfold one.
     ax.set_ylim(0, max(kw) * 1.18)
     fans = export.kpis.get("fans") or []
+
+    # The line the report's numbers are actually read off: the same coil at
+    # the air flow THIS hall gives it, which is never the air flow the
+    # selections were taken at. The gap between the two lines is the reason a
+    # capacity cannot be looked up (ADR-039).
+    modelled = _modelled_curve(export, unit, fans, temps)
+    if modelled:
+        xs, ys, note = modelled
+        ax.plot(xs, ys, color=GOOD, linewidth=1.6, linestyle=(0, (5, 2)),
+                label=note, zorder=2)
     # Returns the table does not cover still belong on the axis. A figure that
     # silently cropped them would hide the one thing the reader has to know:
     # this hall ran off the end of the machine's characterisation (ADR-036).
     off = [t for t in (export.kpis.get("coil_outside_table_c") or [])]
-    left = min([*temps, *off]) - 0.4
-    right = max([*temps, *off]) + 0.4
+    # Every unit's own return belongs on the axis whether or not the
+    # selections reach it. A figure cropped to the table would hide the one
+    # thing the reader has to see: where this hall actually sat (ADR-039).
+    here = [f["return_temp_c"] for f in fans if f.get("return_temp_c") is not None]
+    left = min([*temps, *off, *here]) - 0.4
+    right = max([*temps, *off, *here]) + 0.4
     ax.set_xlim(left, right)
 
     rating = (export.model.get("operating") or {}).get("unit_capacity_kw")
@@ -630,3 +644,27 @@ def capacity(export: Export, out: Path) -> Path | None:
     fig.savefig(out, dpi=DPI, bbox_inches="tight")
     plt.close(fig)
     return out
+
+
+def _modelled_curve(export: Export, unit, fans: list, selection_temps: list):
+    """The coil's ceiling against return air, at this hall's own air flow.
+
+    Returns (temperatures, kW, legend) or None where no coil could be fitted.
+    Drawn across the whole range the figure shows -- including past the
+    selections -- because that is where the hall actually sits and the model
+    is the only thing that can say what happens there.
+    """
+    coil = getattr(unit, "coil", None)
+    if coil is None or not fans:
+        return None
+    flows = [f["intake_kg_s"] for f in fans if f.get("intake_kg_s")]
+    if not flows:
+        return None
+    air = sum(flows) / len(flows) * 1.005  # kW/K, the mass the solve moved
+    returns = [f["return_temp_c"] for f in fans if f.get("return_temp_c") is not None]
+    low = min([*selection_temps, *returns]) - 0.4
+    high = max([*selection_temps, *returns]) + 0.4
+    xs = [low + (high - low) * i / 60 for i in range(61)]
+    ys = [coil.operate(x, air).ceiling_kw for x in xs]
+    share = air / coil.air_fitted
+    return xs, ys, f"this plant's coil, at {share:.0%} of that air flow"

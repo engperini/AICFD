@@ -132,7 +132,8 @@ class DocumentTest(unittest.TestCase):
         self.assertGreaterEqual(len(shapes), 6)
 
 
-def _export_naming_a_unit(directory: Path, model_name: str, rows_below: bool):
+def _export_naming_a_unit(directory: Path, model_name: str, rows_below: bool,
+                          water: bool = True):
     """A copy of the worked result, made to name a unit.
 
     The tracked exports predate the equipment library, and solving a hall to
@@ -166,6 +167,13 @@ def _export_naming_a_unit(directory: Path, model_name: str, rows_below: bool):
             "power_kw: 26.4, supply_c: 22.1}\n"
             "  - {return_c: 34, nscc_kw: 464, airflow_m3h: 132660, "
             "power_kw: 26.3, supply_c: 22}\n" + marker), 1)
+    if not water:
+        # Strip the water conditions, so no coil can be fitted and the report
+        # falls back to reading the table -- which is still what a unit
+        # described by a capacity table alone gets (ADR-039).
+        text = "\n".join(line for line in text.splitlines()
+                          if "entering_water_c" not in line
+                          and "leaving_water_c" not in line)
     (library / f"{model_name}.yaml").write_text(text)
 
     saved, equipment.LIBRARY = equipment.LIBRARY, library
@@ -185,6 +193,7 @@ def _export_naming_a_unit(directory: Path, model_name: str, rows_below: bool):
 
 class _UnitReport(unittest.TestCase):
     ROWS_BELOW = True
+    WATER = True
 
     @classmethod
     def setUpClass(cls):
@@ -193,8 +202,9 @@ class _UnitReport(unittest.TestCase):
 
         cls.tmp = tempfile.TemporaryDirectory()
         export, library = _export_naming_a_unit(
-            Path(cls.tmp.name), "CA80NPVG6", cls.ROWS_BELOW)
+            Path(cls.tmp.name), "CA80NPVG6", cls.ROWS_BELOW, cls.WATER)
         cls.saved, equipment.LIBRARY = equipment.LIBRARY, library
+        cls.export = export
         path = build(export, Path(cls.tmp.name) / "r.docx",
                      client="A Client", author="An Engineer")
         from docx import Document
@@ -255,24 +265,48 @@ class UnitReportTest(_UnitReport):
 
     def test_the_catalogue_limitation_is_dropped_and_the_real_one_stated(self):
         """It would be false to keep saying capacity is the catalogue's when
-        the report just read the true one. The honest limitation is the
-        table's own ends."""
+        the report just modelled the true one. The honest limitations are the
+        model's own: what it was fitted to, and what the valve can draw."""
         self.assertNotIn("catalogue capacity, not the capacity it actually has",
                          self.text)
-        self.assertIn("valid only between them", self.text)
+        self.assertIn("fitted to the manufacturer's selections", self.text)
+        self.assertIn("water valve wide open", self.text)
         self.assertIn("is a different machine", self.text)
+
+    def test_the_coil_model_is_described_where_its_numbers_are_used(self):
+        """The method belongs in the document. Every margin in section 4 rests
+        on it, and a reader who disagrees has to be able to see what was
+        assumed rather than take it on trust."""
+        self.assertIn("counterflow chilled-water", self.text)
+        self.assertIn("never on the temperatures", self.text)
+        self.assertIn("Resistance on the air side", self.cells)
+        self.assertIn("Error against those selections", self.cells)
+        self.assertIn("recovered from the stated entering and leaving water",
+                      self.text)
+
+    def test_capacity_is_reported_at_this_hall_not_at_the_selection(self):
+        """The whole point: the units did not run at any selection, and the
+        capacity quoted for them is the coil's at the air they received."""
+        import json
+
+        payload = json.loads((self.export / "viewer.json").read_text())
+        kpis = payload["kpis"]
+        self.assertTrue(kpis.get("coil_model"))
+        self.assertNotAlmostEqual(kpis["available_kw"], kpis["catalogue_kw"], places=0)
 
 
 @unittest.skipUnless(HAVE_EXTRAS, "python-docx and matplotlib are not installed")
 class OutsideTheTableReportTest(_UnitReport):
-    """And what it says when it cannot.
+    """And what it says when it cannot read a capacity at all.
 
-    This hall returns air below the coldest selection the CA80NPVG6 was
-    characterised at. The report must say which units, over what range, and
-    that no margin can be stated -- not quietly omit a column.
+    A unit whose selections do not say what water they were taken at supports
+    no coil model, so the table is all there is -- and this hall returns air
+    below the coldest row of it. The report must say which units, over what
+    range, and that no margin can be stated, not quietly omit a column.
     """
 
     ROWS_BELOW = False
+    WATER = False
 
     def test_it_says_what_it_could_not_read_and_why(self):
         self.assertIn("outside the selections this machine was characterised at",

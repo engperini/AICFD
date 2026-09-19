@@ -162,10 +162,148 @@ class SpecTest(unittest.TestCase):
 
 
 class CoilCapacityTest(unittest.TestCase):
-    """The headline the table produces: what the plant uses of what it has."""
+    """The headline the coil produces: what the plant uses of what it has.
+
+    Every number here moves with the return air temperature, which is the
+    whole point: a heat exchanger's capacity is epsilon x C_air x (return -
+    water), and holding it fixed while the return climbs asserts that a coil
+    moves the same heat across a bigger temperature difference (ADR-039).
+    """
 
     def setUp(self):
         self.model = build_model(copy.deepcopy(SPEC))
+
+    def _fans(self, *pairs):
+        """Units as a solved run reports them: the mass each one moved, and
+        the heat that mass carried. Consistent by construction, because a
+        fixture where they disagree tests nothing real."""
+        out = []
+        for i, (temperature, kg_s) in enumerate(pairs):
+            out.append({
+                "name": f"fan{i + 1}",
+                "return_temp_c": temperature,
+                "intake_kg_s": kg_s,
+                "heat_kw": kg_s * 1.005 * (temperature - self.model.supply_temp_c),
+            })
+        return out
+
+    def test_capacity_rises_with_the_return_air_it_receives(self):
+        """The finding the whole model exists to produce."""
+        out = {}
+        fans = self._fans((35.0, 31.0), (38.0, 31.0), (41.0, 31.0))
+        post.coil_capacity(self.model, fans, out)
+        self.assertLess(fans[0]["available_kw"], fans[1]["available_kw"])
+        self.assertLess(fans[1]["available_kw"], fans[2]["available_kw"])
+        # and by a lot: the same machine, the same air, warmer air reaching it
+        self.assertGreater(fans[2]["available_kw"] / fans[0]["available_kw"], 1.25)
+
+    def test_each_unit_is_judged_at_its_own_return_temperature(self):
+        fans = self._fans((36.0, 31.0), (40.0, 31.0))
+        out = post.coil_capacity(self.model, fans, {"recovered_kw": 1000.0})
+        self.assertNotAlmostEqual(fans[0]["available_kw"], fans[1]["available_kw"])
+        self.assertAlmostEqual(
+            out["available_kw"], fans[0]["available_kw"] + fans[1]["available_kw"], 1
+        )
+        removed = sum(f["heat_kw"] for f in fans)
+        self.assertAlmostEqual(
+            out["utilisation_pct"], removed / out["available_kw"] * 100, places=1
+        )
+        self.assertEqual(out["units_over_capacity"], 0)
+
+    def test_a_unit_beyond_its_own_coil_is_counted(self):
+        fans = self._fans((35.0, 95.0), (35.0, 8.0))
+        out = post.coil_capacity(self.model, fans, {"recovered_kw": 1000.0})
+        self.assertEqual(out["units_over_capacity"], 1)
+        self.assertGreater(fans[0]["of_available_pct"], 100)
+
+    def test_the_catalogue_figure_is_reported_separately_not_instead(self):
+        """Both numbers, named. A reader who has only seen the catalogue one
+        will otherwise read this as it and conclude the opposite."""
+        fans = self._fans((38.0, 31.0))
+        out = post.coil_capacity(self.model, fans, {"recovered_kw": 500.0})
+        self.assertEqual(out["unit_model"], "CA80NPVG6")
+        self.assertAlmostEqual(out["catalogue_kw"], 622.7)
+        self.assertNotAlmostEqual(out["available_kw"], out["catalogue_kw"], places=1)
+
+    def test_a_return_below_the_selections_is_answered_not_refused(self):
+        """The table stopped at 35 degC and a real hall returns cooler than
+        that. Refusing left the plant's margin unstated; the coil answers, and
+        says it is extrapolating."""
+        fans = self._fans((33.0, 31.0), (38.0, 31.0))
+        out = post.coil_capacity(self.model, fans, {"recovered_kw": 900.0})
+        self.assertIn("available_kw", fans[0])
+        self.assertLess(fans[0]["available_kw"], fans[1]["available_kw"])
+        self.assertTrue(out["coil_extrapolated"])
+        self.assertIn("below the coldest selection", out["coil_extrapolated"][0])
+        self.assertNotIn("coil_outside_table_c", out)
+
+    def test_many_units_in_one_condition_raise_one_finding(self):
+        fans = self._fans(*[(33.0, 31.0)] * 14)
+        out = post.coil_capacity(self.model, fans, {"recovered_kw": 5600.0})
+        self.assertEqual(len(out["coil_extrapolated"]), 1)
+
+    def test_the_valve_and_the_water_it_draws_are_reported(self):
+        """So the hydraulic side stays checkable: a coil's ceiling is real for
+        one unit, but every unit at its ceiling at once is a chilled water
+        plant nobody sized."""
+        fans = self._fans((36.0, 31.0))
+        out = post.coil_capacity(self.model, fans, {"recovered_kw": 400.0})
+        self.assertGreater(fans[0]["coil_valve_pct"], 0)
+        self.assertLessEqual(fans[0]["coil_valve_pct"], 100)
+        self.assertAlmostEqual(out["coil_water_m3h"], fans[0]["coil_water_m3h"], 1)
+        # 31 kg/s from 36 to 21.8 degC is 443 kW; at the selections' 10 K
+        # water rise that is about 38 m3/h, and the coil should ask for it.
+        self.assertAlmostEqual(fans[0]["coil_water_m3h"], 38.0, delta=5.0)
+
+    def test_a_supply_the_coil_cannot_hold_is_reported_not_hidden(self):
+        """The reason a fixed supply air temperature is an assumption and not
+        a fact: once the valve is wide open the machine stops holding it."""
+        spec = copy.deepcopy(SPEC)
+        spec["fanwall"]["supply_temp_c"] = 18.5  # below what any valve can reach
+        model = build_model(spec)
+        fans = self._fans((36.0, 31.0))
+        out = post.coil_capacity(model, fans, {"recovered_kw": 400.0})
+        self.assertEqual(out["coil_saturated_units"], 1)
+        self.assertGreater(out["coil_supply_needed_c"], out["coil_supply_setpoint_c"])
+        self.assertEqual(fans[0]["coil_valve_pct"], 100)
+
+    def test_a_case_with_no_equipment_says_nothing_at_all(self):
+        spec = copy.deepcopy(SPEC)
+        spec["fanwall"] = {"count": 4, "airflow_m3h": 90000, "width": 3.9,
+                           "height": 3.75, "supply_temp_c": 21.0}
+        plain = build_model(spec)
+        self.assertEqual(post.coil_capacity(plain, self._fans((38.0, 31.0)), {}), {})
+
+
+class TableFallbackTest(unittest.TestCase):
+    """A unit whose selections do not say what water they were taken at.
+
+    No coil can be recovered from those, so the table is read as before:
+    interpolated between the rows and refused outside them. Kept working
+    because a unit described by a capacity table alone is still worth judging
+    against that table -- it just cannot be asked what it does off it.
+    """
+
+    def setUp(self):
+        import tempfile
+        from pathlib import Path
+
+        import yaml
+
+        self.tmp = tempfile.TemporaryDirectory()
+        self.saved = equipment.LIBRARY
+        equipment.LIBRARY = Path(self.tmp.name)
+        raw = yaml.safe_load(
+            (self.saved / "CA80NPVG6.yaml").read_text()
+        )
+        raw["selection"].pop("entering_water_c", None)
+        raw["selection"].pop("leaving_water_c", None)
+        (equipment.LIBRARY / "CA80NPVG6.yaml").write_text(yaml.safe_dump(raw))
+        self.model = build_model(copy.deepcopy(SPEC))
+
+    def tearDown(self):
+        equipment.LIBRARY = self.saved
+        self.tmp.cleanup()
 
     def _fans(self, *pairs):
         return [
@@ -173,44 +311,22 @@ class CoilCapacityTest(unittest.TestCase):
             for i, (t, q) in enumerate(pairs)
         ]
 
-    def test_each_unit_is_judged_at_its_own_return_temperature(self):
+    def test_no_coil_is_fitted_without_the_water_it_was_selected_at(self):
+        self.assertIsNone(equipment.load("CA80NPVG6").coil)
+
+    def test_the_table_is_read_as_before(self):
         fans = self._fans((36.0, 400.0), (40.0, 600.0))
         out = post.coil_capacity(self.model, fans, {"recovered_kw": 1000.0})
         self.assertAlmostEqual(fans[0]["available_kw"], 545.0)
         self.assertAlmostEqual(fans[1]["available_kw"], 697.6)
-        self.assertAlmostEqual(fans[0]["of_available_pct"], 73.4, places=1)
         self.assertAlmostEqual(out["available_kw"], 1242.6)
-        self.assertAlmostEqual(out["utilisation_pct"], 80.5, places=1)
-        self.assertEqual(out["units_over_capacity"], 0)
 
-    def test_a_unit_beyond_its_own_coil_is_counted(self):
-        fans = self._fans((35.0, 600.0), (35.0, 100.0))
-        out = post.coil_capacity(self.model, fans, {"recovered_kw": 700.0})
-        self.assertEqual(out["units_over_capacity"], 1)
-        self.assertGreater(fans[0]["of_available_pct"], 100)
-
-    def test_the_catalogue_figure_is_reported_separately_not_instead(self):
-        """Both numbers, named. A reader who has only seen the catalogue one
-        will otherwise read this as it and conclude the opposite."""
-        fans = self._fans((38.0, 500.0))
-        out = post.coil_capacity(self.model, fans, {"recovered_kw": 500.0})
-        self.assertAlmostEqual(out["available_kw"], 622.7)
-        self.assertAlmostEqual(out["catalogue_kw"], 622.7)  # design point here
-        self.assertEqual(out["unit_model"], "CA80NPVG6")
-
-    def test_a_return_outside_the_selections_is_left_out_and_said(self):
+    def test_outside_the_table_is_still_refused_rather_than_guessed(self):
         fans = self._fans((33.0, 400.0), (38.0, 500.0))
         out = post.coil_capacity(self.model, fans, {"recovered_kw": 900.0})
         self.assertEqual(out["coil_outside_table_c"], [33.0])
         self.assertNotIn("available_kw", fans[0])
         self.assertAlmostEqual(out["available_kw"], 622.7)
-
-    def test_a_case_with_no_equipment_says_nothing_at_all(self):
-        spec = copy.deepcopy(SPEC)
-        spec["fanwall"] = {"count": 4, "airflow_m3h": 90000, "width": 3.9,
-                           "height": 3.75, "supply_temp_c": 21.0}
-        plain = build_model(spec)
-        self.assertEqual(post.coil_capacity(plain, self._fans((38.0, 500.0)), {}), {})
 
 
 class LibraryCopy(unittest.TestCase):

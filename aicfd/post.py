@@ -270,7 +270,7 @@ def analyse(model: Model, case_dir: str | Path, time: str | None = None) -> PodR
     kpis["drift_k"] = drift(case)
     kpis["hvac"] = model.hvac()
     kpis["hvac_lines"] = [line.strip() for line in _hvac_summary(model)]
-    kpis["alerts"] = list(model.alerts)
+    kpis["alerts"] = list(model.alerts) + _coil_alerts(kpis)
     history = read_history(case)
     kpis["places_now"] = history[-1]["places"] if history else []
     return PodResults(
@@ -279,23 +279,155 @@ def analyse(model: Model, case_dir: str | Path, time: str | None = None) -> PodR
 
 
 def coil_capacity(model: Model, fans: list[dict], kpis: dict) -> dict:
-    """What the coils can transfer at the air they are actually receiving.
+    """What the coils really do at the air they are actually receiving.
 
     A datasheet's capacity is true at one return air temperature -- the one
     the unit was selected for -- and a real room almost never returns air at
-    it. So the figure a plant should be judged against is not the catalogue
-    number but the table evaluated at each unit's own return temperature, and
-    the difference is not small: the worked CA80 delivers 505 kW at 35 degC
-    and 734 kW at 41 (ADR-036).
+    it. Holding that capacity fixed while the return moves asserts that a heat
+    exchanger transfers the same heat across a larger temperature difference,
+    which none does: capacity is `epsilon * C_air * (T_return - T_water)`, and
+    only `epsilon` belongs to the machine (ADR-039).
 
-    Adds `available_kw` and `of_available_pct` to each unit, and the plant's
-    utilisation of the capacity available to it. Says nothing at all when the
-    spec names no unit, or when a return temperature falls outside the
-    selections: an extrapolated coil curve is worse than no number.
+    So the unit is modelled rather than looked up. `aicfd.coil` fits the
+    manufacturer's own selections to a counterflow coil and can then answer at
+    any condition -- above the selections, below them, and at an air flow none
+    of them used, which is where every real hall sits. Where the fit is not
+    possible the table is read as before, and where the table does not reach,
+    the number is refused rather than extrapolated on a straight line.
+
+    Adds to each unit: the ceiling its coil has at its own return (`available_kw`),
+    what fraction of it the unit is using, the supply air temperature the coil
+    would really deliver, and how far open its water valve has to be.
     """
     unit = getattr(model, "equipment", None)
     if unit is None:
         return {}
+    coil = unit.coil
+    if coil is None:
+        return _coil_from_table(model, unit, fans)
+
+    from aicfd.coil import air_capacity_rate
+
+    # The model's own per-unit airflow, not the total divided by however many
+    # fans happened to be measured: those are the same number in a solved run
+    # and very different ones anywhere else.
+    per_unit = model.unit_airflow_m3h
+    setpoint = model.supply_temp_c
+    available = removed = 0.0
+    saturated, warmest_supply, notes, seen, air_seen = 0, setpoint, set(), [], 0.0
+    for fan in fans:
+        temperature = fan.get("return_temp_c")
+        if temperature is None:
+            continue
+        seen.append(temperature)
+        # The mass the solve actually moved through this unit, where it is
+        # known, rather than the nominal volume flow converted at some
+        # reference density. It matters because `available_kw` is compared
+        # against `heat_kw`, and `heat_kw` was measured on that same mass:
+        # judging one against a capacity rate derived from the other would
+        # put a few per cent of nothing into the margin.
+        measured = fan.get("intake_kg_s")
+        air = (measured * CP_AIR / 1000 if measured
+               else air_capacity_rate(per_unit, temperature, model.altitude_m))
+        air_seen += air
+        point = coil.operate(temperature, air, setpoint)
+        fan["available_kw"] = round(point.ceiling_kw, 1)
+        fan["coil_supply_c"] = round(point.supply_c, 2)
+        fan["coil_valve_pct"] = round(point.valve * 100, 0)
+        # The water this unit is drawing, so the hydraulic side stays
+        # checkable: the coil's ceiling is real for one unit, but every unit
+        # taking its ceiling at once is a chilled water plant nobody sized.
+        fan["coil_water_m3h"] = round(point.water_m3h, 1)
+        available += point.ceiling_kw
+        if fan.get("heat_kw") is not None:
+            removed += fan["heat_kw"]
+            fan["of_available_pct"] = round(fan["heat_kw"] / point.ceiling_kw * 100, 1)
+        if point.saturated:
+            saturated += 1
+            warmest_supply = max(warmest_supply, point.supply_c)
+        if point.extrapolated:
+            notes.add(point.extrapolated)
+    if not available:
+        return {}
+    return {
+        "unit_model": unit.model,
+        "available_kw": round(available, 1),
+        "utilisation_pct": round(removed / available * 100, 1),
+        "units_over_capacity": sum(
+            1 for f in fans if (f.get("of_available_pct") or 0) > 100
+        ),
+        # Named so nobody has to guess whether a number is the catalogue's or
+        # the room's: the catalogue figure is the same machine at its selection
+        # point, and quoting one for the other is the mistake this exists to
+        # stop.
+        "catalogue_kw": round((model.unit_capacity_kw or 0) * len(fans), 1) or None,
+        "coil_table_span_c": [coil.returns_fitted[0], coil.returns_fitted[-1]],
+        "coil_model": {
+            "water_c": coil.water_c,
+            "air_split_pct": round(coil.air_split * 100),
+            "residual_k": round(coil.residual_k, 3),
+            "water_max_m3h": round(coil.water_max / 4.18 * 3.6, 1),
+            "fitted_returns_c": list(coil.returns_fitted),
+        },
+        # The whole point of modelling the machine: the supply temperature is
+        # an output, and where the valve runs out it stops matching the one
+        # the run imposed. Then every temperature in the result is optimistic.
+        "coil_saturated_units": saturated,
+        "coil_water_m3h": round(sum(f.get("coil_water_m3h") or 0 for f in fans), 1),
+        "coil_supply_setpoint_c": round(setpoint, 2),
+        "coil_supply_needed_c": round(warmest_supply, 2),
+        "coil_extrapolated": sorted(notes) or None,
+        "coil_return_span_c": [round(min(seen), 2), round(max(seen), 2)] if seen else None,
+        # On the mass the solve actually moved, the same basis every other
+        # number here uses. Deriving it from the nominal volume flow instead
+        # would put a few per cent of density between two figures a reader
+        # would reasonably expect to agree.
+        "coil_air_share_pct": round(air_seen / len(seen) / coil.air_fitted * 100),
+    }
+
+
+def _coil_alerts(kpis: dict) -> list[str]:
+    """What the coil model found, said where a reader will see it.
+
+    An alert, not a failed check, because none of this makes the field wrong
+    on its own terms -- the solve did what it was told. What it says is that
+    what it was told may not be what the machine would do, and that is a
+    judgement for the engineer reading it (ADR-023, ADR-039).
+    """
+    out = []
+    saturated = kpis.get("coil_saturated_units") or 0
+    if saturated:
+        out.append(
+            f"{saturated} unit(s) cannot hold the "
+            f"{kpis['coil_supply_setpoint_c']:.1f} degC supply air this run "
+            f"imposed: with the water valve wide open their coil delivers "
+            f"{kpis['coil_supply_needed_c']:.1f} degC at the return they "
+            f"receive. Every temperature in this result is that much "
+            f"optimistic -- re-run at the higher supply temperature."
+        )
+    notes = kpis.get("coil_extrapolated") or []
+    if notes:
+        span = kpis.get("coil_return_span_c") or []
+        where = (f" The units returned {span[0]:.1f} to {span[1]:.1f} degC at "
+                 f"{kpis['coil_air_share_pct']:.0f}% of the selections' air flow."
+                 if span else "")
+        out.append(
+            f"The coil model was used beyond the manufacturer's selections: "
+            f"{'; '.join(notes)}.{where} It extrapolates on the heat "
+            f"exchanger's physics rather than on a straight line, and it "
+            f"reproduces every selection to {kpis['coil_model']['residual_k']:.02f} K "
+            f"-- but nothing measured backs it there."
+        )
+    return out
+
+
+def _coil_from_table(model: Model, unit, fans: list[dict]) -> dict:
+    """The old reading, for a unit whose selections do not support a fit.
+
+    Interpolated between the rows and refused outside them. Kept because a
+    unit described by a capacity table alone is still worth judging against
+    that table; it just cannot be asked what it does off it.
+    """
     available, removed, outside = 0.0, 0.0, []
     for fan in fans:
         temperature = fan.get("return_temp_c")
@@ -311,16 +443,13 @@ def coil_capacity(model: Model, fans: list[dict], kpis: dict) -> dict:
             removed += fan["heat_kw"]
             fan["of_available_pct"] = round(fan["heat_kw"] / capacity * 100, 1)
     low, high = unit.span
+    catalogue = round((model.unit_capacity_kw or 0) * len(fans), 1) or None
     if not available:
-        # Not one unit could be read. The refusal still has to say WHICH unit
-        # and over WHAT range, or a missing capacity downstream reads as an
-        # oversight rather than as the tool declining to extrapolate.
         return (
             {
                 "unit_model": unit.model,
                 "coil_table_span_c": [low, high],
-                "catalogue_kw": round((model.unit_capacity_kw or 0) * len(fans), 1)
-                or None,
+                "catalogue_kw": catalogue,
                 "coil_outside_table_c": outside,
             }
             if outside
@@ -334,11 +463,7 @@ def coil_capacity(model: Model, fans: list[dict], kpis: dict) -> dict:
             1 for f in fans if (f.get("of_available_pct") or 0) > 100
         ),
         "coil_table_span_c": [low, high],
-        # Named so nobody has to guess whether a number is the catalogue's or
-        # the room's: the catalogue figure is the same table at its selection
-        # point, and quoting one for the other is the mistake this exists to
-        # stop.
-        "catalogue_kw": round((model.unit_capacity_kw or 0) * len(fans), 1) or None,
+        "catalogue_kw": catalogue,
         "coil_outside_table_c": outside,
     }
 
@@ -1517,6 +1642,14 @@ def _viewer_kpis(model: Model, results: PodResults) -> dict:
         "units_over_capacity": k.get("units_over_capacity"),
         "catalogue_kw": k.get("catalogue_kw"),
         "coil_table_span_c": k.get("coil_table_span_c"),
+        "coil_model": k.get("coil_model"),
+        "coil_saturated_units": k.get("coil_saturated_units"),
+        "coil_supply_setpoint_c": k.get("coil_supply_setpoint_c"),
+        "coil_supply_needed_c": k.get("coil_supply_needed_c"),
+        "coil_extrapolated": k.get("coil_extrapolated"),
+        "coil_return_span_c": k.get("coil_return_span_c"),
+        "coil_air_share_pct": k.get("coil_air_share_pct"),
+        "coil_water_m3h": k.get("coil_water_m3h"),
         # Which units returned air the selections do not cover. Carried because
         # it is the reason a capacity is missing, and a missing number without
         # its reason reads as an oversight rather than a refusal (ADR-036).

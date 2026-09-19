@@ -1417,3 +1417,69 @@ case. None of them belongs on a page about a finished result.
 **Reports move to `reports/`.** They used to be written into the export they
 were read from, which meant producing a document modified a result. Same place
 now whether the document came from the command or the button.
+
+## ADR-039 — The fan wall is modelled, not looked up
+
+*2026-09-19*
+
+A capacity table answers "what did the manufacturer select?". Every result
+turns on a different question: "what does this machine do at the air my room
+actually gives it?" Those coincide at seven points and nowhere else, and the
+gap is not small — reading the CA80NPVG6's table as though it were an
+operating curve overstates the plant by 940 kW at 41 °C.
+
+**A chilled-water coil is a counterflow heat exchanger.** Its capacity is
+
+    Q = ε · C_air · (T_return − T_water_in)
+
+and only ε belongs to the machine: it depends on the two flows and the coil's
+UA, never on the temperatures. Holding a catalogue capacity fixed while the
+return air climbs asserts that a coil transfers the same heat across a bigger
+temperature difference, which no heat exchanger does. `aicfd/coil.py` fits UA
+from the selections and answers at any condition.
+
+**The model is fitted from the selections and nothing else.** That constraint
+is the design: selections are what a manufacturer sends, and a tool needing
+more would be a tool nobody could feed.
+
+**One inference makes it work, and it is stated rather than buried.** Across a
+set of selections at fixed air flow the effectiveness is *not* constant — it
+climbs from 0,765 to 0,839. The effectiveness of a heat exchanger with both
+flows fixed cannot change, so a flow changed; the air is stated fixed, so it
+is the water. The selection program re-sizes the water flow at each row to
+hold the stated entering and leaving water temperatures. Read that way, the
+recovered UA rises 5 % for 45 % more water — textbook for a finned coil — and
+the resistance splits 78 % air, 22 % water, which is what a chilled-water coil
+is. Read any other way it does not.
+
+**Tested by prediction, not by fit quality.** Fitted on seven selections at
+one air flow, the model reproduces an eighth — a different air flow *and* a
+different return temperature — to 0,014 K of supply air and 0,4 % of
+capacity. Counterflow was chosen over crossflow the same way: it lands within
+0,03 K where crossflow-unmixed misses by 0,06 K, and crossflow can only fit
+the selections by putting 99 % of the resistance on the air side.
+
+**The tool stops refusing.** Outside the table AICFD used to say it could not
+tell, which left the plant's margin unstated for exactly the halls that needed
+it — the worked hall returns 33,3 °C against a table starting at 35 °C. The
+model answers there, and says it is extrapolating: physics rather than a
+straight line, but nothing measured behind it. Where no coil can be fitted —
+a unit whose selections do not say what water they were taken at — the table
+is read as before and refused outside, unchanged.
+
+**The supply air temperature is an assumption, and the model says when it
+breaks.** A fan wall holds its setpoint only while its water valve has
+authority. Once wide open the supply floats with the return, and every
+temperature in the run is optimistic by the difference. That is reported as an
+alert with the temperature the coil would really deliver — not as a failed
+check, because the solve did what it was told (ADR-023). Making the solver
+itself follow the coil per unit is the next step and is not done here.
+
+**The capacity quoted is the coil's ceiling, at valve wide open.** Real for
+one unit; every unit at its ceiling at once is a chilled water plant nobody
+sized. So the water each unit draws is reported beside it, and the hydraulic
+side is named in the limitations as something this model does not see.
+
+**The exponents are held, not fitted.** Air-side 0,6, water-side 0,8. Seven
+selections at one air flow cannot identify the air-side exponent, and fitting
+it would hide the assumption inside a number.

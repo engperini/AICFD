@@ -628,9 +628,9 @@ def _unit_section(doc, export: Export, drawn: dict) -> None:
           f"{_num(unit.at(low, 'nscc_kw'), 1)} kW to "
           f"{_num(unit.at(high, 'nscc_kw'), 1)} kW, a change of "
           f"{_num((unit.at(high, 'nscc_kw') / unit.at(low, 'nscc_kw') - 1) * 100, 0)} %. "
-          f"Every capacity figure in section 3 is read off this table at the "
-          f"return temperature each unit was found to receive, interpolated "
-          f"between the selections and never extrapolated beyond them.")
+          f"Every capacity figure in section 3 is quoted at the return "
+          f"temperature each unit was found to receive, and at the air flow it "
+          f"was found to be moving — neither of which is a selection.")
 
     _table(doc,
            ["Return air", "Net sensible", "Airflow", "Power input", "Supply air"],
@@ -646,8 +646,10 @@ def _unit_section(doc, export: Export, drawn: dict) -> None:
     if drawn.get("capacity"):
         _figure(doc, drawn["capacity"],
                 "Net sensible capacity against the air the unit receives. The "
-                "line is the manufacturer's selections; the marks are where "
-                "this hall put each unit.")
+                "solid line is the manufacturer's selections; the dashed line "
+                "is the same coil at the air flow this hall gives it; the "
+                "marks are where each unit actually sat.")
+    _coil_section(doc, export)
     if not (unit.curve or {}).get("measured"):
         _para(doc,
               "The pressure–flow curve used to find the static pressure "
@@ -657,6 +659,53 @@ def _unit_section(doc, export: Export, drawn: dict) -> None:
               "uncontrolled operating point and nothing else; no capacity or "
               "temperature in this report depends on it.",
               size=9, colour=MUTED, italic=True)
+
+
+def _coil_section(doc, export: Export) -> None:
+    """How a capacity at an unselected condition was obtained.
+
+    Every margin in section 4 rests on this, so the method belongs in the
+    document rather than inside the software. A reader who disagrees with it
+    can see what was assumed and check the residual themselves.
+    """
+    coil = export.kpis.get("coil_model") or {}
+    if not coil:
+        return
+    span = export.kpis.get("coil_table_span_c") or [0, 0]
+    share = export.kpis.get("coil_air_share_pct")
+    _para(doc,
+          "A room does not run at any selection. To read a capacity at the "
+          "condition this hall actually produced, the selections above were "
+          "fitted to the machine they describe: a counterflow chilled-water "
+          "coil, whose capacity is its effectiveness times the air's capacity "
+          "rate times the difference between the return air and the entering "
+          "water. Only the effectiveness belongs to the unit, and it depends "
+          "on the two flows alone, never on the temperatures — which is why a "
+          "capacity cannot be held fixed while the return air moves.",
+          size=9.5)
+    _table(doc, ["Property of the fitted coil", "Value"], [
+        ("Entering chilled water", f"{_num(coil['water_c'], 1)} °C"),
+        ("Resistance on the air side",
+         f"{coil['air_split_pct']} % (water side {100 - coil['air_split_pct']} %)"),
+        ("Water flow the coil was selected up to",
+         f"{_num(coil['water_max_m3h'], 1)} m³/h per unit"),
+        ("Selections it was fitted to",
+         f"{len(coil['fitted_returns_c'])}, from {_num(span[0], 0)} °C to "
+         f"{_num(span[1], 0)} °C return"),
+        ("Error against those selections",
+         f"{_num(coil['residual_k'], 3)} K of supply air temperature"),
+        ("Air flow in this hall, against the selections'",
+         f"{share} %" if share else "—"),
+    ], widths=[8.0, 8.0],
+        note="Fitted from the manufacturer's own selections and nothing else. "
+             "The water flow behind each selection is not printed on it; it is "
+             "recovered from the stated entering and leaving water "
+             "temperatures, which is the only reading under which the fitted "
+             "conductance comes out physical. Tested by prediction: fitted on "
+             "these selections alone, the model reproduces a further selection "
+             "of the same machine — at a different air flow and a different "
+             "return temperature — to 0.014 K of supply air temperature and "
+             "0.4 % of capacity.")
 
 
 # --- 3 results ----------------------------------------------------------------
@@ -784,11 +833,11 @@ def _results(doc, export: Export, drawn: dict) -> None:
                 "mass flow × cp × (return − supply). 'Of the rating' compares it "
                 "with the CATALOGUE net sensible capacity, at the unit's "
                 "selection point."
-                + (" 'Available' is what the coil actually has at the return "
-                   "air temperature in the column beside it, interpolated "
-                   "between the manufacturer's selections in section 2 — and "
-                   "'Of available' is the only one of the two that says "
-                   "whether this plant has reserve."
+                + (" 'Available' is what the coil can actually transfer at "
+                   "the return air temperature in the column beside it and the "
+                   "air flow this unit is moving, from the coil model in "
+                   "section 2 — and 'Of available' is the only one of the two "
+                   "that says whether this plant has reserve."
                    if available else
                    " The capacity a coil actually has at the return temperature "
                    "it receives differs from that, and this run named no unit "
@@ -961,6 +1010,28 @@ def _limits(doc, export: Export) -> None:
             "air than that. Comparisons here are against the catalogue figure "
             "and are therefore optimistic."
         )
+    elif kpis.get("coil_model"):
+        low, high = kpis.get("coil_table_span_c") or (0, 0)
+        limits.append(
+            f"Capacity comes from a coil model fitted to the manufacturer's "
+            f"selections, not from the selections themselves. It reproduces "
+            f"them to {_num(kpis['coil_model']['residual_k'], 3)} K and "
+            f"predicts a selection it was not fitted to within 0.014 K, but it "
+            f"is a model: between {_num(low, 0)} °C and {_num(high, 0)} °C "
+            f"return air it interpolates something measured, and outside that "
+            f"it extrapolates the physics of a heat exchanger."
+            + (f" This run sat outside it: "
+               f"{'; '.join(kpis['coil_extrapolated'])}."
+               if kpis.get("coil_extrapolated") else "")
+        )
+        limits.append(
+            "The capacity quoted per unit is what its coil can transfer with "
+            "its water valve wide open. That is real for one unit; every unit "
+            "drawing its maximum water at once is a chilled water plant nobody "
+            "sized. The water each unit draws is reported so the hydraulic "
+            "side can be checked against the pumps and the branch balancing, "
+            "which this model does not see."
+        )
     elif unit is not None:
         low, high = unit.span
         limits.append(
@@ -972,10 +1043,13 @@ def _limits(doc, export: Export) -> None:
             + (" One or more units in this run returned air outside it."
                if kpis.get("coil_outside_table_c") else "")
         )
+    if unit is not None:
         limits.append(
-            f"The selections hold at the conditions in section 2 and nowhere "
-            f"else. Run at other chilled-water temperatures, another external "
-            f"static pressure or a different fan speed, the {unit.model} is a "
+            f"The unit is characterised at the chilled water temperature in "
+            f"section 2 and nowhere else, and once its valve is wide open the "
+            f"supply air temperature follows that water almost one for one. "
+            f"Run at another water temperature, another external static "
+            f"pressure or a different fan speed, the {unit.model} is a "
             f"different machine and this report's capacities do not apply to it."
         )
     limits += [
