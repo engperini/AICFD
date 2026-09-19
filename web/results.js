@@ -54,6 +54,7 @@ async function main() {
     );
   }
   announceIfSuperseded(caseName);
+  offerTheCommands(caseName);
   const verdict = document.getElementById('verdict');
   verdict.hidden = false;
   verdict.dataset.state = meta.valid ? 'pass' : 'fail';
@@ -328,4 +329,153 @@ async function announceIfSuperseded(caseName) {
     'page is the export from before that run, and it will be replaced when ' +
     'the run finishes.';
   bar.insertBefore(note, document.getElementById('verdict').nextSibling);
+}
+
+
+/**
+ * The two things that were only ever commands: build the Word report, and
+ * post-process the solved run again.
+ *
+ * Offered only when the API answers. The results page is a static page over
+ * two files, and it has to stay one -- an export copied onto a laptop with no
+ * Python on it still reads. So the buttons appear if there is a server behind
+ * the page and simply do not exist if there is not, rather than appearing and
+ * failing.
+ *
+ * Deliberately not buttons: new, build, doctor and verify. Those make or
+ * check a case, and none of them belongs on a page about a finished result.
+ */
+async function offerTheCommands(caseName) {
+  let can;
+  try {
+    const response = await fetch(`../api/commands?case=${encodeURIComponent(caseName)}`);
+    if (!response.ok) return;
+    can = await response.json();
+    if (can.error) return;
+  } catch {
+    return; // a static copy of the export: there is nothing to call
+  }
+  const report = document.getElementById('write-report');
+  const reread = document.getElementById('reread');
+  report.hidden = !can.report;
+  // Shown only when there is a solved case to re-read. A button that appears
+  // and then explains why it could not work teaches the reader to distrust
+  // the others.
+  reread.hidden = !can.reread;
+  reread.title = can.reread_note || '';
+  if (can.report) report.addEventListener('click', () => openReportSheet(caseName));
+  if (can.reread) reread.addEventListener('click', () => rereadRun(caseName, reread));
+  if (!can.report) return;
+  document.getElementById('report-cancel').addEventListener('click', closeReportSheet);
+  document.getElementById('report-sheet').addEventListener('click', (event) => {
+    if (event.target.id === 'report-sheet') closeReportSheet();
+  });
+  document.getElementById('report-form').addEventListener('submit', (event) => {
+    event.preventDefault();
+    downloadReport(caseName);
+  });
+}
+
+const REMEMBERED = 'aicfd-report-cover';
+
+function openReportSheet(caseName) {
+  const form = document.getElementById('report-form');
+  let saved = {};
+  try {
+    saved = JSON.parse(localStorage.getItem(REMEMBERED) || '{}');
+  } catch { /* private window, or nothing stored: the blanks are fine */ }
+  form.client.value = saved.client || '';
+  form.author.value = saved.author || '';
+  form.title.value = saved.title || '';
+  form.title.placeholder = caseName;
+  document.getElementById('report-sheet').hidden = false;
+  form.client.focus();
+}
+
+function closeReportSheet() {
+  document.getElementById('report-sheet').hidden = true;
+}
+
+async function downloadReport(caseName) {
+  const form = document.getElementById('report-form');
+  const note = document.getElementById('report-note');
+  const go = document.getElementById('report-go');
+  const cover = {
+    client: form.client.value,
+    author: form.author.value,
+    title: form.title.value,
+  };
+  try {
+    localStorage.setItem(REMEMBERED, JSON.stringify(cover));
+  } catch { /* nothing to remember it with; the report is built either way */ }
+  go.disabled = true;
+  note.textContent = 'Building — the figures are drawn from the fields, so '
+    + 'this takes a few seconds.';
+  try {
+    const response = await fetch(
+      `../api/report?case=${encodeURIComponent(caseName)}`,
+      {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify(cover),
+      },
+    );
+    const type = response.headers.get('Content-Type') || '';
+    if (!response.ok || type.includes('application/json')) {
+      const payload = await response.json().catch(() => ({}));
+      throw new Error(payload.error || `HTTP ${response.status}`);
+    }
+    saveBlob(await response.blob(),
+             filenameFrom(response) || `${caseName}-cfd-report.docx`);
+    note.textContent = 'Downloaded.';
+    setTimeout(closeReportSheet, 900);
+  } catch (error) {
+    note.textContent = `Not built: ${error.message}`;
+  } finally {
+    go.disabled = false;
+  }
+}
+
+function filenameFrom(response) {
+  const match = /filename="([^"]+)"/.exec(
+    response.headers.get('Content-Disposition') || '');
+  return match ? match[1] : null;
+}
+
+function saveBlob(blob, name) {
+  const url = URL.createObjectURL(blob);
+  const link = document.createElement('a');
+  link.href = url;
+  link.download = name;
+  document.body.append(link);
+  link.click();
+  link.remove();
+  URL.revokeObjectURL(url);
+}
+
+async function rereadRun(caseName, button) {
+  const label = button.textContent;
+  button.disabled = true;
+  button.textContent = 'Re-reading…';
+  try {
+    const response = await fetch(
+      `../api/post?case=${encodeURIComponent(caseName)}`, { method: 'POST' });
+    const payload = await response.json().catch(() => ({}));
+    if (!response.ok || payload.error) {
+      throw new Error(payload.error || `HTTP ${response.status}`);
+    }
+    // The page is built from the export it loaded. A new export means a new
+    // page, so reload rather than patch half of it.
+    location.reload();
+  } catch (error) {
+    button.disabled = false;
+    button.textContent = label.trim();
+    button.title = `Could not re-read: ${error.message}`;
+    const bar = document.querySelector('.topbar');
+    const note = document.createElement('span');
+    note.className = 'badge';
+    note.dataset.state = 'fail';
+    note.textContent = `could not re-read: ${error.message}`;
+    bar.append(note);
+  }
 }

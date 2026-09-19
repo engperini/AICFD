@@ -92,6 +92,43 @@
     color: var(--text-secondary); font: inherit; font-size: 13px;
   }
   .ghost-button:hover { color: var(--text-primary); }
+  .ghost-button:disabled { opacity: 0.45; cursor: default; }
+  .ghost-button.primary {
+    background: var(--series-1); border-color: transparent; color: #fff;
+    font-weight: 600;
+  }
+
+  /* --- the report sheet --------------------------------------------------- */
+  /* `display: flex` beats the `hidden` attribute's `display: none`, so the
+     rule is written the other way round: a hidden sheet must really be gone,
+     or a full-screen invisible overlay swallows every click on the page. */
+  .sheet[hidden] { display: none; }
+  .sheet {
+    position: fixed; inset: 0; z-index: 20; display: flex;
+    align-items: flex-start; justify-content: flex-end;
+    padding: 64px 20px 20px; background: rgba(0, 0, 0, 0.28);
+  }
+  .sheet-body {
+    display: flex; flex-direction: column; gap: 10px; width: 320px;
+    padding: 16px; border-radius: 12px; background: var(--surface);
+    border: 1px solid var(--border);
+    box-shadow: 0 12px 32px rgba(0, 0, 0, 0.22);
+  }
+  .sheet-title { font-weight: 600; }
+  .sheet-body label {
+    display: flex; flex-direction: column; gap: 4px;
+    font-size: 12.5px; color: var(--text-secondary);
+  }
+  .sheet-body input {
+    font: inherit; font-size: 13px; padding: 5px 9px; border-radius: 8px;
+    background: var(--page); color: var(--text-primary);
+    border: 1px solid var(--border);
+  }
+  .sheet-body input:focus {
+    outline: 2px solid var(--series-1); outline-offset: -1px;
+  }
+  .sheet-note { margin: 0; font-size: 11.5px; color: var(--text-muted); }
+  .sheet-actions { display: flex; gap: 8px; justify-content: flex-end; }
 
   /* --- layout ------------------------------------------------------------ */
   .layout {
@@ -318,8 +355,33 @@
   <span class="case" id="case-name">loading…</span>
   <span class="badge" id="verdict" hidden></span>
   <span class="spacer"></span>
+  <button class="ghost-button" id="write-report" type="button" hidden>
+    Word report</button>
+  <button class="ghost-button" id="reread" type="button" hidden>
+    Re-read this run</button>
   <button class="ghost-button" id="theme-toggle" type="button">Dark</button>
 </header>
+
+<!-- What goes on the cover. Asked here rather than assumed, because a
+     document handed to a client carries their name on it, and remembered in
+     this browser because it is the same three answers every time. -->
+<div class="sheet" id="report-sheet" hidden>
+  <form class="sheet-body" id="report-form">
+    <div class="sheet-title">Word report</div>
+    <label>Client<input name="client" type="text" autocomplete="off" /></label>
+    <label>Author<input name="author" type="text" autocomplete="off" /></label>
+    <label>Title<input name="title" type="text" autocomplete="off" /></label>
+    <p class="sheet-note" id="report-note">
+      Everything else is read from the result. Leave a field empty to leave it
+      off the cover.
+    </p>
+    <div class="sheet-actions">
+      <button class="ghost-button" type="button" id="report-cancel">Cancel</button>
+      <button class="ghost-button primary" type="submit" id="report-go">
+        Build and download</button>
+    </div>
+  </form>
+</div>
 
 <div id="root"></div>
 

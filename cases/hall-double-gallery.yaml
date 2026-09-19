@@ -62,6 +62,12 @@ racks:
   airflow_cfm_per_kw: 158     # design reference: what a rack draws per kW
 
 fanwall:
+  model: CA80NPVG6            # the unit, as equipment/CA80NPVG6.yaml holds it.
+                              # Naming it does not change an input -- every
+                              # value typed below still wins -- but it lets the
+                              # result be judged against the capacity the coil
+                              # HAS at the return air this hall produces,
+                              # instead of the one catalogue figure (ADR-036).
   # Vertiv Liebert CWA CA80NPVG6, 8 backward-curved blowers per unit.
   # Selection point: 750 m, 100 Pa ESP, 34.0 C entering air, 18 C entering
   # water, 21.9 C supply, 121,545 m3/h unit return airflow, 432.6 kW NET

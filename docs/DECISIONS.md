@@ -1366,3 +1366,54 @@ diff nobody can read is a diff nobody checks.
 
 **An emptied number means absent, not zero.** A weight nobody filled in stays
 absent rather than becoming 0 kg.
+
+## ADR-038 — The report names the machine; the results page keeps the commands
+
+*2026-09-19*
+
+Two changes that belong together: the equipment library now decides what the
+document says, and the two commands a reader actually needs after a run are
+buttons rather than things to type.
+
+**The report is about a named machine.** The cover says which unit the plant
+is made of. Section 1 names it and gives the chilled-water and air conditions
+its selections were taken at. Section 2 gains a subsection for the unit itself
+— its dimensions, its fans, the conditions, the whole selection table as
+issued, and a figure of capacity against return air with this hall's own units
+marked on it. Section 3.5 gains two columns beside "Of the rating": what the
+coil actually has at the return air it received, and what fraction of *that*
+each unit is using. Section 4 states the plant's utilisation of available
+capacity rather than of the catalogue sum, and says plainly that the second
+number is the one that says what happens when a unit is lost.
+
+**Where there is a table, the catalogue limitation is false and comes out.**
+Section 5 used to say every capacity comparison was against the catalogue
+figure and therefore optimistic. Once the report has read the real capacity
+that is no longer true, so the bullet is replaced by the two limitations that
+are: the table is valid only between its ends, and it holds only at the
+conditions it was selected at. Where no unit is named, the old bullet stays
+exactly as it was.
+
+**Refusing is reported, not omitted.** This hall returns air at 33,3 °C and the
+CA80NPVG6 was characterised from 35 °C up. AICFD will not extrapolate a coil
+curve, so it cannot state the plant's margin — and the report says which units,
+over what range, and that the fix is a manufacturer selection at that
+condition. The capacity figure shades the region the selections do not cover
+and draws every unit's return inside it. A missing number with its reason
+attached is a finding; a missing number on its own reads as an oversight.
+
+**Two buttons, and only two.** *Word report* asks for client, author and title,
+remembers them in the browser, and downloads the document. *Re-read this run*
+re-runs the post-processing without re-solving, because the analysis changes
+more often than the fields do and a result on disk can be carrying an answer
+computed by older code. Both appear only when the page is served by `aicfd
+view`, and only for what that case can do — the results page is a static page
+over two files and has to stay one, so an export copied onto a laptop with no
+Python on it still reads, with no buttons at all.
+
+**`new`, `build`, `doctor` and `verify` stay commands.** They make or check a
+case. None of them belongs on a page about a finished result.
+
+**Reports move to `reports/`.** They used to be written into the export they
+were read from, which meant producing a document modified a result. Same place
+now whether the document came from the command or the button.

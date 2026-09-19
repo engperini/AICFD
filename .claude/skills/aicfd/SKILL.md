@@ -19,7 +19,7 @@ aicfd build cases/NAME.yaml -> runs/NAME/case    (generate only, no solve)
 aicfd run cases/NAME.yaml   -> runs/NAME         (generate, solve, sample, export)
 aicfd post NAME             -> results/NAME/{viewer.json,fields.bin,report.md}
 aicfd view --case NAME      -> http://localhost:8000/web/?case=NAME
-aicfd report NAME           -> results/NAME/NAME.docx  (the Word deliverable)
+aicfd report NAME           -> reports/NAME/NAME-cfd-report.docx  (the Word deliverable)
 aicfd stop NAME             # stop a running solve cleanly, keeping the field
 aicfd doctor                # when something looks broken
 aicfd verify [--solve]      # the audit; run it first in a fresh sandbox
@@ -195,9 +195,17 @@ every consultancy study of this kind arrives in.
 
 It reads the export -- `results/<name>/` if you solved it, `reference/<name>/`
 for a worked case you have not -- so `aicfd post` has to have run for anything
-of your own. The document and its figures are written into `results/<name>/`,
-never into `reference/`, which the tool treats as read-only (ADR-032). `--client`
-and `--author` fill the cover. It needs `python-docx` and `matplotlib`; if
+of your own. The document and its figures are written into `reports/<name>/`,
+never into the export they were read from: producing a document must not modify
+a result (ADR-032). `--client` and `--author` fill the cover.
+
+The results page has the same two as buttons -- **Word report** (which asks for
+the client, author and title, remembers them in the browser, and downloads the
+.docx) and **Re-read this run** (`aicfd post`, without re-solving). They appear
+only when the page is served by `aicfd view` and only for what that case can
+actually do, so an export opened as a plain file still reads with no buttons at
+all. `new`, `build`, `doctor` and `verify` stay commands: they make or check a
+case, and none of them belongs on a page about a finished result. It needs `python-docx` and `matplotlib`; if
 they are missing the command says so and nothing else in the tool is affected.
 
 Do not paraphrase the document's limitations section away when summarising it

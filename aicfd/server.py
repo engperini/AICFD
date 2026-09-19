@@ -28,6 +28,7 @@ CASES_DIR = REPO_ROOT / "cases"
 RUNS_DIR = REPO_ROOT / "runs"
 RESULTS_DIR = REPO_ROOT / "results"
 REFERENCE_DIR = REPO_ROOT / "reference"
+REPORTS_DIR = REPO_ROOT / "reports"
 
 #: Every parameter the page may change, as `key -> (path, caster, limits)`.
 #:
@@ -403,6 +404,107 @@ def write_equipment(model: str, body: dict) -> dict:
     return read_equipment(model)
 
 
+def results_dir_for(name: str) -> Path:
+    """Where this case's result is, yours before the shipped one.
+
+    Same rule as the results page: a result you produced shadows the worked
+    one the repository carries, which is what keeps `results/` out of version
+    control and re-running a worked case from colliding with the copy in the
+    repository (ADR-032).
+    """
+    mine = RESULTS_DIR / name
+    if (mine / "viewer.json").is_file():
+        return mine
+    shipped = REFERENCE_DIR / name
+    if (shipped / "viewer.json").is_file():
+        return shipped
+    raise FileNotFoundError(
+        f"no exported result for {name!r}. Solve it first, or run "
+        f"`aicfd post {name}` if the solve is already on disk."
+    )
+
+
+def commands_for(name: str) -> dict:
+    """Which of the result page's two commands this case can actually run.
+
+    Asked before the buttons are shown, so a button that cannot work is not
+    offered at all. A button that appears and then explains why it failed
+    teaches the reader to distrust the others.
+    """
+    solved = (RUNS_DIR / name).is_dir()
+    return {
+        "report": (RESULTS_DIR / name / "viewer.json").is_file()
+        or (REFERENCE_DIR / name / "viewer.json").is_file(),
+        "reread": solved,
+        "reread_note": (
+            "Post-process the solved run again without solving it again. The "
+            "analysis changes more often than the fields do, so a result on "
+            "disk can be carrying an answer computed by older code."
+            if solved
+            else f"Nothing to re-read: runs/{name}/ is not on this machine. "
+                 f"Only a case solved here can be post-processed again."
+        ),
+    }
+
+
+def reread_run(name: str) -> dict:
+    """Post-process the solved case again, without solving it again.
+
+    The reason this is a button and not only a command: the analysis changes
+    more often than the fields do. A check gets added, a capacity table gets
+    corrected, a KPI gets a better definition -- and every solved run on disk
+    is then carrying an answer computed by older code. Re-reading costs
+    seconds against the hours the solve cost, and the alternative is a page
+    quietly showing conclusions nobody can reproduce.
+    """
+    spec = load_spec(name)
+    model = model_module.build_model(spec)
+    solved = RUNS_DIR / name
+    if not solved.is_dir():
+        raise FileNotFoundError(
+            f"runs/{name}/ is not here: the solved case it would be re-read "
+            f"from was removed or never ran on this machine."
+        )
+    from aicfd import post
+
+    results = post.export(model, solved, RESULTS_DIR / name, spec=spec)
+    failed = [c.name for c in results.checks if not c.passed]
+    return {
+        "time": results.time,
+        "valid": results.valid,
+        "checks": len(results.checks),
+        "failed": failed,
+        "note": (
+            f"Re-read iteration {results.time}: all {len(results.checks)} "
+            f"checks pass."
+            if not failed
+            else f"Re-read iteration {results.time}, and these checks FAILED: "
+                 f"{', '.join(failed)}."
+        ),
+    }
+
+
+def write_report(name: str, body: dict) -> Path:
+    """Build the Word report for this case's exported result.
+
+    Written into `reports/`, beside its figures, and never into the export it
+    was read from: writing there would have producing a document modify a
+    result -- and, once the worked results moved to `reference/`, modify a
+    file the repository tracks (ADR-032).
+    """
+    from aicfd.report import build, title_of
+
+    out = REPORTS_DIR / name / f"{name}-cfd-report.docx"
+    out.parent.mkdir(parents=True, exist_ok=True)
+    return build(
+        results_dir_for(name),
+        out,
+        client=(body.get("client") or "").strip() or None,
+        author=(body.get("author") or "").strip() or None,
+        title=(body.get("title") or "").strip() or title_of(name),
+    )
+
+
 def stop_run(name: str) -> dict:
     """Ask the running solve to stop cleanly, OpenFOAM's own way.
 
@@ -525,6 +627,9 @@ class Handler(SimpleHTTPRequestHandler):
             return self._json(self._safely(build_payload, self.case_name))
         if self.path.startswith("/api/equipment"):
             return self._json(self._safely(read_equipment, self._query("model")))
+        if self.path.startswith("/api/commands"):
+            return self._json(self._safely(commands_for, self._query("case")
+                                           or self.case_name))
 
         if self.path.startswith("/api/progress"):
             return self._json(
@@ -555,6 +660,13 @@ class Handler(SimpleHTTPRequestHandler):
                 self._safely(write_equipment, self._query("model"), body)
             )
 
+        if self.path.startswith("/api/post"):
+            return self._json(self._safely(reread_run, self._query("case")
+                                           or self.case_name))
+
+        if self.path.startswith("/api/report"):
+            return self._report(self._query("case") or self.case_name, body)
+
         if self.path.startswith("/api/stop"):
             return self._json(self._safely(stop_run, self.case_name))
 
@@ -574,6 +686,30 @@ class Handler(SimpleHTTPRequestHandler):
             return fn(*args)
         except Exception as error:
             return {"error": f"{type(error).__name__}: {error}"}
+
+    def _report(self, name: str, body: dict) -> None:
+        """The document itself, as the response.
+
+        A download rather than a path, because the page has no business
+        knowing where on the filesystem the server put the file -- and because
+        a path would not work at all once the page is opened from anywhere
+        other than the machine that built it.
+        """
+        try:
+            out = write_report(name, body)
+            data = out.read_bytes()
+        except Exception as error:
+            return self._json({"error": f"{type(error).__name__}: {error}"})
+        self.send_response(200)
+        self.send_header(
+            "Content-Type",
+            "application/vnd.openxmlformats-officedocument.wordprocessingml.document",
+        )
+        self.send_header("Content-Disposition", f'attachment; filename="{out.name}"')
+        self.send_header("Content-Length", str(len(data)))
+        self.send_header("Cache-Control", "no-store")
+        self.end_headers()
+        self.wfile.write(data)
 
     def _json(self, payload: dict) -> None:
         body = json.dumps(payload).encode()

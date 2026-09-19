@@ -32,6 +32,9 @@ RESULTS_DIR = REPO_ROOT / "results"
 #: artifacts. The tool never writes here: a result you produce goes to
 #: `results/` and shadows the one shipped (ADR-032).
 REFERENCE_DIR = REPO_ROOT / "reference"
+#: Word deliverables and their figures. Separate from the exports so that
+#: producing a document never modifies the result it was read from.
+REPORTS_DIR = REPO_ROOT / "reports"
 
 
 def find_result(name: str) -> Path | None:
@@ -416,9 +419,13 @@ def _report(args) -> int:
             file=sys.stderr,
         )
         return 1
-    # A report on a shipped result is written beside the clone's own results,
-    # never into reference/, which stays exactly as the repository has it.
-    out = Path(args.out) if args.out else RESULTS_DIR / args.name / f"{args.name}.docx"
+    # Reports go to reports/, never into the export they were read from.
+    # Writing beside the source would have producing a document modify a
+    # result -- and, for a shipped result, modify a file the repository
+    # tracks. Same place whether it came from this command or the button on
+    # the results page (ADR-032).
+    out = (Path(args.out) if args.out
+           else REPORTS_DIR / args.name / f"{args.name}-cfd-report.docx")
     written = build(source, out, client=args.client, author=args.author,
                     title=args.title)
     print(f"Wrote {written}")

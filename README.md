@@ -94,6 +94,7 @@ pip install -r requirements.txt
 python3 -m unittest discover tests          # all 208, no solver needed
 python3 -m aicfd view --case hall-double-gallery   # the three solved results
 python3 -m aicfd report hall-double-gallery        # the Word document
+                                                  # (or the button on the results page)
 ```
 
 ## 2. Run a case
@@ -215,13 +216,15 @@ POD at 0,20 m cells for that.
   velocities, pressure drops, HVAC sizing against load and CFM/kW), the
   mesh-snapping warnings, and a Run button. This is where a mistake is caught
   *before* paying for a solve.
-- **The Word report** — `aicfd report <name>` writes a .docx from the same
-  export: cover, summary with the basis of design, methodology with the
-  geometry and the boundary conditions, then the checks, the convergence, the
+- **The Word report** — `aicfd report <name>`, or the **Word report** button on
+  the results page, writes a .docx from the same export: cover, summary with the
+  basis of design, methodology with the geometry, the boundary conditions and
+  the cooling unit's own capacity table, then the checks, the convergence, the
   field maps, every rack and every unit, the conclusions and — in the document
   itself, not a footnote — what this model cannot be asked (ADR-028). It reads
-  `results/<name>/` and nothing else, so a figure in the document and a view on
-  the screen are two renderings of one result. It is the only part of AICFD
+  the export and nothing else, so a figure in the document and a view on the
+  screen are two renderings of one result, and it writes into `reports/<name>/`
+  so producing a document never modifies a result. It is the only part of AICFD
   that needs `python-docx` and `matplotlib`.
 - **Results page** — the same three drawings with the solved field underneath
   (temperature, speed, pressure) in contour bands with the ASHRAE limits drawn

@@ -310,9 +310,22 @@ def coil_capacity(model: Model, fans: list[dict], kpis: dict) -> dict:
         if fan.get("heat_kw") is not None:
             removed += fan["heat_kw"]
             fan["of_available_pct"] = round(fan["heat_kw"] / capacity * 100, 1)
-    if not available:
-        return {"coil_outside_table_c": outside} if outside else {}
     low, high = unit.span
+    if not available:
+        # Not one unit could be read. The refusal still has to say WHICH unit
+        # and over WHAT range, or a missing capacity downstream reads as an
+        # oversight rather than as the tool declining to extrapolate.
+        return (
+            {
+                "unit_model": unit.model,
+                "coil_table_span_c": [low, high],
+                "catalogue_kw": round((model.unit_capacity_kw or 0) * len(fans), 1)
+                or None,
+                "coil_outside_table_c": outside,
+            }
+            if outside
+            else {}
+        )
     return {
         "unit_model": unit.model,
         "available_kw": round(available, 1),
@@ -1494,12 +1507,20 @@ def _viewer_kpis(model: Model, results: PodResults) -> dict:
         "fans": k.get("fans", []),
         "rows": k.get("rows", []),
         "energy_closure": k["energy_closure"],
+        # The heat the return air actually carries out. `energy_closure` is
+        # this over the installed load, and a reader who has the ratio without
+        # the kilowatts cannot check it or quote it.
+        "recovered_kw": k.get("recovered_kw"),
         "unit_model": k.get("unit_model"),
         "available_kw": k.get("available_kw"),
         "utilisation_pct": k.get("utilisation_pct"),
         "units_over_capacity": k.get("units_over_capacity"),
         "catalogue_kw": k.get("catalogue_kw"),
         "coil_table_span_c": k.get("coil_table_span_c"),
+        # Which units returned air the selections do not cover. Carried because
+        # it is the reason a capacity is missing, and a missing number without
+        # its reason reads as an oversight rather than a refusal (ADR-036).
+        "coil_outside_table_c": k.get("coil_outside_table_c"),
         "hvac": k.get("hvac"),
         "alerts": k.get("alerts", []),
         "zones": [

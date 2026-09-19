@@ -130,3 +130,163 @@ class DocumentTest(unittest.TestCase):
     def test_the_figures_are_embedded_not_linked(self):
         shapes = self.doc.inline_shapes
         self.assertGreaterEqual(len(shapes), 6)
+
+
+def _export_naming_a_unit(directory: Path, model_name: str, rows_below: bool):
+    """A copy of the worked result, made to name a unit.
+
+    The tracked exports predate the equipment library, and solving a hall to
+    produce one would take the better part of an hour. So the fields, the
+    geometry and the checks are the real run's; only the coil KPIs are
+    computed here, by the same `coil_capacity` the exporter calls.
+
+    `rows_below` extends the unit's table down to the return temperature this
+    hall actually produces, which is the difference between the report saying
+    what the plant's margin is and saying that it cannot.
+    """
+    import json
+    import shutil
+
+    import yaml
+
+    from aicfd import equipment, post
+    from aicfd.model import build_model
+
+    source = Path(__file__).resolve().parents[1]
+    shutil.copytree(source / "reference" / "hall-double-gallery", directory / "export")
+    library = directory / "equipment"
+    library.mkdir()
+    text = (source / "equipment" / f"{model_name}.yaml").read_text()
+    if rows_below:
+        marker = "  - {return_c: 35,"
+        text = text.replace(marker, (
+            "  - {return_c: 32, nscc_kw: 385, airflow_m3h: 132800, "
+            "power_kw: 26.5, supply_c: 22.2}\n"
+            "  - {return_c: 33, nscc_kw: 424, airflow_m3h: 132730, "
+            "power_kw: 26.4, supply_c: 22.1}\n"
+            "  - {return_c: 34, nscc_kw: 464, airflow_m3h: 132660, "
+            "power_kw: 26.3, supply_c: 22}\n" + marker), 1)
+    (library / f"{model_name}.yaml").write_text(text)
+
+    saved, equipment.LIBRARY = equipment.LIBRARY, library
+    try:
+        spec = yaml.safe_load(
+            (source / "cases" / "hall-double-gallery.yaml").read_text())
+        model = build_model(spec)
+        payload = json.loads((directory / "export" / "viewer.json").read_text())
+        kpis = payload["kpis"]
+        kpis.update(post.coil_capacity(model, kpis["fans"], kpis))
+        payload["model"]["spec"] = spec
+        (directory / "export" / "viewer.json").write_text(json.dumps(payload))
+        return directory / "export", library
+    finally:
+        equipment.LIBRARY = saved
+
+
+class _UnitReport(unittest.TestCase):
+    ROWS_BELOW = True
+
+    @classmethod
+    def setUpClass(cls):
+        from aicfd import equipment
+        from aicfd.report import build
+
+        cls.tmp = tempfile.TemporaryDirectory()
+        export, library = _export_naming_a_unit(
+            Path(cls.tmp.name), "CA80NPVG6", cls.ROWS_BELOW)
+        cls.saved, equipment.LIBRARY = equipment.LIBRARY, library
+        path = build(export, Path(cls.tmp.name) / "r.docx",
+                     client="A Client", author="An Engineer")
+        from docx import Document
+
+        cls.doc = Document(str(path))
+        cls.figures = path.parent / "figures"
+        cls.text = "\n".join(p.text for p in cls.doc.paragraphs)
+        cls.cells = "\n".join(c.text for t in cls.doc.tables
+                              for r in t.rows for c in r.cells)
+
+    @classmethod
+    def tearDownClass(cls):
+        from aicfd import equipment
+
+        equipment.LIBRARY = cls.saved
+        cls.tmp.cleanup()
+
+
+@unittest.skipUnless(HAVE_EXTRAS, "python-docx and matplotlib are not installed")
+class UnitReportTest(_UnitReport):
+    """What the report says when it can read the unit's real capacity.
+
+    The whole point of the equipment library: a plant judged against the one
+    catalogue figure is judged against something it will not do (ADR-036).
+    The document has to carry that distinction, not bury it.
+    """
+
+    def test_the_cover_names_the_machine(self):
+        self.assertIn("Vertiv Liebert CWA CA80NPVG6", self.text)
+        self.assertIn("14 × Vertiv Liebert CWA CA80NPVG6", self.text)
+
+    def test_section_2_gives_the_selections_and_the_conditions_behind_them(self):
+        self.assertIn("The cooling unit", self.text)
+        for condition in ("Entering chilled water", "Leaving chilled water",
+                          "Selected at external static pressure"):
+            self.assertIn(condition, self.cells)
+
+    def test_the_whole_capacity_table_is_printed(self):
+        from aicfd import equipment
+
+        unit = equipment.load("CA80NPVG6")
+        for row in unit.capacity:
+            self.assertIn(f"{row['nscc_kw']:,.1f} kW", self.cells)
+
+    def test_the_capacity_figure_is_drawn(self):
+        self.assertTrue((self.figures / "capacity.png").is_file())
+
+    def test_unit_by_unit_gains_the_available_columns(self):
+        table = next(t for t in self.doc.tables if t.rows[0].cells[0].text == "Unit")
+        headers = [c.text for c in table.rows[0].cells]
+        self.assertIn("Available", headers)
+        self.assertIn("Of available", headers)
+        self.assertIn("Of the rating", headers)
+
+    def test_the_conclusions_use_available_capacity_not_the_catalogue(self):
+        self.assertIn("the capacity the coils actually have", self.text)
+        self.assertIn("kW available from", self.text)
+
+    def test_the_catalogue_limitation_is_dropped_and_the_real_one_stated(self):
+        """It would be false to keep saying capacity is the catalogue's when
+        the report just read the true one. The honest limitation is the
+        table's own ends."""
+        self.assertNotIn("catalogue capacity, not the capacity it actually has",
+                         self.text)
+        self.assertIn("valid only between them", self.text)
+        self.assertIn("is a different machine", self.text)
+
+
+@unittest.skipUnless(HAVE_EXTRAS, "python-docx and matplotlib are not installed")
+class OutsideTheTableReportTest(_UnitReport):
+    """And what it says when it cannot.
+
+    This hall returns air below the coldest selection the CA80NPVG6 was
+    characterised at. The report must say which units, over what range, and
+    that no margin can be stated -- not quietly omit a column.
+    """
+
+    ROWS_BELOW = False
+
+    def test_it_says_what_it_could_not_read_and_why(self):
+        self.assertIn("outside the selections this machine was characterised at",
+                      self.text)
+        self.assertIn("cannot state the plant's true margin", self.text)
+        self.assertIn("refuses to extrapolate", self.text)
+
+    def test_it_still_names_the_unit(self):
+        self.assertIn("CA80NPVG6", self.text)
+
+    def test_there_is_no_available_column_to_mislead_anyone(self):
+        table = next(t for t in self.doc.tables if t.rows[0].cells[0].text == "Unit")
+        self.assertNotIn("Of available", [c.text for c in table.rows[0].cells])
+
+    def test_the_catalogue_limitation_stays(self):
+        self.assertIn("catalogue capacity, not the capacity it actually has",
+                      self.text)

@@ -26,7 +26,9 @@ from __future__ import annotations
 from datetime import date
 from pathlib import Path
 
-from aicfd.figures import Export, ashrae, convergence, plan, rack_map, section, units
+from aicfd.figures import (
+    Export, ashrae, capacity, convergence, plan, rack_map, section, units,
+)
 
 ACCENT = "2F6F6A"
 INK = "0B0B0B"
@@ -208,7 +210,7 @@ def build(results_dir: str | Path, out_path: str | Path,
     doc.add_page_break()
     _summary(doc, export)
     doc.add_page_break()
-    _methodology(doc, export)
+    _methodology(doc, export, drawn)
     doc.add_page_break()
     _results(doc, export, drawn)
     doc.add_page_break()
@@ -255,6 +257,7 @@ def _draw(export: Export, figures: Path) -> dict:
         "units": units(export, figures / "units.png"),
         "ashrae": ashrae(export, figures / "ashrae.png"),
         "convergence": convergence(export, figures / "convergence.png"),
+        "capacity": capacity(export, figures / "capacity.png"),
     }
 
 
@@ -276,6 +279,15 @@ def _cover(doc, export: Export, client, author, title_text: str) -> None:
     if author:
         _para(doc, author, size=10, colour=SECOND, space_after=2)
     _para(doc, date.today().strftime("%B %Y"), size=10, colour=MUTED, space_after=40)
+    unit = export.equipment
+    if unit:
+        # Named on the cover because every capacity number inside is that
+        # machine's, read off its own selections. A reader who disagrees with
+        # the unit can stop here.
+        _para(doc,
+              f"Cooling plant · {len(export.model['fans'])} × "
+              f"{unit.family} {unit.model}".strip(),
+              size=9, colour=SECOND, space_after=4)
     _para(doc,
           f"Case {export.payload['case']} · solved to iteration "
           f"{export.payload['time']} · "
@@ -341,7 +353,18 @@ def _summary(doc, export: Export) -> None:
     ])
 
     _heading(doc, "Basis of design — fan wall selection point", 2)
+    unit = export.equipment
+    if unit:
+        _para(doc,
+              f"The cooling plant is {len(model['fans'])} × "
+              f"{unit.family} {unit.model}. The quantities below are that "
+              f"machine's own manufacturer selections, not a nominal figure: "
+              f"section 2 gives the conditions they were taken at and the "
+              f"capacity it has across the range of return air temperatures "
+              f"this hall produces.",
+              size=9.5, colour=SECOND)
     _table(doc, ["Quantity", "Value"], [
+        ("Unit", f"{unit.family} {unit.model}".strip() if unit else "not named"),
         ("Units installed", f"{len(model['fans'])}"),
         ("Airflow per unit", f"{_num(kpis['supply_flow_m3h'] / max(1, len(model['fans'])), 0)} m³/h"),
         ("Total airflow to the room", f"{_num(kpis['supply_flow_m3h'], 0)} m³/h"),
@@ -364,9 +387,14 @@ def _summary(doc, export: Export) -> None:
         ("Operating pressure",
          f"{_num(site['pressure_pa'] / 1000, 1)} kPa" if "pressure_pa" in site else "—"),
         ("Supply air density", f"{_num(site.get('rho'), 3)} kg/m³"),
+        *_selection_rows(unit),
     ], widths=[8.0, 8.0],
         note="The solve runs at the site's operating pressure, so the airflow and "
-             "the mass flow agree with the unit's selection at that elevation.")
+             "the mass flow agree with the unit's selection at that elevation."
+             + (" The chilled-water conditions are the ones the selections were "
+                "taken at; a plant run at other water temperatures is a "
+                "different selection and a different table."
+                if unit and unit.selection else ""))
 
     _heading(doc, "Results summary", 2)
     rows = [
@@ -410,10 +438,29 @@ def _summary(doc, export: Export) -> None:
         _para(doc, f"Alert · {alert}", size=9, colour="B07000")
 
 
+def _selection_rows(unit) -> list[tuple[str, str]]:
+    """The chilled-water and air conditions a unit's table was selected at.
+
+    They belong beside the capacity because they are what makes it true. The
+    same coil at 12 °C entering water is a different machine as far as any
+    number in this report is concerned.
+    """
+    if not unit or not unit.selection:
+        return []
+    labels = (
+        ("entering_water_c", "Entering chilled water", "°C", 1),
+        ("leaving_water_c", "Leaving chilled water", "°C", 1),
+        ("entering_air_rh", "Entering air relative humidity", "%", 0),
+    )
+    return [(label, f"{_num(unit.selection[key], digits)} {suffix}")
+            for key, label, suffix, digits in labels
+            if unit.selection.get(key) is not None]
+
+
 # --- 2 methodology ------------------------------------------------------------
 
 
-def _methodology(doc, export: Export) -> None:
+def _methodology(doc, export: Export, drawn: dict) -> None:
     model = export.model
     kpis = export.kpis
     spec = model.get("spec") or {}
@@ -510,6 +557,8 @@ def _methodology(doc, export: Export) -> None:
                        "(buoyantSimpleFoam, OpenFOAM v1912)."),
     ], widths=[4.6, 11.4])
 
+    _unit_section(doc, export, drawn)
+
     _heading(doc, "How the airflow per unit is obtained", 2)
     per_unit = kpis["supply_flow_m3h"] / max(1, len(model["fans"]))
     _table(doc, ["Step", "Value"], [
@@ -525,6 +574,88 @@ def _methodology(doc, export: Export) -> None:
         note="Every unit is given the same duty. A unit that is really on a "
              "pressure boundary would draw more or less than this and is not "
              "modelled here; see section 5.")
+
+
+def _unit_section(doc, export: Export, drawn: dict) -> None:
+    """The machine the plant is made of, and what it can actually do.
+
+    A fan wall's datasheet prints one capacity, true at the one return air
+    temperature the unit was selected for. A room almost never returns air at
+    that temperature, and a chilled-water coil transfers more when the air
+    reaching it is warmer. Judging a plant against the catalogue figure
+    therefore judges it against something the plant will not do, so this
+    report judges it against the manufacturer's whole set of selections
+    (ADR-036).
+    """
+    unit = export.equipment
+    if unit is None:
+        return
+    _heading(doc, "The cooling unit", 2)
+    facts = [
+        ("Manufacturer and family", unit.family or "—"),
+        ("Model", unit.model),
+        ("Units installed", f"{len(export.model['fans'])}"),
+        ("Unit dimensions (w × d × h)",
+         " × ".join(f"{v:.2f}" for v in unit.size) + " m"),
+    ]
+    if unit.weight_kg:
+        facts.append(("Operating weight", f"{_num(unit.weight_kg, 0)} kg"))
+    fans = unit.fans or {}
+    if fans.get("count"):
+        facts.append(("Fans per unit",
+                      f"{fans['count']} × {fans.get('type', 'fan')}"))
+    if fans.get("module"):
+        facts.append(("Fan module", str(fans["module"])))
+    if fans.get("modulation") is not None:
+        facts.append(("Fan modulation in the selections",
+                      f"{_num(fans['modulation'], 1)} %"))
+    if unit.selection.get("elevation_m") is not None:
+        facts.append(("Selected at site elevation",
+                      f"{_num(unit.selection['elevation_m'], 0)} m"))
+    if unit.selection.get("esp_pa") is not None:
+        facts.append(("Selected at external static pressure",
+                      f"{_num(unit.selection['esp_pa'], 0)} Pa"))
+    facts.extend(_selection_rows(unit))
+    _table(doc, ["Quantity", "Value"], facts, widths=[8.0, 8.0])
+
+    low, high = unit.span
+    _para(doc,
+          f"The manufacturer supplied {len(unit.capacity)} selections of this "
+          f"machine at the conditions above, differing only in the air it "
+          f"receives. Across that range — {_num(low, 0)} °C to "
+          f"{_num(high, 0)} °C return — its net sensible capacity moves from "
+          f"{_num(unit.at(low, 'nscc_kw'), 1)} kW to "
+          f"{_num(unit.at(high, 'nscc_kw'), 1)} kW, a change of "
+          f"{_num((unit.at(high, 'nscc_kw') / unit.at(low, 'nscc_kw') - 1) * 100, 0)} %. "
+          f"Every capacity figure in section 3 is read off this table at the "
+          f"return temperature each unit was found to receive, interpolated "
+          f"between the selections and never extrapolated beyond them.")
+
+    _table(doc,
+           ["Return air", "Net sensible", "Airflow", "Power input", "Supply air"],
+           [(f"{_num(r['return_c'], 1)} °C",
+             f"{_num(r['nscc_kw'], 1)} kW",
+             f"{_num(r['airflow_m3h'], 0)} m³/h",
+             f"{_num(r['power_kw'], 1)} kW",
+             f"{_num(r['supply_c'], 1)} °C")
+            for r in unit.capacity],
+           widths=[3.2, 3.2, 3.4, 3.2, 3.0],
+           note="The manufacturer's own selections, as issued. Nothing here is "
+                "computed by AICFD.")
+    if drawn.get("capacity"):
+        _figure(doc, drawn["capacity"],
+                "Net sensible capacity against the air the unit receives. The "
+                "line is the manufacturer's selections; the marks are where "
+                "this hall put each unit.")
+    if not (unit.curve or {}).get("measured"):
+        _para(doc,
+              "The pressure–flow curve used to find the static pressure "
+              "available at the modelled airflow is representative of an EC "
+              "fan array anchored to the unit's selected external static "
+              "pressure, not the manufacturer's measured curve. It decides the "
+              "uncontrolled operating point and nothing else; no capacity or "
+              "temperature in this report depends on it.",
+              size=9, colour=MUTED, italic=True)
 
 
 # --- 3 results ----------------------------------------------------------------
@@ -626,21 +757,41 @@ def _results(doc, export: Export, drawn: dict) -> None:
                 "units are numbered along the gallery wall, in gallery order.")
     fans = kpis.get("fans", [])
     rating = (model.get("operating") or {}).get("unit_capacity_kw")
-    _table(doc, ["Unit", "Return air", "Mass flow", "Heat removed",
-                 "Of the rating", "Rise across the unit"],
+    # 'Of available' is the column that decides whether the plant has reserve:
+    # the rating is what the machine was sold as, the available capacity is
+    # what it has at the air this hall gave it (ADR-036).
+    available = any(f.get("available_kw") for f in fans)
+    headers = ["Unit", "Return air", "Mass flow", "Heat removed", "Of the rating"]
+    widths = [1.8, 2.6, 2.4, 2.6, 2.4, 2.6]
+    if available:
+        headers.append("Available")
+        headers.append("Of available")
+        widths = [1.5, 2.2, 2.0, 2.2, 2.0, 2.2, 2.2, 1.7]
+    headers.append("Rise")
+    _table(doc, headers,
            [(f["name"].replace("fan", ""),
              f"{_num(f.get('return_temp_c'), 2)} °C",
              f"{_num(f.get('intake_kg_s'), 1)} kg/s",
              f"{_num(f.get('heat_kw'), 0)} kW",
              f"{_num((f.get('heat_kw') or 0) / rating * 100, 0)} %" if rating else "—",
+             *((f"{_num(f.get('available_kw'), 0)} kW",
+                f"{_num(f.get('of_available_pct'), 0)} %") if available else ()),
              f"{_num(f.get('rise_pa'), 1)} Pa")
             for f in fans],
+           widths=widths,
            note="Heat removed is the enthalpy the air carries out of each unit, "
                 "mass flow × cp × (return − supply). 'Of the rating' compares it "
-                "with the unit's CATALOGUE net sensible capacity at its selection "
-                "point; the capacity a coil actually has at the return "
-                "temperature it receives is lower, and AICFD does not yet "
-                "compute it — see section 5.")
+                "with the CATALOGUE net sensible capacity, at the unit's "
+                "selection point."
+                + (" 'Available' is what the coil actually has at the return "
+                   "air temperature in the column beside it, interpolated "
+                   "between the manufacturer's selections in section 2 — and "
+                   "'Of available' is the only one of the two that says "
+                   "whether this plant has reserve."
+                   if available else
+                   " The capacity a coil actually has at the return temperature "
+                   "it receives differs from that, and this run named no unit "
+                   "to read it from — see section 5."))
 
 
 _CHECK_MEANING = {
@@ -708,6 +859,53 @@ def _conclusions(doc, export: Export) -> None:
                f"{_num(rating, 1)} kW, the worst at "
                f"{_num(max(heats) / rating * 100, 0)} %.")
         )
+    # The finding that matters more than the one above it: the catalogue
+    # figure is what the plant was bought as, this is what it has (ADR-036).
+    if kpis.get("available_kw"):
+        used = kpis["utilisation_pct"]
+        outside = kpis.get("units_over_capacity") or 0
+        removed = sum(heats) if heats else kpis.get("recovered_kw")
+        sentence = (
+            f"Against the capacity the coils actually have at the return air "
+            f"this hall produces, the plant is at {_num(used, 1)} % — "
+            f"{_num(removed, 0)} kW removed of "
+            f"{_num(kpis['available_kw'], 0)} kW available from "
+            f"{len(fans)} × {kpis['unit_model']}"
+        )
+        catalogue = kpis.get("catalogue_kw")
+        if catalogue and removed:
+            sentence += (
+                f", not the {_num(catalogue, 0)} kW the catalogue sums to. "
+                f"The difference between those two numbers is the difference "
+                f"between {_num(removed / catalogue * 100, 1)} % "
+                f"and {_num(used, 1)} % loaded, and it is the second figure "
+                f"that says what happens when a unit is lost"
+            )
+        sentence += (
+            f". {outside} unit(s) are drawing more than the coil can give at "
+            f"their own return temperature."
+            if outside else
+            ". No unit is drawing more than its coil can give at the return "
+            "temperature it receives."
+        )
+        findings.append(sentence)
+    outside = kpis.get("coil_outside_table_c") or []
+    span = kpis.get("coil_table_span_c") or (
+        list(export.equipment.span) if export.equipment else None)
+    if outside and span:
+        # The one case where the honest answer is "I cannot say". Extrapolating
+        # a coil curve past its ends is where guessing is worst, and the number
+        # it would produce is the one that decides whether a plant has reserve.
+        findings.append(
+            f"{len(outside)} unit(s) returned air outside the selections this "
+            f"machine was characterised at ({_num(span[0], 0)} °C to "
+            f"{_num(span[1], 0)} °C) — between {_num(min(outside), 1)} °C and "
+            f"{_num(max(outside), 1)} °C — so the capacity actually available "
+            f"to them could not be read and this report cannot state the "
+            f"plant's true margin. AICFD refuses to extrapolate a coil curve "
+            f"rather than produce a number that looks like an answer. The fix "
+            f"is a manufacturer selection at that condition."
+        )
     if kpis.get("fan_rise_pa") and kpis.get("fan_static_pa"):
         findings.append(
             f"The room costs the most loaded unit {_num(kpis['fan_rise_pa'], 1)} Pa "
@@ -740,18 +938,45 @@ def _limits(doc, export: Export) -> None:
           "section 2. CFD gives an approximate solution to the equations of "
           "fluid motion, given the simplifications required to model a real "
           "room; the model, the mesh and the inputs all carry uncertainty.")
-    _bullets(doc, [
+    kpis = export.kpis
+    unit = export.equipment
+    limits = [
         "Steady state only. A unit failing, a door opening or a load step are "
         "transients and are outside this model.",
         "One operating scenario. A failure case — units out of service, the "
         "surviving units sharing the same total airflow — is not modelled, so "
         "this report cannot state how much reserve the plant has when a unit is "
         "lost.",
-        "The unit's catalogue capacity, not the capacity it actually has. A "
-        "chilled-water coil delivers its rating only at the return temperature "
-        "it was selected for, and a real hall returns cooler air than that. "
-        "Comparisons here are against the catalogue figure and are therefore "
-        "optimistic.",
+    ]
+    # The catalogue-capacity limitation is real only when there is no table to
+    # read the true capacity from. Where there is one, the honest limitation is
+    # the opposite: the table's own ends (ADR-036).
+    if not kpis.get("available_kw"):
+        limits.append(
+            "The unit's catalogue capacity, not the capacity it actually has. A "
+            "chilled-water coil delivers its rating only at the return "
+            "temperature it was selected for, and a real hall returns cooler "
+            "air than that. Comparisons here are against the catalogue figure "
+            "and are therefore optimistic."
+        )
+    elif unit is not None:
+        low, high = unit.span
+        limits.append(
+            f"Capacity is read from the manufacturer's selections and is valid "
+            f"only between them, {_num(low, 0)} °C and {_num(high, 0)} °C return "
+            f"air. Outside that range AICFD reports that it cannot say rather "
+            f"than extrapolating; a coil curve is not a straight line and its "
+            f"ends are where guessing is worst."
+            + (" One or more units in this run returned air outside it."
+               if kpis.get("coil_outside_table_c") else "")
+        )
+        limits.append(
+            f"The selections hold at the conditions in section 2 and nowhere "
+            f"else. Run at other chilled-water temperatures, another external "
+            f"static pressure or a different fan speed, the {unit.model} is a "
+            f"different machine and this report's capacities do not apply to it."
+        )
+    limits += [
         "One load per rack. Unloaded positions and a real per-rack load map are "
         "not represented, and where the empty positions sit changes how evenly "
         "the units load.",
@@ -765,7 +990,8 @@ def _limits(doc, export: Export) -> None:
         "No comparison against measurement. Every validation in section 3.1 is "
         "an identity the physics must satisfy. That class of check catches wrong "
         "models; it cannot promise the built room behaves this way.",
-    ])
+    ]
+    _bullets(doc, limits)
     _para(doc,
           "The case specification, the generated OpenFOAM case, the solver log "
           "and the exported result together reproduce this document exactly. "

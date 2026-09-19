@@ -92,6 +92,7 @@ class Export:
             start = descriptor["offset"] // 4
             block = raw[start : start + descriptor["count"]]
             self.fields[descriptor["name"]] = block.reshape((nz, ny, nx))
+        self._equipment = False  # not looked up yet; None means "no unit"
         self.fields["speed"] = np.sqrt(
             self.fields["Ux"] ** 2 + self.fields["Uy"] ** 2 + self.fields["Uz"] ** 2
         )
@@ -128,6 +129,30 @@ class Export:
     @property
     def racks(self) -> list[dict]:
         return self.payload["geometry"]["zones"]
+
+    @property
+    def equipment(self):
+        """The unit this run was judged against, as the library holds it now.
+
+        Read at report time rather than frozen into the export, because the
+        fields it supplies -- who makes the machine, what it is called, the
+        conditions it was selected at -- are the ones a person corrects on the
+        equipment page, and a report is expected to carry the corrected name.
+        The numbers that decided the result are in the KPIs either way.
+
+        None when the run named no unit, which every result exported before
+        the library existed did.
+        """
+        if self._equipment is not False:
+            return self._equipment
+        from aicfd import equipment as library
+
+        name = (self.kpis or {}).get("unit_model")
+        try:
+            self._equipment = library.load(name) if name else None
+        except (library.UnknownModel, ValueError):
+            self._equipment = None  # renamed or removed since the run
+        return self._equipment
 
     def panels(self, *prefixes: str) -> list[dict]:
         return [
@@ -503,6 +528,89 @@ def convergence(export: Export, out: Path) -> Path:
         ax.set_axisbelow(True)
         for side in ("top", "right"):
             ax.spines[side].set_visible(False)
+    fig.tight_layout()
+    fig.savefig(out, dpi=DPI, bbox_inches="tight")
+    plt.close(fig)
+    return out
+
+
+def capacity(export: Export, out: Path) -> Path | None:
+    """The unit's capacity against the air it receives, with this hall on it.
+
+    The point of the figure is the slope. A reader who has only seen the
+    datasheet believes the machine has one capacity; the curve shows it moving
+    by tens of per cent across a few kelvin, and the marker shows which part
+    of it this hall actually asked for. Everything the report says about
+    margin is read off this line (ADR-036).
+    """
+    unit = export.equipment
+    if unit is None:
+        return None
+    plt = _pyplot()
+    rows = list(unit.capacity)
+    temps = [r["return_c"] for r in rows]
+    kw = [r["nscc_kw"] for r in rows]
+
+    fig, ax = plt.subplots(figsize=(7.2, 2.8))
+    ax.plot(temps, kw, color=FAN, linewidth=1.6, marker="o", markersize=3.5,
+            markerfacecolor=FAN, markeredgecolor="white", markeredgewidth=0.8,
+            label="manufacturer's selections", zorder=3)
+    # Zero-based, because this is a magnitude: a truncated axis would make a
+    # 45 % rise look like a tenfold one.
+    ax.set_ylim(0, max(kw) * 1.18)
+    fans = export.kpis.get("fans") or []
+    # Returns the table does not cover still belong on the axis. A figure that
+    # silently cropped them would hide the one thing the reader has to know:
+    # this hall ran off the end of the machine's characterisation (ADR-036).
+    off = [t for t in (export.kpis.get("coil_outside_table_c") or [])]
+    left = min([*temps, *off]) - 0.4
+    right = max([*temps, *off]) + 0.4
+    ax.set_xlim(left, right)
+
+    rating = (export.model.get("operating") or {}).get("unit_capacity_kw")
+    if rating:
+        ax.axhline(rating, color=MUTED, linewidth=1.0, linestyle=(0, (4, 3)),
+                   zorder=1)
+        # Labelled at the right-hand end, where the curve has climbed well
+        # clear of the line and the text has room.
+        ax.annotate(f"catalogue figure quoted in the spec, {rating:,.0f} kW",
+                    xy=(right, rating), xytext=(-2, 5), ha="right",
+                    textcoords="offset points", fontsize=6.5, color=SECOND)
+
+    if off:
+        ax.axvspan(left, min(temps), color="#f4ecec", zorder=0)
+        ax.axvline(min(temps), color=BAD, linewidth=1.0,
+                   linestyle=(0, (3, 2)), zorder=2)
+        for temperature in off:
+            ax.axvline(temperature, color=BAD, linewidth=0.6, alpha=0.5,
+                       zorder=2)
+        ax.annotate(
+            f"this hall returned {min(off):.1f}–{max(off):.1f} °C, below the "
+            f"selections — capacity not read",
+            xy=(min(temps), max(kw) * 1.06), xytext=(5, 0), ha="left",
+            textcoords="offset points", fontsize=6.5, color=BAD)
+
+    operating = [(f.get("return_temp_c"), f.get("available_kw"))
+                 for f in fans
+                 if f.get("return_temp_c") is not None and f.get("available_kw")]
+    if operating:
+        ax.scatter([t for t, _ in operating], [c for _, c in operating],
+                   s=26, color=BAD, edgecolor="white", linewidth=0.8, zorder=4,
+                   label="this hall, unit by unit")
+        warmest = max(operating)
+        ax.annotate(f"{warmest[1]:,.0f} kW at {warmest[0]:.1f} °C",
+                    xy=warmest, xytext=(6, -12), textcoords="offset points",
+                    fontsize=7, color=BAD)
+
+    ax.set_xlabel("Return air temperature at the unit (°C)")
+    ax.set_ylabel("Net sensible capacity (kW)")
+    ax.set_title(f"{unit.family} {unit.model} — capacity against return air",
+                 loc="left")
+    ax.legend(frameon=False, fontsize=6.5, loc="lower right")
+    ax.grid(axis="y", color=GRID, linewidth=0.6)
+    ax.set_axisbelow(True)
+    for side in ("top", "right"):
+        ax.spines[side].set_visible(False)
     fig.tight_layout()
     fig.savefig(out, dpi=DPI, bbox_inches="tight")
     plt.close(fig)

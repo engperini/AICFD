@@ -214,3 +214,84 @@ class ResultsStateTest(unittest.TestCase):
         self.assertFalse(state["matches"])
         self.assertIn("iteration 700", state["note"])
         self.assertIn("aicfd post c", state["note"])
+
+
+class CommandsTest(unittest.TestCase):
+    """What the results page is allowed to offer.
+
+    Asked before the buttons are drawn, so a button that cannot work is never
+    shown. A button that appears and then explains why it failed teaches the
+    reader to distrust the others.
+    """
+
+    def test_a_case_with_no_result_offers_nothing(self):
+        from aicfd.server import commands_for
+
+        can = commands_for("no-such-case-anywhere")
+        self.assertFalse(can["report"])
+        self.assertFalse(can["reread"])
+        self.assertIn("not on this machine", can["reread_note"])
+
+    def test_a_shipped_result_can_still_be_reported_on(self):
+        from aicfd.server import REFERENCE_DIR, commands_for
+
+        name = "pod-fanwall"
+        if not (REFERENCE_DIR / name / "viewer.json").is_file():
+            self.skipTest("the worked result is not in this clone")
+        self.assertTrue(commands_for(name)["report"])
+
+
+class ReportEndpointTest(unittest.TestCase):
+    """The Word report, as the button asks for it."""
+
+    def setUp(self):
+        import tempfile
+        from pathlib import Path
+
+        from aicfd import server
+
+        try:
+            import docx  # noqa: F401
+            import matplotlib  # noqa: F401
+        except ModuleNotFoundError:
+            self.skipTest("python-docx and matplotlib are not installed")
+        if not (server.REFERENCE_DIR / "pod-fanwall" / "viewer.json").is_file():
+            self.skipTest("the worked result is not in this clone")
+        self.tmp = tempfile.TemporaryDirectory()
+        self.saved = server.REPORTS_DIR
+        server.REPORTS_DIR = Path(self.tmp.name)
+
+    def tearDown(self):
+        from aicfd import server
+
+        server.REPORTS_DIR = self.saved
+        self.tmp.cleanup()
+
+    def test_it_writes_a_document_and_never_touches_the_export(self):
+        from aicfd import server
+
+        before = sorted(p.name for p in
+                        (server.REFERENCE_DIR / "pod-fanwall").iterdir())
+        out = server.write_report("pod-fanwall", {"client": "A Client"})
+        self.assertTrue(out.is_file())
+        self.assertGreater(out.stat().st_size, 10_000)
+        self.assertEqual(
+            sorted(p.name for p in (server.REFERENCE_DIR / "pod-fanwall").iterdir()),
+            before,
+            "producing a document must not modify the result it was read from",
+        )
+
+    def test_a_case_with_no_result_says_so_rather_than_writing_nothing(self):
+        from aicfd import server
+
+        with self.assertRaises(FileNotFoundError):
+            server.write_report("no-such-case-anywhere", {})
+
+
+class RereadTest(unittest.TestCase):
+    def test_a_case_that_was_never_solved_here_says_so(self):
+        from aicfd.server import reread_run
+
+        with self.assertRaises(Exception) as caught:
+            reread_run("no-such-case-anywhere")
+        self.assertNotIsInstance(caught.exception, AttributeError)

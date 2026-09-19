@@ -10,6 +10,11 @@
 runs/
 results/
 
+# Word reports and their figures: a deliverable, rebuilt from an export by
+# `aicfd report` or the button on the results page. The document is the thing
+# to hand someone, not the thing to version -- the export it was built from is.
+reports/
+
 # Python
 .venv/
 venv/
