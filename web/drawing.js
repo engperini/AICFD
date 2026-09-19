@@ -144,6 +144,14 @@ const fanLabel = (panel, seen) => {
  */
 const ofRack = (panel) => panel.of_rack ?? /^rack_(top|end)(_|$)/.test(panel.name);
 
+/**
+ * The x ranges a rack row actually occupies: one per block, because a row cut
+ * by a transverse aisle is two rows as far as the air is concerned. Falls
+ * back to the racks' own extent for a case that names no blocks.
+ */
+const rackBlocks = (model) =>
+  model.blocks?.length ? model.blocks : [rackSpan(model)];
+
 const coldAisles = (model) => model.cold_aisles || [model.aisles.cold];
 const hotAisles = (model) => model.hot_aisles || [model.aisles.hot];
 
@@ -311,18 +319,27 @@ export function drawView(model, view, scale, options = {}) {
 
   // 2 — aisle tints, only where the y axis is on screen, and only in the hall
   if (view.h === 1 || view.v === 1) {
+    const room = [[model.hall.lo[0], model.hall.hi[0]]];
     const bands = [
-      ...coldAisles(model).map((band) => [band, 'dw-cold']),
-      ...hotAisles(model).map((band) => [band, 'dw-hot']),
+      // A cold aisle is fed by the fan wall and opens onto the whole room, so
+      // it runs the hall's length.
+      ...coldAisles(model).map((band) => [band, 'dw-cold', room]),
+      // A hot aisle is the pocket between two rack rows, and it stops where
+      // the rows do. Painted the hall's length it ran past the end of the
+      // row and straight across the transverse aisle between two blocks,
+      // tinting bare floor as though the containment reached it.
+      ...hotAisles(model).map((band) => [band, 'dw-hot', rackBlocks(model)]),
     ];
-    for (const [band, cls] of bands) {
-      const lo = [model.hall.lo[0], band[0], model.domain.lo[2]];
-      const hi = [
-        model.hall.hi[0],
-        band[1],
-        view.v === 2 ? model.ceiling_z : model.domain.hi[2],
-      ];
-      paint(lo, hi, cls);
+    for (const [band, cls, spans] of bands) {
+      for (const [x0, x1] of spans) {
+        const lo = [x0, band[0], model.domain.lo[2]];
+        const hi = [
+          x1,
+          band[1],
+          view.v === 2 ? model.ceiling_z : model.domain.hi[2],
+        ];
+        paint(lo, hi, cls);
+      }
     }
   }
 
@@ -373,6 +390,33 @@ export function drawView(model, view, scale, options = {}) {
     // a gallery at each end, the near one alone when there is only one.
     for (const x of model.dividers ?? [model.hall.lo[0]]) {
       line(X(x), Y(d.hi[view.v]), X(x), Y(d.lo[view.v]), 'dw-divider');
+    }
+  }
+
+  // 6.5 — the fan wall's depth: drawn, never meshed.
+  //
+  // The solver sees a zero-thickness baffle pair, because a fan wall is a
+  // boundary condition rather than a volume. On a drawing that leaves a
+  // machine 3,7 m tall and 1,5 m deep as a single line, and a reader asking
+  // whether the mechanical gallery is deep enough for it has nothing to
+  // measure. The body is the unit's own depth off its datasheet, set back on
+  // the gallery side -- `sign` is which side that is -- and it appears only
+  // in the views where depth is on screen, which is to say wherever the fan
+  // wall is seen edge-on (ADR-046).
+  if (model.fan_depth_m) {
+    for (const panel of model.panels) {
+      if (panel.kind !== 'fan' || panel.axis === view.normal) continue;
+      const { lo, hi } = panelBounds(panel);
+      const along = panel.axis === view.h ? view.v : view.h;
+      const back = panel.position - model.fan_depth_m * (panel.sign ?? 1);
+      const a = [0, 0, 0];
+      const b = [0, 0, 0];
+      a[panel.axis] = Math.min(back, panel.position);
+      b[panel.axis] = Math.max(back, panel.position);
+      a[along] = lo[along];
+      b[along] = hi[along];
+      const cut = straddles(lo, hi, view.normal, at);
+      paint(a, b, cut ? 'dw-fanbody' : 'dw-fanbody dw-beyond');
     }
   }
 

@@ -69,6 +69,9 @@ EDITABLE = {
     "fan_power_kw": (("fanwall", "power_kw"), float, (0.0, 500.0)),
     "fan_width": (("fanwall", "width"), float, (0.3, 20.0)),
     "fan_height": (("fanwall", "height"), float, (0.5, 20.0)),
+    # Drawn, not meshed: how far the unit reaches back into the mechanical
+    # gallery (ADR-046). Defaults to the named unit's datasheet.
+    "fan_depth": (("fanwall", "depth"), float, (0.1, 10.0)),
     "supply_temp_c": (("fanwall", "supply_temp_c"), float, (-10.0, 40.0)),
     "fan_static_pa": (("fanwall", "static_pressure_pa"), float, (0.0, 2_000.0)),
     # --- return grilles -----------------------------------------------------

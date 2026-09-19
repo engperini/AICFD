@@ -17,6 +17,10 @@
 .dw-wall{fill:var(--containment);stroke:var(--containment);stroke-width:1}
 .dw-opening{fill:var(--hot);stroke:var(--hot);stroke-width:1}
 .dw-fan{fill:var(--cold);stroke:var(--cold);stroke-width:1}
+/* The unit's depth reaching back into the mechanical gallery: quiet, because
+   it is the machine's envelope and not a surface the solver knows about. The
+   heavy fan line is drawn over its face, so the two read as one machine. */
+.dw-fanbody{fill:var(--cold);opacity:.16;stroke:var(--cold);stroke-width:1}
 /* outline only, and quieter, where it lies off the section plane */
 .dw-beyond{fill:none;stroke-width:1.2;stroke-dasharray:5 3;opacity:.5}
 /* a panel seen edge-on projects to a line: draw it as one, heavily, so an
@@ -47,6 +51,9 @@
 svg.dw-over-map .dw-gallery,svg.dw-over-map .dw-hallfill,svg.dw-over-map .dw-plenum,
 svg.dw-over-map .dw-cold,svg.dw-over-map .dw-hot{fill:none;stroke:var(--text-primary);
   stroke-width:1.2;opacity:.9}
+/* The fan wall's envelope outlines over a field map like every other volume:
+   a translucent fill would tint the temperatures underneath it. */
+svg.dw-over-map .dw-fanbody{fill:none;stroke:var(--cold);stroke-width:1.2;opacity:.9}
 svg.dw-over-map .dw-rack{fill:none;stroke-width:1.6}
 svg.dw-over-map .dw-label{paint-order:stroke;stroke:var(--surface);stroke-width:3px}
 svg.dw-over-map .dw-note,svg.dw-over-map .dw-edge-label{paint-order:stroke;

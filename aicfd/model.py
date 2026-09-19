@@ -663,6 +663,19 @@ class _Layout:
     blocks: list[tuple[float, float]] = field(default_factory=list)
 
 
+def fan_depth(spec: dict) -> float | None:
+    """How far a fan wall unit reaches back into the mechanical gallery.
+
+    Read from the spec, like the width and the height beside it: naming a unit
+    fills all three from its datasheet, and a typed value wins over that. A
+    case that states none leaves the fan wall as the plane the solver sees,
+    because inventing a depth would put a machine on the drawing that nothing
+    in the case describes.
+    """
+    stated = (spec.get("fanwall") or {}).get("depth")
+    return float(stated) if stated else None
+
+
 def equipment_for(spec: dict):
     """Fill the fan wall block from the library when the spec names a unit.
 
@@ -710,6 +723,7 @@ def equipment_for(spec: dict):
         "power_kw": point["power_kw"],
         "supply_temp_c": point["supply_c"],
         "width": unit.size[0],
+        "depth": unit.size[1],
         "height": unit.size[2],
         "static_pressure_pa": unit.selection.get("esp_pa"),
         "curve": (unit.curve or {}).get("points"),
@@ -1554,6 +1568,11 @@ def to_dict(model: Model, spec: dict) -> dict:
         ],
         "fans": [p.name for p in model.fans],
         "fan_sides": [p.sign for p in model.fans],
+        # Drawn, never meshed. The solver sees a zero-thickness baffle pair,
+        # because a fan wall is a boundary condition and not a volume -- but a
+        # drawing that leaves a 1,5 m deep machine as a line gives a reader
+        # checking whether the gallery holds it nothing to measure (ADR-046).
+        "fan_depth_m": fan_depth(spec),
         "racks": [
             {
                 "id": r.id,

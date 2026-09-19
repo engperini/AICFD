@@ -73,6 +73,7 @@ const SECTIONS = [
       { key: 'fan_power_kw', label: 'Power input', unit: 'kW', step: 0.1, optional: true },
       { key: 'fan_width', label: 'Unit width', unit: 'm', step: 0.1 },
       { key: 'fan_height', label: 'Unit height', unit: 'm', step: 0.1 },
+      { key: 'fan_depth', label: 'Unit depth', unit: 'm', step: 0.1, optional: true },
       { key: 'supply_temp_c', label: 'Supply temperature', unit: '°C', step: 0.5 },
       { key: 'fan_static_pa', label: 'External static pressure', unit: 'Pa', step: 5, optional: true },
     ],

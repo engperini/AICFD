@@ -1779,3 +1779,56 @@ drawing only. The model says what a face belongs to; the drawing asks.
 mesh-snapping pass rebuilt each `Panel` field by field and stopped one short,
 so a field added later arrived as its default. That pass now uses
 `dataclasses.replace`, which cannot drop a field it has not been told about.
+
+---
+
+## ADR-046 — The fan wall is drawn with its depth and meshed without it
+
+**Decision.** The unit's depth joins its width and height on the spec, filled
+from the named unit's datasheet, and the drawings set the machine's envelope
+back into the mechanical gallery. The mesh does not change: a fan wall is
+still the zero-thickness baffle pair the solver has always seen.
+
+**Why draw what is not modelled.** The baffle pair is the right physics — a
+fan wall is a boundary condition, air leaving one face at a temperature and a
+rate — and giving it a volume would buy nothing the momentum source does not
+already give. But it left a machine 3,96 m wide, 3,67 m tall and 1,48 m deep
+as a line on the page. A reader asking the question the drawing exists to
+answer — does the gallery hold these units, with room to pull a fan module —
+had nothing to measure. The depth is stated on the datasheet; not drawing it
+was losing information the case already had.
+
+**Where the depth comes from.** The spec, like the width and the height
+beside it. Naming a unit fills all three; a typed value wins. A case that
+states none leaves the fan wall as the plane the solver sees, because
+inventing a depth would put a machine on the drawing that nothing in the case
+describes.
+
+**Which side.** `sign` already says which side of the panel the gallery is
+on — it is what tells a fan wall which half of its baffle pair is the intake
+(ADR-027) — so the body sets back the way the machine actually faces, and a
+hall with a gallery at each end gets both right without a special case.
+
+**The envelope is quiet.** A light fill under the heavy fan line, and an
+outline rather than a fill over a field map, where a translucent rectangle
+would tint the temperatures beneath it. It is the machine's extent, not a
+surface anything was solved across, and it should not read as one.
+
+---
+
+## ADR-047 — A hot aisle stops where the racks do
+
+**Decision.** The hot aisle tint is drawn per rack block. The cold aisle
+keeps the hall's length.
+
+**Why.** It was painted from one end of the hall to the other, so on the plan
+it ran past the end of every row and straight across the transverse aisle
+between two blocks — three strips of bare floor per aisle, tinted as though
+the containment reached them. On a hall with five aisles and two blocks that
+is fifteen claims the geometry does not make, in the drawing whose job is to
+show where the containment is.
+
+**Why the cold aisle is different.** A hot aisle is a pocket between two rack
+rows and ends with them. A cold aisle is fed by the fan wall and opens onto
+the room; its air is the room's air, and the tint says which volume is which
+rather than where a wall stands.

@@ -351,3 +351,60 @@ class RackFacesTest(unittest.TestCase):
 
 if __name__ == "__main__":
     unittest.main()
+
+
+class FanWallDepthTest(unittest.TestCase):
+    """The unit's depth is drawn and never meshed (ADR-046).
+
+    The solver sees a zero-thickness baffle pair, because a fan wall is a
+    boundary condition rather than a volume. The drawings need the envelope
+    so a reader can ask whether the mechanical gallery holds the machine.
+    """
+
+    def test_a_case_that_states_no_depth_gets_none(self):
+        self.assertIsNone(m.fan_depth({"fanwall": {"width": 3.96}}))
+        self.assertIsNone(m.fan_depth({}))
+
+    def test_zero_is_no_depth_rather_than_a_flat_machine(self):
+        self.assertIsNone(m.fan_depth({"fanwall": {"depth": 0}}))
+
+    def test_a_stated_depth_is_read(self):
+        self.assertEqual(m.fan_depth({"fanwall": {"depth": "1.48"}}), 1.48)
+
+    def test_the_payload_carries_it(self):
+        spec = copy.deepcopy(SPEC)
+        spec["fanwall"]["depth"] = 1.2
+        self.assertEqual(m.to_dict(m.build_model(spec), spec)["fan_depth_m"], 1.2)
+
+    def test_the_mesh_never_sees_it(self):
+        """A depth on the spec must not move a cell or a panel."""
+        deep = copy.deepcopy(SPEC)
+        deep["fanwall"]["depth"] = 2.5
+        a, b = build(), m.build_model(deep)
+        self.assertEqual(a.divisions, b.divisions)
+        self.assertEqual([p.name for p in a.panels], [p.name for p in b.panels])
+        self.assertEqual([p.position for p in a.panels], [p.position for p in b.panels])
+
+
+class HotAisleExtentTest(unittest.TestCase):
+    """A hot aisle is the pocket between two rack rows, and stops where they do.
+
+    Painted the hall's whole length it ran past the end of the row and across
+    the transverse aisle between two blocks, tinting bare floor as though the
+    containment reached it.
+    """
+
+    def test_the_blocks_are_shorter_than_the_hall(self):
+        model = build()
+        payload = m.to_dict(model, SPEC)
+        blocks = payload["blocks"]
+        self.assertTrue(blocks, "the drawing needs somewhere to stop")
+        hall = payload["hall"]
+        self.assertGreaterEqual(min(b[0] for b in blocks), hall["lo"][0])
+        self.assertLessEqual(max(b[1] for b in blocks), hall["hi"][0])
+
+    def test_the_drawing_bounds_the_hot_tint_by_them(self):
+        js = (Path(__file__).resolve().parent.parent / "web" / "drawing.js").read_text()
+        self.assertIn("rackBlocks(model)", js)
+        self.assertNotIn("...hotAisles(model).map((band) => [band, 'dw-hot'])", js,
+                         "the hot tint must not run the hall's length again")
