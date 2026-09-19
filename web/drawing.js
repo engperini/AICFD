@@ -24,10 +24,31 @@ const PAD = { left: 88, right: 30, top: 16, bottom: 44 };
  * sets the size of all of them -- and while these were fixed at 320 and 420 px
  * the constraint was always the HEIGHT: a 51 x 32 m hall had to fit its plan
  * into 320 px, so everything was drawn at 10 px/m and the sections came out
- * 74 px tall. This is now a generous cap that width almost always beats, so
- * the drawings are as large as the column allows.
+ * 74 px tall.
+ *
+ * An absolute ceiling, reached only on a very tall window; `heightCap` is
+ * what normally applies.
  */
-const MAX_VIEW_HEIGHT = 680;
+const MAX_VIEW_HEIGHT = 980;
+
+/**
+ * How tall a fitted drawing may actually be here: as tall as its scroller.
+ *
+ * A fixed cap serves two rooms badly at once. It bound a 51 x 32 m hall,
+ * whose plan it held to 19 px per metre when the page had room for 20,5;
+ * and it bound a 9 x 4,2 x 8 m POD far harder, where the sections are nearly
+ * square and the window had height to spare. Taking it from the window fits
+ * both: each drawing is as large as the screen in front of the reader allows.
+ *
+ * 80% of the window is what `drawing.css` gives the scroller. Going past it
+ * would leave a drawing labelled `fit` that still had to be scrolled, and the
+ * one thing that label must not do is lie.
+ */
+function heightCap() {
+  if (typeof window === 'undefined') return MAX_VIEW_HEIGHT;
+  const scroller = Math.round(window.innerHeight * 0.8) - 8; // spare for rounding
+  return Math.max(360, Math.min(MAX_VIEW_HEIGHT, scroller));
+}
 
 export const VIEWS = [
   {
@@ -178,7 +199,7 @@ export function sheetScale(model, views, maxWidths) {
     const hSpan = d.hi[view.h] - d.lo[view.h];
     const vSpan = d.hi[view.v] - d.lo[view.v];
     const plotW = Math.max(maxWidths[i] - PAD.left - PAD.right, 80);
-    const plotH = view.height - PAD.top - PAD.bottom;
+    const plotH = Math.min(view.height, heightCap()) - PAD.top - PAD.bottom;
     scale = Math.min(scale, plotW / hSpan, plotH / vSpan);
   });
   return Math.max(scale, 8);

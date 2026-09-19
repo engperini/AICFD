@@ -1169,8 +1169,20 @@ otherwise have to guess at.
    across them — but their heights were fixed at 320 and 420 px, so the most
    constrained view set the size of all of them. A 51 × 32 m hall had to fit
    its plan into 320 px, so everything was drawn at 10 px/m and the sections
-   came out 74 px tall. The height is now a generous cap that width beats, and
-   each drawing gets a full-width row.
+   came out 74 px tall. Each drawing now gets a full-width row, and the height
+   cap comes from the window rather than a constant: 80% of it, which is what
+   the scroller allows, so a drawing labelled `fit` always fits. A constant
+   served two rooms badly at once — it held a 51 × 32 m hall's plan to 19 px
+   per metre where the page had room for 20,5, and bound a 9 × 4,2 × 8 m POD
+   far harder, whose sections are nearly square and whose height the window
+   had to spare. Raising the constant far enough for the POD would have made
+   `fit` a drawing that still needed scrolling.
+
+   **A drawing narrower than the row is centred under the others.** The card
+   centres the scroller, and the scroller is full width, so a transverse
+   section — narrow because the room is — sat 450 px off from the plan and
+   the longitudinal section it exists to be compared against. Magnified, the
+   auto margins resolve to zero and it scrolls from the left as before.
 2. **The cell size offers presets, and says what they cost.** It is the one
    input that decides the price of a run, it is three numbers, and the
    consequence — a cell count — is not something anyone computes in their head.

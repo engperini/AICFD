@@ -409,3 +409,27 @@ class SharedDrawingStylesTest(unittest.TestCase):
         self.assertIn("min-width:0", css,
                       "without it a magnified drawing widens its grid column")
         self.assertIn("overflow:auto", css)
+
+    def test_a_narrow_drawing_is_centred_under_the_others(self):
+        """The card centres the SCROLLER, which is full width.
+
+        Without centring the stage inside it, a transverse section -- narrow
+        because the room is -- sits against the left edge while the plan and
+        the longitudinal section it is read against run the full width.
+        """
+        css = self.css()
+        self.assertIn("margin-inline:auto", css)
+        self.assertIn("width:max-content", css,
+                      "auto margins centre a block only once it has its own width")
+
+    def test_a_fitted_drawing_is_never_taller_than_its_scroller(self):
+        """`fit` has to fit. A fixed cap could not: it held a hall's plan
+        below what the page had room for and a POD's sections far below it,
+        and raising it far enough for the POD would label a drawing `fit`
+        that still had to be scrolled."""
+        js = (server.REPO_ROOT / "web" / "drawing.js").read_text()
+        self.assertIn("heightCap()", js)
+        self.assertNotIn("view.height - PAD.top", js,
+                         "sheetScale must clamp the view's height to the window")
+        self.assertIn("window.innerHeight * 0.8", js,
+                      "the scroller is capped at 80vh in drawing.css")

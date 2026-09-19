@@ -98,6 +98,12 @@ svg.dw-over-map .dw-sensor{stroke:var(--text-primary)}
    scroller takes its CONTENT's width and a magnified drawing widens the card
    -- and the whole page scrolls sideways instead of the drawing. */
 .view-scroll,.map-scroll{overflow:auto;max-height:80vh;width:100%;align-self:stretch}
-.view-stage,.map-stage{position:relative}
+/* Centred, not left-aligned. The card centres the SCROLLER, which is full
+   width, so without this the drawing hugs its left edge -- and a transverse
+   section, narrow because the room is, sat 450 px off from the plan and the
+   longitudinal section it is meant to be read against. `max-content` plus
+   auto margins centres it only while there is room: magnified, the margins
+   resolve to zero and it scrolls from the left as before. */
+.view-stage,.map-stage{position:relative;width:max-content;margin-inline:auto}
 .view-stage canvas,.map-stage canvas{position:absolute;left:0;top:0}
 .view-stage svg,.map-stage svg{position:relative;display:block}
