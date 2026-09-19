@@ -1036,6 +1036,14 @@ def sample(model: Model, case_dir: str | Path) -> list[dict]:
     return history
 
 
+#: Held while anything reconstructs a decomposed time directory. Two
+#: reconstructions of the same time write the same files at the same moment,
+#: and a reader between them sees half a field -- which is how a coupled run
+#: died on `300/phi: no boundaryField` with the sampler and the coupling loop
+#: both rebuilding time 300 (ADR-040).
+RECONSTRUCT_LOCK = threading.Lock()
+
+
 def reconstruct_new_times(case: Path, keep: int = 3) -> list[str]:
     """Stitch together any time a parallel run has finished writing.
 
@@ -1050,22 +1058,23 @@ def reconstruct_new_times(case: Path, keep: int = 3) -> list[str]:
     from aicfd.run import FoamCommandFailed, run_command
 
     done = []
-    for entry in sorted(processors[0].iterdir(), key=lambda e: _sort_key(e.name)):
-        if not entry.is_dir() or not _is_number(entry.name) or float(entry.name) == 0:
-            continue
-        if (case / entry.name / "phi").exists() and _complete(case / entry.name):
-            continue
-        if not all(_complete(p / entry.name) for p in processors):
-            continue  # still being written
-        try:
-            run_command(case, "reconstructPar", args=["-time", entry.name])
-        except FoamCommandFailed:
-            continue
-        done.append(entry.name)
+    with RECONSTRUCT_LOCK:
+        for entry in sorted(processors[0].iterdir(), key=lambda e: _sort_key(e.name)):
+            if not entry.is_dir() or not _is_number(entry.name) or float(entry.name) == 0:
+                continue
+            if (case / entry.name / "phi").exists() and _complete(case / entry.name):
+                continue
+            if not all(_complete(p / entry.name) for p in processors):
+                continue  # still being written
+            try:
+                run_command(case, "reconstructPar", args=["-time", entry.name])
+            except FoamCommandFailed:
+                continue
+            done.append(entry.name)
 
-    stitched = [t for t in written_times(case) if float(t) > 0]
-    for old in stitched[:-keep]:
-        shutil.rmtree(case / old, ignore_errors=True)
+        stitched = [t for t in written_times(case) if float(t) > 0]
+        for old in stitched[:-keep]:
+            shutil.rmtree(case / old, ignore_errors=True)
     return done
 
 

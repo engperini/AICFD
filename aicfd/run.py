@@ -268,14 +268,27 @@ def solve_coupled(
         results.append(run_command(case, command, args=args, log_name=log_name))
         # Reconstructed before it is read: a decomposed run keeps its fields
         # per processor, and every reader downstream works on whole patches.
-        if any(case.glob("processor*")):
-            results.append(run_command(case, "reconstructPar", args=["-latestTime"]))
-        time = loop.latest_time(case)
-        if time is None:
-            break
-        supplies, returns, saturated = loop.supply_temperatures(model, case / time)
-        if not supplies:
-            break
+        #
+        # Under the sampler's lock from the reconstruct through the read and
+        # the write-back. The sampler rebuilds every write as it lands and
+        # drops the older ones, so without it two reconstructions of the same
+        # time race -- and a reader between them sees half a field, which is
+        # how this died on `300/phi: no boundaryField`.
+        from aicfd.post import RECONSTRUCT_LOCK
+
+        with RECONSTRUCT_LOCK:
+            if any(case.glob("processor*")):
+                results.append(
+                    run_command(case, "reconstructPar", args=["-latestTime"])
+                )
+            time = loop.latest_time(case)
+            if time is None:
+                break
+            supplies, returns, saturated = loop.supply_temperatures(
+                model, case / time
+            )
+            if not supplies:
+                break
         moved = (max(abs(supplies[k] - previous[k]) for k in supplies if k in previous)
                  if previous else float("inf"))
         settled = moved <= tolerance
@@ -288,7 +301,8 @@ def solve_coupled(
         previous = supplies
         if settled or number == max_passes:
             break
-        loop.apply_supplies(case, time, supplies)
+        with RECONSTRUCT_LOCK:
+            loop.apply_supplies(case, time, supplies)
         end += segment
         loop.set_end_time(case, end, latest=True)
 
