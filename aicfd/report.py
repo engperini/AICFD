@@ -218,6 +218,7 @@ def build(results_dir: str | Path, out_path: str | Path,
     doc.add_page_break()
     _conclusions(doc, export)
     _limits(doc, export)
+    _annex(doc, export)
 
     doc.save(str(out))
     return out
@@ -311,6 +312,7 @@ def _contents(doc) -> None:
         ("5", "Conclusions", "Findings and what they do and do not support"),
         ("6", "Limitations",
          "Where the model represents the room differently from the room"),
+        ("A", "Annex", "Rack intake temperature, every position"),
     ):
         paragraph = doc.add_paragraph()
         _run(paragraph, f"{number}   ", bold=True, size=11, colour=ACCENT)
@@ -944,8 +946,9 @@ def _results(doc, export: Export, drawn: dict) -> None:
             for z in zones[:12]],
            note="The twelve warmest of "
                 f"{len(zones)} rack positions, by the air arriving at the top of "
-                "the rack. The complete table is exported as CSV from the "
-                "results page.")
+                "the rack."
+                + (" Annex A carries every position."
+                   if len(zones) > 12 else ""))
     _figure(doc, drawn["ashrae"],
             "Distribution of rack intake temperature against the ASHRAE class A1 "
             "envelope.")
@@ -1123,6 +1126,36 @@ def _conclusions(doc, export: Export) -> None:
     _bullets(doc, findings)
     for alert in kpis.get("alerts", []):
         _para(doc, f"Alert · {alert}", size=9.5, colour="B07000")
+
+
+def _annex(doc, export: Export) -> None:
+    """Every rack position, for a reader looking one up.
+
+    Section 4.4 ranks the hall and shows the twelve that decide whether it
+    passes. A reader asking what one particular rack breathes needs the rest,
+    and a table that lives in the document travels with it.
+    """
+    zones = export.kpis.get("zones") or []
+    if len(zones) <= 12:
+        return  # section 4.4 already carries them all
+    ordered = sorted(zones, key=lambda z: (str(z.get("row") or ""),
+                                           str(z.get("position") or ""),
+                                           str(z.get("name") or "")))
+    doc.add_page_break()
+    _heading(doc, "Annex A  Rack intake temperature, every position", 1)
+    _para(doc,
+          f"All {len(zones)} rack positions, by row. Section 4.4 ranks them "
+          f"and shows the twelve warmest.",
+          size=9.5, colour=SECOND)
+    _table(doc, ["Rack", "Row", "Intake, top of rack", "Intake, face mean",
+                 "Exhaust", "Rise", "ASHRAE"],
+           [(z["name"], z["row"], f"{_num(z['inlet_top_c'], 2)} °C",
+             f"{_num(z['inlet_temp_c'], 2)} °C", f"{_num(z['peak_temp_c'], 2)} °C",
+             f"{_num((z['peak_temp_c'] or 0) - (z['inlet_temp_c'] or 0), 2)} K",
+             "ok" if (z.get("ashrae") or {}).get("within_recommended")
+             else (z.get("ashrae") or {}).get("verdict", ""))
+            for z in ordered],
+           widths=[2.6, 1.6, 2.8, 2.8, 2.4, 1.8, 2.0])
 
 
 def _limits(doc, export: Export) -> None:

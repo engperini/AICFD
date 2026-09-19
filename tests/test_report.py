@@ -210,6 +210,32 @@ class DocumentTest(unittest.TestCase):
         else:
             self.assertIn("CHECKS FAILED", self.text)
 
+    def test_it_never_sends_the_reader_to_another_tool(self):
+        """A report is read on its own. Anything it cites has to be in it."""
+        whole = self.text + "\n" + "\n".join(
+            c.text for tb in self.tables for r in tb.rows for c in r.cells
+        )
+        for phrase in ("CSV", "results page", "download"):
+            self.assertNotIn(phrase, whole)
+
+    def test_every_rack_is_in_the_annex_where_there_are_many(self):
+        """Section 4.4 ranks the hall and shows the twelve that decide whether
+        it passes; a reader asking what one rack breathes needs the rest, and
+        a table that lives in the document travels with it."""
+        import json
+
+        payload = json.loads((RESULT / "viewer.json").read_text())
+        zones = payload["kpis"]["zones"]
+        if len(zones) <= 12:
+            self.assertNotIn("Annex A", self.text)
+            return
+        self.assertIn("Annex A", self.text)
+        annex = next(t for t in self.tables
+                     if t.rows[0].cells[0].text == "Rack"
+                     and len(t.rows) == len(zones) + 1)
+        listed = {r.cells[0].text for r in annex.rows[1:]}
+        self.assertEqual(listed, {z["name"] for z in zones})
+
     def test_the_figures_are_embedded_not_linked(self):
         shapes = self.doc.inline_shapes
         self.assertGreaterEqual(len(shapes), 6)

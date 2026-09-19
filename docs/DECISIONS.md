@@ -1683,3 +1683,23 @@ What remains is the valve position — how much authority a unit has left, which
 is what decides whether it can still hold its supply air temperature — and the
 entering water temperature, which is an input and the temperature every
 capacity is measured from.
+
+
+## ADR-044 — The report is read on its own
+
+*2026-09-19*
+
+Section 4.4 used to end "the complete table is exported as CSV from the
+results page", which sends a reader of a circulated document to a tool they
+may not have, on a machine they may not have, for data the document was
+already carrying. A report is read on its own: anything it cites belongs in
+it.
+
+**The full rack table is Annex A.** Every position, ordered by row, with the
+same seven columns section 4.4 uses for the twelve warmest — so the ranking
+and the lookup read the same way. It appears only where the hall has more
+than twelve positions; below that, section 4.4 already carries them all.
+
+A test asserts the document never mentions a CSV, the results page or a
+download, because that kind of pointer creeps back in whenever a table looks
+long.
