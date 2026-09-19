@@ -214,7 +214,10 @@ POD at 0,20 m cells for that.
   spec carries are shown, so a POD cannot be edited into a hall by accident.
   Beside it: the geometry as plan and two sections, the derived numbers (face
   velocities, pressure drops, HVAC sizing against load and CFM/kW), the
-  mesh-snapping warnings, and a Run button. This is where a mistake is caught
+  mesh-snapping warnings, and a Run button. Each drawing takes a full-width
+  row and carries its own `−`/`+` magnification up to 8×, the same as on the
+  results page, so a containment gap or where a fan wall edge lands on the
+  mesh grid can be looked at closely. This is where a mistake is caught
   *before* paying for a solve.
 - **Equipment page** — the fan wall itself:
   `http://localhost:8000/web/equipment.html?model=CA80NPVG6`, or the unit's

@@ -233,23 +233,97 @@ function render() {
   window.addEventListener('resize', debounce(drawViews, 150));
 }
 
+/**
+ * Magnification steps offered per drawing. `1` is the fitted sheet, shared by
+ * all of them; above it the drawing overflows and scrolls.
+ *
+ * The same ladder the results page climbs, because the reader moves between
+ * the two comparing the same lines and a different set of stops would make
+ * the same geometry a different size on each.
+ */
+const ZOOM_STEPS = [1, 1.5, 2, 3, 4, 6, 8];
+
+/** Magnification per drawing, by view id; 1 is the fitted sheet. */
+const viewZoom = {};
+
 function drawViews() {
   const host = document.getElementById('views');
   if (!host) return;
   host.replaceChildren();
   const views = viewsFor(model);
-  host.classList.toggle('long', Boolean(views[0].long));
   // Lay the cells out first, then pick one scale they can all live with: the
-  // three views are meant to be read against each other.
+  // views are meant to be read against each other, so the fitted state is
+  // shared and a metre is the same length in all of them.
   const cells = views.map((view) => {
     const cell = document.createElement('div');
     cell.className = 'view';
-    cell.innerHTML = `<h3>${view.title}</h3><p>${view.subtitle}</p>`;
+    cell.innerHTML = `
+      <div class="view-head">
+        <div><h3>${view.title}</h3><p>${view.subtitle}</p></div>
+        <div class="view-zoom">
+          <button type="button" data-role="out" aria-label="zoom out">−</button>
+          <span data-role="zoom">fit</span>
+          <button type="button" data-role="in" aria-label="zoom in">+</button>
+        </div>
+      </div>
+      <div class="view-scroll" data-role="scroll">
+        <div class="view-stage" data-role="stage"></div>
+      </div>`;
     host.append(cell);
+    for (const [role, direction] of [['in', 1], ['out', -1]]) {
+      cell.querySelector(`[data-role="${role}"]`)
+        .addEventListener('click', () => setZoom(view, cell, direction));
+    }
     return cell;
   });
-  const scale = sheetScale(model, views, cells.map((c) => c.clientWidth - 24));
-  views.forEach((view, i) => cells[i].append(drawView(model, view, scale)));
+  // The scroller is the width to fit to: the card also carries its padding.
+  sheet = sheetScale(model, views,
+                     cells.map((c) => c.querySelector('[data-role="scroll"]').clientWidth));
+  views.forEach((view, i) => renderView(view, cells[i]));
+}
+
+/** The fitted scale the drawings share, in px per metre. */
+let sheet = 0;
+
+function renderView(view, cell) {
+  const zoom = viewZoom[view.id] ?? 1;
+  const stage = cell.querySelector('[data-role="stage"]');
+  const label = cell.querySelector('[data-role="zoom"]');
+  label.textContent = zoom === 1 ? 'fit' : `${zoom}×`;
+  label.title = `${Math.round(sheet * zoom)} px per metre`;
+  stage.replaceChildren(drawView(model, view, sheet * zoom));
+}
+
+/**
+ * Zoom one drawing, keeping the middle of what is on screen in the middle.
+ *
+ * Fitted to the page a hall in section is a couple of hundred pixels tall
+ * whatever the layout does, because the aspect ratio is the aspect ratio. To
+ * check a containment gap or where a fan wall edge lands on the mesh grid you
+ * have to magnify and scroll (ADR-035) -- and that check belongs here, before
+ * the solve is paid for, not only on the results page afterwards.
+ *
+ * Zoom is per drawing and the fitted state is shared, so at `fit` the views
+ * still share a scale. The label says which state it is in, so a magnified
+ * drawing never passes for the fitted one.
+ */
+function setZoom(view, cell, direction) {
+  const current = viewZoom[view.id] ?? 1;
+  const index = ZOOM_STEPS.indexOf(current);
+  const next = ZOOM_STEPS[
+    Math.min(ZOOM_STEPS.length - 1, Math.max(0, index + direction))];
+  if (next === current) return;
+  const scroll = cell.querySelector('[data-role="scroll"]');
+  // Hold the centre of the visible area: zooming that jumps to a corner loses
+  // the thing the reader was looking at.
+  const anchor = {
+    x: (scroll.scrollLeft + scroll.clientWidth / 2) / Math.max(scroll.scrollWidth, 1),
+    y: (scroll.scrollTop + scroll.clientHeight / 2) / Math.max(scroll.scrollHeight, 1),
+  };
+  viewZoom[view.id] = next;
+  renderView(view, cell);
+  scroll.scrollLeft = anchor.x * scroll.scrollWidth - scroll.clientWidth / 2;
+  scroll.scrollTop = anchor.y * scroll.scrollHeight - scroll.clientHeight / 2;
 }
 
 /**

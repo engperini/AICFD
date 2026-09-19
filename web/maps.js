@@ -150,7 +150,7 @@ export class FieldMaps {
         </div>
         <span class="card-sub" id="map-caption"></span>
       </div>
-      <div class="views maps${this.views[0].long ? ' long' : ''}" id="map-views"></div>
+      <div class="views maps" id="map-views"></div>
       <div class="colorbar">
         <div class="colorbar-label">
           <span id="map-colorbar-name"></span>

@@ -1170,7 +1170,7 @@ otherwise have to guess at.
    constrained view set the size of all of them. A 51 × 32 m hall had to fit
    its plan into 320 px, so everything was drawn at 10 px/m and the sections
    came out 74 px tall. The height is now a generous cap that width beats, and
-   the results page gives each drawing a full-width row.
+   each drawing gets a full-width row.
 2. **The cell size offers presets, and says what they cost.** It is the one
    input that decides the price of a run, it is three numbers, and the
    consequence — a cell count — is not something anyone computes in their head.
@@ -1242,11 +1242,11 @@ promised by the code.
 
 ## ADR-035 — Zoom, because fitting is not seeing
 
-**Decision.** Each drawing on the results page carries its own magnification:
-`−` and `+` step it through 1×, 1,5×, 2×, 3×, 4×, 6×, 8×, the drawing overflows
-into a scroller, and the label says `fit` or `4×` so a magnified drawing never
-passes for the fitted one. At `fit` the three still share a scale, so a metre is
-the same length in all of them.
+**Decision.** Each drawing carries its own magnification: `−` and `+` step it
+through 1×, 1,5×, 2×, 3×, 4×, 6×, 8×, the drawing overflows into a scroller,
+and the label says `fit` or `4×` so a magnified drawing never passes for the
+fitted one. At `fit` the three still share a scale, so a metre is the same
+length in all of them.
 
 **Why layout could not fix this.** The drawings were made full width and given a
 generous height cap (ADR-033), and the sections were still too small to analyse.
@@ -1266,6 +1266,16 @@ studying and leaves the plan fitted beside it. A single page-wide zoom would
 make that impossible, and the shared scale — worth keeping, since it is what
 lets a length be compared between drawings — survives at `fit`, where the
 comparison is actually made.
+
+**On both pages, from one place.** The model page was left out of this and of
+the full-width row in ADR-033, so a 51 m hall was checked before the solve at
+10 px per metre and read after it at 19 — the same lines, half the size, on
+the page where a wrong dimension is still cheap to fix. Where a fan wall edge
+lands on the mesh grid is exactly the close look this control exists for, and
+it is worth more before the run than after. The layout, the head, the zoom and
+the scroller now live in `drawing.css`, which both pages already load for the
+drawings themselves: that file exists so the two cannot drift, and two copies
+of these rules is how they would.
 
 **The zoom holds the centre.** Magnifying to a corner loses whatever the reader
 was looking at, which makes the control useless for following something across

@@ -64,8 +64,9 @@ export const VIEWS = [
 
 /**
  * The views for a given model. A hall is many times longer across (y) than
- * along the rows (x), so its plan is turned to run across the page and every
- * view takes a full row; the POD keeps the three-up sheet.
+ * along the rows (x), so its plan is turned to run across the page rather
+ * than down it. Every view takes a full row either way, so the shared fitted
+ * scale is set by the page width and not by the narrowest neighbour.
  */
 export function viewsFor(model) {
   const d = model.domain;

@@ -292,15 +292,6 @@
   .maps-controls .control{display:flex;align-items:center;gap:8px}
   .maps-controls select{font:inherit;font-size:13px;padding:5px 8px;border-radius:7px;
     background:var(--page);color:var(--text-primary);border:1px solid var(--border)}
-  /* One drawing per row. The three share a scale so a metre is the same
-     length in all of them, which means the narrowest column sets the size of
-     every drawing -- side by side, the transverse section was squeezing the
-     plan down with it. Full width each is bigger for all three. */
-  .views.maps{display:grid;grid-template-columns:1fr;
-    gap:1px;background:var(--border)}
-  /* A grid item defaults to min-width:auto, so a magnified drawing pushes its
-     card wider than the 1fr column instead of scrolling inside it. */
-  .views.maps > .view{min-width:0}
   /* --- rack inlets --- */
   .racks-controls{display:flex;align-items:center;gap:14px;flex-wrap:wrap;
     padding:10px 16px;border-bottom:1px solid var(--border)}
@@ -319,27 +310,11 @@
   .racks-table{max-height:340px;overflow:auto}
   .racks-table td.over{color:var(--critical);font-weight:600}
   .racks-note{padding:8px 16px 12px;font-size:12.5px;color:var(--text-secondary)}
-  .map-view{background:var(--surface);padding:10px 12px 8px;display:flex;
-    flex-direction:column;align-items:center}
-  .map-head{display:flex;justify-content:space-between;align-items:center;gap:12px;
-    width:100%;margin-bottom:4px}
-  .map-head h3{margin:0;font-size:12.5px;font-weight:650}
-  .map-cut{margin:0;font-size:11.5px;color:var(--text-muted);font-variant-numeric:tabular-nums}
+  /* Layout, head, zoom and scroller live in drawing.css, shared with the
+     model page so the same lines are read at the same size on both. What is
+     left here is what only a field map has: its surface, and the cut slider. */
+  .map-view{background:var(--surface)}
   .map-head input[type=range]{width:36%;accent-color:var(--series-1)}
-  .map-zoom{display:flex;align-items:center;gap:6px;flex:none}
-  .map-zoom button{padding:2px 9px;font-size:14px;line-height:1.2;min-width:28px}
-  .map-zoom span{font-size:11.5px;color:var(--text-muted);min-width:26px;
-    text-align:center;font-variant-numeric:tabular-nums}
-  /* Magnified drawings overflow on purpose: a 51 x 7.5 m section fitted to
-     the page is 160 px tall whatever the layout does, so looking at it
-     closely means scrolling, exactly as in any post-processor. */
-  /* width:100% matters: `.view` is a centred flex column, so without it the
-     scroller takes its CONTENT's width and a magnified drawing widens the
-     card -- and the whole page scrolls sideways instead of the drawing. */
-  .map-scroll{overflow:auto;max-height:80vh;width:100%;align-self:stretch}
-  .map-stage{position:relative}
-  .map-stage canvas{position:absolute;left:0;top:0}
-  .map-stage svg{position:relative;display:block}
   #map-probe{position:fixed;z-index:20;pointer-events:none;padding:6px 9px;
     border-radius:8px;background:var(--surface);border:1px solid var(--border);
     font-size:12px;font-variant-numeric:tabular-nums;box-shadow:0 4px 14px rgba(0,0,0,.12)}

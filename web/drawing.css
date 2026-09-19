@@ -52,3 +52,52 @@ svg.dw-over-map .dw-label{paint-order:stroke;stroke:var(--surface);stroke-width:
 svg.dw-over-map .dw-note,svg.dw-over-map .dw-edge-label{paint-order:stroke;
   stroke:var(--surface);stroke-width:3px}
 svg.dw-over-map .dw-sensor{stroke:var(--text-primary)}
+
+
+/* --- the sheet the drawings sit on -------------------------------------- */
+/*
+ * One drawing per row, on the model page and the results page alike.
+ *
+ * The views share a scale -- a metre is the same length in all of them, which
+ * is what lets a reader compare across them -- so the narrowest column sets
+ * the size of every drawing. Laid two to a row, a 4,2 m transverse section
+ * was squeezing the 51 m plan down with it. A full-width row each is larger
+ * for all three (ADR-033).
+ */
+.views{display:grid;grid-template-columns:1fr;gap:1px;background:var(--border)}
+/* A grid item defaults to min-width:auto, so a magnified drawing pushes its
+   card wider than the 1fr column instead of scrolling inside it. */
+.views > .view,.views > .map-view{min-width:0}
+/* The card a drawing sits in. The page supplies its background, because the
+   model page draws on paper and the results page on the map surface. */
+.view,.map-view{padding:10px 12px 8px;display:flex;flex-direction:column;
+  align-items:center}
+
+/* The head: what the view is, on the left, and the controls on the right. */
+.view-head,.map-head{display:flex;justify-content:space-between;align-items:center;
+  gap:12px;width:100%;margin-bottom:4px}
+.view-head h3,.map-head h3{margin:0;font-size:12.5px;font-weight:650;
+  color:var(--text-primary)}
+.view-head p,.map-cut{margin:0;font-size:11.5px;color:var(--text-muted);
+  font-variant-numeric:tabular-nums}
+
+/*
+ * Magnification. A data hall in section is 51 m long and 7,5 m tall: fitted
+ * to the page it is 160 px high whatever the layout does, because the aspect
+ * ratio is the aspect ratio. Looking closely at a containment gap or a fan
+ * wall edge means magnifying and scrolling, as in any post-processor
+ * (ADR-035).
+ */
+.view-zoom,.map-zoom{display:flex;align-items:center;gap:6px;flex:none}
+.view-zoom button,.map-zoom button{padding:2px 9px;font-size:14px;line-height:1.2;
+  min-width:28px}
+.view-zoom span,.map-zoom span{font-size:11.5px;color:var(--text-muted);
+  min-width:26px;text-align:center;font-variant-numeric:tabular-nums}
+
+/* width:100% matters: a view is a centred flex column, so without it the
+   scroller takes its CONTENT's width and a magnified drawing widens the card
+   -- and the whole page scrolls sideways instead of the drawing. */
+.view-scroll,.map-scroll{overflow:auto;max-height:80vh;width:100%;align-self:stretch}
+.view-stage,.map-stage{position:relative}
+.view-stage canvas,.map-stage canvas{position:absolute;left:0;top:0}
+.view-stage svg,.map-stage svg{position:relative;display:block}
