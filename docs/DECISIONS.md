@@ -1198,9 +1198,10 @@ the clock.
 ## ADR-034 — The image is the dependencies; the clone is the application
 
 **Decision.** `docker compose` mounts `aicfd/`, `web/`, `tests/`, `cases/`,
-`runs/`, `results/` and (read-only) `reference/` from the working copy. The
-image carries OpenFOAM, Python and the libraries. `git pull && docker compose
-up` therefore runs the code that was just pulled, with no rebuild.
+`runs/`, `results/`, `equipment/`, `reports/` and (read-only) `reference/` from
+the working copy. The image carries OpenFOAM, Python and the libraries. `git
+pull && docker compose up` therefore runs the code that was just pulled, with
+no rebuild.
 
 **Why.** A user pulled a fix to the results page, ran `docker compose up`, and
 saw the old page. Nothing was wrong with the fix, the pull or the command —
@@ -1224,6 +1225,14 @@ It is now true of both.
 the container fails with `ModuleNotFoundError`. That is a loud, specific,
 correctly-pointed failure — the opposite of the silent one it replaces — and
 the README says which changes need a rebuild.
+
+**Everything a page writes is mounted.** The rule is not "mount the source":
+it is that no directory the software writes to may exist only inside the
+container. The equipment page saves a unit, the results page writes a .docx,
+so `equipment/` and `reports/` are mounted alongside `runs/` and `results/`.
+Miss one and the write succeeds, the page confirms it, and the file is gone at
+the next `docker compose down` — the same silent class of failure this ADR
+exists to remove, arriving a day later instead of immediately.
 
 **Why `reference/` is mounted read-only.** So that "the tool never writes to
 the reference results" (ADR-032) is enforced by the filesystem rather than

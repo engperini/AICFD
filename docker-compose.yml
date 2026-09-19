@@ -30,6 +30,14 @@ services:
       - ./cases:/app/cases
       - ./runs:/app/runs
       - ./results:/app/results
+      # The unit library, and the documents made from a result. Both are
+      # written by the pages -- the equipment page saves a curve, the results
+      # page writes a .docx -- and without these the writes land inside the
+      # container, where they survive neither `docker compose down` nor a
+      # rebuild. Editing a fan wall curve and finding it gone tomorrow reads
+      # as the page not saving rather than as a missing mount.
+      - ./equipment:/app/equipment
+      - ./reports:/app/reports
       # Read-only: the three worked results are evidence, and nothing in the
       # container has any business writing over them (ADR-032).
       - ./reference:/app/reference:ro

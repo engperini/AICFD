@@ -204,7 +204,7 @@ POD at 0,20 m cells for that.
 
 ## 5. Reading the page
 
-`aicfd view` serves two pages. Everything in the software is in English
+`aicfd view` serves three pages. Everything in the software is in English
 (ADR-026).
 
 - **Model page** — the input template on the right and what it implies on the
@@ -216,6 +216,24 @@ POD at 0,20 m cells for that.
   velocities, pressure drops, HVAC sizing against load and CFM/kW), the
   mesh-snapping warnings, and a Run button. This is where a mistake is caught
   *before* paying for a solve.
+- **Equipment page** — the fan wall itself:
+  `http://localhost:8000/web/equipment.html?model=CA80NPVG6`, or the unit's
+  name beside the fan wall group on the model page. Three cards, all editable:
+  who the machine is (manufacturer, model, a note), the **design selection**
+  the coil is fitted to (return, supply, airflow, sensible capacity, fan
+  power, entering and leaving water), and the **P–Q curve** — static pressure
+  against airflow, a row at a time. Save writes the YAML back in place; **Save
+  as new unit** writes a second file under `equipment/` and leaves the
+  original untouched, so a variant is a new machine rather than an edit to the
+  one a solved result already cites.
+
+  The design selection is what the coil model is built from (ADR-039,
+  ADR-042): one
+  line of a manufacturer's selection — the air it was selected at and the
+  water it was selected with — fixes the conductance, and from there the unit
+  answers at any return temperature and any airflow the room gives it. Edit
+  those five numbers and every capacity in the next run follows.
+
 - **The Word report** — `aicfd report <name>`, or the **Word report** button on
   the results page, writes a .docx from the same export: cover, summary with the
   basis of design, methodology with the geometry, the boundary conditions and

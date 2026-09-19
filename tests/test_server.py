@@ -295,3 +295,37 @@ class RereadTest(unittest.TestCase):
         with self.assertRaises(Exception) as caught:
             reread_run("no-such-case-anywhere")
         self.assertNotIsInstance(caught.exception, AttributeError)
+
+
+class ComposeMountsTest(unittest.TestCase):
+    """Every directory the software writes to has to come from the clone.
+
+    A missing mount does not fail: the write succeeds inside the container,
+    the page confirms it, and the file is gone at the next `docker compose
+    down`. The user reads that as the page not saving (ADR-034).
+    """
+
+    def mounts(self) -> dict:
+        import yaml
+
+        from aicfd.server import REPO_ROOT
+
+        compose = yaml.safe_load((REPO_ROOT / "docker-compose.yml").read_text())
+        bound = {}
+        for line in compose["services"]["aicfd"]["volumes"]:
+            host, _, rest = line.partition(":")
+            container, _, options = rest.partition(":")
+            bound[host.lstrip("./")] = options
+        return bound
+
+    def test_everything_written_at_run_time_comes_from_the_clone(self):
+        bound = self.mounts()
+        for directory in ("equipment", "reports", "runs", "results", "cases"):
+            with self.subTest(directory=directory):
+                self.assertIn(directory, bound,
+                              f"{directory}/ is written by the software and must be mounted")
+                self.assertNotIn("ro", bound[directory].split(","),
+                                 f"{directory}/ is written to; a read-only mount fails the write")
+
+    def test_the_worked_results_stay_read_only(self):
+        self.assertIn("ro", self.mounts()["reference"].split(","))
