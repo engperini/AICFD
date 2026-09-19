@@ -83,9 +83,40 @@ class DocumentTest(unittest.TestCase):
         cls.tmp.cleanup()
 
     def test_it_writes_a_document_with_the_sections_a_reviewer_reads(self):
-        for heading in ("1  Summary", "2  Methodology", "3  Results",
-                        "4  Conclusions", "5  Limitations"):
+        for heading in ("1  Introduction", "2  Summary", "3  Methodology",
+                        "4  Results", "5  Conclusions", "6  Limitations"):
             self.assertIn(heading, self.text)
+
+    def test_the_method_is_stated_before_any_number_that_rests_on_it(self):
+        """The template's fixed opening. A reader who disagrees with a
+        conclusion has to be able to see what was solved, with what, and under
+        what assumptions, without being sent to a manual."""
+        whole = self.text + "\n" + "\n".join(
+            c.text for tb in self.tables for r in tb.rows for c in r.cells
+        )
+        for phrase in ("OpenFOAM v1912", "buoyantSimpleFoam", "SIMPLE algorithm",
+                       "k-epsilon", "counterflow heat exchanger",
+                       "It is solved.", "residuals say how much the last "
+                       "iteration moved"):
+            self.assertIn(phrase, whole)
+
+    def test_the_introduction_comes_before_the_summary(self):
+        self.assertLess(self.text.index("1  Introduction"),
+                        self.text.index("2  Summary"))
+
+    def test_every_cross_reference_points_at_a_section_that_exists(self):
+        """Renumbering a template is where stale references breed."""
+        import re
+
+        whole = self.text + "\n" + "\n".join(
+            c.text for tb in self.tables for r in tb.rows for c in r.cells
+        )
+        cited = set(re.findall(r"section (\d)(?:\.\d)?", whole))
+        self.assertTrue(cited, "the document should cite its own sections")
+        headings = set(re.findall(r"^(\d)  \w", self.text, re.MULTILINE))
+        self.assertEqual(headings, {"1", "2", "3", "4", "5", "6"})
+        self.assertLessEqual(cited, headings, "a reference to a section that "
+                                              "does not exist")
 
     def test_every_check_appears_with_its_verdict(self):
         import json

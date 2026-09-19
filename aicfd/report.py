@@ -208,6 +208,8 @@ def build(results_dir: str | Path, out_path: str | Path,
     doc.add_page_break()
     _contents(doc)
     doc.add_page_break()
+    _introduction(doc, export)
+    doc.add_page_break()
     _summary(doc, export)
     doc.add_page_break()
     _methodology(doc, export, drawn)
@@ -299,12 +301,15 @@ def _cover(doc, export: Export, client, author, title_text: str) -> None:
 def _contents(doc) -> None:
     _heading(doc, "Contents", 1)
     for number, name, note in (
-        ("1", "Summary", "Scope, objectives, basis of design and headline results"),
-        ("2", "Methodology",
+        ("1", "Introduction",
+         "What this study answers, the solver, and how the room and the "
+         "cooling plant are modelled"),
+        ("2", "Summary", "Scope, objectives, basis of design and headline results"),
+        ("3", "Methodology",
          "Geometry, mesh, models, boundary conditions and the cooling unit"),
-        ("3", "Results", "Verification, temperature and airflow fields, unit by unit"),
-        ("4", "Conclusions", "Findings and what they do and do not support"),
-        ("5", "Limitations", "What this model cannot be asked"),
+        ("4", "Results", "Verification, temperature and airflow fields, unit by unit"),
+        ("5", "Conclusions", "Findings and what they do and do not support"),
+        ("6", "Limitations", "What this model cannot be asked"),
     ):
         paragraph = doc.add_paragraph()
         _run(paragraph, f"{number}   ", bold=True, size=11, colour=ACCENT)
@@ -312,7 +317,162 @@ def _contents(doc) -> None:
         _run(paragraph, f"\n      {note}", size=8.5, colour=MUTED)
 
 
-# --- 1 summary ----------------------------------------------------------------
+def _introduction(doc, export: Export) -> None:
+    """The method, stated once, in the document that rests on it.
+
+    Fixed across every report AICFD writes: a reader who disagrees with a
+    conclusion has to be able to see what was solved, with what, and under
+    what assumptions, without being sent to a manual.
+    """
+    model = export.model
+    kpis = export.kpis
+    coil = kpis.get("coil_model") or {}
+
+    _heading(doc, "1  Introduction", 1)
+    _heading(doc, "1.1  What this study answers", 2)
+    _bullets(doc, [
+        "Where the air entering the IT equipment is warmest, and by how much "
+        "it clears the ASHRAE class A1 recommended band.",
+        "Whether the air loop closes: that the units move the mass they are "
+        "given, that nothing leaks through a wall or reverses through an "
+        "intake, and that the return air carries the installed load.",
+        "What the cooling plant delivers at the air this room actually "
+        "produces — not at the condition its equipment was selected for.",
+        "What the room costs the units in static pressure, against what their "
+        "fans can produce at the airflow they are moving.",
+    ])
+    _para(doc,
+          "It is a steady-state study. It describes one operating point at "
+          "full load with every unit running, and it is the right tool for "
+          "sizing, layout and containment decisions. It is not a transient "
+          "study and not a commissioning record: what a room does while a unit "
+          "fails, a door opens or a load steps is a different question, listed "
+          "with the rest of the boundaries in section 6.",
+          size=9.5, colour=SECOND)
+
+    _heading(doc, "1.2  The solver", 2)
+    _para(doc,
+          "The flow is solved with OpenFOAM v1912, an open-source finite-volume "
+          "CFD toolbox, using its steady buoyant solver buoyantSimpleFoam. "
+          "Open source is a deliberate choice rather than an economy: the case, "
+          "the solver and the log travel with this report, so any of its "
+          "numbers can be reproduced by a third party without a licence and "
+          "without taking the tool's word for anything.")
+    _table(doc, ["What is solved", "How"], [
+        ("Mass and momentum",
+         "Steady, compressible, segregated pressure–velocity coupling by the "
+         "SIMPLE algorithm. The pressure variable is p_rgh — static pressure "
+         "less the hydrostatic column — so buoyancy is resolved instead of "
+         "being lost inside a head of several hundred pascals."),
+        ("Energy",
+         "Solved as enthalpy, with the density following temperature through "
+         "the perfect gas law at the site's operating pressure. Air at 34 °C "
+         "is 4 % lighter than at 22 °C, which is what drives every plume and "
+         "every stratified aisle in the room."),
+        ("Turbulence",
+         "Steady RANS with the k-epsilon model and buoyancy terms active. It "
+         "resolves the mean field — aisle-to-aisle temperatures, the ranking "
+         "of racks, the hall-scale pressure field — and not the unsteady "
+         "eddies, which is the correct trade for a conceptual-design study."),
+        ("Buoyancy",
+         "Gravity is on. Hot air rises out of a contained aisle, and a "
+         "containment leak shows as warm air arriving above the racks rather "
+         "than as a number in a table."),
+    ], widths=[4.0, 12.0],
+        note="Low Mach number throughout — the fastest air in this room is "
+             "under 2 % of the speed of sound — so compressibility matters "
+             "here only through density's dependence on temperature.")
+
+    _heading(doc, "1.3  How the room is represented", 2)
+    _para(doc,
+          "The geometry is derived from the case specification rather than "
+          "drawn: every dimension follows from the equipment sizes, the aisle "
+          "widths and the clearances the engineer typed, so a room that cannot "
+          "be built cannot be simulated. It is meshed as a single structured "
+          "hexahedral block, with every internal surface cut into it afterwards "
+          "as a two-sided baffle — containment panels, false ceiling, row ends "
+          "and tops, return grilles and the fan walls themselves.")
+    _bullets(doc, [
+        "Racks are porous zones carrying their own resistance curve and their "
+        "own heat, not boxes with a face temperature.",
+        "Return grilles are porous, with the loss coefficient from their "
+        "datasheet at the face velocity they actually see.",
+        "Containment is a set of zero-thickness baffles, so a panel blocks "
+        "flow without eating a cell of mesh.",
+        "The air loop closes inside the domain. There is no inlet and no "
+        "outlet: air leaves each unit's intake and re-enters the hall through "
+        "its supply, which is what a fan wall does.",
+    ])
+
+    _heading(doc, "1.4  How the cooling plant is modelled", 2)
+    _para(doc,
+          "A fan wall does not decide what air it delivers — its coil does, "
+          "from the air the room gives it. So the supply air temperature is "
+          "not imposed here. It is solved.")
+    _para(doc,
+          "A chilled-water coil is a counterflow heat exchanger, and what it "
+          "transfers is its effectiveness times the air's capacity rate times "
+          "the difference between the return air and the entering water. Only "
+          "the effectiveness belongs to the machine, and it depends on the two "
+          "flows alone — never on the temperatures. A capacity is therefore "
+          "not a property a unit carries; it is what that unit does at a "
+          "stated condition. The coil is characterised from the "
+          "manufacturer's own selections and then asked at the condition this "
+          "room produces.")
+    _table(doc, ["Step", "What happens"], [
+        ("The room is solved",
+         "A segment of the flow solution runs to its iteration cap at the "
+         "supply air temperature the plant is set to."),
+        ("Each unit is read",
+         "Every unit's own mixed-mean return temperature and mass flow are "
+         "taken off the solved field. Not the plant's average: a unit at the "
+         "end of a row that returns warmer air delivers warmer air."),
+        ("Each coil answers",
+         "That return goes through that unit's coil. While its water valve has "
+         "authority the unit holds its setpoint; once the valve is wide open "
+         "the supply air floats with the return, and the whole room goes with "
+         "it."),
+        ("The room is solved again",
+         "Each unit's answer is written back as its own supply temperature and "
+         "the solution continues from the field already there."),
+        ("It stops when nothing moves",
+         "When no unit's supply air temperature shifts by more than 0.02 K "
+         "between segments, the room and the machines are consistent with each "
+         "other. That is convergence of the coupled problem, not of the flow "
+         "alone."),
+    ], widths=[4.0, 12.0],
+        note="The loop converges quickly because the room fixes the "
+             "temperature rise across itself: a change in supply moves the "
+             "return one for one, and the coil passes back only what its "
+             "effectiveness does not remove. Two or three segments is the "
+             "normal cost."
+             + (f" This study used {len(coil.get('fitted_returns_c') or [])} "
+                f"manufacturer selections to characterise the coil; section 3 "
+                f"gives them and the error against them."
+                if coil else ""))
+
+    _heading(doc, "1.5  How a result is judged", 2)
+    _para(doc,
+          "A steady solver's residuals say how much the last iteration moved. "
+          "They do not say whether the answer means anything: a wrong model "
+          "converges just as tidily as a right one. Every run is therefore "
+          "judged against identities the physics has to satisfy — mass in "
+          "against mass out, the heat the return air carries against the load "
+          "the racks put in, the pressure the field shows across the racks "
+          "against the resistance they were given, and eight more. They are "
+          "listed with their numbers in section 4.1, and all of them have to "
+          "pass before a temperature in this document may be quoted.")
+    _para(doc,
+          "Instrumented places in the room — a cold aisle, a contained hot "
+          "aisle, the ceiling plenum and the space behind the units — are "
+          "recorded while the field settles, and the run is accepted only once "
+          "they have stopped moving. That class of check catches wrong models. "
+          "It cannot promise the built room behaves this way, which is why "
+          "section 6 exists.",
+          size=9.5, colour=SECOND)
+
+
+# --- 2 summary ----------------------------------------------------------------
 
 
 def _summary(doc, export: Export) -> None:
@@ -324,7 +484,7 @@ def _summary(doc, export: Export) -> None:
     hvac = kpis.get("hvac") or {}
     site = model.get("site") or {}
 
-    _heading(doc, "1  Summary", 1)
+    _heading(doc, "2  Summary", 1)
     _heading(doc, "Overview", 2)
     _bullets(doc, [
         f"This report presents the modelling approach and the results of a "
@@ -360,7 +520,7 @@ def _summary(doc, export: Export) -> None:
               f"The cooling plant is {len(model['fans'])} × "
               f"{unit.family} {unit.model}. The quantities below are that "
               f"machine's own manufacturer selections, not a nominal figure: "
-              f"section 2 gives the conditions they were taken at and the "
+              f"section 3 gives the conditions they were taken at and the "
               f"capacity it has across the range of return air temperatures "
               f"this hall produces.",
               size=9.5, colour=SECOND)
@@ -432,7 +592,7 @@ def _summary(doc, export: Export) -> None:
         "All physical checks pass. The numbers below may be quoted."
         if export.payload["valid"]
         else "ONE OR MORE PHYSICAL CHECKS FAILED. The temperatures below are "
-             "not a result and must not be quoted; see section 3.1."
+             "not a result and must not be quoted; see section 4.1."
     )
     _para(doc, verdict, bold=True, colour=INK if export.payload["valid"] else BAD)
     for alert in kpis.get("alerts", []):
@@ -468,7 +628,7 @@ def _methodology(doc, export: Export, drawn: dict) -> None:
     galleries = model.get("galleries") or [model["gallery"]]
     blocks = model.get("blocks") or []
 
-    _heading(doc, "2  Methodology", 1)
+    _heading(doc, "3  Methodology", 1)
     _heading(doc, "Geometry", 2)
     arrangement = (
         f"a mechanical gallery at each end of the hall, "
@@ -574,7 +734,7 @@ def _methodology(doc, export: Export, drawn: dict) -> None:
     ], widths=[9.0, 7.0],
         note="Every unit is given the same duty. A unit that is really on a "
              "pressure boundary would draw more or less than this and is not "
-             "modelled here; see section 5.")
+             "modelled here; see section 6.")
 
 
 def _unit_section(doc, export: Export, drawn: dict) -> None:
@@ -628,7 +788,7 @@ def _unit_section(doc, export: Export, drawn: dict) -> None:
           f"{_num(unit.at(low, 'nscc_kw'), 1)} kW to "
           f"{_num(unit.at(high, 'nscc_kw'), 1)} kW, a change of "
           f"{_num((unit.at(high, 'nscc_kw') / unit.at(low, 'nscc_kw') - 1) * 100, 0)} %. "
-          f"Every capacity figure in section 3 is quoted at the return "
+          f"Every capacity figure in section 4 is quoted at the return "
           f"temperature each unit was found to receive, and at the air flow it "
           f"was found to be moving — neither of which is a selection.")
 
@@ -664,7 +824,7 @@ def _unit_section(doc, export: Export, drawn: dict) -> None:
 def _coil_section(doc, export: Export) -> None:
     """How a capacity at an unselected condition was obtained.
 
-    Every margin in section 4 rests on this, so the method belongs in the
+    Every margin in section 5 rests on this, so the method belongs in the
     document rather than inside the software. A reader who disagrees with it
     can see what was assumed and check the residual themselves.
     """
@@ -716,9 +876,9 @@ def _results(doc, export: Export, drawn: dict) -> None:
     model = export.model
     zones = sorted(kpis["zones"], key=lambda z: -(z["inlet_top_c"] or -999))
 
-    _heading(doc, "3  Results", 1)
+    _heading(doc, "4  Results", 1)
 
-    _heading(doc, "3.1  Verification — the checks the field has to pass", 2)
+    _heading(doc, "4.1  Verification — the checks the field has to pass", 2)
     _para(doc,
           "A steady solver's residuals say how much the last iteration moved, "
           "not whether the answer means anything. Every run is therefore judged "
@@ -732,7 +892,7 @@ def _results(doc, export: Export, drawn: dict) -> None:
             for c in export.payload["checks"]],
            widths=[3.4, 6.8, 5.8])
 
-    _heading(doc, "3.2  Convergence", 2)
+    _heading(doc, "4.2  Convergence", 2)
     _figure(doc, drawn["convergence"],
             "Left: initial residuals per iteration. Right: the instrumented "
             "places — cold aisle, hot aisle, ceiling plenum and behind the fan "
@@ -745,7 +905,7 @@ def _results(doc, export: Export, drawn: dict) -> None:
               f"a steady answer, which is why this is measured separately from "
               f"the residuals.", size=9, colour=SECOND)
 
-    _heading(doc, "3.3  Temperature field", 2)
+    _heading(doc, "4.3  Temperature field", 2)
     _para(doc, "All maps share one fixed colour band, 10 °C to 40 °C in 2,5 K "
                "contours, with the ASHRAE limits marked on the bar. Fixed rather "
                "than fitted to each field: a scale stretched to a field's own "
@@ -776,7 +936,7 @@ def _results(doc, export: Export, drawn: dict) -> None:
             "one above is not — the cold plane is where a containment leak "
             "shows first.")
 
-    _heading(doc, "3.4  Rack intake temperature", 2)
+    _heading(doc, "4.4  Rack intake temperature", 2)
     _figure(doc, drawn["racks"],
             "Every rack coloured by the temperature of the air it breathes, "
             "measured at the top of the rack. The scale here is FITTED to this "
@@ -800,7 +960,7 @@ def _results(doc, export: Export, drawn: dict) -> None:
             "Distribution of rack intake temperature against the ASHRAE class A1 "
             "envelope.")
 
-    _heading(doc, "3.5  Unit by unit", 2)
+    _heading(doc, "4.5  Unit by unit", 2)
     if drawn.get("units"):
         _figure(doc, drawn["units"],
                 "Return air temperature and heat removed, unit by unit. The "
@@ -836,12 +996,12 @@ def _results(doc, export: Export, drawn: dict) -> None:
                 + (" 'Available' is what the coil can actually transfer at "
                    "the return air temperature in the column beside it and the "
                    "air flow this unit is moving, from the coil model in "
-                   "section 2 — and 'Of available' is the only one of the two "
+                   "section 3 — and 'Of available' is the only one of the two "
                    "that says whether this plant has reserve."
                    if available else
                    " The capacity a coil actually has at the return temperature "
                    "it receives differs from that, and this run named no unit "
-                   "to read it from — see section 5."))
+                   "to read it from — see section 6."))
 
 
 _CHECK_MEANING = {
@@ -874,7 +1034,7 @@ def _conclusions(doc, export: Export) -> None:
     heats = [f.get("heat_kw") for f in fans if f.get("heat_kw") is not None]
     rating = (model.get("operating") or {}).get("unit_capacity_kw")
 
-    _heading(doc, "4  Conclusions", 1)
+    _heading(doc, "5  Conclusions", 1)
     findings = []
     if margin >= 0:
         findings.append(
@@ -975,7 +1135,7 @@ def _conclusions(doc, export: Export) -> None:
         f"check "
         + ("passes, so the temperatures above may be quoted."
            if export.payload["valid"]
-           else "does NOT pass; see section 3.1 before using any number here.")
+           else "does NOT pass; see section 4.1 before using any number here.")
     )
     _bullets(doc, findings)
     for alert in kpis.get("alerts", []):
@@ -983,10 +1143,10 @@ def _conclusions(doc, export: Export) -> None:
 
 
 def _limits(doc, export: Export) -> None:
-    _heading(doc, "5  Limitations", 1)
+    _heading(doc, "6  Limitations", 1)
     _para(doc,
           "These results are valid only for the boundary conditions listed in "
-          "section 2. CFD gives an approximate solution to the equations of "
+          "section 3. CFD gives an approximate solution to the equations of "
           "fluid motion, given the simplifications required to model a real "
           "room; the model, the mesh and the inputs all carry uncertainty.")
     kpis = export.kpis
@@ -1046,7 +1206,7 @@ def _limits(doc, export: Export) -> None:
     if unit is not None:
         limits.append(
             f"The unit is characterised at the chilled water temperature in "
-            f"section 2 and nowhere else, and once its valve is wide open the "
+            f"section 3 and nowhere else, and once its valve is wide open the "
             f"supply air temperature follows that water almost one for one. "
             f"Run at another water temperature, another external static "
             f"pressure or a different fan speed, the {unit.model} is a "
@@ -1063,7 +1223,7 @@ def _limits(doc, export: Export) -> None:
         "A conceptual-design mesh. One rack per cell in plan: trust the ranking "
         "of racks and the hall-scale fields, not a single rack's intake to "
         "better than 1 to 2 K.",
-        "No comparison against measurement. Every validation in section 3.1 is "
+        "No comparison against measurement. Every validation in section 4.1 is "
         "an identity the physics must satisfy. That class of check catches wrong "
         "models; it cannot promise the built room behaves this way.",
     ]

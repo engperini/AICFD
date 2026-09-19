@@ -1561,3 +1561,39 @@ dominant sensitivity. It moves only the water the plant circulates: the fit
 stays anchored to the selections as issued, because re-reading them at
 another water temperature would change the flow inferred behind every row and
 quietly turn the machine into a different machine.
+
+## ADR-041 — The report states its method before its numbers
+
+*2026-09-19*
+
+Section 1 is an Introduction, fixed in every report AICFD writes, and it is
+the template's opening rather than a preface that can be skipped. A reader who
+disagrees with a conclusion has to be able to see what was solved, with what,
+and under what assumptions, without being sent to a manual that may not travel
+with the document.
+
+It carries five things and stops: what the study answers and what it is not;
+the solver, and why that solver; how the room is represented; how the cooling
+plant is modelled; and how a result is judged. It describes the method as it
+stands. It does not narrate how the method came to be — an ADR is where that
+belongs, and a consultancy report that explained its own development would be
+read as a defence rather than as a statement.
+
+**OpenFOAM is named and justified, not merely cited.** v1912, steady
+buoyantSimpleFoam, SIMPLE pressure–velocity coupling on p_rgh so buoyancy
+survives the hydrostatic column, energy as enthalpy with density following
+temperature, k-epsilon RANS with buoyancy terms. Open source is stated as a
+deliberate choice: the case, the solver and the log travel with the report, so
+any number in it is reproducible by a third party without a licence.
+
+**The fan wall's model is introduced as physics, not as a feature.** A coil is
+a counterflow heat exchanger; only its effectiveness belongs to the machine;
+the supply air temperature is therefore solved, not imposed. The five steps of
+the coupled solve are given as a table — solve, read each unit, ask each coil,
+write back, stop when nothing moves — so a reader can follow the loop without
+reading the source.
+
+**Everything renumbers by one.** Summary 2, Methodology 3, Results 4,
+Conclusions 5, Limitations 6. A test now asserts that every `section N` the
+document cites is a section the document has, because renumbering a template
+is exactly where stale cross-references breed.
