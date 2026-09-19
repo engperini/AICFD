@@ -96,9 +96,20 @@ class DocumentTest(unittest.TestCase):
         )
         for phrase in ("OpenFOAM v1912", "buoyantSimpleFoam", "SIMPLE algorithm",
                        "k-epsilon", "counterflow heat exchanger",
-                       "It is solved.", "residuals say how much the last "
-                       "iteration moved"):
+                       "The supply air temperature is solved from the coil",
+                       "accepted on physical grounds"):
             self.assertIn(phrase, whole)
+
+    def test_the_introduction_says_what_the_method_does(self):
+        """Declarative. What the study does not cover is section 6's subject,
+        and a method stated by negation reads as a defence."""
+        import re
+
+        introduction = self.text[self.text.index("1  Introduction"):
+                                 self.text.index("2  Summary")]
+        for phrase in ("is not", "does not", "cannot", "rather than an",
+                       "never a", "not a transient"):
+            self.assertNotIn(phrase, introduction, f"negated: {phrase!r}")
 
     def test_the_introduction_comes_before_the_summary(self):
         self.assertLess(self.text.index("1  Introduction"),

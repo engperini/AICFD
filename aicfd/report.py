@@ -302,8 +302,7 @@ def _contents(doc) -> None:
     _heading(doc, "Contents", 1)
     for number, name, note in (
         ("1", "Introduction",
-         "What this study answers, the solver, and how the room and the "
-         "cooling plant are modelled"),
+         "Scope, the solver, the room, the cooling plant and acceptance"),
         ("2", "Summary", "Scope, objectives, basis of design and headline results"),
         ("3", "Methodology",
          "Geometry, mesh, models, boundary conditions and the cooling unit"),
@@ -320,156 +319,126 @@ def _contents(doc) -> None:
 def _introduction(doc, export: Export) -> None:
     """The method, stated once, in the document that rests on it.
 
-    Fixed across every report AICFD writes: a reader who disagrees with a
-    conclusion has to be able to see what was solved, with what, and under
-    what assumptions, without being sent to a manual.
+    Fixed across every report AICFD writes. Declarative throughout: it says
+    what is solved and how. What the study does not cover belongs in section
+    6, and how the method came to be belongs in the decision record.
     """
-    model = export.model
-    kpis = export.kpis
-    coil = kpis.get("coil_model") or {}
+    coil = export.kpis.get("coil_model") or {}
 
     _heading(doc, "1  Introduction", 1)
-    _heading(doc, "1.1  What this study answers", 2)
-    _bullets(doc, [
-        "Where the air entering the IT equipment is warmest, and by how much "
-        "it clears the ASHRAE class A1 recommended band.",
-        "Whether the air loop closes: that the units move the mass they are "
-        "given, that nothing leaks through a wall or reverses through an "
-        "intake, and that the return air carries the installed load.",
-        "What the cooling plant delivers at the air this room actually "
-        "produces — not at the condition its equipment was selected for.",
-        "What the room costs the units in static pressure, against what their "
-        "fans can produce at the airflow they are moving.",
-    ])
+    _heading(doc, "1.1  Scope", 2)
     _para(doc,
-          "It is a steady-state study. It describes one operating point at "
-          "full load with every unit running, and it is the right tool for "
-          "sizing, layout and containment decisions. It is not a transient "
-          "study and not a commissioning record: what a room does while a unit "
-          "fails, a door opens or a load steps is a different question, listed "
-          "with the rest of the boundaries in section 6.",
-          size=9.5, colour=SECOND)
+          "This is a steady-state CFD analysis of the hall at full load with "
+          "every cooling unit in service — the operating point that governs "
+          "sizing, layout and containment decisions. It establishes:")
+    _bullets(doc, [
+        "the temperature of the air entering every rack, against the ASHRAE "
+        "class A1 recommended band;",
+        "that the air loop closes — the units move the mass they are given, "
+        "the envelope holds, and the return air carries the installed load;",
+        "what each cooling unit delivers at the air this room presents to it;",
+        "what the room costs the units in static pressure, against what their "
+        "fans produce at the airflow they move.",
+    ])
 
     _heading(doc, "1.2  The solver", 2)
     _para(doc,
-          "The flow is solved with OpenFOAM v1912, an open-source finite-volume "
-          "CFD toolbox, using its steady buoyant solver buoyantSimpleFoam. "
-          "Open source is a deliberate choice rather than an economy: the case, "
-          "the solver and the log travel with this report, so any of its "
-          "numbers can be reproduced by a third party without a licence and "
-          "without taking the tool's word for anything.")
+          "The flow is solved with OpenFOAM v1912 using buoyantSimpleFoam, its "
+          "steady solver for buoyant turbulent flow. The case specification, "
+          "the generated case, the solver log and the exported result are "
+          "delivered with this report.")
     _table(doc, ["What is solved", "How"], [
         ("Mass and momentum",
-         "Steady, compressible, segregated pressure–velocity coupling by the "
-         "SIMPLE algorithm. The pressure variable is p_rgh — static pressure "
-         "less the hydrostatic column — so buoyancy is resolved instead of "
-         "being lost inside a head of several hundred pascals."),
+         "Steady compressible flow, pressure–velocity coupling by the SIMPLE "
+         "algorithm. The pressure variable is p_rgh — static pressure less the "
+         "hydrostatic column — which resolves buoyancy at room scale."),
         ("Energy",
-         "Solved as enthalpy, with the density following temperature through "
-         "the perfect gas law at the site's operating pressure. Air at 34 °C "
-         "is 4 % lighter than at 22 °C, which is what drives every plume and "
-         "every stratified aisle in the room."),
+         "Solved as enthalpy, with density following temperature through the "
+         "perfect gas law at the site's operating pressure. Air at 34 °C is "
+         "4 % lighter than at 22 °C, and that difference drives the plumes and "
+         "the stratification in the aisles."),
         ("Turbulence",
          "Steady RANS with the k-epsilon model and buoyancy terms active. It "
-         "resolves the mean field — aisle-to-aisle temperatures, the ranking "
-         "of racks, the hall-scale pressure field — and not the unsteady "
-         "eddies, which is the correct trade for a conceptual-design study."),
+         "resolves the mean field: aisle-to-aisle temperatures, the ranking of "
+         "racks, and the hall-scale pressure field."),
         ("Buoyancy",
-         "Gravity is on. Hot air rises out of a contained aisle, and a "
-         "containment leak shows as warm air arriving above the racks rather "
-         "than as a number in a table."),
+         "Gravity is active. Hot air rises out of a contained aisle, and "
+         "containment leakage appears as warm air arriving above the racks."),
     ], widths=[4.0, 12.0],
-        note="Low Mach number throughout — the fastest air in this room is "
-             "under 2 % of the speed of sound — so compressibility matters "
-             "here only through density's dependence on temperature.")
+        note="Air speeds in the room stay under 2 % of the speed of sound, so "
+             "compressibility enters through the density's dependence on "
+             "temperature.")
 
-    _heading(doc, "1.3  How the room is represented", 2)
+    _heading(doc, "1.3  The room", 2)
     _para(doc,
-          "The geometry is derived from the case specification rather than "
-          "drawn: every dimension follows from the equipment sizes, the aisle "
-          "widths and the clearances the engineer typed, so a room that cannot "
-          "be built cannot be simulated. It is meshed as a single structured "
-          "hexahedral block, with every internal surface cut into it afterwards "
-          "as a two-sided baffle — containment panels, false ceiling, row ends "
-          "and tops, return grilles and the fan walls themselves.")
+          "The geometry follows from the case specification: equipment sizes, "
+          "aisle widths and clearances. It is meshed as a single structured "
+          "hexahedral block, with every internal surface cut into it as a "
+          "two-sided baffle — containment panels, false ceiling, row ends and "
+          "tops, return grilles and the fan walls.")
     _bullets(doc, [
         "Racks are porous zones carrying their own resistance curve and their "
-        "own heat, not boxes with a face temperature.",
-        "Return grilles are porous, with the loss coefficient from their "
-        "datasheet at the face velocity they actually see.",
-        "Containment is a set of zero-thickness baffles, so a panel blocks "
-        "flow without eating a cell of mesh.",
-        "The air loop closes inside the domain. There is no inlet and no "
-        "outlet: air leaves each unit's intake and re-enters the hall through "
-        "its supply, which is what a fan wall does.",
+        "own heat.",
+        "Return grilles are porous, at the loss coefficient from their "
+        "datasheet and the face velocity they see.",
+        "Containment panels are zero-thickness baffles.",
+        "The air loop closes inside the domain: air leaves each unit's intake "
+        "and re-enters the hall through its supply.",
     ])
 
-    _heading(doc, "1.4  How the cooling plant is modelled", 2)
+    _heading(doc, "1.4  The cooling plant", 2)
     _para(doc,
-          "A fan wall does not decide what air it delivers — its coil does, "
-          "from the air the room gives it. So the supply air temperature is "
-          "not imposed here. It is solved.")
-    _para(doc,
-          "A chilled-water coil is a counterflow heat exchanger, and what it "
-          "transfers is its effectiveness times the air's capacity rate times "
-          "the difference between the return air and the entering water. Only "
-          "the effectiveness belongs to the machine, and it depends on the two "
-          "flows alone — never on the temperatures. A capacity is therefore "
-          "not a property a unit carries; it is what that unit does at a "
-          "stated condition. The coil is characterised from the "
-          "manufacturer's own selections and then asked at the condition this "
-          "room produces.")
+          "The supply air temperature is solved from the coil. A chilled-water "
+          "coil is a counterflow heat exchanger: what it transfers is its "
+          "effectiveness times the air's capacity rate times the difference "
+          "between the return air and the entering water. The effectiveness "
+          "belongs to the machine and to the two flows; the capacity follows "
+          "from the condition the room presents. Each coil is characterised "
+          "from the manufacturer's selections and evaluated at the condition "
+          "this room produces.")
     _table(doc, ["Step", "What happens"], [
-        ("The room is solved",
-         "A segment of the flow solution runs to its iteration cap at the "
-         "supply air temperature the plant is set to."),
-        ("Each unit is read",
-         "Every unit's own mixed-mean return temperature and mass flow are "
-         "taken off the solved field. Not the plant's average: a unit at the "
-         "end of a row that returns warmer air delivers warmer air."),
-        ("Each coil answers",
-         "That return goes through that unit's coil. While its water valve has "
-         "authority the unit holds its setpoint; once the valve is wide open "
-         "the supply air floats with the return, and the whole room goes with "
-         "it."),
-        ("The room is solved again",
-         "Each unit's answer is written back as its own supply temperature and "
-         "the solution continues from the field already there."),
-        ("It stops when nothing moves",
-         "When no unit's supply air temperature shifts by more than 0.02 K "
-         "between segments, the room and the machines are consistent with each "
-         "other. That is convergence of the coupled problem, not of the flow "
-         "alone."),
+        ("1 — the room is solved",
+         "A segment of the flow solution runs at the current supply air "
+         "temperature."),
+        ("2 — each unit is read",
+         "Every unit's mixed-mean return temperature and mass flow are taken "
+         "from the solved field, unit by unit."),
+        ("3 — each coil answers",
+         "That return goes through that unit's coil. Its water valve modulates "
+         "to hold the setpoint; at full water the supply air follows the "
+         "return."),
+        ("4 — the field continues",
+         "Each answer is written back as that unit's supply temperature and "
+         "the solution carries on from the field already there."),
+        ("5 — the loop closes",
+         "It ends when no unit's supply air temperature shifts by more than "
+         "0.02 K between segments, which is convergence of the room and the "
+         "machines together."),
     ], widths=[4.0, 12.0],
-        note="The loop converges quickly because the room fixes the "
-             "temperature rise across itself: a change in supply moves the "
-             "return one for one, and the coil passes back only what its "
-             "effectiveness does not remove. Two or three segments is the "
-             "normal cost."
-             + (f" This study used {len(coil.get('fitted_returns_c') or [])} "
-                f"manufacturer selections to characterise the coil; section 3 "
-                f"gives them and the error against them."
+        note="The room fixes its own temperature rise — load over mass flow — "
+             "so a change in supply moves the return one for one and the coil "
+             "passes back the fraction its effectiveness leaves. Two or three "
+             "segments reach the fixed point."
+             + (f" The coil in this study is characterised from "
+                f"{len(coil.get('fitted_returns_c') or [])} manufacturer "
+                f"selections; section 3 gives them and the error against them."
                 if coil else ""))
 
-    _heading(doc, "1.5  How a result is judged", 2)
+    _heading(doc, "1.5  Acceptance", 2)
     _para(doc,
-          "A steady solver's residuals say how much the last iteration moved. "
-          "They do not say whether the answer means anything: a wrong model "
-          "converges just as tidily as a right one. Every run is therefore "
-          "judged against identities the physics has to satisfy — mass in "
-          "against mass out, the heat the return air carries against the load "
-          "the racks put in, the pressure the field shows across the racks "
-          "against the resistance they were given, and eight more. They are "
-          "listed with their numbers in section 4.1, and all of them have to "
-          "pass before a temperature in this document may be quoted.")
+          "A run is accepted on physical grounds. Eleven identities the "
+          "solution has to satisfy are evaluated on the converged field: mass "
+          "in against mass out, the heat the return air carries against the "
+          "load the racks release, the pressure drop across the racks against "
+          "the resistance they were given, the air each unit draws against "
+          "what it supplies, and seven more. Section 4.1 lists them with the "
+          "numbers that produced each verdict, and all of them pass before a "
+          "temperature in this document is quoted.")
     _para(doc,
-          "Instrumented places in the room — a cold aisle, a contained hot "
-          "aisle, the ceiling plenum and the space behind the units — are "
-          "recorded while the field settles, and the run is accepted only once "
-          "they have stopped moving. That class of check catches wrong models. "
-          "It cannot promise the built room behaves this way, which is why "
-          "section 6 exists.",
-          size=9.5, colour=SECOND)
+          "Instrumented places — a cold aisle, a contained hot aisle, the "
+          "ceiling plenum and the space behind the units — are recorded while "
+          "the field settles, and the run is accepted once they have stopped "
+          "moving.")
 
 
 # --- 2 summary ----------------------------------------------------------------
