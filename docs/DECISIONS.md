@@ -1969,3 +1969,40 @@ studies has to share for its results to be comparable. A free area and a share
 of the IT load are both that. The component carries a `kind`, and each is
 shown as what it is — the load has no free area, no loss coefficient, and no
 aperture drawn, because it has no face for air to cross.
+
+---
+
+## ADR-050 — A section draws each thing once, and an aisle has no edge
+
+**Three faults, one page, all of them the drawing claiming something the room
+does not have.**
+
+**What lies along the view axis piles up.** A section looks down an axis, so
+everything along it projects onto the same rectangle. The worked hall's 440
+racks land on ten in the transverse section and forty-four in the longitudinal
+one. Drawn one per rack that is forty-four copies of the same outline, and an
+outline at 45 % opacity stacked forty-four deep is opaque: a rack the section
+does not cut came out looking exactly like one it did, which is the single
+distinction these drawings exist to make. Each rectangle is now painted once
+per class, and the racks the plane cuts go down first so solid beats dashed
+where both would land — the drawing's own rule, decided by order.
+
+**An aisle is a tint, not a surface.** Over a field map the volume fills become
+outlines, which is right for the hall and the gallery and wrong for an aisle: it
+drew a black line the length of the hall along each side of every aisle, an edge
+the room does not have and one the reader has to decide to ignore. They are not
+drawn there at all now. The temperatures underneath say where the aisles are,
+which is what the map is for.
+
+**The floor between two blocks is room.** The aisle bands stop where the rack
+rows stop, so on a plan the transverse aisle and the clearance at each end came
+out as bare paper: a white gap across every row that read as something missing
+from the drawing. It is open floor on the cold side of the racks — a person
+walks down it — so it takes the cold tint, at full hall width, while the bands
+take only the blocks. The two are complementary by construction, which is what
+stops a strip being tinted twice and coming out as a darker square.
+
+Painted only where x is on the page. Looking along x the strip has no width
+there, and painting it covered the whole transverse section in cold and washed
+the hot aisles out of it — found by looking at the drawing after the fix, not
+before.

@@ -56,9 +56,15 @@
 
 
 /* over a field map: no volume fills, lines a touch heavier, racks see-through */
-svg.dw-over-map .dw-gallery,svg.dw-over-map .dw-hallfill,svg.dw-over-map .dw-plenum,
-svg.dw-over-map .dw-cold,svg.dw-over-map .dw-hot{fill:none;stroke:var(--text-primary);
+svg.dw-over-map .dw-gallery,svg.dw-over-map .dw-hallfill,
+svg.dw-over-map .dw-plenum{fill:none;stroke:var(--text-primary);
   stroke-width:1.2;opacity:.9}
+/* An aisle is a tint, not a surface. Outlined over a field map it drew a
+   black line the length of the hall along each side of every aisle -- an edge
+   the room does not have, and one a reader has to decide to ignore. The
+   temperatures underneath say where the aisles are, which is the whole point
+   of the map (ADR-050). */
+svg.dw-over-map .dw-cold,svg.dw-over-map .dw-hot{display:none}
 /* The fan wall's envelope outlines over a field map like every other volume:
    a translucent fill would tint the temperatures underneath it. */
 svg.dw-over-map .dw-fanbody{fill:none;stroke:var(--cold);stroke-width:1.2;opacity:.9}

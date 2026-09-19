@@ -441,3 +441,40 @@ class ContainmentInSectionTest(unittest.TestCase):
         body = py[py.index("def section("):py.index("def rack_map(")]
         self.assertIn("containment_wall", body)
         self.assertIn("CONTAINMENT", body)
+
+
+class SectionDrawsEachThingOnceTest(unittest.TestCase):
+    """A section looks down an axis, so what lies along it piles up (ADR-050).
+
+    The worked hall's 440 racks project onto ten rectangles in the transverse
+    section. Drawn one per rack that is 44 copies of the same outline, and a
+    dashed outline at 45% opacity stacked 44 deep is solid black: a rack the
+    section does not cut came out looking like one it did.
+    """
+
+    WEB = Path(__file__).resolve().parent.parent / "web"
+
+    def test_the_drawing_paints_each_rectangle_once(self):
+        js = (self.WEB / "drawing.js").read_text()
+        self.assertIn("const painted = new Set()", js)
+        self.assertIn("painted.has(key)", js)
+
+    def test_the_cut_ones_are_drawn_before_the_rest(self):
+        """Solid beats dashed where both would land on the same rectangle,
+        which is the drawing's own rule -- so order decides it."""
+        js = (self.WEB / "drawing.js").read_text()
+        self.assertIn("const racks = [...model.racks].sort(", js)
+
+    def test_an_aisle_is_not_outlined_over_a_field_map(self):
+        """A tint is not a surface. Outlined it drew a line the length of the
+        hall along each side of every aisle -- an edge the room does not
+        have."""
+        css = (self.WEB / "drawing.css").read_text()
+        self.assertIn("svg.dw-over-map .dw-cold,svg.dw-over-map .dw-hot{display:none}",
+                      css)
+
+    def test_the_floor_between_two_blocks_is_room_rather_than_paper(self):
+        js = (self.WEB / "drawing.js").read_text()
+        self.assertIn("function openFloor(model)", js)
+        self.assertIn("view.h === 0 || view.v === 0 ? openFloor(model) : []", js,
+                      "looking along x the strip has no width on the page")

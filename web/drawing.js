@@ -152,6 +152,24 @@ const ofRack = (panel) => panel.of_rack ?? /^rack_(top|end)(_|$)/.test(panel.nam
 const rackBlocks = (model) =>
   model.blocks?.length ? model.blocks : [rackSpan(model)];
 
+/**
+ * The x ranges inside the hall that no rack block occupies: the transverse
+ * aisle between two blocks, and the clearance at each end.
+ */
+function openFloor(model) {
+  const blocks = rackBlocks(model)
+    .slice()
+    .sort((a, b) => a[0] - b[0]);
+  const gaps = [];
+  let edge = model.hall.lo[0];
+  for (const [lo, hi] of blocks) {
+    if (lo - edge > 1e-6) gaps.push([edge, lo]);
+    edge = Math.max(edge, hi);
+  }
+  if (model.hall.hi[0] - edge > 1e-6) gaps.push([edge, model.hall.hi[0]]);
+  return gaps;
+}
+
 const coldAisles = (model) => model.cold_aisles || [model.aisles.cold];
 const hotAisles = (model) => model.hot_aisles || [model.aisles.hot];
 
@@ -276,11 +294,30 @@ export function drawView(model, view, scale, options = {}) {
   const hSpan = d.hi[view.h] - d.lo[view.h];
   const at = options.at ?? sectionAt(model, view);
 
+  /**
+   * What is already on the page, by class and projected rectangle.
+   *
+   * A section looks down an axis, so everything along that axis lands on the
+   * same rectangle: in the transverse section the worked hall's 440 racks
+   * project onto ten. Drawn one per rack that is 44 copies of the same
+   * outline, and an outline at 45% opacity stacked 44 deep is solid black --
+   * a rack that the section does not cut came out looking like one it did
+   * (ADR-050).
+   */
+  const painted = new Set();
+
   const paint = (lo, hi, cls, label) => {
     const x0 = X(Math.min(lo[view.h], hi[view.h]));
     const x1 = X(Math.max(lo[view.h], hi[view.h]));
     const y0 = Y(Math.max(lo[view.v], hi[view.v]));
     const y1 = Y(Math.min(lo[view.v], hi[view.v]));
+    // Once per rectangle per class. Whatever reaches here first wins, which
+    // is why the callers put the solid ones down before the dashed.
+    const key = `${cls}|${x0.toFixed(2)},${y0.toFixed(2)},${x1.toFixed(2)},${y1.toFixed(2)}`;
+    const twin = `${cls.split(' ')[0]}|${x0.toFixed(2)},${y0.toFixed(2)},${x1.toFixed(2)},${y1.toFixed(2)}`;
+    if (painted.has(key) || painted.has(twin)) return { x0, y0, x1, y1 };
+    painted.add(key);
+    painted.add(twin);
     svg.append(
       el('rect', {
         x: x0,
@@ -319,11 +356,12 @@ export function drawView(model, view, scale, options = {}) {
 
   // 2 — aisle tints, only where the y axis is on screen, and only in the hall
   if (view.h === 1 || view.v === 1) {
-    const room = [[model.hall.lo[0], model.hall.hi[0]]];
     const bands = [
-      // A cold aisle is fed by the fan wall and opens onto the whole room, so
-      // it runs the hall's length.
-      ...coldAisles(model).map((band) => [band, 'dw-cold', room]),
+      // Both stop where the rack rows stop: an aisle is the space between two
+      // rows, and beyond the last rack there are no rows to be between. The
+      // floor there is open room, filled below -- full width, so the two are
+      // complementary and no strip is tinted twice.
+      ...coldAisles(model).map((band) => [band, 'dw-cold', rackBlocks(model)]),
       // A hot aisle is the pocket between two rack rows, and it stops where
       // the rows do. Painted the hall's length it ran past the end of the
       // row and straight across the transverse aisle between two blocks,
@@ -340,6 +378,22 @@ export function drawView(model, view, scale, options = {}) {
         ];
         paint(lo, hi, cls);
       }
+    }
+    // The floor between two rack blocks, and between a block and the wall, is
+    // open room on the cold side of the racks -- a person walks down it. The
+    // aisle bands stop at the blocks, so on a plan those strips came out as
+    // bare paper: a white gap across every row that read as something missing
+    // from the drawing rather than as floor (ADR-050).
+    // Only where x is on screen. Looking ALONG x -- the transverse section --
+    // a strip between two blocks has no width on the page, so painting it
+    // covered the whole section in cold and washed the hot aisles out of it.
+    for (const [x0, x1] of (view.h === 0 || view.v === 0 ? openFloor(model) : [])) {
+      paint(
+        [x0, model.domain.lo[1], model.domain.lo[2]],
+        [x1, model.domain.hi[1],
+         view.v === 2 ? model.ceiling_z : model.domain.hi[2]],
+        'dw-cold',
+      );
     }
   }
 
@@ -378,8 +432,16 @@ export function drawView(model, view, scale, options = {}) {
       cut ? null : PANEL_LABEL[panel.name] ?? fanLabel(panel, seen));
   }
 
-  // 5 — racks
-  for (const rack of model.racks) {
+  // 5 — racks.
+  //
+  // A rack the plane cuts wins over one behind it at the same place: solid
+  // beats dashed where both would be drawn, which is the drawing's own rule.
+  // So the cut ones go down first and the rest only fill what is left.
+  const racks = [...model.racks].sort(
+    (a, b) => Number(straddles(b.lo, b.hi, view.normal, at))
+            - Number(straddles(a.lo, a.hi, view.normal, at)),
+  );
+  for (const rack of racks) {
     const cut = straddles(rack.lo, rack.hi, view.normal, at);
     paint(rack.lo, rack.hi, cut ? 'dw-rack' : 'dw-rack dw-behind', rack.id);
   }
