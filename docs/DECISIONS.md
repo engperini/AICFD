@@ -1575,12 +1575,22 @@ with the document.
 It carries five things and stops: scope, the solver, the room, the cooling
 plant, acceptance.
 
-**It is written in the affirmative, and a test enforces it.** A method stated
-by negation reads as a defence, and a reader of a consultancy report is not
-asking what the tool declines to do. Scope belongs to section 6 and
-provenance to this record; section 1 says what is solved and how. No
+**Sections 1 to 5 are written in the affirmative, and tests enforce it.** A
+method stated by negation reads as a defence, and a reader of a consultancy
+report is not asking what the tool declines to do. What the study does not
+cover is section 6's subject; how the method came to be is this record's;
+sections 1 to 5 say what is solved, what was found, and what follows. No
 justification of a tool choice appears there either — naming the solver and
 delivering the case with the report is the whole of what a reader needs.
+
+Three tests hold the line: section 1 carries no negated construction, sections
+2 to 5 carry none of the negations that were there, and the whole document
+carries none of the rhetorical contrasts — "rather than", "would have",
+"instead of", "which is not" — that set a claim against something the reader
+never proposed. Mesh-snapping notes now say a dimension falls between grid
+lines and what the mesh uses; the capacity conclusion states the available
+figure and then the catalogue one; the coil's physics is stated once, in
+section 1.4, and section 3 gives this unit's numbers.
 
 **OpenFOAM is specified.** v1912, steady buoyantSimpleFoam, SIMPLE
 pressure–velocity coupling on p_rgh so buoyancy survives the hydrostatic

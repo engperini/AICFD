@@ -821,8 +821,8 @@ def build_model(spec: dict) -> Model:
         if abs(built - nominal) > 1e-6:
             model.warnings.insert(
                 0,
-                f"fan wall width: {num(nominal, 3)} m is not on the {num(cell[1])} m "
-                f"grid; the mesh will use {num(built)} m "
+                f"fan wall width: {num(nominal, 3)} m falls between "
+                f"{num(cell[1])} m grid lines; the mesh uses {num(built)} m "
                 f"({(built - nominal) * 1000:+.0f} mm).",
             )
     model.alerts = model.hvac_alerts()
@@ -1259,8 +1259,8 @@ def check_mesh_alignment(model: Model) -> list[str]:
             reported.add(label)
             snapped = round(value / cell) * cell
             warnings.append(
-                f"{label}: {num(value, 3)} m is not on the {num(cell)} m grid; "
-                f"the mesh will use {num(snapped)} m "
+                f"{label}: {num(value, 3)} m falls between {num(cell)} m grid "
+                f"lines; the mesh uses {num(snapped)} m "
                 f"({(snapped - value) * 1000:+.0f} mm)."
             )
     return warnings

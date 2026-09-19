@@ -429,10 +429,11 @@ def _coil_alerts(kpis: dict) -> list[str]:
                  if span else "")
         out.append(
             f"The coil model was used beyond the manufacturer's selections: "
-            f"{'; '.join(notes)}.{where} It extrapolates on the heat "
-            f"exchanger's physics rather than on a straight line, and it "
-            f"reproduces every selection to {kpis['coil_model']['residual_k']:.02f} K "
-            f"-- but nothing measured backs it there."
+            f"{'; '.join(notes)}.{where} There it extrapolates on the heat "
+            f"exchanger's physics; the measured range is "
+            f"{kpis['coil_table_span_c'][0]:.0f} to "
+            f"{kpis['coil_table_span_c'][1]:.0f} degC return, which the model "
+            f"reproduces to {kpis['coil_model']['residual_k']:.02f} K."
         )
     return out
 

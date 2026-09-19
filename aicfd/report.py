@@ -488,8 +488,8 @@ def _summary(doc, export: Export) -> None:
         _para(doc,
               f"The cooling plant is {len(model['fans'])} × "
               f"{unit.family} {unit.model}. The quantities below are that "
-              f"machine's own manufacturer selections, not a nominal figure: "
-              f"section 3 gives the conditions they were taken at and the "
+              f"machine's own manufacturer selections. Section 3 gives the "
+              f"conditions they were taken at and the "
               f"capacity it has across the range of return air temperatures "
               f"this hall produces.",
               size=9.5, colour=SECOND)
@@ -654,13 +654,12 @@ def _methodology(doc, export: Export, drawn: dict) -> None:
           "and the rack tops land on cell faces — a plane that falls mid-cell "
           "produces a ragged surface that leaks silently.")
     _para(doc,
-          "What this resolution supports: the ranking of racks, the aisle-to-aisle "
-          "temperatures and the hall-scale pressure field. What it does not: "
-          "signing off ASHRAE compliance rack by rack, since a single rack's "
+          "This resolution supports the ranking of racks, the aisle-to-aisle "
+          "temperatures and the hall-scale pressure field. A single rack's "
           "intake carries 1 to 2 K of uncertainty at this cell size.",
           bold=True)
     if model.get("warnings"):
-        _para(doc, "Dimensions that did not land on the mesh and were snapped:",
+        _para(doc, "Dimensions the mesh snapped to its nearest cell face:",
               size=9, colour=SECOND, space_after=2)
         _bullets(doc, model["warnings"])
 
@@ -701,9 +700,9 @@ def _methodology(doc, export: Export, drawn: dict) -> None:
          f"{_num(per_unit / 3600 * (model.get('site') or {}).get('rho'), 2)} kg/s"
          if (model.get("site") or {}).get("rho") else "—"),
     ], widths=[9.0, 7.0],
-        note="Every unit is given the same duty. A unit that is really on a "
-             "pressure boundary would draw more or less than this and is not "
-             "modelled here; see section 6.")
+        note="Every unit is given the same duty. Section 6 covers a plant "
+             "whose units sit on a pressure boundary and share the flow "
+             "unevenly.")
 
 
 def _unit_section(doc, export: Export, drawn: dict) -> None:
@@ -783,10 +782,10 @@ def _unit_section(doc, export: Export, drawn: dict) -> None:
         _para(doc,
               "The pressure–flow curve used to find the static pressure "
               "available at the modelled airflow is representative of an EC "
-              "fan array anchored to the unit's selected external static "
-              "pressure, not the manufacturer's measured curve. It decides the "
-              "uncontrolled operating point and nothing else; no capacity or "
-              "temperature in this report depends on it.",
+              "fan array, anchored to the unit's selected external static "
+              "pressure. It decides the uncontrolled operating point alone; "
+              "every capacity and temperature in this report is independent "
+              "of it.",
               size=9, colour=MUTED, italic=True)
 
 
@@ -803,14 +802,10 @@ def _coil_section(doc, export: Export) -> None:
     span = export.kpis.get("coil_table_span_c") or [0, 0]
     share = export.kpis.get("coil_air_share_pct")
     _para(doc,
-          "A room does not run at any selection. To read a capacity at the "
-          "condition this hall actually produced, the selections above were "
-          "fitted to the machine they describe: a counterflow chilled-water "
-          "coil, whose capacity is its effectiveness times the air's capacity "
-          "rate times the difference between the return air and the entering "
-          "water. Only the effectiveness belongs to the unit, and it depends "
-          "on the two flows alone, never on the temperatures — which is why a "
-          "capacity cannot be held fixed while the return air moves.",
+          "The selections above are fitted to the counterflow coil they "
+          "describe, as section 1.4 sets out, and that fit gives this unit's "
+          "capacity at the condition this hall produced. Its properties and "
+          "the error against the selections follow.",
           size=9.5)
     _table(doc, ["Property of the fitted coil", "Value"], [
         ("Entering chilled water", f"{_num(coil['water_c'], 1)} °C"),
@@ -827,10 +822,10 @@ def _coil_section(doc, export: Export) -> None:
          f"{share} %" if share else "—"),
     ], widths=[8.0, 8.0],
         note="Fitted from the manufacturer's own selections and nothing else. "
-             "The water flow behind each selection is not printed on it; it is "
-             "recovered from the stated entering and leaving water "
-             "temperatures, which is the only reading under which the fitted "
-             "conductance comes out physical. Tested by prediction: fitted on "
+             "The water flow behind each selection is recovered from the "
+             "stated entering and leaving water temperatures, the reading "
+             "under which the fitted conductance comes out physical. Tested "
+             "by prediction: fitted on "
              "these selections alone, the model reproduces a further selection "
              "of the same machine — at a different air flow and a different "
              "return temperature — to 0.014 K of supply air temperature and "
@@ -853,7 +848,7 @@ def _results(doc, export: Export, drawn: dict) -> None:
           "not whether the answer means anything. Every run is therefore judged "
           "against identities the physics has to satisfy. All of them have to "
           "pass before a temperature is quoted.")
-    _table(doc, ["Check", "Result", "What it would have caught"],
+    _table(doc, ["Check", "Result", "What it catches"],
            [(c["name"],
              ("PASS" if c["passed"] else "FAIL") + (
                  f" — {c['detail']}" if c.get("detail") else ""),
@@ -876,9 +871,9 @@ def _results(doc, export: Export, drawn: dict) -> None:
 
     _heading(doc, "4.3  Temperature field", 2)
     _para(doc, "All maps share one fixed colour band, 10 °C to 40 °C in 2,5 K "
-               "contours, with the ASHRAE limits marked on the bar. Fixed rather "
-               "than fitted to each field: a scale stretched to a field's own "
-               "extremes answers a different question in every picture.")
+               "contours, with the ASHRAE limits marked on the bar. The band is "
+               "the same in every map, so a temperature carries the same colour "
+               "throughout.")
     _figure(doc, drawn["plan_mid"],
             "Plan at rack mid-height — the plane that governs the intake "
             "condition of the IT equipment. Each outlined rectangle is one rack; "
@@ -901,19 +896,17 @@ def _results(doc, export: Export, drawn: dict) -> None:
             "gallery behind each dividing wall.")
     _figure(doc, drawn["long_hot"],
             "The same section through a contained hot aisle. The containment is "
-            "doing its job when this plane is hot from floor to ceiling and the "
-            "one above is not — the cold plane is where a containment leak "
-            "shows first.")
+            "doing its job when this plane is hot from floor to ceiling. A "
+            "containment leak shows first in the cold plane above.")
 
     _heading(doc, "4.4  Rack intake temperature", 2)
     _figure(doc, drawn["racks"],
             "Every rack coloured by the temperature of the air it breathes, "
             "measured at the top of the rack. The scale here is FITTED to this "
-            "hall, not the fixed band used for the field maps above: on the "
-            "fixed band every rack in a healthy hall falls inside one 2,5 K "
-            "step, which says they are all acceptable and nothing about which "
-            "is worst. Read this figure for the ranking and the figure below "
-            "for the absolute judgement.")
+            "hall, which spreads the racks across the full range and ranks "
+            "them; on the fixed band of the maps above, every rack in a healthy "
+            "hall falls inside one 2,5 K step. Read this figure for the ranking "
+            "and the figure below for the absolute judgement.")
     _table(doc, ["Rack", "Row", "Intake, top of rack", "Intake, face mean",
                  "Exhaust", "Rise", "ASHRAE"],
            [(z["name"], z["row"], f"{_num(z['inlet_top_c'], 2)} °C",
@@ -1054,11 +1047,10 @@ def _conclusions(doc, export: Export) -> None:
         catalogue = kpis.get("catalogue_kw")
         if catalogue and removed:
             sentence += (
-                f", not the {_num(catalogue, 0)} kW the catalogue sums to. "
-                f"The difference between those two numbers is the difference "
-                f"between {_num(removed / catalogue * 100, 1)} % "
-                f"and {_num(used, 1)} % loaded, and it is the second figure "
-                f"that says what happens when a unit is lost"
+                f". The catalogue sums to {_num(catalogue, 0)} kW, which reads "
+                f"as {_num(removed / catalogue * 100, 1)} % loaded; the "
+                f"{_num(used, 1)} % is the figure that governs what happens "
+                f"when a unit is lost"
             )
         sentence += (
             f". {outside} unit(s) are drawing more than the coil can give at "

@@ -100,6 +100,25 @@ class DocumentTest(unittest.TestCase):
                        "accepted on physical grounds"):
             self.assertIn(phrase, whole)
 
+    def test_the_document_states_things_rather_than_contrasting_them(self):
+        """A technical report asserts. These constructions set up a contrast
+        with something the reader never proposed, and they read as a defence
+        of the method rather than a statement of it."""
+        whole = self.text + "\n" + "\n".join(
+            c.text for tb in self.tables for r in tb.rows for c in r.cells
+        )
+        for phrase in ("rather than", "would have", "and nothing about",
+                       "which is not", "instead of", "worse than"):
+            self.assertNotIn(phrase, whole, f"rhetorical: {phrase!r}")
+
+    def test_the_body_sections_are_written_in_the_affirmative(self):
+        """Sections 2 to 5 carry the study. What it does not cover is section
+        6's subject, so the negations belong there."""
+        body = self.text[self.text.index("2  Summary"):
+                         self.text.index("6  Limitations")]
+        for phrase in ("does not", "do not", "is not on", "What it does not"):
+            self.assertNotIn(phrase, body, f"negated: {phrase!r}")
+
     def test_the_introduction_says_what_the_method_does(self):
         """Declarative. What the study does not cover is section 6's subject,
         and a method stated by negation reads as a defence."""
@@ -319,12 +338,13 @@ class UnitReportTest(_UnitReport):
         """The method belongs in the document. Every margin in section 4 rests
         on it, and a reader who disagrees has to be able to see what was
         assumed rather than take it on trust."""
-        self.assertIn("counterflow chilled-water", self.text)
-        self.assertIn("never on the temperatures", self.text)
+        self.assertIn("counterflow coil they describe", self.text)
         self.assertIn("Resistance on the air side", self.cells)
         self.assertIn("Error against those selections", self.cells)
         self.assertIn("recovered from the stated entering and leaving water",
                       self.text)
+        # and the physics itself is stated once, in the introduction
+        self.assertIn("counterflow heat exchanger", self.text)
 
     def test_capacity_is_reported_at_this_hall_not_at_the_selection(self):
         """The whole point: the units did not run at any selection, and the
