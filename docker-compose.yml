@@ -30,13 +30,19 @@ services:
       - ./cases:/app/cases
       - ./runs:/app/runs
       - ./results:/app/results
-      # The unit library, and the documents made from a result. Both are
-      # written by the pages -- the equipment page saves a curve, the results
-      # page writes a .docx -- and without these the writes land inside the
-      # container, where they survive neither `docker compose down` nor a
-      # rebuild. Editing a fan wall curve and finding it gone tomorrow reads
-      # as the page not saving rather than as a missing mount.
+      # The libraries, and the documents made from a result. All of them are
+      # written by the pages -- the equipment page saves a curve, the
+      # components page saves a free area, the results page writes a .docx --
+      # and without these the writes land inside the container, where they
+      # survive neither `docker compose down` nor a rebuild. Editing a fan
+      # wall curve and finding it gone tomorrow reads as the page not saving
+      # rather than as a missing mount.
+      #
+      # The test that guards this lists the directories by name, so a library
+      # added later is only covered once its name is added there too. That is
+      # how `components/` went a commit without a mount.
       - ./equipment:/app/equipment
+      - ./components:/app/components
       - ./reports:/app/reports
       # Read-only: the three worked results are evidence, and nothing in the
       # container has any business writing over them (ADR-032).

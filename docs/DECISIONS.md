@@ -1240,11 +1240,18 @@ the README says which changes need a rebuild.
 
 **Everything a page writes is mounted.** The rule is not "mount the source":
 it is that no directory the software writes to may exist only inside the
-container. The equipment page saves a unit, the results page writes a .docx,
-so `equipment/` and `reports/` are mounted alongside `runs/` and `results/`.
-Miss one and the write succeeds, the page confirms it, and the file is gone at
-the next `docker compose down` — the same silent class of failure this ADR
-exists to remove, arriving a day later instead of immediately.
+container. The equipment page saves a unit, the components page a free area,
+the results page a .docx, so `equipment/`, `components/` and `reports/` are
+mounted alongside `runs/` and `results/`. Miss one and the write succeeds, the
+page confirms it, and the file is gone at the next `docker compose down` — the
+same silent class of failure this ADR exists to remove, arriving a day later
+instead of immediately.
+
+The test that guards it lists the directories by name, so a library added
+later is covered only once its name is added too. `components/` went a commit
+without a mount for exactly that reason. A second test now compares the list
+against the libraries the code actually defines, so the next one is found
+rather than waited for.
 
 **The browser is the last copy that can go stale.** Moving the drawings'
 layout into `drawing.css` broke the results page for anyone whose browser

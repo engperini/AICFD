@@ -320,7 +320,8 @@ class ComposeMountsTest(unittest.TestCase):
 
     def test_everything_written_at_run_time_comes_from_the_clone(self):
         bound = self.mounts()
-        for directory in ("equipment", "reports", "runs", "results", "cases"):
+        for directory in ("equipment", "components", "reports", "runs",
+                          "results", "cases"):
             with self.subTest(directory=directory):
                 self.assertIn(directory, bound,
                               f"{directory}/ is written by the software and must be mounted")
@@ -329,6 +330,22 @@ class ComposeMountsTest(unittest.TestCase):
 
     def test_the_worked_results_stay_read_only(self):
         self.assertIn("ro", self.mounts()["reference"].split(","))
+
+    def test_every_library_the_software_writes_to_is_in_the_list_above(self):
+        """The list is by name, so a library added later is covered only once
+        its name is added too -- which is how `components/` went a commit
+        without a mount. This finds the next one instead of waiting for it."""
+        import re
+
+        from aicfd import components, equipment
+
+        libraries = {p.name for p in (equipment.LIBRARY, components.LIBRARY)}
+        source = Path(__file__).read_text()
+        listed = re.search(r'for directory in \(([^)]*)\)', source).group(1)
+        for name in sorted(libraries):
+            with self.subTest(library=name):
+                self.assertIn(f'"{name}"', listed,
+                              f"{name}/ is a library the pages write to")
 
 
 class StaleAssetTest(unittest.TestCase):
