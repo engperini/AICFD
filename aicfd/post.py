@@ -235,7 +235,8 @@ def analyse(model: Model, case_dir: str | Path, time: str | None = None) -> PodR
         "intake_kg_s": round(intake, 5),
         "supply_m3h": round(supply / _density(model) * 3600, 0),
         "backflow_kg_s": round(sum(f["backflow_kg_s"] for f in fans), 5),
-        "supply_temp_c": model.supply_temp_c,
+        # What the units delivered, not what they were told to deliver.
+        "supply_temp_c": supply_temperature(step, model.supply_temp_c),
         "return_temp_c": round(return_temperature(step) - KELVIN, 2),
         "load_kw": round(model.total_load_w / 1000, 2),
         "fans": fans,
@@ -518,10 +519,46 @@ def fan_flows(step: str | Path, flows: dict[str, float] | None = None,
                 "intake_kg_s": round(flows.get(intake, 0.0), 5),
                 "backflow_kg_s": round(backflow(step, intake), 5),
                 "rise_pa": round(rise, 3),
-                **_unit_return(step, intake, supply_temp_c),
+                **_unit_return(step, intake, _supply_of(step, supply, supply_temp_c)),
+                "supply_temp_c": (lambda v: round(v, 2) if v is not None else None)(
+                    _supply_of(step, supply, supply_temp_c)
+                ),
             }
         )
     return units
+
+
+def supply_temperature(step: str | Path, fallback: float | None = None) -> float | None:
+    """The air the units are really delivering, read off their supply patches.
+
+    Not the setpoint the spec asked for. Where the coil is solved with the room
+    the two part company exactly when it matters -- a unit whose water valve
+    has run out delivers warmer air than it was told to, and a KPI that kept
+    reporting the setpoint would hide the finding under the number that names
+    it (ADR-040).
+
+    Flow-weighted across the units, so a plant whose units deliver different
+    temperatures reports the air the hall actually receives.
+    """
+    step = Path(step)
+    if not (step / "phi").is_file() or not (step / "T").is_file():
+        return fallback  # nothing written yet, or not a solved step at all
+    total = weighted = 0.0
+    for _, supply in fan_pairs(step):
+        temperature = read_patch_field(step / "T", supply)
+        phi = read_patch_field(step / "phi", supply)
+        if temperature.size == 0:
+            continue
+        mass = float(abs(phi).sum()) or 1.0
+        weighted += float(np.mean(temperature)) * mass
+        total += mass
+    return round(weighted / total - KELVIN, 2) if total else fallback
+
+
+def _supply_of(step: Path, supply: str, fallback: float | None) -> float | None:
+    """One unit's own supply air temperature."""
+    values = read_patch_field(step / "T", supply)
+    return float(np.mean(values)) - KELVIN if values.size else fallback
 
 
 def _unit_return(step: Path, intake: str, supply_temp_c: float | None) -> dict:
@@ -652,7 +689,8 @@ def recovered_load_w(step: str | Path, model: Model) -> float:
     temperature = _intakes(step, "T")
     if phi.size == 0 or temperature.size <= 1:
         return 0.0  # a uniform patch value cannot resolve a mixed-mean rise
-    supply_k = model.supply_temp_c + KELVIN
+    supply_k = (supply_temperature(step, model.supply_temp_c) or
+                model.supply_temp_c) + KELVIN
     return float(CP_AIR * (phi * (temperature - supply_k)).sum())
 
 

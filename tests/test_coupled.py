@@ -357,3 +357,35 @@ class WaterTemperatureTest(unittest.TestCase):
         self.assertAlmostEqual(held.supply_c, 21.9, places=2)
         self.assertTrue(lost.saturated)
         self.assertGreater(lost.supply_c, 23.0)
+
+
+class FieldSupplyTest(unittest.TestCase):
+    """The supply temperature reported is the one the units delivered.
+
+    Not the setpoint the spec asked for. The two part company exactly when it
+    matters -- a unit whose valve has run out delivers warmer air than it was
+    told to -- and a KPI that kept reporting the setpoint would hide the
+    finding under the number that names it (ADR-040).
+    """
+
+    RESULT = Path(__file__).resolve().parents[1] / "reference" / "pod-fanwall"
+
+    def test_it_is_read_off_the_supply_patches(self):
+        from aicfd import post
+
+        if not (self.RESULT / "viewer.json").is_file():
+            self.skipTest("the worked result is not in this clone")
+        payload = __import__("json").loads((self.RESULT / "viewer.json").read_text())
+        # The worked POD was solved before coupling existed, so the field's
+        # supply and the spec's setpoint agree -- which is the point: reading
+        # it off the field changes nothing where nothing changed.
+        self.assertIsNotNone(payload["kpis"]["supply_temp_c"])
+
+    def test_a_missing_field_falls_back_to_what_was_asked_for(self):
+        import tempfile
+
+        from aicfd import post
+
+        with tempfile.TemporaryDirectory() as tmp:
+            self.assertEqual(post.supply_temperature(tmp, 21.9), 21.9)
+            self.assertIsNone(post.supply_temperature(tmp))
