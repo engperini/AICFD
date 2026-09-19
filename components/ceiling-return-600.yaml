@@ -6,6 +6,7 @@ role: ceiling_return
 # or not, use return grilles at this permeability.
 size: [0.6, 0.6]              # one tile of the ceiling grid, metres
 aperture: egg-crate core in a 600 x 600 frame
+pattern: eggcrate
 free_area: 0.65
 note: >
   Sits in the false ceiling over a hot aisle and takes the return air into the

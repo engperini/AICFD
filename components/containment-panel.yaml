@@ -6,6 +6,8 @@ role: containment
 # doors, cable entries, the gap where a panel meets a rack. The specification
 # carries that as a permeability rather than pretending the aisle is sealed.
 aperture: panel joints, door seals and cable entries
+pattern: joint
+applied: false                 # containment is solid in the solver today
 free_area: 0.05
 note: >
   Applies to hot and cold aisle containment alike. It is leakage, not a

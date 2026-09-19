@@ -63,6 +63,60 @@ class LibraryTest(unittest.TestCase):
                 self.assertEqual(C.load(name).role, role)
 
 
+class KindsTest(unittest.TestCase):
+    """The library holds two kinds of number (ADR-049)."""
+
+    def test_a_load_has_a_share_and_no_face(self):
+        pdu = C.load("pdu-distribution-loss")
+        self.assertEqual(pdu.kind, "load")
+        self.assertAlmostEqual(pdu.share, 0.02)
+        self.assertIsNone(pdu.free_area)
+        self.assertIsNone(pdu.k, "a dissipation has no face for air to cross")
+
+    def test_a_surface_has_a_face_and_no_share(self):
+        for name in C.available():
+            unit = C.load(name)
+            if unit.kind != "surface":
+                continue
+            with self.subTest(component=name):
+                self.assertIsNotNone(unit.free_area)
+                self.assertIsNone(unit.share)
+
+    def test_a_share_is_a_fraction_of_the_load(self):
+        for bad in (-0.1, 1.0, 3):
+            with self.subTest(share=bad), self.assertRaises(ValueError):
+                C.parse({"id": "x", "role": "distribution_loss",
+                         "kind": "load", "share": bad})
+
+    def test_an_unknown_kind_is_refused(self):
+        with self.assertRaises(ValueError):
+            C.parse({"id": "x", "role": "containment", "kind": "guess",
+                     "free_area": 0.5})
+
+    def test_what_the_solver_does_not_read_yet_says_so(self):
+        """A number held but not applied is worse than absent if the page does
+        not say which it is: a run comes back unchanged and looks broken."""
+        for name in ("containment-panel", "floor-tile-600", "pdu-distribution-loss"):
+            with self.subTest(component=name):
+                self.assertFalse(C.load(name).applied)
+        for name in ("gallery-mesh-13", "ceiling-return-600"):
+            with self.subTest(component=name):
+                self.assertTrue(C.load(name).applied)
+
+    def test_every_pattern_is_one_the_page_can_draw(self):
+        js = (Path(__file__).resolve().parents[1] / "web" / "components.js").read_text()
+        for name in C.available():
+            pattern = C.load(name).pattern
+            with self.subTest(component=name, pattern=pattern):
+                self.assertIn(pattern, C.PATTERNS)
+                if pattern != "none":
+                    self.assertIn(f"'{pattern}'", js)
+
+    def test_the_containment_leakage_is_editable(self):
+        """It is a specification figure, not architecture, so it is offered."""
+        self.assertFalse(C.load("containment-panel").fixed)
+
+
 class SavingTest(unittest.TestCase):
     """Saving keeps the file a person can still read."""
 

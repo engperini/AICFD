@@ -7,6 +7,8 @@ role: floor_tile
 # specification's design value rather than the plate's maximum.
 size: [0.6, 0.6]              # one tile of the floor grid, metres
 aperture: perforated steel plate on a folded column base, with damper
+pattern: slotted
+applied: false                 # the raised floor itself is not modelled yet
 free_area: 0.54
 adjustable: [0.35, 0.70]      # what the damper can be set to on site
 note: >

@@ -75,18 +75,28 @@ function component(c) {
       <input id="${c.id}-${key}" data-component="${c.id}" data-key="${key}"
              value="${value ?? ''}" ${attrs} ${locked ? 'readonly' : ''} />
     </div>`;
+  const tags = (locked ? '<span class="tag">fixed</span>' : '')
+    + (c.applied ? '' : '<span class="tag pending">not in the solver yet</span>');
   return `
     <div class="role ${locked ? 'locked' : ''}" data-role-for="${c.id}">
-      <h3>${c.name} ${locked ? '<span class="tag">fixed</span>' : ''}</h3>
-      <p>${c.aperture || '&nbsp;'}</p>
-      ${box('free_area', 'Free area %', toPercent(c.free_area),
-            'type="number" step="0.1" min="0.1" max="100"')}
-      <div class="field">
+      <div class="role-head">
+        ${swatch(c)}
+        <div>
+          <h3>${c.name} ${tags}</h3>
+          <p>${c.aperture || (c.kind === 'load' ? 'a share of the IT load' : '&nbsp;')}</p>
+        </div>
+      </div>
+      ${c.kind === 'load'
+        ? box('share', 'Share of the IT load %', toPercent(c.share),
+              'type="number" step="0.1" min="0" max="50"')
+        : box('free_area', 'Free area %', toPercent(c.free_area),
+              'type="number" step="0.1" min="0.1" max="100"')}
+      ${c.kind === 'surface' ? `<div class="field">
         <label>Loss coefficient K, on the face velocity</label>
         <input value="${fmt(c.k, 2)}" readonly
                id="${c.id}-k" style="opacity:.8" />
-      </div>
-      ${c.loss_coefficient !== null
+      </div>` : ''}
+      ${c.loss_coefficient !== null && c.loss_coefficient !== undefined
         ? box('loss_coefficient', 'K from the datasheet, which wins',
               c.loss_coefficient, 'type="number" step="0.01" min="0"')
         : ''}
@@ -100,6 +110,10 @@ function component(c) {
         <textarea id="${c.id}-note" data-component="${c.id}" data-key="note"
                   ${locked ? 'readonly' : ''}>${c.note || ''}</textarea>
       </div>
+      ${c.applied ? '' : `<p class="note pending-note">Held here and not yet read
+           by the solver. The number is the specification's; what is missing is
+           the modelling that releases it, so a run today answers as though this
+           were ${c.kind === 'load' ? 'zero' : 'sealed'}.</p>`}
       ${locked
         ? `<p class="note">The building rather than a choice: the same opening,
              closed the same way, in every hall built to this specification.
@@ -146,6 +160,85 @@ function aside() {
     </section>`;
 }
 
+/**
+ * The aperture, drawn from the component's own numbers.
+ *
+ * Not a photograph of a product. The open fraction of what is drawn IS the
+ * free area the component states, so the swatch answers the question the page
+ * is about -- how much of this surface is actually open -- rather than showing
+ * what the thing looks like in a catalogue. It also means the picture cannot
+ * disagree with the number beside it (ADR-049).
+ */
+function swatch(c) {
+  // A share of the IT load has no aperture. Drawing an empty frame for it
+  // would say there is a surface here with nothing in it, which is not what
+  // a dissipation is.
+  if (c.kind !== 'surface') return '';
+  const open = c.free_area ?? 1;
+  const W = 132;
+  const H = 52;
+  const ink = 'var(--text-secondary)';
+  const gap = 'var(--surface)';
+  let body = '';
+
+  if (c.pattern === 'woven') {
+    // A square weave: the aperture and the wire are on the datasheet, so the
+    // pitch is drawn to scale and the open fraction falls out of it.
+    const pitch = 12;
+    const wire = pitch * (1 - Math.sqrt(open));
+    for (let x = 0; x <= W; x += pitch) {
+      body += `<rect x="${x}" y="0" width="${wire}" height="${H}" fill="${ink}"/>`;
+    }
+    for (let y = 0; y <= H; y += pitch) {
+      body += `<rect x="0" y="${y}" width="${W}" height="${wire}" fill="${ink}"/>`;
+    }
+  } else if (c.pattern === 'eggcrate') {
+    const pitch = 13;
+    const bar = pitch * (1 - Math.sqrt(open));
+    for (let x = 0; x <= W; x += pitch) {
+      body += `<rect x="${x}" y="0" width="${Math.max(bar, 0.8)}" height="${H}" fill="${ink}"/>`;
+    }
+    for (let y = 0; y <= H; y += pitch) {
+      body += `<rect x="0" y="${y}" width="${W}" height="${Math.max(bar, 0.8)}" fill="${ink}"/>`;
+    }
+  } else if (c.pattern === 'perforated') {
+    // Round holes on a staggered pitch: area = pi r^2 per cell.
+    const pitch = 11;
+    const r = Math.sqrt((open * pitch * pitch) / Math.PI);
+    body += `<rect width="${W}" height="${H}" fill="${ink}"/>`;
+    for (let row = 0, y = pitch / 2; y < H; y += pitch, row += 1) {
+      for (let x = (row % 2 ? pitch : pitch / 2); x < W; x += pitch) {
+        body += `<circle cx="${x}" cy="${y}" r="${r}" fill="${gap}"/>`;
+      }
+    }
+  } else if (c.pattern === 'slotted') {
+    // A floor plate: slots between the folded column bases, and the damper
+    // bar under them that sets how much of each slot is open.
+    const pitch = 15;
+    const slot = pitch * open;
+    body += `<rect width="${W}" height="${H}" fill="${ink}"/>`;
+    for (let x = 3; x < W - 3; x += pitch) {
+      body += `<rect x="${x}" y="5" width="${slot}" height="${H - 10}" rx="1.5" fill="${gap}"/>`;
+    }
+    body += `<rect x="0" y="${H - 7}" width="${W}" height="3" fill="${gap}" opacity=".55"/>`;
+  } else if (c.pattern === 'joint') {
+    // Containment leakage is not a designed opening: it is the line where a
+    // panel meets a rack, a door seal, a cable entry. Drawn as those.
+    body += `<rect width="${W}" height="${H}" fill="${ink}" opacity=".85"/>`;
+    const seam = ['M0,26 H132', 'M44,0 V52', 'M88,0 V52'];
+    for (const d of seam) {
+      body += `<path d="${d}" stroke="${gap}" stroke-width="1.6" stroke-dasharray="7 5" fill="none"/>`;
+    }
+    body += `<rect x="60" y="34" width="13" height="7" rx="1.5" fill="${gap}"/>`;
+  } else {
+    body += `<rect width="${W}" height="${H}" fill="none" stroke="${ink}"
+               stroke-width="1.4" stroke-dasharray="5 4"/>`;
+  }
+  return `<svg class="swatch" viewBox="0 0 ${W} ${H}" width="${W}" height="${H}"
+            role="img" aria-label="${c.aperture || c.name}">
+            <rect width="${W}" height="${H}" fill="${gap}"/>${body}</svg>`;
+}
+
 /** The thin-plate correlation, mirrored from `model.grille_loss_coefficient`. */
 function k(freeArea) {
   const s = Math.min(Math.max(freeArea, 0.05), 1);
@@ -156,7 +249,9 @@ function wire(c) {
   if (c.fixed) return;
   const inputs = [...document.querySelectorAll(`[data-component="${c.id}"]`)];
   const live = () => {
-    const free = fromPercent(byId(`${c.id}-free_area`).value);
+    const box = byId(`${c.id}-free_area`);
+    if (!box) return; // a load has no face for air to cross
+    const free = fromPercent(box.value);
     const stated = byId(`${c.id}-loss_coefficient`);
     const shown = stated && stated.value !== '' ? Number(stated.value)
       : free ? k(free) : null;
@@ -169,7 +264,7 @@ function wire(c) {
     const body = {};
     for (const input of inputs) {
       const value = input.value.trim();
-      body[input.dataset.key] = input.dataset.key === 'free_area'
+      body[input.dataset.key] = ['free_area', 'share'].includes(input.dataset.key)
         ? fromPercent(value)
         : input.dataset.key === 'loss_coefficient'
           ? (value === '' ? null : Number(value))

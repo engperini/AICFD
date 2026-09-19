@@ -11,6 +11,7 @@ fixed: true                   # architecture, not a choice: the same opening
 # stainless mesh, which is a security boundary first and a flow resistance
 # second -- but the air has to pass through it, so the plant pays for it.
 aperture: 13 x 13 mm openings, 3 mm wire, woven stainless
+pattern: woven                 # drawn from the aperture and wire above
 free_area: 0.65               # the standard assumed here. A 13/3 weave gives
                               # 66% and a 12.7/3 weave 65.4%, so 65% is the
                               # conservative round number of the pair.

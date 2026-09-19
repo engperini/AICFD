@@ -7,6 +7,7 @@ role: ceiling_return
 # standard so a study can show what the choice of grille is worth.
 size: [0.6, 0.6]
 aperture: 1/2 in. aluminium egg-crate core, 600 x 600 frame
+pattern: eggcrate
 free_area: 0.9
 note: >
   An open egg-crate core costs almost nothing in pressure and takes almost no

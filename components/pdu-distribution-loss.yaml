@@ -1,0 +1,18 @@
+id: pdu-distribution-loss
+name: Power distribution losses
+role: distribution_loss
+kind: load                    # heat the room carries, not a surface air crosses
+applied: false                # held here, not yet released into the solver
+
+# Everything between the room's power feed and the rack inlet dissipates: the
+# PDUs, the busway, the RPPs, the cabling. It arrives in the room as heat the
+# cooling plant has to remove, and it is not in a rack, so a model that counts
+# only rack load undercounts the room.
+share: 0.02                   # of the IT load, the figure this specification
+                              # carries. 2% of a 5 MW hall is 100 kW: a fan
+                              # wall's worth.
+note: >
+  Released in the room rather than at a rack face, so it warms the air a rack
+  breathes only through the room. Modelling it needs a zone of its own and a
+  source in it, which is why the number is held here before the solver reads
+  it.

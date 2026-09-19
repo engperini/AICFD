@@ -6,6 +6,7 @@ role: ceiling_return
 # read as a flat surface rather than a grid of cores.
 size: [0.6, 0.6]
 aperture: perforated face plate, 600 x 600 frame
+pattern: perforated
 free_area: 0.51
 note: >
   A perforated face is quieter to look at and dearer in pressure. At half the

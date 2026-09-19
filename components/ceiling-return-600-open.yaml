@@ -7,6 +7,7 @@ role: ceiling_return
 # specified grille, and the difference is the answer.
 size: [0.6, 0.6]
 aperture: open aperture, no core
+pattern: none
 free_area: 1                   # a hole, nothing in it
 note: >
   A hole in the false ceiling with no grille in it. Point a case at this to

@@ -1931,3 +1931,41 @@ behind swallowed the keys under it and the library stopped loading. That
 happened, on the save path, where the damage is written before anything reads
 it back. A save is now parsed back into a component before the file is
 written, and refused if it cannot be.
+
+---
+
+## ADR-049 — A drawn aperture, and a number the solver does not read yet
+
+**Two decisions on the components page, both about not lying to the reader.**
+
+**The aperture is drawn from the component's own numbers.** Each component
+carries a `pattern` — woven, egg-crate, perforated, slotted, joint — and the
+page generates it at the open fraction the component states. A 13 mm weave on
+3 mm wire is drawn as that weave; a 51 % perforated face gets holes whose area
+is 51 % of the plate.
+
+A photograph from a catalogue would look more like the product and say less
+about the only quantity that decides anything, and it can disagree with the
+number beside it — a picture of a 65 % grille sitting above a field edited to
+50 % is a drawing that is wrong. Generated from the same number, it cannot be.
+It also keeps a manufacturer's photograph out of a repository that is meant to
+be cloned and redistributed.
+
+**A number the solver does not read yet says so, on the page.** The library now
+holds three figures the specification states and the solver ignores: the 5 %
+permeability of a containment, the 54 % of a raised floor plate, and the 2 % of
+the IT load that power distribution dissipates. Each carries `applied: false`,
+and the page marks it and says what a run answers instead — as though the
+containment were sealed, as though the dissipation were zero.
+
+The alternative was to leave them out until the modelling caught up. That is
+worse: the engineer types 5 %, runs the hall, gets the same answer as before,
+and has no way to tell whether the leak does not matter or the leak was never
+read. A stated intention with a stated gap is honest; a silent one is a trap.
+
+**Why a dissipation is in a library of surfaces.** Because the page is the
+house specification rather than a catalogue of grilles: the numbers a set of
+studies has to share for its results to be comparable. A free area and a share
+of the IT load are both that. The component carries a `kind`, and each is
+shown as what it is — the load has no free area, no loss coefficient, and no
+aperture drawn, because it has no face for air to cross.

@@ -38,7 +38,15 @@ ROLES = {
     "ceiling_return": "Ceiling return grilles",
     "floor_tile": "Raised floor plates",
     "containment": "Aisle containment",
+    "distribution_loss": "Power distribution",
 }
+
+
+#: How a component is drawn on the page. The pattern is generated from the
+#: component's own numbers, so the open fraction of the swatch IS its free
+#: area -- a photograph would look more like the product and say less about
+#: the one quantity that decides anything (ADR-049).
+PATTERNS = ("woven", "eggcrate", "perforated", "slotted", "joint", "none")
 
 
 class UnknownComponent(LookupError):
@@ -52,8 +60,21 @@ class Component:
     id: str
     name: str
     role: str
-    free_area: float
-    """Open area over gross area. The one number that decides the pressure."""
+    free_area: float | None = None
+    """Open area over gross area. The one number that decides the pressure.
+    None for a component that is not a surface at all."""
+    kind: str = "surface"
+    """`surface` -- something the air passes through, described by a free area.
+    `load` -- heat the room carries that is not in a rack, described by a share
+    of the IT load (ADR-049)."""
+    share: float | None = None
+    """For a `load`: the fraction of the IT load it dissipates."""
+    applied: bool = True
+    """False where the library holds the number but the solver does not use it
+    yet. Said on the page rather than left for a reader to discover from a
+    result that does not move."""
+    pattern: str = "none"
+    """Which aperture the page draws for it."""
     size: tuple[float, float] | None = None
     """Face of one piece, in metres, where the surface is made of pieces."""
     aperture: str | None = None
@@ -69,10 +90,16 @@ class Component:
     note: str = ""
 
     @property
-    def k(self) -> float:
-        """Loss coefficient on the face velocity over the gross area."""
+    def k(self) -> float | None:
+        """Loss coefficient on the face velocity over the gross area.
+
+        None for a component that is not a surface: a share of the IT load has
+        no face for air to cross.
+        """
         from aicfd.model import grille_loss_coefficient
 
+        if self.kind != "surface" or self.free_area is None:
+            return None
         if self.loss_coefficient is not None:
             return float(self.loss_coefficient)
         return grille_loss_coefficient(self.free_area)
@@ -88,10 +115,14 @@ class Component:
             "role": self.role,
             "role_label": self.role_label,
             "free_area": self.free_area,
+            "kind": self.kind,
+            "share": self.share,
+            "applied": self.applied,
+            "pattern": self.pattern,
             "size": list(self.size) if self.size else None,
             "aperture": self.aperture,
             "loss_coefficient": self.loss_coefficient,
-            "k": round(self.k, 4),
+            "k": round(self.k, 4) if self.k is not None else None,
             "fixed": self.fixed,
             "adjustable": list(self.adjustable) if self.adjustable else None,
             "note": self.note,
@@ -127,15 +158,27 @@ def load(component: str) -> Component:
 
 
 def parse(raw: dict, source: Path | None = None) -> Component:
-    missing = [k for k in ("id", "role", "free_area") if raw.get(k) is None]
+    where = f" in {source}" if source else ""
+    kind = str(raw.get("kind") or "surface")
+    if kind not in ("surface", "load"):
+        raise ValueError(f"component{where} has an unknown kind {kind!r}")
+    required = ("id", "role", "free_area") if kind == "surface" else ("id", "role", "share")
+    missing = [k for k in required if raw.get(k) is None]
     if missing:
-        where = f" in {source}" if source else ""
         raise ValueError(f"component{where} is missing: {', '.join(missing)}")
-    free = float(raw["free_area"])
-    if not 0 < free <= 1:
+    free = float(raw["free_area"]) if raw.get("free_area") is not None else None
+    if free is not None and not 0 < free <= 1:
         raise ValueError(
             f"free_area is a ratio of open to gross area, so 0 < x <= 1; got {free}"
         )
+    share = float(raw["share"]) if raw.get("share") is not None else None
+    if share is not None and not 0 <= share < 1:
+        raise ValueError(
+            f"share is a fraction of the IT load, so 0 <= x < 1; got {share}"
+        )
+    pattern = str(raw.get("pattern") or "none")
+    if pattern not in PATTERNS:
+        raise ValueError(f"component{where} draws an unknown pattern {pattern!r}")
     size = raw.get("size")
     span = raw.get("adjustable")
     return Component(
@@ -143,6 +186,10 @@ def parse(raw: dict, source: Path | None = None) -> Component:
         name=str(raw.get("name") or raw["id"]),
         role=str(raw["role"]),
         free_area=free,
+        kind=kind,
+        share=share,
+        applied=bool(raw.get("applied", True)),
+        pattern=pattern,
         size=tuple(float(v) for v in size) if size else None,
         aperture=raw.get("aperture"),
         loss_coefficient=(float(raw["loss_coefficient"])
@@ -159,6 +206,7 @@ def parse(raw: dict, source: Path | None = None) -> Component:
 EDITABLE = (
     "name",
     "free_area",
+    "share",
     "loss_coefficient",
     "aperture",
     "note",

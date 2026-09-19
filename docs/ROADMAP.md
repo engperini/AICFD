@@ -99,6 +99,11 @@ commissioned to answer and AICFD cannot yet say.
   with the peak-to-peak range and drift of the monitors inside it.
 - **Leakage.** Containment is modelled as perfect. Real containment leaks, and
   the leak is what decides the top-of-rack temperature in a marginal design.
+  The figure is now stated — 5 % permeability, on the components page — and
+  the page says it is not yet read by the solver. What is missing is the
+  panels becoming porous baffles instead of walls, and `sealed_envelope`
+  learning that a containment carrying flow is the design rather than a
+  fault.
 - **Rack fans.** A rack is a resistance today, so a rack in a pressure trough
   passes less air than its load needs instead of pulling harder. The 10 MW hall
   shows this at the first rack of every row. Momentum sources would fix it.
@@ -108,7 +113,13 @@ commissioned to answer and AICFD cannot yet say.
   Unloaded positions are porous media without a source, and where they sit
   decides how evenly the units load.
 - **Ancillary heat that is not in a rack** — PDU dissipation as a share of the
-  IT load, released in its own zone.
+  IT load, released in its own zone. The figure is stated — 2 %, on the
+  components page, editable — and marked as not yet read by the solver. Two
+  per cent of a 5 MW hall is 100 kW, a fan wall's worth, so a model that
+  counts only rack load undercounts the room by about one unit. What is
+  missing is a zone for the distribution equipment and a source in it: the
+  heat arrives in the room rather than at a rack face, so it reaches a rack
+  inlet only through the room.
 - **A refinement study upward** from the working mesh: the coarse-versus-fine
   comparison so far went *coarser* and agreed, which is evidence but not a
   convergence study.
