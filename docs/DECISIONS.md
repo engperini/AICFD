@@ -1329,3 +1329,40 @@ which lands near 34 °C — *below the table*. The design rule and the unit's
 characterisation are inconsistent by about 8 %, and the tool will refuse to
 extrapolate into the gap rather than paper over it. The fix is two more
 selections, at 33 and 34 °C.
+
+## ADR-037 — A unit's identity is editable; a new name is a new unit
+
+*2026-09-19*
+
+The equipment page started out able to edit one thing: the capacity table.
+Everything else about a unit — who makes it, what it is called, how big it is,
+how many fans it has, what conditions it was selected at, what its P–Q curve
+is — could only be changed by opening the YAML file. That was the wrong line to
+draw. The same coil is routinely sold under two names, and a study that adopts
+a manufacturer's selections while calling the machine by a different part
+number is an ordinary, honest thing to want. All of it is editable now.
+
+**The model name is the exception, and it is not editable — it is
+duplicable.** A case file names its unit by model. Renaming a unit in place
+would quietly break every spec pointing at the old name, and the breakage would
+surface as a missing-file error in some later run rather than at the moment the
+decision was made. So the page offers *Save as new unit*: the file is copied
+under the new name, the edits land on the copy, and the original is left exactly
+as it was. Both units then exist, which is what is actually wanted — one for the
+studies already run, one for the new work.
+
+**The copy says where it came from, in a comment, not a field.** A table whose
+numbers were selected for another machine has to admit that somewhere. A field
+would invite the software to reason about it; a comment puts it in front of the
+person who opens the file, which is who the warning is for.
+
+**Writing is surgical, down to the comment column.** Every field is swapped
+into the file textually — indentation and trailing comment preserved, the
+comment left at the column it was hand-aligned to — so reading a unit and
+saving it straight back leaves the file byte for byte as it was. This is
+tested. It matters because the alternative is a page that silently reformats a
+provenance-carrying file every time someone opens it and presses Save, and a
+diff nobody can read is a diff nobody checks.
+
+**An emptied number means absent, not zero.** A weight nobody filled in stays
+absent rather than becoming 0 kg.

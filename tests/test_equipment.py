@@ -213,14 +213,9 @@ class CoilCapacityTest(unittest.TestCase):
         self.assertEqual(post.coil_capacity(plain, self._fans((38.0, 500.0)), {}), {})
 
 
-class SaveTest(unittest.TestCase):
-    """Editing the table must not cost the file its provenance.
-
-    An equipment file's comments say which selections the numbers came from,
-    who issued them and at what conditions. `yaml.safe_dump` would rewrite
-    the file and throw all of that away, and a table of numbers nobody can
-    trace is worth less than no table.
-    """
+class LibraryCopy(unittest.TestCase):
+    """A scratch library holding the real shipped unit, restored after each
+    test, so writing tests never touch the repository's own file."""
 
     def setUp(self):
         import shutil
@@ -240,6 +235,16 @@ class SaveTest(unittest.TestCase):
 
     def _rows(self):
         return [dict(row) for row in equipment.load("CA80NPVG6").capacity]
+
+
+class SaveTest(LibraryCopy):
+    """Editing a unit must not cost the file its provenance.
+
+    An equipment file's comments say which selections the numbers came from,
+    who issued them and at what conditions. `yaml.safe_dump` would rewrite
+    the file and throw all of that away, and a table of numbers nobody can
+    trace is worth less than no table.
+    """
 
     def test_an_edit_keeps_every_comment(self):
         rows = self._rows()
@@ -271,3 +276,157 @@ class SaveTest(unittest.TestCase):
         equipment.save("CA80NPVG6", {"capacity": rows[:3]})
         self.assertEqual(len(equipment.load("CA80NPVG6").capacity), 3)
         self.assertIn("Ascenty SP06", self.path.read_text())
+
+    def test_the_identity_fields_are_editable(self):
+        """The same coil is very often sold under two names. Changing the one
+        on the label must not mean retyping the selections."""
+        unit = equipment.load("CA80NPVG6").to_dict()
+        equipment.save(
+            "CA80NPVG6",
+            {**unit, "family": "Ascenty CoolWall", "weight_kg": 3100,
+             "fans": {**unit["fans"], "count": 10, "type": "EC plug fan"}},
+        )
+        after = equipment.load("CA80NPVG6")
+        self.assertEqual(after.family, "Ascenty CoolWall")
+        self.assertEqual(after.weight_kg, 3100)
+        self.assertEqual(after.fans["count"], 10)
+        self.assertEqual(after.fans["type"], "EC plug fan")
+        self.assertEqual(after.fans["module"], unit["fans"]["module"])  # untouched
+        self.assertIn("Ascenty SP06", self.path.read_text())
+
+    def test_the_selection_conditions_are_editable(self):
+        unit = equipment.load("CA80NPVG6").to_dict()
+        equipment.save(
+            "CA80NPVG6",
+            {**unit, "selection": {**unit["selection"], "esp_pa": 150}},
+        )
+        self.assertEqual(equipment.load("CA80NPVG6").selection["esp_pa"], 150)
+        self.assertEqual(
+            self.path.read_text().count("#"), self.before.count("#")
+        )
+
+    def test_the_curve_is_editable(self):
+        unit = equipment.load("CA80NPVG6").to_dict()
+        points = [[0, 280], [130000, 110], [180000, 0]]
+        equipment.save(
+            "CA80NPVG6", {**unit, "curve": {"measured": True, "points": points}}
+        )
+        after = equipment.load("CA80NPVG6")
+        self.assertTrue(after.curve["measured"])
+        self.assertEqual([list(p) for p in after.curve["points"]], points)
+        self.assertIn("Ascenty SP06", self.path.read_text())
+
+    def test_saving_a_unit_unchanged_changes_nothing_at_all(self):
+        """Not one byte, comment alignment included: a page that reads a unit
+        and writes it straight back must leave the file alone."""
+        equipment.save("CA80NPVG6", equipment.load("CA80NPVG6").to_dict())
+        self.assertEqual(self.path.read_text(), self.before)
+
+    def test_an_edit_and_its_undo_leave_the_file_as_it_was(self):
+        unit = equipment.load("CA80NPVG6").to_dict()
+        equipment.save(
+            "CA80NPVG6", {**unit, "selection": {**unit["selection"], "esp_pa": 120}}
+        )
+        self.assertNotEqual(self.path.read_text(), self.before)
+        equipment.save("CA80NPVG6", unit)
+        self.assertEqual(self.path.read_text(), self.before)
+
+
+class SaveAsTest(LibraryCopy):
+    """A new name is a new unit.
+
+    Renaming in place would break every case file pointing at the old name
+    without saying so, and both units normally have to exist anyway: one for
+    the studies already run, one for the new work.
+    """
+
+    def test_it_copies_the_unit_under_the_new_name(self):
+        unit = equipment.load("CA80NPVG6").to_dict()
+        made = equipment.save_as("CW80-A", "CA80NPVG6", {**unit, "family": "Reseller"})
+        self.assertEqual(made.model, "CW80-A")
+        self.assertEqual(made.family, "Reseller")
+        self.assertEqual(
+            [dict(r) for r in made.capacity],
+            [dict(r) for r in equipment.load("CA80NPVG6").capacity],
+        )
+        self.assertIn("CW80-A", equipment.available())
+
+    def test_the_source_unit_is_left_exactly_as_it_was(self):
+        equipment.save_as(
+            "CW80-A", "CA80NPVG6",
+            {**equipment.load("CA80NPVG6").to_dict(), "family": "Reseller"},
+        )
+        self.assertEqual(self.path.read_text(), self.before)
+
+    def test_the_copy_keeps_the_provenance_and_says_where_it_came_from(self):
+        equipment.save_as("CW80-A", "CA80NPVG6", equipment.load("CA80NPVG6").to_dict())
+        text = (equipment.LIBRARY / "CW80-A.yaml").read_text()
+        self.assertIn("Ascenty SP06", text)
+        self.assertIn("Copied from CA80NPVG6", text)
+
+    def test_it_refuses_a_name_the_library_already_has(self):
+        with self.assertRaises(ValueError):
+            equipment.save_as(
+                "CA80NPVG6", "CA80NPVG6", equipment.load("CA80NPVG6").to_dict()
+            )
+        self.assertEqual(self.path.read_text(), self.before)
+
+    def test_it_refuses_a_name_that_is_a_path(self):
+        for name in ("", "../escape", "sub/unit"):
+            with self.assertRaises(ValueError):
+                equipment.save_as(
+                    name, "CA80NPVG6", equipment.load("CA80NPVG6").to_dict()
+                )
+
+    def test_a_copy_that_does_not_parse_is_not_left_behind(self):
+        rows = [dict(r) for r in equipment.load("CA80NPVG6").capacity]
+        rows[1]["return_c"] = rows[0]["return_c"]
+        with self.assertRaises(ValueError):
+            equipment.save_as("CW80-A", "CA80NPVG6", {"capacity": rows})
+        self.assertNotIn("CW80-A", equipment.available())
+
+
+class EndpointTest(LibraryCopy):
+    """What the equipment page posts, and what comes back to it."""
+
+    def test_a_save_writes_the_unit_and_returns_it(self):
+        from aicfd.server import read_equipment, write_equipment
+
+        draft = read_equipment("CA80NPVG6")["unit"]
+        payload = write_equipment(
+            "CA80NPVG6", {**draft, "family": "Reseller", "save_as": ""}
+        )
+        self.assertEqual(payload["unit"]["model"], "CA80NPVG6")
+        self.assertEqual(payload["unit"]["family"], "Reseller")
+        self.assertEqual(equipment.load("CA80NPVG6").family, "Reseller")
+
+    def test_a_save_as_makes_a_new_unit_and_returns_that_one(self):
+        from aicfd.server import read_equipment, write_equipment
+
+        draft = read_equipment("CA80NPVG6")["unit"]
+        payload = write_equipment(
+            "CA80NPVG6", {**draft, "family": "Reseller", "save_as": "CW80-A"}
+        )
+        self.assertEqual(payload["unit"]["model"], "CW80-A")
+        self.assertIn("CW80-A", payload["models"])
+        self.assertEqual(equipment.load("CA80NPVG6").family, draft["family"])
+
+    def test_save_as_under_the_same_name_is_an_ordinary_save(self):
+        """Not an error: the name box simply still holds this unit's name."""
+        from aicfd.server import read_equipment, write_equipment
+
+        draft = read_equipment("CA80NPVG6")["unit"]
+        payload = write_equipment(
+            "CA80NPVG6", {**draft, "weight_kg": 3100, "save_as": "CA80NPVG6"}
+        )
+        self.assertEqual(payload["unit"]["weight_kg"], 3100)
+
+    def test_the_draft_the_page_reads_writes_back_byte_for_byte(self):
+        """The page's round trip, in full: whatever `read_equipment` hands the
+        page must come back through `write_equipment` without disturbing the
+        file — otherwise opening a unit and pressing Save would rewrite it."""
+        from aicfd.server import read_equipment, write_equipment
+
+        write_equipment("CA80NPVG6", {**read_equipment("CA80NPVG6")["unit"],
+                                      "save_as": ""})
+        self.assertEqual(self.path.read_text(), self.before)

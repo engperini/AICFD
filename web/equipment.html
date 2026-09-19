@@ -72,11 +72,32 @@
     font-variant-numeric:tabular-nums}
   tbody input:focus{outline:2px solid var(--series-1);outline-offset:-1px}
   .facts{width:100%;border-collapse:collapse;font-size:12.5px}
-  .facts td{padding:5px 16px;border-bottom:1px solid var(--grid)}
+  .facts td,.facts th{padding:5px 16px;border-bottom:1px solid var(--grid)}
   .facts td:first-child{color:var(--text-secondary)}
-  .facts tr:last-child td{border-bottom:none}
-  .actions{display:flex;gap:8px;align-items:center;padding:12px 16px;
-    border-top:1px solid var(--border)}
+  .facts tbody tr:last-child td{border-bottom:none}
+  .facts td.fixed{text-align:right;font-variant-numeric:tabular-nums}
+  .facts td:has(.field){padding:4px 10px 4px 0}
+  .facts .field{display:flex;gap:6px;align-items:baseline;justify-content:flex-end}
+  .facts .field input{width:100%;padding:3px 6px;border-radius:6px;
+    font:inherit;font-size:12.5px;text-align:right;background:var(--page);
+    color:var(--text-primary);border:1px solid var(--border);
+    font-variant-numeric:tabular-nums;min-width:0}
+  .facts .field input[type=number]{max-width:110px}
+  .facts .field input:focus{outline:2px solid var(--series-1);outline-offset:-1px}
+  .facts .suffix{color:var(--text-muted);font-size:11.5px;min-width:18px}
+  .facts td:has(.stacked){padding:8px 16px}
+  .facts .stacked{display:flex;flex-direction:column;gap:4px}
+  .facts .stacked span{color:var(--text-secondary)}
+  .facts .stacked input{width:100%;text-align:left;padding:4px 8px;
+    border-radius:6px;font:inherit;font-size:12.5px;background:var(--page);
+    color:var(--text-primary);border:1px solid var(--border)}
+  .facts .stacked input:focus{outline:2px solid var(--series-1);outline-offset:-1px}
+  .actions input[type=text]{font:inherit;font-size:13px;padding:5px 10px;
+    border-radius:8px;background:var(--page);color:var(--text-primary);
+    border:1px solid var(--border);width:170px}
+  .actions input[type=text]:focus{outline:2px solid var(--series-1);outline-offset:-1px}
+  .actions{display:flex;gap:8px;align-items:center;flex-wrap:wrap;
+    padding:12px 16px;border-top:1px solid var(--border)}
   .note{color:var(--text-muted);font-size:11.5px}
   .chart{display:block;width:100%;height:auto;background:var(--paper)}
   .error{margin:32px auto;max-width:640px;padding:20px;border-radius:12px;

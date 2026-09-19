@@ -384,6 +384,25 @@ def read_equipment(model: str | None) -> dict:
     return {"models": models, "unit": unit.to_dict()}
 
 
+def write_equipment(model: str, body: dict) -> dict:
+    """Write the page's draft back, over this unit or into a new one.
+
+    A `save_as` name means a copy: renaming a unit in place would break every
+    case file pointing at the old name without saying so, and both units
+    usually have to exist anyway -- one for the studies already run, one for
+    the new work.
+    """
+    from aicfd import equipment as library
+
+    changes = {k: v for k, v in body.items() if k != "save_as"}
+    fresh = (body.get("save_as") or "").strip()
+    if fresh and fresh != model:
+        library.save_as(fresh, model, changes)
+        return read_equipment(fresh)
+    library.save(model, changes)
+    return read_equipment(model)
+
+
 def stop_run(name: str) -> dict:
     """Ask the running solve to stop cleanly, OpenFOAM's own way.
 
@@ -532,15 +551,9 @@ class Handler(SimpleHTTPRequestHandler):
             return self._json(self._safely(update))
 
         if self.path.startswith("/api/equipment"):
-            name = self._query("model")
-
-            def store():
-                from aicfd import equipment as library
-
-                library.save(name, body)
-                return read_equipment(name)
-
-            return self._json(self._safely(store))
+            return self._json(
+                self._safely(write_equipment, self._query("model"), body)
+            )
 
         if self.path.startswith("/api/stop"):
             return self._json(self._safely(stop_run, self.case_name))

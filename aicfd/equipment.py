@@ -194,65 +194,231 @@ def parse(raw: dict, source: Path | None = None) -> Equipment:
     )
 
 
+#: The fields the page may edit, as dotted paths into the file. `model` is not
+#: here on purpose: renaming a unit in place would silently break every spec
+#: that points at the old name, so a new name is a NEW FILE (`save_as`).
+EDITABLE = (
+    "family",
+    "size",
+    "weight_kg",
+    "fans.count",
+    "fans.type",
+    "fans.module",
+    "fans.modulation",
+    "selection.elevation_m",
+    "selection.esp_pa",
+    "selection.entering_water_c",
+    "selection.leaving_water_c",
+    "selection.entering_air_rh",
+    "curve.measured",
+)
+
+#: These files are written with two spaces per level, and the surgical editing
+#: below relies on it. Anything hand-written that uses a different indent will
+#: simply not be found, and the value will be left alone rather than corrupted.
+INDENT = "  "
+
+
 def save(model: str, raw: dict) -> Equipment:
-    """Write an edited capacity table back, keeping the rest of the file.
+    """Write edits back, keeping every comment in the file.
 
-    Parsed first on purpose: a table edited into an invalid state must fail
-    before it replaces a good one on disk.
+    Parsed first: a table edited into an invalid state must fail before it
+    replaces a good one on disk.
 
-    Then the rows are swapped in *textually*, because `yaml.safe_dump` would
+    Then each field is swapped in *textually*, because `yaml.safe_dump` would
     rewrite the whole file and throw away every comment in it — and in an
     equipment file the comments are the provenance: which selections these
-    numbers came from, who issued them, on what date, at what conditions.
-    A table of numbers nobody can trace is worth less than no table (ADR-036).
+    numbers came from, who issued them, on what date, at what conditions. A
+    table of numbers nobody can trace is worth less than no table (ADR-036).
     """
-    unit = parse({**raw, "model": model})
+    current = yaml.safe_load(path_for(model).read_text()) if path_for(model).is_file() else {}
+    unit = parse(_merge(current, {**raw, "model": model}))
     path = path_for(model)
     path.parent.mkdir(parents=True, exist_ok=True)
-    rows = [
-        "  - {"
-        + ", ".join(
-            f"{key}: {_number(row[key])}" for key in ("return_c", *QUANTITIES)
+    if not path.is_file():
+        path.write_text(_fresh(unit, raw))
+        return unit
+
+    lines = path.read_text().splitlines()
+    for dotted in EDITABLE:
+        value = _dig(raw, dotted.split("."))
+        if value is not None:
+            _set(lines, dotted.split("."), value)
+    if raw.get("capacity") is not None:
+        _replace_list(lines, ["capacity"], [_row(r) for r in unit.capacity])
+    points = (raw.get("curve") or {}).get("points")
+    if points is not None:
+        _replace_list(
+            lines, ["curve", "points"],
+            [f"{INDENT * 2}- [{_number(q)}, {_number(p)}]" for q, p in points],
         )
-        + "}"
-        for row in unit.capacity
-    ]
-    if path.is_file():
-        path.write_text(_replace_block(path.read_text(), "capacity", rows))
-    else:
-        path.write_text(
-            yaml.safe_dump({**raw, "model": model}, sort_keys=False, allow_unicode=True)
-        )
+    path.write_text("\n".join(lines) + "\n")
     return unit
+
+
+def save_as(new_model: str, source_model: str, raw: dict) -> Equipment:
+    """Copy a unit under a new name, then apply the edits to the copy.
+
+    The case for this is the ordinary one: the same coil sold by a different
+    manufacturer, or the same machine under a new part number. Renaming in
+    place would break every spec pointing at the old name without saying so,
+    and both units usually need to exist anyway — one for the studies already
+    run, one for the new work.
+
+    The copy carries a line saying where it came from, because a table whose
+    numbers were measured on another machine has to say so somewhere.
+    """
+    if not new_model or "/" in new_model or "\\" in new_model:
+        raise ValueError(f"{new_model!r} is not a usable model name")
+    target = path_for(new_model)
+    if target.exists():
+        raise ValueError(f"{new_model} already exists in the library")
+    source = path_for(source_model)
+    if not source.is_file():
+        raise UnknownModel(f"no equipment file for {source_model!r}")
+    lines = source.read_text().splitlines()
+    _set(lines, ["model"], new_model)
+    header = (
+        f"# Copied from {source_model}. Every number below is that unit's",
+        "# until someone replaces it: check the selections before quoting this",
+        "# machine's capacity from them.",
+        "#",
+    )
+    target.parent.mkdir(parents=True, exist_ok=True)
+    target.write_text("\n".join([*header, *lines]) + "\n")
+    try:
+        return save(new_model, raw)
+    except Exception:
+        target.unlink(missing_ok=True)  # never leave a broken copy behind
+        raise
+
+
+# --- writing into a file without disturbing it --------------------------------
+
+
+def _merge(base: dict, changes: dict) -> dict:
+    """`changes` over `base`, one level deep into each mapping."""
+    out = dict(base)
+    for key, value in changes.items():
+        if isinstance(value, dict) and isinstance(out.get(key), dict):
+            out[key] = {**out[key], **value}
+        else:
+            out[key] = value
+    return out
+
+
+def _dig(data: dict, path: list[str]):
+    for key in path:
+        if not isinstance(data, dict):
+            return None
+        data = data.get(key)
+    return data
+
+
+def _row(row: dict) -> str:
+    return (
+        f"{INDENT}- {{"
+        + ", ".join(f"{k}: {_number(row[k])}" for k in ("return_c", *QUANTITIES))
+        + "}"
+    )
 
 
 def _number(value: float) -> str:
     """Round-trip a float without a trailing `.0` on whole numbers."""
-    return f"{value:g}"
+    return f"{float(value):g}"
 
 
-def _replace_block(text: str, key: str, rows: list[str]) -> str:
-    """Swap the list under ``key:`` for ``rows``, leaving everything else.
+def _render(value) -> str:
+    if isinstance(value, bool):
+        return "true" if value else "false"
+    if isinstance(value, (int, float)):
+        return _number(value)
+    if isinstance(value, (list, tuple)):
+        return "[" + ", ".join(_render(v) for v in value) + "]"
+    text = str(value)
+    return text if text and not any(c in text for c in ":#") else yaml.safe_dump(
+        text, default_flow_style=True
+    ).strip().rstrip("\n...").strip()
 
-    Everything else includes the comment lines between ``key:`` and its first
+
+def _find(lines: list[str], path: list[str]) -> int | None:
+    """The line holding ``path``, or None when the file does not have it."""
+    start = 0
+    found = None
+    for level, key in enumerate(path):
+        prefix = f"{INDENT * level}{key}:"
+        found = None
+        for i in range(start, len(lines)):
+            line = lines[i]
+            if line.startswith(prefix) and (
+                len(line) == len(prefix) or line[len(prefix)] in " \t"
+            ):
+                found = i
+                break
+            stripped = line.strip()
+            if level and stripped and not stripped.startswith("#") and not line.startswith(
+                INDENT * level
+            ):
+                return None  # left the parent block without finding it
+        if found is None:
+            return None
+        start = found + 1
+    return found
+
+
+def _set(lines: list[str], path: list[str], value) -> bool:
+    """Replace one scalar, keeping its indentation and trailing comment.
+
+    The comment keeps its column too, so editing one field and putting it
+    back leaves the file byte for byte as it was. The alignment in these
+    files is hand-made and worth that much care; when the new value is too
+    wide for the old column, two spaces is the fallback.
+    """
+    index = _find(lines, path)
+    if index is None:
+        return False
+    line = lines[index]
+    head, _, rest = line.partition(":")
+    written = f"{head}: {_render(value)}"
+    if "#" not in rest:
+        lines[index] = written.rstrip()
+        return True
+    column = len(line) - len(rest.partition("#")[2]) - 1
+    lines[index] = written.ljust(max(column, len(written) + 2)) + "#" + rest.partition("#")[2]
+    return True
+
+
+def _replace_list(lines: list[str], path: list[str], rows: list[str]) -> None:
+    """Swap the list under ``path`` for ``rows``, leaving everything else.
+
+    Everything else includes the comment lines between the key and its first
     item, which is where the column meanings are written.
     """
-    lines = text.splitlines()
-    try:
-        start = next(i for i, line in enumerate(lines) if line.strip() == f"{key}:")
-    except StopIteration as error:
-        raise ValueError(f"no {key}: block to replace") from error
+    index = _find(lines, path)
+    if index is None:
+        raise ValueError(f"no {'.'.join(path)} block to replace")
     first = next(
-        (i for i in range(start + 1, len(lines)) if lines[i].lstrip().startswith("- ")),
+        (i for i in range(index + 1, len(lines)) if lines[i].lstrip().startswith("- ")),
         None,
     )
     if first is None:
-        raise ValueError(f"the {key}: block has no items")
+        raise ValueError(f"the {'.'.join(path)} block has no items")
     end = first
-    while end < len(lines) and (
-        lines[end].lstrip().startswith("- ") or not lines[end].strip()
-    ):
-        if not lines[end].strip():
-            break
+    while end < len(lines) and lines[end].lstrip().startswith("- "):
         end += 1
-    return "\n".join([*lines[:first], *rows, *lines[end:]]) + "\n"
+    lines[first:end] = rows
+
+
+def _fresh(unit: Equipment, raw: dict) -> str:
+    """A whole file, for a unit the library has never seen."""
+    body = {
+        "model": unit.model,
+        "family": unit.family,
+        "size": list(unit.size),
+        **({"weight_kg": unit.weight_kg} if unit.weight_kg else {}),
+        **({"fans": unit.fans} if unit.fans else {}),
+        **({"selection": unit.selection} if unit.selection else {}),
+        "capacity": [dict(row) for row in unit.capacity],
+        **({"curve": unit.curve} if unit.curve else {}),
+    }
+    return yaml.safe_dump(body, sort_keys=False, allow_unicode=True)
