@@ -1680,12 +1680,17 @@ full set recovers for a finned chilled-water coil, and which a manufacturer's
 own figure overrides through `coil.air_split`. The two paths agree to 0,01 %
 across the range: the extra selections refine a second-order term.
 
-**The report stops counting selections.** It gives the design selection, the
-coil recovered from it, and — where the unit carries them — the further
-selections and the error against them. Every sentence that reported how many
-selections were used, that a return fell outside them, or that a point was
-missing from a curve has gone: those belong to the work that produced the
-method, and this record is where that lives.
+**The report carries one selection.** It gives the design selection, the coil
+recovered from it, and the coil's properties. Every sentence that counted
+selections, reported that a return fell outside them, or noted a point missing
+from a curve has gone, and so has the table of the further ones: those belong
+to the work that produced the method, and this record is where that lives. A
+study runs on the selection the engineer was issued — printing seven invites
+the reader to go and find six more for the next machine. The unit's file still
+holds them and the fit still uses them; the document does not.
+
+A test asserts the word *selections* appears nowhere in the document, because
+that plural is how the theme creeps back.
 
 **The capacity figure shows two curves and no table.** The coil at the air
 flow it was selected for, with the design selection sitting on it, and the
@@ -1813,6 +1818,13 @@ hall with a gallery at each end gets both right without a special case.
 outline rather than a fill over a field map, where a translucent rectangle
 would tint the temperatures beneath it. It is the machine's extent, not a
 surface anything was solved across, and it should not read as one.
+
+**The report's figures draw it too.** They are matplotlib rather than SVG, so
+the envelope had to be written twice — the plan and the section along the hall
+each set it back behind the fan's face. A result exported before the depth
+reached the payload falls back to the library, which is where the number came
+from, so a report on an older run draws the machine rather than the plane the
+solver saw.
 
 ---
 

@@ -154,6 +154,21 @@ class Export:
             self._equipment = None  # renamed or removed since the run
         return self._equipment
 
+    @property
+    def fan_depth(self) -> float | None:
+        """How far a unit reaches back into the mechanical gallery.
+
+        Drawn, never meshed (ADR-046). The model payload carries it; an export
+        written before it did falls back to the library, which is where the
+        number came from anyway -- so a report on an older result draws the
+        machine too, rather than the plane the solver saw.
+        """
+        stated = self.model.get("fan_depth_m")
+        if stated:
+            return float(stated)
+        size = getattr(self.equipment, "size", None)
+        return float(size[1]) if size and len(size) > 1 and size[1] else None
+
     def panels(self, *prefixes: str) -> list[dict]:
         return [
             p
@@ -228,6 +243,18 @@ def _outline(ax, lo, hi, h, v, **kwargs):
     )
 
 
+def _fan_body(ax, x0, y0, dx, dy):
+    """The unit's envelope, set back into the gallery behind its face.
+
+    Outlined rather than filled: it sits over a temperature field, and a
+    translucent rectangle would tint the temperatures underneath it.
+    """
+    from matplotlib.patches import Rectangle
+
+    ax.add_patch(Rectangle((x0, y0), dx, dy, fill=False, edgecolor=FAN,
+                           linewidth=0.7, linestyle=(0, (3, 2))))
+
+
 def plan(export: Export, out: Path, z: float, title: str) -> Path:
     """Temperature in plan at height ``z``, with the room drawn over it.
 
@@ -261,8 +288,17 @@ def plan(export: Export, out: Path, z: float, title: str) -> Path:
     for x in model.get("dividers", [model["hall"]["lo"][0]]):
         line = ([0, span], [x, x]) if turned else ([x, x], [0, rise])
         ax.plot(*line, color=INK, linewidth=1.4)
+    depth = export.fan_depth
     for i, panel in enumerate(fans):
         at, lo, hi = panel["position"], panel["lo"][1], panel["hi"][1]
+        if depth:
+            # Behind its own face, on the side `sign` says the gallery is.
+            back = at - depth * panel.get("sign", 1)
+            near, far = min(at, back), max(at, back)
+            if turned:
+                _fan_body(ax, lo, near, hi - lo, far - near)
+            else:
+                _fan_body(ax, near, lo, far - near, hi - lo)
         line = ([lo, hi], [at, at]) if turned else ([at, at], [lo, hi])
         ax.plot(*line, color=FAN, linewidth=3.2, solid_capstyle="butt")
         if len(fans) <= 20:
@@ -310,15 +346,21 @@ def section(export: Export, out: Path, normal: int, at: float, title: str,
         for x in export.model.get("dividers", []):
             if abs(x - at) < 1e-6:
                 pass
+    depth = export.fan_depth
     for panel in export.panels("fan"):
         if normal == 0 and abs(panel["position"] - at) > 1e-6:
             continue
         lo, hi = (panel["lo"][h], panel["hi"][h])
-        ax.add_patch(
-            __import__("matplotlib.patches", fromlist=["Rectangle"]).Rectangle(
-                (lo, panel["lo"][2]), hi - lo, panel["hi"][2] - panel["lo"][2],
-                fill=False, edgecolor=FAN, linewidth=1.0)
-        )
+        z0, z1 = panel["lo"][2], panel["hi"][2]
+        # Looking across the hall (normal 1), x is on the page and the unit's
+        # depth with it. Looking along it (normal 0), depth is the direction
+        # being looked down, so there is nothing to draw.
+        if depth and h == 0:
+            back = panel["position"] - depth * panel.get("sign", 1)
+            near = min(panel["position"], back)
+            _fan_body(ax, near, z0, abs(depth), z1 - z0)
+        _outline(ax, (lo, 0, z0), (hi, 0, z1), 0, 2,
+                 edgecolor=FAN, linewidth=1.0)
     ax.set_xlim(0, span)
     ax.set_ylim(0, height)
     ax.set_aspect("equal")

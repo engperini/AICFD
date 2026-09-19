@@ -285,8 +285,8 @@ def _cover(doc, export: Export, client, author, title_text: str) -> None:
     unit = export.equipment
     if unit:
         # Named on the cover because every capacity number inside is that
-        # machine's, read off its own selections. A reader who disagrees with
-        # the unit can stop here.
+        # machine's, read off the coil its selection characterises. A reader
+        # who disagrees with the unit can stop here.
         _para(doc,
               f"Cooling plant · {len(export.model['fans'])} × "
               f"{unit.family} {unit.model}".strip(),
@@ -416,9 +416,9 @@ def _introduction(doc) -> None:
          "From here each unit is a machine the solution talks to, as "
          "section 1.5 describes."),
     ], widths=[4.0, 12.0],
-        note="Where the manufacturer issues further selections of the same "
-             "unit, they refine how the coil's resistance divides between air "
-             "and water and are then reproduced as a check.")
+        note="One selection is what the method needs. A manufacturer who "
+             "states the unit's own division of resistance between air and "
+             "water replaces the default in step 3.")
 
     _heading(doc, "1.5  Solving the room and the units together", 2)
     _para(doc,
@@ -513,10 +513,10 @@ def _summary(doc, export: Export) -> None:
         _para(doc,
               f"The cooling plant is {len(model['fans'])} × "
               f"{unit.family} {unit.model}. The quantities below are that "
-              f"machine's own manufacturer selections. Section 3 gives the "
-              f"conditions they were taken at and the "
-              f"capacity it has across the range of return air temperatures "
-              f"this hall produces.",
+              f"machine's own manufacturer selection. Section 3 gives the "
+              f"conditions it was taken at and the capacity the unit has "
+              f"across the range of return air temperatures this hall "
+              f"produces.",
               size=9.5, colour=SECOND)
     _table(doc, ["Quantity", "Value"], [
         ("Unit", f"{unit.family} {unit.model}".strip() if unit else "not named"),
@@ -735,8 +735,8 @@ def _unit_section(doc, export: Export, drawn: dict) -> None:
     that temperature, and a chilled-water coil transfers more when the air
     reaching it is warmer. Judging a plant against the catalogue figure
     therefore judges it against something the plant will not do, so this
-    report judges it against the manufacturer's whole set of selections
-    (ADR-036).
+    report judges it against the coil that selection characterises, at the
+    return air each unit was found to receive (ADR-036, ADR-042).
     """
     unit = export.equipment
     if unit is None:
@@ -758,7 +758,7 @@ def _unit_section(doc, export: Export, drawn: dict) -> None:
     if fans.get("module"):
         facts.append(("Fan module", str(fans["module"])))
     if fans.get("modulation") is not None:
-        facts.append(("Fan modulation in the selections",
+        facts.append(("Fan modulation at the selection",
                       f"{_num(fans['modulation'], 1)} %"))
     if unit.selection.get("elevation_m") is not None:
         facts.append(("Selected at site elevation",
@@ -788,25 +788,6 @@ def _unit_section(doc, export: Export, drawn: dict) -> None:
                  f"{_num(design.get('power_kw'), 1)} kW",
                  f"{_num(design['supply_c'], 1)} °C")],
                widths=[3.2, 3.2, 3.4, 3.2, 3.0])
-    if unit.capacity:
-        _para(doc,
-              f"The unit also carries {len(unit.capacity)} further "
-              f"manufacturer selections. They set how the coil's resistance "
-              f"divides between air and water, and the model reproduces them "
-              f"to the error given below.",
-              size=9.5)
-        _table(doc,
-               ["Return air", "Net sensible", "Airflow", "Power input",
-                "Supply air"],
-               [(f"{_num(r['return_c'], 1)} °C",
-                 f"{_num(r['nscc_kw'], 1)} kW",
-                 f"{_num(r['airflow_m3h'], 0)} m³/h",
-                 f"{_num(r['power_kw'], 1)} kW",
-                 f"{_num(r['supply_c'], 1)} °C")
-                for r in unit.capacity],
-               widths=[3.2, 3.2, 3.4, 3.2, 3.0],
-               note="The manufacturer's own selections, as issued. Nothing "
-                    "here is computed by AICFD.")
     if drawn.get("capacity"):
         _figure(doc, drawn["capacity"],
                 "Net sensible capacity against the air the unit receives. The "
@@ -849,17 +830,10 @@ def _coil_section(doc, export: Export) -> None:
         ("Air flow in this hall, against the design selection",
          f"{share} %" if share else "—"),
     ]
-    if coil.get("reference_selections"):
-        rows.append((
-            "Further manufacturer selections held",
-            f"{coil['reference_selections']}, reproduced to "
-            f"{_num(coil['reference_error_k'], 3)} K of supply air temperature",
-        ))
     _table(doc, ["Property of the coil", "Value"], rows, widths=[8.0, 8.0],
-           note="The resistance split is the value a full set of "
-                "manufacturer selections recovers for a finned chilled-water "
-                "coil, and it is an input where the manufacturer states the "
-                "unit's own.")
+           note="The resistance split is the usual one for a finned "
+                "chilled-water coil, and it is an input where the "
+                "manufacturer states the unit's own.")
 
 
 # --- 3 results ----------------------------------------------------------------

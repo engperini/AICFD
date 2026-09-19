@@ -218,6 +218,18 @@ class DocumentTest(unittest.TestCase):
         for phrase in ("CSV", "results page", "download"):
             self.assertNotIn(phrase, whole)
 
+    def test_the_unit_is_one_selection(self):
+        """A study runs on the selection the engineer was issued, and the coil
+        built from it. A set of further selections was how the method was
+        arrived at, not how it is used, and a report that carries them invites
+        a reader to go and find six more (ADR-042)."""
+        whole = self.text + "\n" + "\n".join(
+            c.text for tb in self.tables for r in tb.rows for c in r.cells
+        )
+        for phrase in ("selections", "further manufacturer", "whole set of"):
+            self.assertNotIn(phrase, whole)
+        self.assertIn("design selection", whole)
+
     def test_every_rack_is_in_the_annex_where_there_are_many(self):
         """Section 4.4 ranks the hall and shows the twelve that decide whether
         it passes; a reader asking what one rack breathes needs the rest, and
@@ -345,18 +357,35 @@ class UnitReportTest(_UnitReport):
         self.assertIn("Vertiv Liebert CWA CA80NPVG6", self.text)
         self.assertIn("14 × Vertiv Liebert CWA CA80NPVG6", self.text)
 
-    def test_section_2_gives_the_selections_and_the_conditions_behind_them(self):
+    def test_the_unit_is_given_with_the_conditions_behind_it(self):
         self.assertIn("The cooling unit", self.text)
         for condition in ("Entering chilled water", "Leaving chilled water",
                           "Selected at external static pressure"):
             self.assertIn(condition, self.cells)
 
-    def test_the_whole_capacity_table_is_printed(self):
+    def test_the_design_selection_is_printed(self):
+        """The one duty the plant was bought on. It is what the coil is built
+        from, so every capacity in section 4 rests on these five numbers and
+        a reader has to be able to check them (ADR-042)."""
+        from aicfd import equipment
+
+        design = equipment.load("CA80NPVG6").design
+        self.assertIn("The design selection", self.text)
+        self.assertIn(f"{design['nscc_kw']:,.1f} kW", self.cells)
+        self.assertIn(f"{design['airflow_m3h']:,.0f} m³/h", self.cells)
+        self.assertIn(f"{design['return_c']:,.1f} °C", self.cells)
+
+    def test_the_reference_selections_stay_out_of_the_document(self):
+        """The unit's file still holds them and the fit still used them, but a
+        study runs on one selection. Printing seven invites a reader to go and
+        find six more for the next machine."""
         from aicfd import equipment
 
         unit = equipment.load("CA80NPVG6")
-        for row in unit.capacity:
-            self.assertIn(f"{row['nscc_kw']:,.1f} kW", self.cells)
+        printed = [row for row in unit.capacity
+                   if f"{row['nscc_kw']:,.1f} kW" in self.cells
+                   and row["return_c"] != unit.design.get("return_c")]
+        self.assertEqual(printed, [])
 
     def test_the_capacity_figure_is_drawn(self):
         self.assertTrue((self.figures / "capacity.png").is_file())
