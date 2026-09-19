@@ -578,16 +578,31 @@ def capacity(export: Export, out: Path) -> Path | None:
                     textcoords="offset points", fontsize=6.5, color=SECOND)
 
     if off:
-        ax.axvspan(left, min(temps), color="#f4ecec", zorder=0)
-        ax.axvline(min(temps), color=BAD, linewidth=1.0,
-                   linestyle=(0, (3, 2)), zorder=2)
+        # Shade whichever side of the table the hall actually fell off. Both
+        # are possible -- a hall can return air colder than the coldest
+        # selection or hotter than the warmest -- and saying the wrong one
+        # would be worse than saying nothing.
+        below = [v for v in off if v < min(temps)]
+        above = [v for v in off if v > max(temps)]
+        if below:
+            ax.axvspan(left, min(temps), color="#f4ecec", zorder=0)
+            ax.axvline(min(temps), color=BAD, linewidth=1.0,
+                       linestyle=(0, (3, 2)), zorder=2)
+        if above:
+            ax.axvspan(max(temps), right, color="#f4ecec", zorder=0)
+            ax.axvline(max(temps), color=BAD, linewidth=1.0,
+                       linestyle=(0, (3, 2)), zorder=2)
         for temperature in off:
             ax.axvline(temperature, color=BAD, linewidth=0.6, alpha=0.5,
                        zorder=2)
+        side = ("below" if below and not above
+                else "above" if above and not below
+                else "outside")
         ax.annotate(
-            f"this hall returned {min(off):.1f}–{max(off):.1f} °C, below the "
+            f"this hall returned {min(off):.1f}–{max(off):.1f} °C, {side} the "
             f"selections — capacity not read",
-            xy=(min(temps), max(kw) * 1.06), xytext=(5, 0), ha="left",
+            xy=(min(temps) if below else left, max(kw) * 1.06),
+            xytext=(5, 0), ha="left",
             textcoords="offset points", fontsize=6.5, color=BAD)
 
     operating = [(f.get("return_temp_c"), f.get("available_kw"))

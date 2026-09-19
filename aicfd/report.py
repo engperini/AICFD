@@ -300,7 +300,8 @@ def _contents(doc) -> None:
     _heading(doc, "Contents", 1)
     for number, name, note in (
         ("1", "Summary", "Scope, objectives, basis of design and headline results"),
-        ("2", "Methodology", "Geometry, mesh, models and boundary conditions"),
+        ("2", "Methodology",
+         "Geometry, mesh, models, boundary conditions and the cooling unit"),
         ("3", "Results", "Verification, temperature and airflow fields, unit by unit"),
         ("4", "Conclusions", "Findings and what they do and do not support"),
         ("5", "Limitations", "What this model cannot be asked"),
@@ -899,7 +900,8 @@ def _conclusions(doc, export: Export) -> None:
         findings.append(
             f"{len(outside)} unit(s) returned air outside the selections this "
             f"machine was characterised at ({_num(span[0], 0)} °C to "
-            f"{_num(span[1], 0)} °C) — between {_num(min(outside), 1)} °C and "
+            f"{_num(span[1], 0)} °C) — they returned between "
+            f"{_num(min(outside), 1)} °C and "
             f"{_num(max(outside), 1)} °C — so the capacity actually available "
             f"to them could not be read and this report cannot state the "
             f"plant's true margin. AICFD refuses to extrapolate a coil curve "
