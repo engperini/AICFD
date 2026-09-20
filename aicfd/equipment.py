@@ -32,6 +32,7 @@ from aicfd.yamledit import (
     number,
     render,
     replace_list,
+    set_or_add,
     set_scalar,
 )
 
@@ -85,12 +86,19 @@ class Equipment:
     # --- the table ------------------------------------------------------------
 
     @property
-    def span(self) -> tuple[float, float]:
-        """The return temperatures the unit's selections cover."""
+    def span(self) -> tuple[float, float] | None:
+        """The return temperatures the unit's selections cover.
+
+        `None` where the unit states no selection at all. That is a unit
+        somebody has started and not finished, and it has to be readable --
+        the page that would let them finish it is served from here (ADR-065).
+        """
         if self.capacity:
             return (self.capacity[0]["return_c"], self.capacity[-1]["return_c"])
-        point = float(self.design["return_c"])
-        return (point, point)
+        point = self.design.get("return_c")
+        if point is None:
+            return None
+        return (float(point), float(point))
 
     def at(self, return_c: float, quantity: str) -> float:
         """One quantity at a return air temperature, interpolated.
@@ -102,6 +110,11 @@ class Equipment:
         """
         if quantity not in QUANTITIES:
             raise KeyError(f"{quantity!r} is not in the table; have {list(QUANTITIES)}")
+        if self.span is None:
+            raise OutsideTheTable(
+                f"{self.model} states no selection, so it has nothing to be "
+                f"read at {return_c:.2f} degC. Fill in its design selection."
+            )
         low, high = self.span
         if not low - 1e-9 <= return_c <= high + 1e-9:
             raise OutsideTheTable(
@@ -167,6 +180,8 @@ class Equipment:
         return getattr(self, "_coil_problem", None)
 
     def covers(self, return_c: float) -> bool:
+        if self.span is None:
+            return False
         low, high = self.span
         return low - 1e-9 <= return_c <= high + 1e-9
 
@@ -184,6 +199,10 @@ class Equipment:
                     "airflow_m3h": float(self.design["airflow_m3h"]),
                     "power_kw": float(self.design.get("power_kw") or 0.0),
                     "supply_c": float(self.design["supply_c"])}
+        if return_c is None and self.span is None:
+            from aicfd.coil import CannotFit
+
+            raise CannotFit(f"{self.model} states no selection to be sized from")
         target = self.span[1] if return_c is None else return_c
         return {"return_c": target,
                 **{q: self.at(target, q) for q in QUANTITIES}}
@@ -199,7 +218,7 @@ class Equipment:
             "design": self.design,
             "capacity": [dict(row) for row in self.capacity],
             "curve": self.curve,
-            "span": list(self.span),
+            "span": list(self.span) if self.span else None,
             "quantities": QUANTITIES,
         }
 
@@ -326,7 +345,7 @@ def save(model: str, raw: dict) -> Equipment:
     for dotted in EDITABLE:
         value = dig(raw, dotted.split("."))
         if value is not None:
-            set_scalar(lines, dotted.split("."), value)
+            set_or_add(lines, dotted.split("."), value)
     if raw.get("capacity") is not None:
         replace_list(lines, ["capacity"], [_row(r) for r in unit.capacity])
     points = (raw.get("curve") or {}).get("points")

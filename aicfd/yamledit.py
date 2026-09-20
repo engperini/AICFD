@@ -109,6 +109,29 @@ def set_scalar(lines: list[str], path: list[str], value) -> bool:
     return True
 
 
+def set_or_add(lines: list[str], path: list[str], value) -> None:
+    """Write a scalar, adding the key -- and its block -- when the file lacks it.
+
+    `set_scalar` can only change a key that is already there, and reports
+    False for one that is not. On a save path an ignored False is a value the
+    user typed, was told was saved, and then watched disappear on the next
+    read. A half-written unit is precisely the file whose keys are missing, so
+    the page that exists to finish it has to be able to add them (ADR-066).
+
+    The new key goes at the end of its block, after the keys already there and
+    the comments that belong to them; a block that does not exist at all is
+    created by `set_map`.
+    """
+    if set_scalar(lines, path, value):
+        return
+    parent, key = path[:-1], path[-1]
+    at = _insert_at(lines, parent)
+    if at is None:
+        set_map(lines, parent, {key: value})
+        return
+    lines.insert(at, f"{INDENT * len(parent)}{key}: {render(value)}")
+
+
 def _set_block(lines: list[str], index: int, head: str, value) -> bool:
     """Rewrite a folded or literal block scalar and the lines it owns.
 
@@ -147,16 +170,30 @@ def replace_list(lines: list[str], path: list[str], rows: list[str]) -> None:
     """
     index = find(lines, path)
     if index is None:
-        raise ValueError(f"no {'.'.join(path)} block to replace")
+        # A file that never had the block. Empty rows means there is still
+        # nothing to say, so say nothing; otherwise the block is written, for
+        # the same reason `set_or_add` writes a missing key (ADR-066).
+        if not rows:
+            return
+        at = _insert_at(lines, path[:-1])
+        if at is None:
+            raise ValueError(f"no {'.'.join(path[:-1])} block to write into")
+        lines[at:at] = [f"{INDENT * (len(path) - 1)}{path[-1]}:", *rows]
+        return
     first = next(
         (i for i in range(index + 1, len(lines)) if lines[i].lstrip().startswith("- ")),
         None,
     )
     if first is None:
-        raise ValueError(f"the {'.'.join(path)} block has no items")
-    end = first
-    while end < len(lines) and lines[end].lstrip().startswith("- "):
-        end += 1
+        # The key is there with nothing under it. Its items go right after it,
+        # below whatever comments the key carries.
+        first = end = index + 1
+        while end < len(lines) and lines[end].lstrip().startswith("#"):
+            first = end = end + 1
+    else:
+        end = first
+        while end < len(lines) and lines[end].lstrip().startswith("- "):
+            end += 1
     lines[first:end] = rows
 
 

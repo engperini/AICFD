@@ -2672,3 +2672,43 @@ against it. One row of evidence is less than seven, not invalid.
 extrapolated from that point by the ε-NTU fit, and the report says so
 (ADR-063). Validating that extrapolation is the engineer's, and saying it
 plainly is cheaper than a gate that pretends the tool could check it.
+
+## ADR-066 — A save that cannot write the field says so, and the page can add it
+
+**Decision.** The equipment save path creates a key, and the block that holds
+it, when the file does not have one. `set_scalar` reports `False` for a key it
+cannot find; ignoring that return value was the defect. `Equipment.span` is
+`None` for a unit that states no selection at all, so such a unit loads and
+serves rather than raising `KeyError` out of the API.
+
+**The symptom was the worst kind there is.** A user typed a design selection
+into the page, clicked Save, was told "Saved", and on the next read the fields
+were empty. Nothing errored. The file was never touched, because the surgical
+YAML editing that keeps these files' comments intact can only replace a line
+that exists, and a half-written unit is precisely the file whose lines do not.
+The comment in `yamledit` even said so — "will simply not be found, and the
+value will be left alone" — which is right for an editor and wrong for a save.
+
+**ADR-065 was half done.** It made `parse` accept a unit with one selection or
+none, on the grounds that a half-written unit has to be openable to be
+finished. It did not check that such a unit could be *served* or *saved*. Three
+paths still assumed a complete file: `span` indexed `design["return_c"]`,
+`set_scalar` silently dropped every `design.*` field, and `replace_list` raised
+`no capacity block to replace`. A rule is not adopted until the paths that
+carry it are, and the way to find out is to drive the page as a user would.
+
+**`set_or_add` writes at the end of the block**, after the keys already there
+and the comments that belong to them, and falls back to `set_map` when the
+block itself is absent. Nothing already in the file moves, which is the
+property these files are edited this way to keep.
+
+**An empty list stays absent.** Saving a unit with no reference rows does not
+write an empty `capacity:` — there is still nothing to say, and an invented
+empty block reads as a table somebody emptied on purpose.
+
+**What is still not automatic, on purpose.** The case's `fanwall` block is not
+filled from the unit. Naming a model adds the coil; every number typed in the
+case still wins (ADR-036). A unit is a machine and a case is a project, and one
+project runs a machine below its catalogue point often enough — N+2 sharing,
+a de-rated selection — that copying the datasheet into the case would quietly
+overwrite the number the engineer meant.

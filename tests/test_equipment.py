@@ -686,3 +686,78 @@ class OneSelectionOnThePageTest(unittest.TestCase):
         for path in (equipment.__file__, server.REPO_ROOT / "web" / "equipment.js"):
             with self.subTest(file=Path(path).name):
                 self.assertNotIn("at least two", Path(path).read_text())
+
+
+class HalfWrittenUnitTest(unittest.TestCase):
+    """A unit somebody started and has not finished.
+
+    Every one of these failed before ADR-066, and the visible symptom was the
+    worst kind: the page accepted what was typed, said "Saved", and the next
+    read showed the fields empty again.
+    """
+
+    STARTED = """# A unit somebody started.
+model: ZZHALF
+family: Teste
+
+size: [3.96, 1.48, 3.67]      # width x depth x height, metres
+weight_kg: 3000
+
+fans:
+  count: 8
+
+selection:
+  elevation_m: 750
+  esp_pa: 100                 # external static pressure
+  entering_water_c: 18
+  leaving_water_c: 28
+  entering_air_rh: 30         # %
+"""
+
+    DESIGN = {"return_c": 34.0, "supply_c": 21.9, "airflow_m3h": 121545.0,
+              "nscc_kw": 432.6, "power_kw": 21.4}
+
+    def setUp(self):
+        self.path = equipment.LIBRARY / "ZZHALF.yaml"
+        self.path.write_text(self.STARTED)
+        self.addCleanup(lambda: self.path.exists() and self.path.unlink())
+
+    def test_it_loads_and_has_no_span(self):
+        unit = equipment.load("ZZHALF")
+        self.assertIsNone(unit.span)
+        self.assertFalse(unit.covers(34.0))
+        self.assertIsNone(unit.to_dict()["span"])
+
+    def test_the_design_selection_survives_a_save(self):
+        """The bug, exactly: the block is absent, so the value was dropped."""
+        raw = equipment.load("ZZHALF").to_dict()
+        raw["design"] = dict(self.DESIGN)
+        equipment.save("ZZHALF", raw)
+        back = equipment.load("ZZHALF")
+        self.assertEqual({k: float(v) for k, v in back.design.items()}, self.DESIGN)
+        self.assertIsNotNone(back.coil, back.coil_problem)
+        self.assertEqual(back.span, (34.0, 34.0))
+
+    def test_saving_keeps_the_comments_it_did_not_write(self):
+        raw = equipment.load("ZZHALF").to_dict()
+        raw["design"] = dict(self.DESIGN)
+        equipment.save("ZZHALF", raw)
+        text = self.path.read_text()
+        self.assertIn("# A unit somebody started.", text)
+        self.assertIn("# external static pressure", text)
+
+    def test_reference_rows_can_be_added_to_a_file_with_no_table(self):
+        raw = equipment.load("ZZHALF").to_dict()
+        raw["design"] = dict(self.DESIGN)
+        raw["capacity"] = [{"return_c": 35.0, "nscc_kw": 504.9,
+                            "airflow_m3h": 121545.0, "power_kw": 21.4,
+                            "supply_c": 22.0}]
+        equipment.save("ZZHALF", raw)
+        self.assertEqual(len(equipment.load("ZZHALF").capacity), 1)
+
+    def test_an_empty_table_stays_absent_rather_than_being_invented(self):
+        raw = equipment.load("ZZHALF").to_dict()
+        raw["design"] = dict(self.DESIGN)
+        raw["capacity"] = []
+        equipment.save("ZZHALF", raw)
+        self.assertNotIn("capacity:", self.path.read_text())
