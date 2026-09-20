@@ -7,6 +7,7 @@ residual. These check both on hand-written field files.
 
 from __future__ import annotations
 
+import inspect
 import json
 import tempfile
 import unittest
@@ -616,3 +617,19 @@ class ToleranceTest(unittest.TestCase):
 
 if __name__ == "__main__":
     unittest.main()
+
+
+class SupplyMeshDutyTest(unittest.TestCase):
+    """A mesh across the units' opening is a pressure, not a surface: the
+    field cannot show it, so the duty adds it and says so (ADR-060)."""
+
+    def test_the_check_names_a_number_the_field_did_not_produce(self):
+        source = inspect.getsource(post._checks)
+        self.assertIn("supply_mesh_pressure_drop_pa", source)
+        self.assertIn("from its K rather than from the field", source)
+
+    def test_it_is_not_printed_as_zero(self):
+        """At a POD's face velocity it is four hundredths of a pascal, and
+        `includes 0.0 Pa` hides the number it is there to give."""
+        source = inspect.getsource(post._checks)
+        self.assertIn("{mesh_drop:.2f} Pa", source)

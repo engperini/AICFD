@@ -980,7 +980,10 @@ def _checks(model: Model, step: Path, kpis: dict, grid: dict) -> list[Check]:
                     else ""
                 )
                 + (
-                    f"; includes {mesh_drop:.1f} Pa for the mesh across the "
+                    # Two decimals: at a POD's face velocity the mesh costs
+                    # four hundredths of a pascal, and a sentence that reads
+                    # "includes 0.0 Pa" is worse than the number it hides.
+                    f"; includes {mesh_drop:.2f} Pa for the mesh across the "
                     f"opening, from its K rather than from the field"
                     if mesh_drop else ""
                 )
