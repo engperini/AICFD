@@ -15,6 +15,7 @@ import copy
 import unittest
 from pathlib import Path
 
+import numpy as np
 import yaml
 
 from aicfd import model as M
@@ -348,8 +349,11 @@ class ReturnPathTest(unittest.TestCase):
         self.model = M.build_model(SPEC)
         self.case = Path(tempfile.mkdtemp())
 
-    def kpis(self, hot, plenum, fan):
+    def kpis(self, leaving, arriving, probes=(31.0, 30.9, 31.1)):
+        hot, plenum, fan = probes
         return {
+            "aisle_exit_c": leaving,
+            "return_temp_c": arriving,
             "places_now": [
                 {"name": "hot_aisle", "temp_c": hot},
                 {"name": "plenum", "temp_c": plenum},
@@ -360,24 +364,47 @@ class ReturnPathTest(unittest.TestCase):
         }
 
     def check(self, kpis):
-        from aicfd.post import RETURN_PATH, RETURN_PATH_TOLERANCE
-
-        path = {
-            p["name"]: p["temp_c"]
-            for p in kpis["places_now"]
-            if p["name"] in RETURN_PATH
-        }
-        return max(path.values()) - min(path.values()) <= RETURN_PATH_TOLERANCE
+        return post.return_path_check(kpis)
 
     def test_a_settled_return_path_agrees_with_itself(self):
-        self.assertTrue(self.check(self.kpis(31.0, 30.9, 31.1)))
+        self.assertTrue(self.check(self.kpis(31.0, 31.02)).passed)
 
     def test_a_plenum_still_filling_is_caught(self):
         """The case that slipped through: settled at 0,1 K, 3,2 K to go."""
-        self.assertFalse(self.check(self.kpis(31.2, 28.0, 30.8)))
+        self.assertFalse(self.check(self.kpis(31.2, 28.0)).passed)
 
     def test_a_gallery_still_filling_is_caught(self):
-        self.assertFalse(self.check(self.kpis(31.4, 28.1, 21.5)))
+        self.assertFalse(self.check(self.kpis(31.4, 21.5)).passed)
+
+    def test_a_row_of_uneven_load_is_not_a_broken_path(self):
+        """The fault this check used to invent (ADR-078).
+
+        Three 0 kW cabinets between three 32 kW ones, and the aisle is twelve
+        kelvin apart across its length. The probes land where they land; the
+        streams still close, and the run is sound.
+        """
+        result = self.check(self.kpis(30.9, 30.92, probes=(28.1, 27.4, 36.3)))
+        self.assertTrue(result.passed)
+        self.assertIn("the room being uneven", result.detail)
+
+    def test_an_even_room_says_nothing_about_its_probes(self):
+        """The note earns its place only where it explains a disagreement."""
+        self.assertNotIn("uneven", self.check(self.kpis(31.0, 31.02)).detail)
+
+    def test_probes_that_scatter_cannot_fail_a_closed_path(self):
+        """The whole point: the probes are reported, the streams are judged."""
+        for probes in ((28.1, 27.4, 36.3), (20.0, 45.0, 31.0), (31.0, 31.0, 31.0)):
+            with self.subTest(probes=probes):
+                self.assertTrue(self.check(self.kpis(31.0, 31.0, probes)).passed)
+
+    def test_a_leak_is_still_caught_however_tidy_the_probes(self):
+        """And the converse: tidy probes cannot pass a path that leaks."""
+        result = self.check(self.kpis(31.0, 26.0, probes=(31.0, 31.0, 31.0)))
+        self.assertFalse(result.passed)
+        self.assertIn("air is joining the return path", result.detail)
+
+    def test_a_step_with_no_streams_measured_is_not_judged(self):
+        self.assertIsNone(self.check({"places_now": []}))
 
     def test_the_cold_aisle_is_not_on_the_return_path(self):
         """It is 11 K colder by design; including it would fail every run."""
@@ -386,6 +413,76 @@ class ReturnPathTest(unittest.TestCase):
     def test_the_tolerance_allows_real_stratification_but_not_a_filling_volume(self):
         self.assertGreater(post.RETURN_PATH_TOLERANCE, 1.0)
         self.assertLess(post.RETURN_PATH_TOLERANCE, 3.0)
+
+
+class AisleExitTemperatureTest(unittest.TestCase):
+    """The mixing cup at the ceiling: what the containment actually passes."""
+
+    def setUp(self):
+        self.model = M.build_model(SPEC)
+        n = self.model.divisions
+        self.x = (np.arange(n[0]) + 0.5) * self.model.cell_size[0]
+        self.y = (np.arange(n[1]) + 0.5) * self.model.cell_size[1]
+        self.z = (np.arange(n[2]) + 0.5) * self.model.cell_size[2]
+        self.shape = (n[2], n[1], n[0])
+
+    def grid(self, temperature, up):
+        """A field that is `temperature` and rising at `up` everywhere."""
+        return {
+            "x": self.x, "y": self.y, "z": self.z,
+            "T": np.full(self.shape, float(temperature)),
+            "U": np.stack([np.zeros(self.shape), np.zeros(self.shape),
+                           np.full(self.shape, float(up))]),
+        }
+
+    def layer(self):
+        """The row index of the cells just below the false ceiling."""
+        return int(np.argmin(abs(self.z - (self.model.ceiling_z
+                                           - self.model.cell_size[2] / 2))))
+
+    def aisle(self):
+        lo, hi = self.model.hot_aisles[0]
+        return np.where((self.y >= lo) & (self.y <= hi))[0]
+
+    def test_a_uniform_aisle_reads_its_own_temperature(self):
+        self.assertEqual(post.aisle_exit_temperature(self.model,
+                                                     self.grid(31.0, 0.5)), 31.0)
+
+    def test_air_that_is_not_leaving_is_not_measured(self):
+        """A ceiling the air is pressed against but does not cross."""
+        self.assertIsNone(post.aisle_exit_temperature(self.model,
+                                                      self.grid(31.0, -0.5)))
+
+    def test_a_cabinet_that_passes_cold_air_moves_the_cup_by_its_share(self):
+        """Half the aisle at 20 degC, half at 40, and the cup lands between --
+        weighted by what each half carries, not by where a probe landed."""
+        grid = self.grid(40.0, 0.5)
+        aisle, layer = self.aisle(), self.layer()
+        half = self.x.size // 2
+        grid["T"][layer][np.ix_(aisle, np.arange(half))] = 20.0
+        cup = post.aisle_exit_temperature(self.model, grid)
+        self.assertGreater(cup, 20.0)
+        self.assertLess(cup, 40.0)
+
+    def test_a_grille_that_carries_nothing_weighs_nothing(self):
+        """The same two halves, but the cold half is under solid ceiling. A
+        probe there would read 20 degC; the cup does not see it at all."""
+        grid = self.grid(40.0, 0.5)
+        aisle, layer = self.aisle(), self.layer()
+        half = self.x.size // 2
+        cold = np.ix_(aisle, np.arange(half))
+        grid["T"][layer][cold] = 20.0
+        grid["U"][2][layer][cold] = 0.0
+        self.assertEqual(post.aisle_exit_temperature(self.model, grid), 40.0)
+
+    def test_the_gallery_is_not_on_the_return_path(self):
+        """It has no false ceiling, so this height is room air there. Counting
+        it would mix the supply side into the return (ADR-078)."""
+        grid = self.grid(31.0, 0.5)
+        layer = self.layer()
+        outside = np.where(self.x < self.model.hall.lo[0])[0]
+        grid["T"][layer][np.ix_(self.aisle(), outside)] = 5.0
+        self.assertEqual(post.aisle_exit_temperature(self.model, grid), 31.0)
 
 
 class RackResistanceTest(unittest.TestCase):

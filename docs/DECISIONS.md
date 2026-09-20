@@ -3302,3 +3302,57 @@ shows its problem where the engineer is working on it, with the field named
 and the arithmetic shown (ADR-068). That is the right place for it: a draft is
 supposed to be incomplete while it is being written, and the build is not the
 thing that should say so.
+
+## ADR-078 — The return path is judged on streams, not on probes
+
+**Decision.** `return_path` compares two mixing-cup means: `aisle_exit_c`, the
+air leaving the containment through the ceiling, and `return_temp_c`, the air
+arriving at the fan intakes. The three point probes on the path — `hot_aisle`,
+`plenum`, `fan_back` — are still sampled, still reported and still in the
+places table; they no longer decide a verdict.
+
+**Because a probe measures the cell it sits in, and a room of uneven load is
+not one temperature.** Between the rack outlet and the fan intake nothing adds
+or removes heat, so the *air* at every station is the same air. That statement
+is about a stream. Three points estimate a stream only where the stream is
+uniform. Put a 0 kW cabinet beside a 32 kW one and the aisle is twelve kelvin
+apart across its own length, and which of those the probe lands in is an
+accident of the layout.
+
+**Two couplings made it worse than bad luck.** `hot_aisle` and `plenum` are the
+SAME three columns at two heights, so they miss together; and a typical row is
+replicated down the hall (ADR-074), so a column that lands on a cold cabinet
+lands on a cold one in every row. The two places that agree with each other are
+the two that share the mistake, and the odd one out is `fan_back` — the only
+probe that sees air which has already mixed.
+
+**It was found by a run that was right.** A POD of three 0 kW and three 32 kW
+cabinets, mass balance 0.000%, energy closure 100%, settled at 0.20 K: every
+other check passed and `return_path` failed at 1.54 K. The streams at the two
+ends of that same field were 30.94 and 30.97 degC — 0.02 K apart. Nothing was
+filling and nothing was leaking. Two stored results carry the same fingerprint:
+`hall-hotrow-independent` failed at 1.83 K and `hall-hotrow-team` scraped a
+pass at 1.46 K.
+
+**The message said "-- still filling" whenever it failed.** That text was
+appended unconditionally to every failure, so it never carried information: it
+was a guess printed in the voice of a measurement, and it sent an engineer off
+to run more iterations on a field that had already converged. The failing
+message now names the two things it could be and points at the two checks that
+tell them apart — `energy_closure` for a leak, `settled` for a volume still
+filling — and neither claim is made without evidence.
+
+**The measurement takes nothing on faith about where the grilles are.**
+`aisle_exit_temperature` reads the cell layer immediately below the false
+ceiling, over the hot aisles, inside the hall, weighted by the mass flux
+leaving through it. A cell under solid ceiling carries no upward flux and
+weighs nothing; a cell under a grille weighs what it passes. The hall bound
+matters: a mechanical gallery has no false ceiling, so that height is room air
+there and counting it would mix the supply side into the return.
+
+**What the probes are for now is what they were always good at.** Their scatter
+is the room's own unevenness — a real finding, and the one an engineer with a
+half-populated row wants to see. Where they disagree by more than the check's
+own tolerance the passing message says so in a clause, so a reader comparing
+the places table against the verdict is told why the two differ instead of
+concluding that one of them is broken.

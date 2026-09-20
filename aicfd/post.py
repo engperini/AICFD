@@ -118,8 +118,19 @@ PLAUSIBLE_SPEED_MARGIN = 5.0
 #: Places on the return path, in the order the air passes through them.
 #: Between the rack outlet and the fan intake nothing adds or removes heat --
 #: every wall is adiabatic and the containment is sealed -- so at steady state
-#: they must all read the same temperature. Any spread between them is air that
-#: has not finished arriving.
+#: the AIR at each of them is the same air at the same temperature.
+#:
+#: They are reported, not judged. Each is three point probes, and a point probe
+#: measures the cell it sits in; the mean of three of them estimates the stream
+#: only where the stream is uniform. Give a row cabinets of different load and
+#: it is not: one column of the aisle carries a 32 kW discharge and the next
+#: carries the cold air a blanked cabinet passed through, twelve kelvin apart,
+#: and which of them the probe lands in is an accident of the layout. Worse,
+#: `hot_aisle` and `plenum` are the SAME three columns at two heights, and the
+#: typical row repeats down the hall, so a column that lands on a cold cabinet
+#: lands on a cold one in every row and both places read cold together while
+#: the units draw the real mixture. The check reads the streams instead
+#: (ADR-078).
 RETURN_PATH = ("hot_aisle", "plenum", "fan_back")
 
 #: Surfaces the air is MEANT to cross, by name prefix. Everything else that
@@ -133,9 +144,10 @@ RETURN_PATH = ("hot_aisle", "plenum", "fan_back")
 #: to be a named constant instead of a literal buried in the check.
 PASSES_FLOW = ("grille", "plenum_opening", "supply", "floor_opening", "tile_")
 
-#: How far apart the return path may read before the run is not settled, in
-#: kelvin. Loose enough for real stratification in a 1,5 m plenum, tight enough
-#: to catch a volume still filling.
+#: How far apart the two ends of the return path may read before something is
+#: wrong, in kelvin. Both are mixing-cup means over the whole stream, so this
+#: is tighter than it looks: a settled, sealed loop closes them to hundredths,
+#: and a tenth of a kelvin is already a leak or a volume still filling.
 RETURN_PATH_TOLERANCE = 1.5
 
 #: How far the pressure drop the solver delivers across the rack row may sit
@@ -284,6 +296,7 @@ def _analyse(model: Model, case_dir: str | Path, time: str | None = None) -> Pod
     kpis["energy_closure"] = round(recovered / model.total_load_w, 4) if model.total_load_w else None
 
     grid = read_grid(model, step)
+    kpis["aisle_exit_c"] = aisle_exit_temperature(model, grid)
     kpis["peak_speed_ms"] = round(float(np.linalg.norm(grid["U"], axis=0).max()), 3)
     kpis["peak_air_temp_c"] = round(float(grid["T"].max()), 2)
     kpis["racks"] = rack_temperatures(model, grid)
@@ -752,6 +765,43 @@ def backflow(step: str | Path, patch: str) -> float:
     return float(abs(wrong_way.sum()))
 
 
+def aisle_exit_temperature(model: Model, grid: dict) -> float | None:
+    """Mixing-cup temperature of the air leaving the contained aisles, in degC.
+
+    The companion to `return_temperature`, at the other end of the return path:
+    that one is the mixed mean of the air arriving at the fan intakes, this one
+    the mixed mean of the air leaving the containment through the ceiling. Two
+    streams, no probes, so a row of uneven load cannot move either.
+
+    Measured on the cell layer immediately below the false ceiling, over the
+    hot aisles and inside the hall, weighted by the mass flux LEAVING through
+    it (rho u, upward only). The weighting selects the grilles without being
+    told where they are: a cell under solid ceiling carries no upward flux and
+    contributes nothing, and a cell under a grille contributes in proportion to
+    what it passes. Cells outside the hall are excluded because a gallery with
+    no false ceiling has room air at this height and it is not on this path.
+    """
+    if not model.hot_aisles:
+        return None
+    x, y, z = grid["x"], grid["y"], grid["z"]
+    layer = int(np.argmin(abs(z - (model.ceiling_z - model.cell_size[2] / 2))))
+    aisle = np.concatenate(
+        [np.where((y >= lo) & (y <= hi))[0] for lo, hi in model.hot_aisles]
+    )
+    inside = np.where((x >= model.hall.lo[0]) & (x <= model.hall.hi[0]))[0]
+    if aisle.size == 0 or inside.size == 0:
+        return None
+    picks = np.ix_(aisle, inside)
+    temperature = grid["T"][layer][picks]
+    # rho u, not u: the mixing cup weights by mass, and at 20 kelvin of spread
+    # the hot cells are 6% lighter than the cold ones.
+    flux = np.clip(grid["U"][2][layer][picks], 0, None) / (temperature + KELVIN)
+    total = float(flux.sum())
+    if total <= 0:
+        return None
+    return round(float((flux * temperature).sum() / total), 2)
+
+
 def return_temperature(step: str | Path) -> float:
     """Mixed-mean temperature of the air leaving through the fan intakes, in K.
 
@@ -882,6 +932,54 @@ def _resistance_verdict(delivered: float, asked: float) -> tuple[bool, str]:
     return abs(delivered / asked - 1.0) <= RESISTANCE_TOLERANCE, ""
 
 
+def return_path_check(kpis: dict) -> "Check | None":
+    """Does the air arriving at the units weigh the same heat as the air that
+    left the aisles?
+
+    Both ends are mixing-cup means over the whole stream -- `aisle_exit_c`
+    through the ceiling, `return_temp_c` at the intakes -- so this measures the
+    path and nothing else. Between them every wall is adiabatic and every
+    opening is meant to pass this air, so a difference is air joining the path
+    from somewhere else, or a volume that has not finished filling.
+
+    It used to compare the three point probes on the path instead, and a row of
+    uneven load broke it: the probes land where they land, `hot_aisle` and
+    `plenum` share their columns, and a typical row repeated down the hall
+    repeats whatever the columns landed on. A settled, sealed POD closing its
+    streams to 0,02 K failed this at 1,54 K, and a hall of 0 kW and 32 kW
+    cabinets failed it by nearly 9 K, with nothing wrong in either (ADR-078).
+    The probes are still reported here -- their scatter is the room's own
+    unevenness, which is a finding, not a fault.
+    """
+    leaving, arriving = kpis.get("aisle_exit_c"), kpis.get("return_temp_c")
+    if leaving is None or arriving is None:
+        return None
+    spread = abs(arriving - leaving)
+    probes = [
+        place["temp_c"]
+        for place in kpis.get("places_now", [])
+        if place["name"] in RETURN_PATH
+    ]
+    uneven = (
+        f"; the point probes on the path read {min(probes):.1f} to "
+        f"{max(probes):.1f} degC, which is the room being uneven, not the "
+        "path leaking"
+        if probes and max(probes) - min(probes) > RETURN_PATH_TOLERANCE
+        else ""
+    )
+    return Check(
+        "return_path",
+        spread <= RETURN_PATH_TOLERANCE,
+        "nothing heats or cools the air between the containment and the fan "
+        f"intake, so these have to agree: the aisles pass {leaving:.1f} degC "
+        f"through the ceiling and the units draw {arriving:.1f} degC "
+        f"({spread:.2f} K apart)"
+        + (uneven if spread <= RETURN_PATH_TOLERANCE else
+           " -- air is joining the return path, or the field has not filled; "
+           "energy_closure and settled say which"),
+    )
+
+
 def _checks(model: Model, step: Path, kpis: dict, grid: dict) -> list[Check]:
     checks: list[Check] = []
     flows = patch_flows(step)
@@ -947,24 +1045,9 @@ def _checks(model: Model, step: Path, kpis: dict, grid: dict) -> list[Check]:
         )
     )
 
-    path = {
-        place["name"]: place["temp_c"]
-        for place in kpis.get("places_now", [])
-        if place["name"] in RETURN_PATH
-    }
-    if len(path) == len(RETURN_PATH):
-        spread = max(path.values()) - min(path.values())
-        checks.append(
-            Check(
-                "return_path",
-                spread <= RETURN_PATH_TOLERANCE,
-                "nothing heats or cools the air between the rack outlet and the "
-                "fan intake, so these have to agree: "
-                + ", ".join(f"{name} {path[name]:.1f}" for name in RETURN_PATH)
-                + f" degC ({spread:.2f} K apart)"
-                + ("" if spread <= RETURN_PATH_TOLERANCE else " -- still filling"),
-            )
-        )
+    path_check = return_path_check(kpis)
+    if path_check is not None:
+        checks.append(path_check)
 
     delivered = kpis.get("rack_drop_pa")
     asked = model.rack_pressure_drop_pa
@@ -1572,17 +1655,27 @@ def _fan_rise_line(kpis: dict) -> str:
 
 
 def _path_line(kpis: dict) -> str:
-    path = {
-        place["name"]: place["temp_c"]
+    """The two ends of the return path, and how far the probes on it scatter.
+
+    The ends are mixing-cup means of the whole stream and are what the check
+    judges; the probe range beside them is the room's own unevenness, which is
+    information and not a fault (ADR-078).
+    """
+    leaving, arriving = kpis.get("aisle_exit_c"), kpis.get("return_temp_c")
+    if leaving is None or arriving is None:
+        return "- (no samples yet)"
+    path = [
+        place["temp_c"]
         for place in kpis.get("places_now", [])
         if place["name"] in RETURN_PATH
-    }
-    if len(path) < len(RETURN_PATH):
-        return "- (no samples yet)"
-    spread = max(path.values()) - min(path.values())
+    ]
+    probes = (
+        f" (probes {min(path):.1f}-{max(path):.1f})"
+        if len(path) == len(RETURN_PATH) else ""
+    )
     return (
-        " -> ".join(f"{path[name]:.1f}" for name in RETURN_PATH)
-        + f" degC, {spread:.2f} K apart"
+        f"{leaving:.1f} -> {arriving:.1f} degC, "
+        f"{abs(arriving - leaving):.2f} K apart{probes}"
     )
 
 
@@ -1904,6 +1997,7 @@ def _viewer_kpis(model: Model, results: PodResults) -> dict:
         "supply_flow_m3h": k["supply_m3h"],
         "supply_temp_c": k["supply_temp_c"],
         "return_temp_c": k["return_temp_c"],
+        "aisle_exit_c": k.get("aisle_exit_c"),
         "bulk_delta_t_k": k["delta_t_k"],
         "temp_max_c": k["peak_air_temp_c"],
         "speed_max_ms": k["peak_speed_ms"],

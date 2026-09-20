@@ -1,0 +1,77 @@
+# A POD whose row is half empty: three cabinets at 32 kW with three at 0 kW
+# between them. The regression case for ADR-078.
+#
+# It looks like an ordinary POD and it is one -- mass balance 0.000%, energy
+# closure 100%, settled -- but its hot aisle is twelve kelvin apart across its
+# own length, because a blanked cabinet passes the cold air it is given
+# straight through (ADR-054) and a loaded one next to it discharges at 36 degC.
+# That is what a half-populated row looks like, and it is what `return_path`
+# used to call a fault: the three point probes on the path landed where the
+# layout put them and read 1.5 K apart while the two ends of the stream closed
+# to 0.02 K. Keep this case: it is the field that made the check honest.
+name: pod-uneven-row
+
+site:
+  altitude_m: 0
+
+gallery:
+  depth: 3.0
+
+hall:
+  size: [6.0, 4.2, 8.0]
+  ceiling: 6.5
+
+aisles:
+  cold: 1.8
+  hot: 1.2
+
+racks:
+  count: 6
+  load_kw: 32.0               # the default; the typical row overrides it
+  size: [0.6, 1.2, 2.2]
+  offset_x: 2.0
+  airflow_cfm_per_kw: 158
+  # The typical row: every row of the POD is built from it (ADR-074). Three
+  # cabinets are in, three positions are cabinets that carry nothing yet.
+  row:
+    - load_kw: 0.0
+    - load_kw: 32.0
+    - load_kw: 0.0
+    - load_kw: 32.0
+    - load_kw: 0.0
+    - load_kw: 32.0
+
+fanwall:
+  airflow_m3h: 26000
+  supply_temp_c: 20.0
+  height: 4.0
+  width: 1.8
+  # A row of 32 kW cabinets half of which carry nothing is a very open row:
+  # the POD costs about 45 Pa, and the selection is sized for that, not for
+  # the 180 Pa a row sized on its actual load would cost.
+  static_pressure_pa: 60
+  curve:
+    - [0, 130]
+    - [13000, 105]
+    - [26000, 60]
+    - [32000, 35]
+    - [38000, 0]
+
+grilles:
+  size: 0.60
+  count: 6
+  free_area: 0.80
+  loss_coefficient: 2.4
+
+containment:
+  enabled: true
+
+mesh:
+  cell_size: [0.20, 0.20, 0.10]
+
+solver:
+  max_iterations: 800
+  residual_tolerance: 1.0e-4
+  sensor_interval: 100
+  warm_start: true
+  processors: 1

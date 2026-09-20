@@ -214,7 +214,7 @@ physics has to satisfy**, printed by `aicfd run`, written into
 | `sealed_envelope` | any wall or baffle passing air |
 | `no_backflow` | air reversing through a fan intake |
 | `energy_closure` | the return air not carrying the installed load |
-| `return_path` | the hot aisle, plenum and gallery disagreeing, i.e. a volume still filling |
+| `return_path` | the air the units draw not being the air the aisles passed, i.e. a leak into the return or a volume still filling |
 | `rack_resistance` | the porous zones not delivering the pressure drop they were given |
 | `grille_resistance` | the same, for the ceiling grilles |
 | `fan_capacity` | the POD costing more than the unit's datasheet offers |
