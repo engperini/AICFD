@@ -1128,3 +1128,64 @@ class EveryShippedUnitTest(unittest.TestCase):
                 self.assertAlmostEqual(
                     unit.coil.leaving_water_c(net),
                     float(unit.selection["leaving_water_c"]), delta=0.15)
+
+
+class GrossDetectorDoesNotOverreachTest(unittest.TestCase):
+    """The gross/net branch has to EXPLAIN the gap, not land near it.
+
+    Shipped too loose: it fired whenever the stated figure less the fan power
+    came within the same 3% tolerance, which on a unit whose fans are 7% of
+    its capacity is satisfied by almost any near miss. It then reported a
+    confident, wrong diagnosis on the FA126HC -- a sheet whose net figure is
+    right (its water side and its own gross-less-power both say so) and whose
+    airflow is not.
+    """
+
+    def unit(self, model, selection, design):
+        spec = yaml.safe_load((equipment.LIBRARY / "CA80NPVG6.yaml").read_text())
+        spec["model"] = model
+        spec["selection"] = selection
+        spec["design"] = design
+        spec.pop("capacity")
+        return equipment.parse(spec)
+
+    FA126HC = (
+        dict(elevation_m=661, esp_pa=100, entering_water_c=20, leaving_water_c=30,
+             entering_air_rh=25, water_flow_lh=44640),
+        dict(return_c=36.3, supply_c=23.9, airflow_m3h=126224.0,
+             nscc_kw=481.7, power_kw=34.89),
+    )
+
+    def test_it_does_not_fire_on_a_sheet_whose_net_figure_is_right(self):
+        why = self.unit("FA126HC", *self.FA126HC).coil_problem
+        self.assertNotIn("GROSS", why)
+        self.assertIn("Two things would close it", why)
+
+    def test_that_sheets_water_side_confirms_its_net_figure(self):
+        """12.4 L/s over a 10 K rise is 518 kW, its gross; less the 34.89 kW
+        of fans that is its net. The air side is the odd one out."""
+        self.assertAlmostEqual(12.4 * 4.18 * 10.0, 516.6, delta=2.0)
+        self.assertAlmostEqual(516.6 - 34.89, 481.7, places=1)
+
+    def test_it_still_fires_where_the_fan_power_really_explains_the_gap(self):
+        water = dict(entering_water_c=18, leaving_water_c=28,
+                     entering_air_rh=30, esp_pa=100)
+        design = dict(return_c=37.0, supply_c=21.8, airflow_m3h=60504.0,
+                      nscc_kw=280.7, power_kw=10.6)
+        for elevation in (661, 750):
+            with self.subTest(elevation=elevation):
+                why = self.unit("CA40NPVGT", dict(water, elevation_m=elevation),
+                                design).coil_problem
+                self.assertIn("GROSS figure was taken", why)
+
+    def test_it_never_fires_when_the_stated_figure_is_below_the_heat(self):
+        """Taking the gross for the net always overstates. A selection that
+        understates is a different mistake and must not be labelled this one."""
+        why = self.unit(
+            "UNDER",
+            dict(elevation_m=750, esp_pa=100, entering_water_c=18,
+                 leaving_water_c=28, entering_air_rh=30),
+            dict(return_c=38.0, supply_c=24.0, airflow_m3h=108986.0,
+                 nscc_kw=390.0, power_kw=26.2),
+        ).coil_problem
+        self.assertNotIn("GROSS", why)

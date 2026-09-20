@@ -2795,6 +2795,16 @@ wrong at once -- 750 m for 661, and 280.7 kW for 270.1 -- and the gross/net
 identification survives the elevation being wrong too, because the fan power
 explains the gap at either.
 
+**It has to explain the gap, not land near it.** As first shipped the branch
+fired whenever the stated figure less the fan power came within the same 3%
+tolerance -- which, on a unit whose fans are 7% of its capacity, almost any
+near miss satisfies. It then told a reader that a sheet's net figure was its
+gross when the net was right and the airflow was not. The test is now a
+residual small in its own right (under 2% of the stated figure) AND much
+smaller than the gap it accounts for (under a quarter of it). A wrong
+diagnosis delivered confidently is worse than no diagnosis: it sends somebody
+to change a number that was correct.
+
 **Otherwise both candidates are given, unranked.** Solving for the elevation is
 one bisection, and solving for the supply is arithmetic. Which of the two is the
 transcription is the engineer's to know — the same miss reads as a copied

@@ -461,7 +461,16 @@ def _what_would_close(row, ret: float, sup: float, stated: float,
     air = air_capacity_rate(float(row["airflow_m3h"]), ret, altitude)
     heat = air * (ret - sup)
     power = row.get("power_kw")
-    if power and abs(heat - (stated - float(power))) <= max(0.03 * stated, 5.0):
+    # It has to EXPLAIN the gap, not merely land inside the same tolerance.
+    # On a unit whose fan power is a few percent of its capacity, "within 3%
+    # of the stated figure" is satisfied by almost any near miss, and the
+    # branch then reports a confident, wrong diagnosis -- which it did, on a
+    # sheet whose net figure was right and whose airflow was not. What
+    # qualifies is a residual that is small in its own right AND much smaller
+    # than the gap it accounts for.
+    before = abs(heat - stated)
+    after = abs(heat - (stated - float(power or 0.0))) if power else before
+    if power and after < 0.25 * before and after < 0.02 * stated:
         return (f". {stated:,.1f} less this row's {float(power):,.1f} kW of fan "
                 f"power is {stated - float(power):,.1f} kW, which is what these "
                 f"temperatures and airflow do carry: the GROSS figure was "
