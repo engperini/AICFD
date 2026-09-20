@@ -1243,3 +1243,53 @@ class GrossDetectorDoesNotOverreachTest(unittest.TestCase):
                  nscc_kw=390.0, power_kw=26.2),
         ).coil_problem
         self.assertNotIn("GROSS", why)
+
+
+class DerivedFieldsAreDeclaredTest(unittest.TestCase):
+    """A unit read out of an ambiguous sheet is weaker evidence than one that
+    closed on its own, and a report quoting them side by side has to say so
+    (ADR-071)."""
+
+    def test_the_trane_declares_its_derived_supply(self):
+        unit = equipment.load("DFWA5560")
+        self.assertEqual(unit.derived_fields, ("supply_c",))
+        self.assertIn("derived", unit.to_dict())
+
+    def test_the_sheets_that_close_declare_nothing(self):
+        for model in equipment.available():
+            if model == "DFWA5560":
+                continue
+            with self.subTest(model=model):
+                self.assertEqual(equipment.load(model).derived_fields, ())
+
+    def test_a_derived_field_must_name_a_real_design_field(self):
+        for model in equipment.available():
+            unit = equipment.load(model)
+            for name in unit.derived_fields:
+                with self.subTest(model=model, field=name):
+                    self.assertIsNotNone(unit.design.get(name))
+
+    def test_the_declared_field_is_what_makes_that_sheet_close(self):
+        """The supply as printed, 24 degC, misses by 3.5%; what is carried
+        closes. Naming it is the whole difference between the two."""
+        from aicfd.coil import air_capacity_rate
+
+        unit = equipment.load("DFWA5560")
+        air = air_capacity_rate(126224.0, 36.3, 661.0)
+        self.assertGreater(abs(air * (36.3 - 24.0) - 473.6) / 473.6, 0.03)
+        self.assertAlmostEqual(
+            air * (36.3 - float(unit.design["supply_c"])), 473.6, delta=1.0)
+
+    def test_a_report_says_so_where_a_unit_has_one(self):
+        line = post._coil_provenance(
+            {"coil_model": {"air_split_pct": 62, "reference_selections": 0,
+                            "reference_error_k": None,
+                            "derived_fields": ["supply_c"]}})
+        self.assertIn("did not state supply_c", line)
+        self.assertIn("read out of the sheet", line)
+
+    def test_and_says_nothing_where_it_has_none(self):
+        line = post._coil_provenance(
+            {"coil_model": {"air_split_pct": 62, "reference_selections": 0,
+                            "reference_error_k": None, "derived_fields": []}})
+        self.assertNotIn("read out of the sheet", line)

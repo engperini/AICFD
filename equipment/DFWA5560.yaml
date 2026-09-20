@@ -1,0 +1,87 @@
+# Trane DFWA 5560 — fan wall unit.
+#
+# ONE manufacturer selection, which is all a unit needs: the coil is recovered
+# from it and answers at any return air the room really produces (ADR-063).
+# Validating that extrapolation is the engineer's, and the report says so.
+#
+# Sheet: ASCENTY SN 03 Consolidated Customer Package, revision R2. 661 m,
+# 36.3 °C dry bulb / 30% RH entering air, 150 Pa ESP, 20/30 °C water, 10 EC630
+# fans, 415V/3ph/60Hz, MERV 11 filters, 8-row coil, 2 EPIV valves.
+#
+# ADMITTED ON AN INTERPRETATION, NOT AS PRINTED. Say so when quoting it beside
+# the other units, which are admitted on their own arithmetic (ADR-071).
+#
+# The sheet prints "Supply Air Temperature 24 °C" -- the only temperature on
+# it without a decimal. At face value, 126,224 m3/h from 36.3 to 24.0 °C at
+# 661 m carries 456.9 kW against the stated net of 473.6, which is 3.5% out.
+# Three readings were possible and the engineer chose this one: the printed
+# airflow and capacity stand, and the supply was rounded. It is 23.55 °C, and
+# that is what this file carries. The other two readings were
+#   - trusting the sheet's standard-air figure (114,064 x 1.2 = 38.02 kg/s),
+#     which closes to 0.8% but makes the real volume 129,853 m3/h, and
+#   - trusting the printed volume and cutting the capacity to 456.9 kW.
+# Between them lay 184 kW across the 14 units of this project.
+#
+# The vendor's own standard-air figure is the weakest evidence of the three:
+# Vertiv prints one on two sheets here that implies densities of 1.03 and 0.94
+# kg/m3 for air at 661 m, where it is 1.05. That is what decided against it.
+#
+# THE AIR SIDE THEREFORE CLOSES BY CONSTRUCTION, not by independent check.
+# Only the gross-less-fan-power relation is checked here, and it holds: 500.0
+# total less the 26.9 kW standard power input is 473.1 against the stated
+# 473.6 net (ADR-068).
+#
+# THE WATER FLOW IS NOT CARRIED. The sheet gives 12.3 l/s, which over the
+# 10 K rise is 514.1 kW against a gross of 503.0 -- 2.2% high, where the four
+# other sheets in this library that state a flow agree to within 0.5%. Rather
+# than carry a number that does not reconcile, the coil's water-side limit is
+# inferred from the gross duty as it is for any unit that states no flow
+# (ADR-069). Ask the vendor: it is either a generously sized circuit or a
+# capacity that is 2% optimistic.
+model: DFWA5560
+family: Trane DFWA Fan Wall
+
+size: [3.538, 1.957, 4.176]   # width x depth x height, metres. The general
+                              # arrangement drawing gives the depth as 1953;
+                              # the specification table's 1957 is carried.
+weight_kg: 3400               # transport; 3700 kg maximum operating
+
+fans:
+  count: 10
+  type: EC630
+  modulation: 100             # % of full speed; the sheet states no other
+
+selection:
+  # The conditions this selection was taken at. Change any of them and the
+  # numbers below are not this unit's: ask for a new selection.
+  elevation_m: 661
+  esp_pa: 150                 # external static pressure
+  entering_water_c: 20
+  leaving_water_c: 30
+  entering_air_rh: 30         # %
+
+design:
+  # THE selection. One machine at one duty -- the one this plant was bought
+  # on -- and the anchor for everything the software computes.
+  return_c: 36.3              # air the unit RECEIVES, dry bulb
+  derived: [supply_c]         # what the sheet did not print, so a report
+                              # quoting this unit beside the others says so
+  supply_c: 23.55             # DERIVED, not printed. See the note at the top.
+  airflow_m3h: 126224         # unit airflow, actual air at 661 m
+  nscc_kw: 473.6              # NET sensible (sheet: total 500.0)
+  power_kw: 29.4              # actual power input at site. The sheet's own
+                              # net was struck with its 26.9 kW standard
+                              # figure; what the plant must power is this one.
+
+curve:
+  # Representative, not the manufacturer's: the sheet gives the one point the
+  # unit was selected to overcome, and the rest has the shape of an EC array.
+  # Replace with the real P-Q curve when it is given, and tick `measured` on
+  # the page.
+  measured: false
+  points:
+    - [0, 390]
+    - [63000, 310]
+    - [126224, 150]
+    - [152000, 70]
+    - [172000, 0]

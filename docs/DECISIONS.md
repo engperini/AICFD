@@ -2924,15 +2924,43 @@ been turned away:
   elevation is wrong, and only its vendor knows which.
 - **CA40NPVGT** — a good sheet entered at the wrong elevation, which is the
   same failure seen from the other side: 661 m makes it close to 0.03%.
-- **Trane DFWA 5560** — two revisions of the same model at identical stated
-  conditions, quoting different capacities: R2 500.0/473.6 kW, R3 480.8/465.5.
-  Both cannot be right, and neither closes. R3's total less its net is 15.3 kW
-  against its own fan power of 25.2 or 28.8; the water (12.3 L/s over 10 K =
-  514 kW) exceeds both totals; and the sheet's own STD-to-actual airflow ratio
-  implies a density for air at 27.7 °C, not the 36.3 °C it says enters the
-  coil, which is a 2.9% error in its air-side balance before anything else.
-  The later revision is the less self-consistent of the two, which usually
-  means a number was changed without the selection being re-run.
+- **Trane DFWA 5560 R3** — two revisions of the same model at identical stated
+  conditions quote different capacities: R2 500.0/473.6 kW, R3 480.8/465.5.
+  Both cannot be right. R3's total less its net is 15.3 kW against its own fan
+  power of 25.2 or 28.8, where R2's 26.4 is at least near its 26.9. The
+  engineer chose R2; R3 stays out.
+
+**One unit is admitted on an interpretation, and declares it.** The Trane R2
+sheet prints "Supply Air Temperature 24 °C" — the only temperature on it
+without a decimal — and at face value its airflow and that temperature carry
+456.9 kW against a stated net of 473.6, 3.5% out. Three readings were
+possible:
+
+1. the printed airflow and capacity stand and the supply was rounded, at
+   23.55 °C;
+2. the sheet's standard-air figure is the real mass flow (114,064 × 1.2 =
+   38.02 kg/s), which closes to 0.8% but makes the true volume 129,853 m³/h;
+3. the printed volume stands and the capacity is 456.9 kW.
+
+Between (1) and (2) lay 184 kW across the project's 14 units, so it was not a
+choice to make quietly. The engineer chose (1), on the evidence that vendors'
+standard-air conversions are the least reliable field on these sheets: Vertiv
+prints one on two sheets here implying densities of 1.03 and 0.94 kg/m³ for
+air at 661 m, where it is 1.05.
+
+**So `design.derived` names the fields a sheet did not print.** The air side
+of such a unit closes by construction rather than by check, and
+`_coil_provenance` says so in the same sentence as the capacity it decides:
+*"Its selection did not state supply_c — that was read out of the sheet, and
+the capacity here follows from it."* Without that, a report would quote it
+beside five units that closed on their own arithmetic as though the evidence
+were equal. A test asserts that every other shipped unit declares nothing.
+
+**Its water flow is still not carried.** The sheet's 12.3 l/s is 2.2% above
+what its own duty needs, where the four other sheets that state a flow agree
+to within 0.5%. The inference from the gross stands instead (ADR-069), and the
+question — a generously sized circuit, or a capacity 2% optimistic — goes back
+to the vendor.
 
 **What a rejected sheet gets instead is a question for its vendor**, naming the
 field. That is the whole point of the consistency check (ADR-068): it is cheap

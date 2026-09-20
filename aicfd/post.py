@@ -420,6 +420,10 @@ def coil_capacity(model: Model, fans: list[dict], kpis: dict) -> dict:
             "reference_selections": len(coil.reference_returns),
             "reference_error_k": (round(coil.reference_error_k, 3)
                                   if coil.reference_error_k is not None else None),
+            # Fields the datasheet did not print, which somebody read out of
+            # it. Carried so a report never quotes such a unit as though it
+            # were admitted on its own arithmetic (ADR-071).
+            "derived_fields": list(unit.derived_fields) if unit else [],
         },
         # The whole point of modelling the machine: the supply temperature is
         # an output, and where the valve runs out it stops matching the one
@@ -460,11 +464,21 @@ def _coil_provenance(kpis: dict) -> str:
     checked = coil.get("reference_selections") or 0
     error = coil.get("reference_error_k")
     if checked >= 2 and error is not None:
-        return (f". Its coil is fitted to the design selection and reproduces "
+        line = (f". Its coil is fitted to the design selection and reproduces "
                 f"{checked} more of the manufacturer's to {error:.3g} K")
-    return (f". Its coil is fitted to the design selection alone, with the "
-            f"air/water split assumed at {coil.get('air_split_pct')}% -- the "
-            f"one number here nobody measured")
+    else:
+        line = (f". Its coil is fitted to the design selection alone, with the "
+                f"air/water split assumed at {coil.get('air_split_pct')}% -- the "
+                f"one number here nobody measured")
+    derived = coil.get("derived_fields") or []
+    if derived:
+        # Said outright, and in the same breath as the capacity it decides.
+        # A unit read out of an ambiguous sheet is weaker evidence than one
+        # that closed on its own, and only its own file knows that.
+        line += (f". Its selection did not state {', '.join(sorted(derived))}"
+                 f" -- that was read out of the sheet, and the capacity here "
+                 f"follows from it")
+    return line
 
 
 def _coil_alerts(kpis: dict) -> list[str]:

@@ -141,6 +141,19 @@ class Equipment:
         return self.at(return_c, "nscc_kw")
 
     @property
+    def derived_fields(self) -> tuple[str, ...]:
+        """Design fields this unit carries that its datasheet did not print.
+
+        A unit admitted on somebody's reading of an ambiguous sheet is not the
+        same evidence as one admitted on its own arithmetic, and a report that
+        quotes them side by side has to say which is which (ADR-071). The
+        engineer who made the reading names the fields here; the file's own
+        header says why.
+        """
+        value = (self.design or {}).get("derived") or ()
+        return tuple(str(name) for name in value)
+
+    @property
     def design_leaving_water_c(self) -> float | None:
         """What the selection says the water leaves at, for comparison with
         what a condition off the selection would ask of it (ADR-063)."""
@@ -216,6 +229,7 @@ class Equipment:
             "fans": self.fans,
             "selection": self.selection,
             "design": self.design,
+            "derived": list(self.derived_fields),
             "capacity": [dict(row) for row in self.capacity],
             "curve": self.curve,
             "span": list(self.span) if self.span else None,
