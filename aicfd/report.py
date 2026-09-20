@@ -627,12 +627,34 @@ def _methodology(doc, export: Export, drawn: dict) -> None:
         if len(galleries) > 1
         else "a single mechanical gallery along one side"
     )
+    raised = model.get("floor_height")
     _para(doc,
           f"The room is derived from the case specification, not drawn: every "
           f"dimension below follows from the equipment sizes, the aisle widths "
           f"and the clearances the engineer typed. The arrangement is "
           f"{arrangement}, with hot-aisle containment and a ceiling-plenum "
           f"return.")
+    if raised:
+        # The supply side is the half that differs, and a reader checking a
+        # drawing against this document needs to be told which one (ADR-076).
+        _para(doc,
+              f"The room stands on an access floor {raised:.2f} m deep, and "
+              f"the space under it is the supply plenum. The units are "
+              f"downflow: each draws through its top face, from the mechanical "
+              f"gallery, and discharges through its bottom face into the "
+              f"plenum below the deck. The air crosses into the hall through a "
+              f"woven mesh in the dividing wall below the floor -- the same "
+              f"opening, in the same wall, as the one above the false ceiling "
+              f"that carries the return -- and reaches the cold aisle through "
+              f"perforated plates set in the floor in front of the cabinets. "
+              f"Every dimension of the room above the deck is unchanged by "
+              f"this; the building is taller by the depth of the floor.")
+        _para(doc,
+              "The plates are what balances one aisle against another, so they "
+              "are reported with their measured pressure drop and their face "
+              "velocity beside the drop their datasheet asks for. No limit is "
+              "put on that velocity: what is high for one hall is ordinary in "
+              "another, and the reader knows which they have.")
     if len(galleries) > 1:
         _para(doc,
               "The false ceiling covers the whole hall and stops at each "
@@ -994,6 +1016,8 @@ _CHECK_MEANING = {
     "return_path": "a volume still filling — the plenum, usually",
     "rack_resistance": "the porous zones not delivering the pressure drop given",
     "grille_resistance": "the same, for the ceiling grilles",
+    "plenum_resistance": "the same, for the supply plenum's grilles",
+    "floor_resistance": "the same, for a raised floor's perforated plates",
     "fan_capacity": "the room costing more than the unit's datasheet offers",
     "settled": "a field still moving between samples",
     "ashrae_inlet": "a rack breathing air above the recommended band",

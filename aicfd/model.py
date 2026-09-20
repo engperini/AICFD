@@ -511,11 +511,18 @@ class Model:
 
         A total says the plant is short; the breakdown says what to change.
         """
+        mesh = self.mesh_pressure_drop_pa or 0.0
         items = [
             ("the racks", self.rack_pressure_drop_pa),
             ("the return grilles", self.grille_pressure_drop_pa),
-            ("the mesh into the gallery", self.mesh_pressure_drop_pa or 0.0),
+            # Named separately on a raised floor, because they are two
+            # openings in two places and a reader adding the column up should
+            # find the total (ADR-076).
+            ("the mesh into the gallery, above the ceiling" if self.floor_height
+             else "the mesh into the gallery", mesh),
+            ("the mesh under the deck", mesh if self.floor_height else 0.0),
             ("the supply grilles", self.plenum_pressure_drop_pa or 0.0),
+            ("the floor plates", self.floor_pressure_drop_pa or 0.0),
         ]
         return sorted(((w, pa) for w, pa in items if pa > 0),
                       key=lambda row: -row[1])
@@ -744,23 +751,69 @@ class Model:
         return grilles[0].resistance * 0.5 * self.rho * velocity**2
 
     @property
+    def floor_tiles(self) -> list[Panel]:
+        """The perforated plates in the cold aisle floor (ADR-076)."""
+        return [p for p in self.panels if p.name.startswith("tile_")]
+
+    @property
+    def floor_face_velocity_ms(self) -> float | None:
+        """How fast the air leaves the plates, at design flow.
+
+        The number that says whether enough floor is open. Every cubic metre
+        the units move arrives in the hall through these once, so it is the
+        total flow over their total gross area -- gross, not free, because
+        that is the face velocity a plate catalogue quotes and the one its
+        pressure table is fitted to (ADR-059).
+
+        A plate at 3 m/s is a jet that throws cold air over the cabinet it was
+        meant to feed; the cure is more open floor, and this is the number
+        that shows it. No verdict is attached: what is high for one hall is
+        ordinary in another, and the engineer knows which they have.
+        """
+        tiles = self.floor_tiles
+        if not tiles or self.airflow_m3s <= 0:
+            return None
+        area = sum(t.area for t in tiles)
+        return self.airflow_m3s / area if area > 0 else None
+
+    @property
+    def floor_pressure_drop_pa(self) -> float | None:
+        """What the plates cost at design flow, from their K.
+
+        Closed form, like the return grilles and the plenum's: every cubic
+        metre the units move crosses them once.
+        """
+        tiles = self.floor_tiles
+        velocity = self.floor_face_velocity_ms
+        if not tiles or velocity is None or tiles[0].resistance is None:
+            return None
+        return tiles[0].resistance * 0.5 * self.rho * velocity**2
+
+    @property
     def loop_pressure_drop_pa(self) -> float:
         """What the surfaces the air has to cross cost it, added up.
 
-        The racks, the return grilles, the mesh into the gallery and the
-        supply grilles, each from its own closed form. A LOWER BOUND on what
-        the unit has to produce, not the whole system: the aisles, the turns
-        and the plenum's own velocity pressure are not in it, and only the
-        solved field has those. Enough to say before a run whether a unit is
-        obviously short (ADR-059).
+        The racks, the return grilles, the mesh into the gallery and whichever
+        supply surface the case has -- plenum grilles or floor plates -- each
+        from its own closed form. A LOWER BOUND on what the unit has to
+        produce, not the whole system: the aisles, the turns and the plenum's
+        own velocity pressure are not in it, and only the solved field has
+        those. Enough to say before a run whether a unit is obviously short
+        (ADR-059).
+
+        On a raised floor the mesh is counted TWICE, and that is not an error:
+        the same opening exists at both ends of the dividing wall, once above
+        the false ceiling for the return and once below the deck for the
+        supply, and the air crosses both (ADR-076).
         """
         return (
             self.rack_pressure_drop_pa
             + self.grille_pressure_drop_pa
-            + (self.mesh_pressure_drop_pa or 0.0)
+            + (self.mesh_pressure_drop_pa or 0.0) * (2 if self.floor_height else 1)
             # The mesh leaf, where the case has one instead of grilles, is a
             # `supply` surface like they are and is already in the line above.
             + (self.plenum_pressure_drop_pa or 0.0)
+            + (self.floor_pressure_drop_pa or 0.0)
         )
 
     def fan_available_pa(self, flow_m3h: float | None = None) -> float | None:
@@ -920,9 +973,11 @@ def sensors(model: Model) -> list[SensorGroup]:
         ),
         SensorGroup(
             "fan_back",
-            "Behind the fan wall",
+            "At the unit's return" if model.floor_height else "Behind the fan wall",
             fan_points,
-            "in the gallery, where the return air reaches the units",
+            "at the top of the unit, where the return air reaches it"
+            if model.floor_height
+            else "in the gallery, where the return air reaches the units",
         ),
     ]
 
@@ -2694,6 +2749,10 @@ def to_dict(model: Model, spec: dict) -> dict:
         "galleries": [{"lo": list(g.lo), "hi": list(g.hi)} for g in model.galleries],
         "hall": {"lo": list(model.hall.lo), "hi": list(model.hall.hi)},
         "dividers": model.dividers,
+        # Which supply architecture this is, for the document that describes
+        # it: a raised floor changes the half of the loop the reader is
+        # checking against a drawing (ADR-076).
+        "floor_height": model.floor_height,
         "blocks": [list(span) for span in model.rack_blocks],
         "ceiling_z": model.ceiling_z,
         # The room stands this far above the slab, where a case is on an

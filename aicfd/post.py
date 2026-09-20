@@ -303,6 +303,21 @@ def _analyse(model: Model, case_dir: str | Path, time: str | None = None) -> Pod
     )
     kpis["mesh_drop_asked_pa"] = round(model.mesh_pressure_drop_pa, 3) \
         if model.mesh_pressure_drop_pa is not None else None
+    # A raised floor's plates are a perforated surface like any other, and
+    # every cubic metre the units move crosses them once (ADR-076).
+    kpis["floor_drop_pa"] = grille_pressure_drop(step, "tile_")
+    kpis["floor_drop_asked_pa"] = (
+        round(model.floor_pressure_drop_pa, 3)
+        if model.floor_pressure_drop_pa is not None else None
+    )
+    kpis["floor_face_velocity_ms"] = (
+        round(model.floor_face_velocity_ms, 3)
+        if model.floor_face_velocity_ms is not None else None
+    )
+    kpis["floor_tiles"] = len(model.floor_tiles) or None
+    # Which architecture this run is, for everything that reads the export
+    # rather than the model: the report's wording, the page, the document.
+    kpis["floor_height"] = model.floor_height
     # The rise that sizes the machine is the one the most loaded unit has to
     # produce; a hall's units do not all see the same resistance.
     rises = [f["rise_pa"] for f in fans]
@@ -1017,6 +1032,28 @@ def _checks(model: Model, step: Path, kpis: dict, grid: dict) -> list[Check]:
             )
         )
 
+    floor_drop, floor_asked = (
+        kpis.get("floor_drop_pa"), kpis.get("floor_drop_asked_pa"))
+    if floor_drop is not None and floor_asked:
+        ratio = floor_drop / floor_asked
+        velocity = kpis.get("floor_face_velocity_ms")
+        passed, why = _resistance_verdict(floor_drop, floor_asked)
+        checks.append(
+            Check(
+                "floor_resistance",
+                passed,
+                f"the field drops {floor_drop:.2f} Pa across the "
+                f"{kpis.get('floor_tiles')} floor plates where their K at "
+                f"{model.airflow_m3h:,.0f} m3/h asks for {floor_asked:.2f} Pa "
+                f"({ratio * 100:.0f}%)"
+                # The velocity, with no verdict attached, for the same reason
+                # the plenum's carries none (ADR-059).
+                + (f"; they run at {velocity:.2f} m/s on the face"
+                   if velocity is not None else "")
+                + why,
+            )
+        )
+
     rise = kpis.get("fan_rise_pa")
     available = model.fan_available_pa()
     if rise is not None and available:
@@ -1588,10 +1625,14 @@ def _drift_line(kpis: dict) -> str:
 
 def report(results: PodResults) -> str:
     k = results.kpis
+    # A downflow unit is not a fan wall and the report should not call it one:
+    # the reader is checking a drawing against this, and the word is how they
+    # know which drawing (ADR-076).
+    unit = "Room unit" if k.get("floor_height") else "Fan wall"
     lines = [
         f"Case '{results.case_name}' at iteration {results.time}",
         "",
-        f"  Fan wall        {k['supply_m3h']:,.0f} m3/h "
+        f"  {unit:<15} {k['supply_m3h']:,.0f} m3/h "
         f"({k['supply_kg_s']:.3f} kg/s) at {k['supply_temp_c']:.1f} degC",
         f"  Return air      {k['return_temp_c']:.1f} degC "
         f"(dT {k['delta_t_k']:.1f} K)",
@@ -1602,13 +1643,20 @@ def report(results: PodResults) -> str:
         f"  Still moving    {_drift_line(k)}",
         f"  Return path     {_path_line(k)}",
         "",
-        f"  Fan wall rise   {_fan_rise_line(k)}",
+        f"  {unit + ' rise':<15} {_fan_rise_line(k)}",
         f"  Rack row        {_resistance_line(k, results)}",
         f"  Return grilles  "
         + (
             f"{k['grille_drop_pa']:.2f} Pa in the field, {k['grille_drop_asked_pa']:.2f} Pa from K"
             if k.get("grille_drop_pa") is not None
             else "open holes (no free area given)"
+        ),
+        *(
+            [f"  Floor plates    {k['floor_drop_pa']:.2f} Pa in the field, "
+             f"{k['floor_drop_asked_pa']:.2f} Pa from K"
+             + (f", {k['floor_face_velocity_ms']:.2f} m/s on the face"
+                if k.get("floor_face_velocity_ms") is not None else "")]
+            if k.get("floor_drop_pa") is not None else []
         ),
         *(
             [f"  HVAC sizing     {line}" for line in k.get("hvac_lines", [])]

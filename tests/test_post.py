@@ -716,3 +716,71 @@ class RackDropSamplingTest(unittest.TestCase):
         drop, rows = post.rack_pressure_drop(model, self.grid(model, 0.0))
         self.assertAlmostEqual(drop, 30.0, places=3)
         self.assertEqual(len(rows), len(model.rows))
+
+
+class FloorResistanceTest(unittest.TestCase):
+    """A raised floor's plates are a grille like the others (ADR-076)."""
+
+    def model(self):
+        spec = copy.deepcopy(support.spec("pod-fanwall"))
+        spec["fanwall"]["model"] = "HDCV5300F-HT"
+        spec["floor"] = {"enabled": True, "height": 1.0, "tiles_per_rack": 2}
+        return M.build_model(spec)
+
+    def test_the_plates_are_sized_on_their_gross_face(self):
+        model = self.model()
+        area = sum(t.area for t in model.floor_tiles)
+        self.assertAlmostEqual(model.floor_face_velocity_ms,
+                               model.airflow_m3s / area, places=4)
+
+    def test_the_drop_is_k_rho_v_squared_over_two(self):
+        model = self.model()
+        v = model.floor_face_velocity_ms
+        k = model.floor_tiles[0].resistance
+        self.assertAlmostEqual(model.floor_pressure_drop_pa,
+                               k * 0.5 * model.rho * v ** 2, places=4)
+
+    def test_a_case_on_the_slab_has_neither(self):
+        model = M.build_model(support.spec("pod-fanwall"))
+        self.assertEqual(model.floor_tiles, [])
+        self.assertIsNone(model.floor_face_velocity_ms)
+        self.assertIsNone(model.floor_pressure_drop_pa)
+
+    def test_the_plates_are_in_the_pressure_budget(self):
+        model = self.model()
+        named = dict(model.pressure_budget())
+        self.assertIn("the floor plates", named)
+        self.assertAlmostEqual(named["the floor plates"],
+                               model.floor_pressure_drop_pa, places=4)
+        self.assertAlmostEqual(sum(named.values()),
+                               model.loop_pressure_drop_pa, places=4)
+
+    def test_the_mesh_is_counted_at_both_ends_of_the_wall(self):
+        """The same opening exists above the ceiling for the return and below
+        the deck for the supply, and the air crosses both."""
+        model = self.model()
+        named = dict(model.pressure_budget())
+        self.assertIn("the mesh under the deck", named)
+        self.assertAlmostEqual(named["the mesh under the deck"],
+                               named["the mesh into the gallery, above the ceiling"],
+                               places=6)
+
+    def test_the_check_reads_the_plates_and_not_the_other_grilles(self):
+        """Every cyclic pair ends `_below`; taking them all mixed surfaces
+        with different open areas into one mean that matched no one's K."""
+        import inspect
+
+        source = inspect.getsource(post)
+        self.assertIn('grille_pressure_drop(step, "tile_")', source)
+        # And the other kinds are still read against their own.
+        for prefix in ('"plenum_opening"', '"supply"'):
+            self.assertIn(f"grille_pressure_drop(step, {prefix})", source)
+
+    def test_the_report_calls_it_a_room_unit(self):
+        """A downflow unit is not a fan wall, and the reader is checking a
+        drawing against this."""
+        import inspect
+
+        source = inspect.getsource(post)
+        self.assertIn('"Room unit" if k.get("floor_height") else "Fan wall"',
+                      source)

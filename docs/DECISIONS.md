@@ -3236,6 +3236,25 @@ check reported the field as wrong when it was the sampling. Narrowed to the
 cabinet's own z band it reads **101%**, and the cases on the slab are
 unchanged to the decimal because there the two windows are identical.
 
+**The plates are a grille like every other, and are checked like one.**
+`floor_resistance` measures what the field drops across them against what
+their K asks at design flow, and prints their face velocity beside it — the
+same form as `grille_resistance` and `plenum_resistance`, from the same
+`grille_pressure_drop` reading its own prefix. No limit is put on the
+velocity, for the reason no limit was put on the plenum's: what is high for
+one hall is ordinary in another (ADR-059). They enter the pressure budget too,
+and on a raised floor **the mesh is counted twice** — the same opening exists
+at both ends of the dividing wall, once above the false ceiling for the return
+and once below the deck for the supply, and the air crosses both.
+
+**The report says which architecture it is.** A downflow unit is not a fan
+wall, and the reader is checking a drawing against the document: `report.md`
+calls it a room unit and prints the plates beside the return grilles, the
+sensor is "at the unit's return" rather than "behind the fan wall", and the
+Word report's Geometry section describes the floor, the mesh below the deck
+and the plates before anyone reaches a number. Calling it a fan wall would
+send them to the wrong drawing.
+
 **The two arrangements are exclusive, and so are the units.** A supply plenum
 at the gallery wall (ADR-058, ADR-060) and a raised floor are two ways of
 getting the same air from the same machines into the same aisles; a case
