@@ -14,11 +14,11 @@
 # costs the fan its loss coefficient, and where each unit aims is still where
 # its air goes.
 #
-# The point of it is the dimension. A leaf of mesh goes into the room a hall
-# ALREADY HAS, so the building does not grow for it and this case is the same
-# 9 m as `pod-fanwall`; a leaf of wall is designed in and `pod-plenum` is
-# 10,2 m. The cavity comes out of the clearance instead: 0,8 m from the mesh
-# to the first rack here against 2,0 m there (ADR-060).
+# The room is the room `pod-plenum` has: a mesh screen is as much an
+# obstruction to a person and a cabinet door as a panel is, so the building
+# grows by the cavity whichever leaf closes it and `racks.offset_x` is the
+# clearance to the leaf either way. Only a case with no plenum at all --
+# `pod-fanwall` -- is the shorter room (ADR-060).
 name: pod-mesh
 
 site:
@@ -96,7 +96,7 @@ solver:
   processors: 1               # above 1: decomposePar + mpirun
 
 plenum:
-  enabled: true
+  as_mesh: true               # the hall side closed by mesh rather than by a
+                              # wall with grilles; an arrangement of its own,
+                              # so `enabled` is not set as well
   depth: 1.2                  # between the two leaves, as in pod-plenum
-  as_mesh: true               # the hall side closed by mesh, not by a wall
-                              # with grilles -- and the hall keeps its size

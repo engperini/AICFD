@@ -184,14 +184,13 @@ answering, is whether the units have the pressure for what the loop costs
 2 m grilles fails the first at 7,5 m/s and 35 Pa, and says how much grille it
 would take (ADR-059).
 
-**A mesh leaf, for a hall already built.** `plenum.as_mesh` keeps the plenum
-and changes what closes it: the hall side is the same 13 x 13 mm woven mesh
-used on the return, open over its whole face, instead of a wall with grilles.
-It aims nothing — where each unit points is still where its air goes — and the
-building does not grow for it, because a room already built cannot grow 1,2 m
-at each end. The cavity comes out of the clearance instead, and the model says
-by how much (ADR-060). `cases/pod-mesh.yaml` is that case: the same 9 m room as
-`pod-fanwall`, against `pod-plenum`'s 10,2 m.
+**A mesh leaf instead of grilles.** `plenum.as_mesh` doubles the wall the same
+way and closes the hall side with the same 13 x 13 mm woven mesh used on the
+return, open over its whole face, rather than with a wall with grilles in it.
+It aims nothing — where each unit points is still where its air goes — and it
+is a wall as far as clearance goes, so the room is the room the plenum gives.
+Only a case with no plenum at all is shorter (ADR-060). `cases/pod-mesh.yaml`
+is that case, against `cases/pod-plenum.yaml`'s grilles.
 
 Editing a case from the page keeps the file: only the values that changed are
 rewritten, comments and layout and all, and an Apply that changes nothing

@@ -62,11 +62,6 @@ PLENUM_DEPTH = 1.2
 PLENUM_GRILLE_WIDTH = 2.0
 
 
-#: How much room has to be left in front of the racks, in metres, once a mesh
-#: leaf has taken its cavity out of the hall. A person has to stand there and
-#: open a cabinet door; below this the clearance the case asked for is not
-#: what the room has (ADR-060).
-PLENUM_MIN_CLEARANCE = 1.0
 
 
 @dataclass(frozen=True)
@@ -457,10 +452,9 @@ class Model:
     def plenum_alerts(self) -> list[str]:
         """What a supply plenum is checked for before it is solved (ADR-059).
 
-        Two things, and both are answered from the specification alone: the
-        room a mesh leaf leaves in front of the racks, and whether the units
-        have the pressure for what the loop costs. Neither needs a solve, and
-        finding out after one is finding out late.
+        Whether the units have the pressure for what the loop costs, answered
+        from the specification alone. It needs no solve, and finding out
+        after one is finding out late.
 
         What is NOT here is a verdict on the face velocity. It was, at 3 m/s,
         and it was wrong to be: 3,3 m/s out of a supply grille is ordinary in
@@ -473,23 +467,6 @@ class Model:
         if not grilles and self.supply_mesh_k is None:
             return []
         alerts = []
-        if self.supply_mesh_k is not None and self.racks and grilles:
-            # A leaf of mesh goes into the room the hall already has, so the
-            # cavity is taken out of the clearance in front of the racks --
-            # that is the trade, and it is only worth saying when what is
-            # left is too little to work in (ADR-060).
-            leaf = min(g.position for g in grilles)
-            clearance = min(r.box.lo[0] for r in self.racks) - leaf
-            if clearance < PLENUM_MIN_CLEARANCE:
-                alerts.append(
-                    f"The mesh leaf leaves {num(clearance, 2)} m between it "
-                    f"and the first rack, under the "
-                    f"{num(PLENUM_MIN_CLEARANCE, 1)} m a person needs to work "
-                    f"there. The cavity comes out of the room with a mesh -- "
-                    f"the building does not grow for it -- so the clearance "
-                    f"the case asked for is {num(self.plenum_depth)} m "
-                    f"smaller than it reads."
-                )
         available = self.fan_available_pa()
         cost = self.loop_pressure_drop_pa
         if available is not None and cost > available:
@@ -1360,7 +1337,11 @@ def plenum_for(spec: dict, rack_height: float) -> dict | None:
     rather than at whatever each unit happens to face.
     """
     plenum = spec.get("plenum")
-    if not plenum or not plenum.get("enabled", False):
+    # `as_mesh` is an arrangement in its own right, not a modifier on
+    # `enabled`: the page offers the two as one-or-the-other, so ticking the
+    # mesh leaves `enabled` off and the case would otherwise come back with
+    # no plenum at all (ADR-060).
+    if not plenum or not (plenum.get("enabled", False) or plenum.get("as_mesh", False)):
         return None
     grille = plenum.get("grille") or {}
     closed = plenum.get("closed") or []
@@ -1490,15 +1471,14 @@ def _pod_layout(spec: dict, cell, rack_spec: dict | None = None) -> _Layout:
     # which with a plenum is its inner leaf, and the hall grows by the depth
     # so nothing the case asked for moves (ADR-058).
     plenum = plenum_for(spec, rack_dz)
+    # Either leaf is a wall as far as clearance is concerned -- a mesh screen
+    # is as much an obstruction to a person and a cabinet door as a panel is
+    # -- so the building grows by the cavity whichever one closes it, and the
+    # clearances the case asked for survive. Only a case with no plenum at
+    # all is the shorter room (ADR-058, ADR-060).
     plenum_depth = plenum["depth"] if plenum else 0.0
-    # A leaf of mesh goes into the room the hall already has: it is what a
-    # hall ALREADY BUILT can be given, so the building does not grow and the
-    # cavity comes out of the clearance instead. A leaf of wall is designed
-    # in, so the building grows and the clearance is untouched (ADR-058,
-    # ADR-060).
-    grows_by = 0.0 if (plenum and plenum["as_mesh"]) else plenum_depth
-    start_x = gallery_depth + grows_by + float(spec["racks"]["offset_x"])
-    hall_length += grows_by
+    start_x = gallery_depth + plenum_depth + float(spec["racks"]["offset_x"])
+    hall_length += plenum_depth
 
     total_x = gallery_depth + hall_length
     domain = Box((0.0, 0.0, 0.0), (total_x, hall_width, height))
@@ -1610,11 +1590,10 @@ def _hall_layout(spec: dict, cell, rack_spec: dict | None = None) -> _Layout:
     # has -- with a plenum that is its inner leaf -- so the plenum is added to
     # the building and taken out of nothing (ADR-058).
     plenum = plenum_for(spec, rack_dz)
+    # Either leaf is a wall as far as clearance is concerned, so the building
+    # grows by the cavity whichever one closes it (ADR-060).
     plenum_depth = plenum["depth"] if plenum else 0.0
-    # A leaf of mesh goes into the room the hall already has; a leaf of wall
-    # is designed in and the building grows for it (ADR-060).
-    grows_by = 0.0 if (plenum and plenum["as_mesh"]) else plenum_depth
-    hall_length = perimeter + row_length + perimeter + sides * grows_by
+    hall_length = perimeter + row_length + perimeter + sides * plenum_depth
     total_x = sides * gallery_depth + hall_length
     width = 2 * perimeter + pods * (2 * rack_dy + hot) + (pods - 1) * cold
     domain = Box((0.0, 0.0, 0.0), (total_x, width, height))
@@ -1623,7 +1602,7 @@ def _hall_layout(spec: dict, cell, rack_spec: dict | None = None) -> _Layout:
     if sides == 2:
         galleries.append(Box((hall.hi[0], 0.0, 0.0), (total_x, width, height)))
 
-    x0 = gallery_depth + grows_by + perimeter
+    x0 = gallery_depth + plenum_depth + perimeter
     spans: list[tuple[float, float]] = []
     x = x0
     for _ in range(n_blocks):

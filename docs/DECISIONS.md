@@ -2417,20 +2417,27 @@ plenum as number boxes with no way to turn the thing on.
 
 ## ADR-060 — The plenum's hall side, as a mesh, for a hall already built
 
-**Decision.** `plenum.as_mesh` keeps the plenum and changes what closes it:
-the hall side is the 13 x 13 mm woven mesh — open over its whole face —
-instead of a wall with grilles in it. The cavity, its depth and the units are
-unchanged. What else changes is who pays for the cavity: **the building does
-not grow for a mesh leaf**, so the depth comes out of the clearance in front
-of the racks instead.
+**Decision.** One wall, three arrangements, and the page offers them as one,
+the other, or neither — never both. **Include Plenum with grilles** doubles
+the wall and puts grilles in the inner leaf. **No Plenum, only Mesh** doubles
+it the same way and closes the hall side with the 13 x 13 mm woven mesh, open
+over its whole face. Neither is the wall as it was, and that is the default.
+The cavity, its depth and the units are the same in both; what differs is the
+leaf. `plenum.as_mesh` is an arrangement in its own right and does not need
+`plenum.enabled` set as well, because the two are offered as alternatives and
+ticking one clears the other.
 
-**Why the two differ that way.** A leaf of wall is designed in: the drawing
-is made with it, so the building is drawn longer and every clearance the case
-asked for survives (ADR-058). A leaf of mesh is what a hall ALREADY BUILT can
-be given — and a built room cannot grow 1,2 m at each end. It goes inside the
-room that exists, and the 1,2 m it takes is 1,2 m the racks no longer have.
-Both are real arrangements; the difference between them is a dimension, and
-saying which one a case is lets the dimension be checked.
+**Either leaf is a wall as far as clearance is concerned.** A mesh screen is
+as much an obstruction to a person and a cabinet door as a panel is, so the
+building grows by the cavity whichever one closes it and `aisles.perimeter`
+and `racks.offset_x` are the clearance to the leaf either way. Everything
+here is based on the clearance, and only a case with no plenum at all is the
+shorter room — it has no cavity in front of it to make room for.
+
+An earlier version had the mesh leaf take its cavity out of the room instead,
+on the reasoning that a hall already built cannot grow. That treated a mesh
+as if it were air: it is not, a person still cannot walk through it, and the
+arrangement it produced was a row of cabinets 0,8 m from a screen.
 
 **A barrier, not a distributor.** The mesh is open everywhere, so it aims
 nothing: where each unit points is still where its air goes, and the cavity

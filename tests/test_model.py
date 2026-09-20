@@ -861,20 +861,22 @@ class SupplyMeshTest(unittest.TestCase):
         self.assertAlmostEqual(leaf.area,
                                model.domain.hi[1] * model.ceiling_z, places=6)
 
-    def test_the_building_does_not_grow_for_it(self):
-        """The reason to choose it: a hall already built cannot grow, so the
-        cavity comes out of the clearance instead."""
+    def test_it_is_a_wall_as_far_as_clearance_is_concerned(self):
+        """A mesh screen is as much an obstruction to a person and a cabinet
+        door as a panel is, so the building grows by the cavity whichever
+        leaf closes it and the clearances the case asked for survive. Only a
+        case with no plenum at all is the shorter room."""
         plain = support.spec("pod-mesh")
         plain["plenum"] = {"enabled": False}
         plain = m.build_model(plain)
         mesh = m.build_model(self.spec())
         walled = m.build_model(self.spec(as_mesh=False))
-        self.assertEqual(mesh.domain.hi, plain.domain.hi)
-        self.assertGreater(walled.domain.hi[0], mesh.domain.hi[0])
-        # and the clearance is what pays for it
+        self.assertEqual(mesh.domain.hi, walled.domain.hi)
+        self.assertGreater(mesh.domain.hi[0], plain.domain.hi[0])
         leaf, = mesh.plenum_grilles
+        asked = float(plain.spec_offset_x) if hasattr(plain, "spec_offset_x") else 2.0
         self.assertAlmostEqual(
-            min(r.box.lo[0] for r in mesh.racks) - leaf.position, 0.8, places=6)
+            min(r.box.lo[0] for r in mesh.racks) - leaf.position, asked, places=6)
 
     def test_it_is_the_same_mesh_as_the_return_side(self):
         from aicfd import components as library
@@ -892,18 +894,13 @@ class SupplyMeshTest(unittest.TestCase):
         self.assertIn("supply_mesh", [p.name for p in c.porous(model)])
         self.assertIn("supply_mesh", c.create_baffles_dict(model))
 
-    def test_a_leaf_that_crowds_the_racks_is_said_so(self):
-        """The cavity comes out of the room with a mesh, so what is left in
-        front of the racks is what the case asked for minus the depth."""
+    def test_a_mesh_leaf_never_crowds_the_racks(self):
+        """It used to: the cavity came out of the room and an alert said what
+        was left. Counting the leaf as the wall it is removes the trade
+        altogether -- there is nothing to warn about."""
         model = m.build_model(self.spec())
-        self.assertTrue(any("mesh leaf leaves" in a for a in model.alerts))
-        self.assertTrue(any("0.80 m" in a for a in model.alerts))
-
-    def test_room_enough_raises_nothing(self):
-        spec = self.spec()
-        spec["racks"]["offset_x"] = 3.0
-        self.assertFalse(any("mesh leaf leaves" in a
-                             for a in m.build_model(spec).alerts))
+        self.assertEqual(model.alerts, [])
+        self.assertFalse(hasattr(m, "PLENUM_MIN_CLEARANCE"))
 
 
 class PressureBudgetTest(unittest.TestCase):
@@ -961,3 +958,46 @@ class PressureBudgetTest(unittest.TestCase):
         model = m.build_model(spec)
         self.assertGreater(model.loop_pressure_drop_pa, model.fan_available_pa())
         self.assertEqual(model.widening_needed(), "")
+
+
+class PlenumArrangementTest(unittest.TestCase):
+    """Three arrangements of one wall, and the page offers them as one, the
+    other, or neither -- never both (ADR-060)."""
+
+    def built(self, **plenum):
+        spec = support.spec("pod-fanwall")
+        spec["plenum"] = plenum
+        return m.build_model(spec)
+
+    def leaf(self, model):
+        return sorted(p.name for p in model.panels
+                      if p.name.startswith(("plenum_wall", "supply")))
+
+    def test_neither_is_the_shorter_room(self):
+        """Only a case with no plenum at all is shorter. Its size depends on
+        the clearance, and there is no cavity in front of it."""
+        plain = self.built(enabled=False)
+        self.assertEqual(self.leaf(plain), [])
+        self.assertLess(plain.domain.hi[0],
+                        self.built(enabled=True, depth=1.2).domain.hi[0])
+
+    def test_either_leaf_gives_the_same_room(self):
+        grilles = self.built(enabled=True, depth=1.2)
+        mesh = self.built(as_mesh=True, depth=1.2)
+        self.assertEqual(grilles.domain.hi, mesh.domain.hi)
+        self.assertEqual(self.leaf(grilles), ["plenum_wall", "supply1"])
+        self.assertEqual(self.leaf(mesh), ["supply_mesh"])
+
+    def test_the_mesh_stands_on_its_own(self):
+        """The page offers the two as one-or-the-other, so ticking the mesh
+        leaves `enabled` off. Reading `as_mesh` only as a modifier on
+        `enabled` gave that case no plenum at all."""
+        self.assertTrue(self.leaf(self.built(as_mesh=True, depth=1.2)))
+        self.assertEqual(self.leaf(self.built(enabled=False, as_mesh=False)), [])
+
+    def test_the_page_offers_them_as_one_or_the_other(self):
+        js = (support.REPO / "web" / "app.js").read_text()
+        self.assertIn("wireExclusiveChecks", js)
+        self.assertEqual(js.count("exclusive: 'plenum'"), 2)
+        self.assertIn("Include Plenum with grilles", js)
+        self.assertIn("No Plenum, only Mesh", js)

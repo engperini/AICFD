@@ -67,11 +67,11 @@ const SECTIONS = [
     note: 'the hall wall doubled; what closes it decides where the air goes',
     componentsLink: true,
     params: [
-      { key: 'plenum', label: 'Double the wall into the hall', check: true, default: false },
-      // Same cavity, different leaf: grilles aim the air and the building
-      // is designed longer for them; mesh is a barrier that goes into the
-      // room a hall already has (ADR-060).
-      { key: 'plenum_as_mesh', label: 'Close it with mesh, not grilles (hall keeps its size)', check: true, default: false },
+      // One or the other, or neither: they are two ways of closing the same
+      // wall and a case cannot have both. Neither is the room with no
+      // plenum at all, which is the shorter hall (ADR-060).
+      { key: 'plenum', label: 'Include Plenum with grilles', check: true, default: false, exclusive: 'plenum' },
+      { key: 'plenum_as_mesh', label: 'No Plenum, only Mesh', check: true, default: false, exclusive: 'plenum' },
       { key: 'plenum_depth', label: 'Between the two leaves', unit: 'm', step: 0.1, optional: true },
       { key: 'plenum_grille_width', label: 'Supply grille width', unit: 'm', step: 0.1, optional: true },
       { key: 'plenum_grille_height', label: 'Supply grille height', unit: 'm', step: 0.1, optional: true },
@@ -411,6 +411,37 @@ function racksLink() {
     + `${positions} positions carries">${off ? `${off} empty · ` : ''}positions \u25b8</a>`;
 }
 
+/**
+ * Checkboxes that answer the same question: ticking one clears the others.
+ *
+ * The supply plenum's two are ways of closing one wall -- grilles, or mesh --
+ * and a case cannot have both. Radio buttons would say so too, but they
+ * cannot be cleared once set, and "neither" is the commonest answer here: a
+ * hall with no plenum at all (ADR-060).
+ */
+function wireExclusiveChecks() {
+  const groups = {};
+  for (const section of activeSections()) {
+    for (const p of section.params) {
+      if (p.exclusive) (groups[p.exclusive] ??= []).push(p.key);
+    }
+  }
+  for (const keys of Object.values(groups)) {
+    for (const key of keys) {
+      const box = document.getElementById(`p-${key}`);
+      if (!box) continue;
+      box.addEventListener('change', () => {
+        if (!box.checked) return;
+        for (const other of keys) {
+          if (other === key) continue;
+          const el = document.getElementById(`p-${other}`);
+          if (el) el.checked = false;
+        }
+      });
+    }
+  }
+}
+
 function wireMeshPreset() {
   const box = document.getElementById('p-cell_size');
   const preset = document.getElementById('p-cell-preset');
@@ -451,6 +482,7 @@ function renderParams() {
     .join('');
   wireMeshPreset();
   wireComponentPickers();
+  wireExclusiveChecks();
 }
 
 /**
