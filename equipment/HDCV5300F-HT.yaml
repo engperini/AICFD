@@ -1,0 +1,63 @@
+# Uniflair Chilled Water Room Cooling HDCV5300F HT — DOWNFLOW room unit.
+#
+# NOT A FAN WALL. This is a room cooling unit: it stands in the room and
+# discharges through its own fan module, where every other unit in this
+# library is a wall of fans in a mechanical gallery. The coil model, the
+# capacity and the P-Q curve are the same physics and are carried here in
+# full; what this library entry does NOT do is place the unit, because the
+# geometry side models fan walls only. Naming it in a case's `fanwall.model`
+# would give the right coil in the wrong shape of room.
+#
+# ONE manufacturer selection, which is all a unit needs (ADR-063). Validating
+# the extrapolation is the engineer's, and the report says so.
+#
+# Selection sheet: Italy plant, Alternative Fan, 460/3ph/60Hz, fan module with
+# front discharge, EU4 filter, standard tolerance. 38.0 °C dry bulb / 23.4 °C
+# wet bulb / 30% RH entering air, 661 m, 150 Pa ESP, 20/30 °C water at
+# 12,938 l/h, 3 fans at 87% speed.
+#
+# Three independent checks (ADR-071):
+#   air    33,700 m3/h from 38.0 to 23.5 °C at 661 m  ->  143.0 kW  (-0.20%)
+#   water  12,938 l/h over a 10 K rise                ->  150.2 kW  (+0.42%)
+#   gross less the 6.4 kW of fan power                ->  143.2 kW  (-0.07%)
+model: HDCV5300F-HT
+family: Uniflair Chilled Water Room Cooling
+
+# Width x depth x height, metres. The sheet gives its height in two parts --
+# a 650 mm fan module above a 1960 mm coil vane -- and the sum is carried.
+size: [3.11, 0.865, 2.61]
+weight_kg: 669
+
+fans:
+  count: 3
+  type: Alternative Fan
+  modulation: 87              # % of full speed, at the selection point
+
+selection:
+  elevation_m: 661
+  esp_pa: 150                 # external static pressure (unit max: 454 Pa)
+  entering_water_c: 20
+  leaving_water_c: 30
+  entering_air_rh: 30         # %
+  water_flow_lh: 12938        # 3.59 l/s, stated (ADR-069)
+
+design:
+  return_c: 38.0              # air the unit RECEIVES, dry bulb
+  supply_c: 23.5              # discharge air off the unit, dry bulb (71% RH)
+  airflow_m3h: 33700          # room unit air flow rate (dry), actual at 661 m
+  nscc_kw: 143.3              # NET sensible: 149.6 gross less 6.4 of fan power
+  power_kw: 6.4               # room unit absorbed power (8.6 A)
+
+curve:
+  # Representative, not the manufacturer's. Anchored on the sheet's 454 Pa
+  # MAXIMUM external static pressure at the rated flow; the selection runs at
+  # 150 Pa with the fans at 87%, so this is the full-speed envelope, which is
+  # what the uncontrolled operating point needs. Replace with the real P-Q
+  # curve when it is given, and tick `measured` on the page.
+  measured: false
+  points:
+    - [0, 1050]
+    - [17000, 850]
+    - [33700, 454]
+    - [41000, 210]
+    - [47000, 0]

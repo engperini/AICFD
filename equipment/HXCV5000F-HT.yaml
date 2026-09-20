@@ -1,0 +1,67 @@
+# Schneider Electric Uniflair HXCV5000F HT — DOWNFLOW room unit.
+#
+# NOT A FAN WALL. See the note in HDCV5300F-HT.yaml: the coil model is the
+# same physics and is carried in full, but the geometry side of this software
+# models fan walls only, so naming this in a case's `fanwall.model` would give
+# the right coil in the wrong shape of room.
+#
+# ONE manufacturer selection, which is all a unit needs (ADR-063). Validating
+# the extrapolation is the engineer's, and the report says so.
+#
+# Selection sheet: UNICALC v11.1.11 dated 2026-04-30, China plant, Fan Type B,
+# 415/3ph/60Hz, fan module with front discharge, EU4 filter, standard
+# tolerance. 34.0 °C dry bulb / 20.5 °C wet bulb / 30% RH entering air, 661 m,
+# 50 Pa ESP, 20/30 °C water at 8,904 l/h, 3 fans at 67% speed.
+#
+# Three independent checks (ADR-071):
+#   air    31,550 m3/h from 34.0 to 23.4 °C at 661 m  ->   99.1 kW  (-0.85%)
+#   water  8,904 l/h over a 10 K rise                 ->  103.4 kW  (-0.11%)
+#   gross less the 3.5 kW of fan power                ->  100.0 kW  ( 0.00%)
+#
+# The air side is the loosest of the six units admitted here, at 0.85% against
+# a 1% rule. The sheet's own note says the performances are theoretical
+# calculations subject to tolerance, so that is where it sits rather than
+# something being wrong.
+model: HXCV5000F-HT
+family: Schneider Electric Uniflair Chilled Water Room Cooling
+
+# Width x depth x height, metres. The dimensions page covers the HXCV5000A HT
+# rather than this F -- CONFIRM the two share an envelope. Its height comes in
+# two parts, an 800 mm fan module above a 2350 mm coil vane, and the sum is
+# carried.
+size: [2.58, 1.07, 3.15]
+# The sheet prints a weight of 0 kg, which is not a weight. Left out rather
+# than guessed; ask for it before anyone sizes a floor from this file.
+
+fans:
+  count: 3
+  type: Fan Type B
+  modulation: 67              # % of full speed, at the selection point
+
+selection:
+  elevation_m: 661
+  esp_pa: 50                  # external static pressure (unit max: 604 Pa)
+  entering_water_c: 20
+  leaving_water_c: 30
+  entering_air_rh: 30         # %
+  water_flow_lh: 8904         # 2.47 l/s, stated (ADR-069)
+
+design:
+  return_c: 34.0              # air the unit RECEIVES, dry bulb
+  supply_c: 23.4              # discharge air off the unit, dry bulb (56% RH)
+  airflow_m3h: 31550          # unit return airflow, actual air at 661 m
+  nscc_kw: 100.0              # NET sensible: 103.5 gross less 3.5 of fan power
+  power_kw: 3.5               # room unit absorbed power (5.9 A)
+
+curve:
+  # Representative, not the manufacturer's. Anchored on the sheet's 604 Pa
+  # MAXIMUM external static pressure at the rated flow; the selection runs at
+  # 50 Pa with the fans at 67%, so this is the full-speed envelope. Replace
+  # with the real P-Q curve when it is given, and tick `measured` on the page.
+  measured: false
+  points:
+    - [0, 1400]
+    - [16000, 1130]
+    - [31550, 604]
+    - [39000, 280]
+    - [45000, 0]
