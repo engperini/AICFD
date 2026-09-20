@@ -173,7 +173,31 @@ class Coil:
         ceiling at this condition.
         """
         coldest = self.supply(return_c, air, self.water_max)
-        ceiling = air * (return_c - coldest)
+        # What it could REMOVE, which is nothing when the water is no colder
+        # than the air. A negative ceiling is a coil asked to heat.
+        ceiling = max(0.0, air * (return_c - coldest))
+        if setpoint_c is not None and return_c <= setpoint_c:
+            # Air already at or below what the unit is asked to deliver. The
+            # valve shuts and the unit ventilates: supply is the return, and
+            # it moves no heat.
+            #
+            # It used to pin the supply at the setpoint here, which claimed a
+            # chilled-water coil could WARM the air -- 15 degC in, 21,9 out,
+            # and a capacity of minus 214 kW. Worse than a wrong number in a
+            # report: that supply is written back onto the fan patch, so the
+            # unit went on to inject heat into the room it was cooling. A
+            # coil has no heating mode, and the case that reaches this is the
+            # ordinary one of a zone that has been over-cooled (ADR-062).
+            return Operating(
+                return_c=return_c,
+                supply_c=return_c,
+                capacity_kw=0.0,
+                ceiling_kw=ceiling,
+                effectiveness=0.0,
+                valve=0.0,
+                saturated=False,
+                water_m3h=0.0,
+            )
         if setpoint_c is None or setpoint_c <= coldest:
             water, supply, saturated = self.water_max, coldest, setpoint_c is not None
         else:
@@ -181,8 +205,13 @@ class Coil:
                 lambda w: self.supply(return_c, air, w) - setpoint_c,
                 self.water_max * 1e-3, self.water_max,
             )
-            if found is None:  # even a trickle overshoots: the room is colder
-                water, supply, saturated = self.water_max * 1e-3, setpoint_c, False
+            if found is None:
+                # A trickle already overshoots: the smallest flow the valve
+                # can pass takes the air past the setpoint. It delivers what
+                # that trickle gives, not the setpoint it cannot hold from
+                # above.
+                water = self.water_max * 1e-3
+                supply, saturated = self.supply(return_c, air, water), False
             else:
                 water, supply, saturated = found, setpoint_c, False
         return Operating(

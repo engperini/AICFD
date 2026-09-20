@@ -543,3 +543,51 @@ class EndpointTest(LibraryCopy):
         write_equipment("CA80NPVG6", {**read_equipment("CA80NPVG6")["unit"],
                                       "save_as": ""})
         self.assertEqual(self.path.read_text(), self.before)
+
+
+class ColdReturnTest(unittest.TestCase):
+    """A chilled-water coil has no heating mode (ADR-062)."""
+
+    def coil(self):
+        from aicfd import equipment as e
+
+        return e.load("CA80NPVG6").coil
+
+    def air(self):
+        from aicfd.coil import air_capacity_rate
+
+        return air_capacity_rate(104181.0, 30.0, 750.0)
+
+    def test_air_colder_than_the_setpoint_shuts_the_valve(self):
+        """It used to pin the supply at the setpoint: 15 degC in, 21,9 out,
+        and minus 214 kW of capacity. That supply is written back onto the fan
+        patch, so the unit went on to inject heat into the room it was
+        cooling."""
+        point = self.coil().operate(15.0, self.air(), 21.9)
+        self.assertEqual(point.valve, 0.0)
+        self.assertAlmostEqual(point.supply_c, 15.0, places=6)
+        self.assertEqual(point.capacity_kw, 0.0)
+
+    def test_nothing_it_reports_at_a_cold_return_is_negative(self):
+        for ret in (5.0, 12.0, 18.0, 21.9):
+            with self.subTest(return_c=ret):
+                point = self.coil().operate(ret, self.air(), 21.9)
+                self.assertGreaterEqual(point.capacity_kw, 0.0)
+                self.assertGreaterEqual(point.ceiling_kw, 0.0)
+                self.assertLessEqual(point.supply_c, ret + 1e-9)
+
+    def test_it_still_cools_the_moment_there_is_something_to_cool(self):
+        point = self.coil().operate(22.5, self.air(), 21.9)
+        self.assertGreater(point.valve, 0.0)
+        self.assertAlmostEqual(point.supply_c, 21.9, places=2)
+        self.assertGreater(point.capacity_kw, 0.0)
+
+    def test_a_warm_return_is_unchanged(self):
+        """The fix touches the cold end only: above the setpoint the unit
+        holds it until the valve is wide open, and then the supply floats."""
+        held = self.coil().operate(35.0, self.air(), 21.9)
+        self.assertAlmostEqual(held.supply_c, 21.9, places=2)
+        self.assertFalse(held.saturated)
+        floating = self.coil().operate(55.0, self.air(), 21.9)
+        self.assertTrue(floating.saturated)
+        self.assertGreater(floating.supply_c, 21.9)

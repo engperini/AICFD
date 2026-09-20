@@ -2510,3 +2510,37 @@ comments" asserted on files the software is built to edit. With Apply no
 longer destroying them the assertion is nearly always true, and it was still
 the wrong test: whether a save keeps a file readable belongs on the save
 path, against a sandbox, which is where it now is.
+
+---
+
+## ADR-062 — A chilled-water coil has no heating mode
+
+**Decision.** Where the air reaching a unit is already at or below the supply
+setpoint, the valve shuts: the supply temperature is the return, the capacity
+is zero, and the ceiling is what the coil could remove, never less than zero.
+
+**What it did before.** It pinned the supply at the setpoint. On the worked
+unit that reads 15 °C of return delivering 21,9 °C of supply and a capacity of
+**minus 214 kW** — the coil warming the air by seven kelvin with 18 °C water.
+The negative number in the report is the smaller half of it. That supply is
+written back onto the fan wall's own patch by the coupled loop, so the unit
+went on to *inject heat into the room it was cooling*, and nothing downstream
+would have said so.
+
+**It is not an exotic condition.** A zone that has been over-cooled returns
+air below the setpoint, and so does any unit whose neighbours are doing the
+work. Networked control makes it ordinary rather than rare: a unit told to
+open its valve because another unit's return is hot will over-cool its own
+zone and land here on the next pass. Fixing this first is what makes that
+feature safe to build on.
+
+**Where the water is warmer than the air, the ceiling is zero.** `ceiling_kw`
+is the most a coil could *remove*. Computed as `air x (return - coldest)` it
+goes negative the moment the return falls below the water, and every
+percentage taken against it inverts. Clamped at zero, a unit with nothing to
+cool reads as a unit with nothing to cool.
+
+**The trickle case is answered by the trickle.** Where even the smallest flow
+the valve can pass takes the air past the setpoint, the unit delivers what
+that flow gives rather than the setpoint it cannot hold from above. Same
+principle: report what the machine does, not what it was asked for.
