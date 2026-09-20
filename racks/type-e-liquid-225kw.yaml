@@ -1,0 +1,29 @@
+id: type-e-liquid-225kw
+name: Type-E liquid-cooled rack, 225 kW
+cooling: liquid
+
+# The liquid-cooled cabinet this specification is written around. Its heat
+# leaves through the coolant, not the air, so what it puts into the room is a
+# fraction of its 225 kW -- see `air_fraction` below, and read it before
+# putting this type in an air-cooled study.
+size: [0.605, 1.278, 2.300]
+height_note: 2300 mm with caster
+load_kw: 225.0
+weight_kg: 1880
+liquid_fraction: 0.96
+source: >
+  Brazil Ascenty Vinhedo 03 15+15 MW layout: 225 kW Liquid-cooled rack
+  605(W)mm x 1278(D)mm x 2300(H)mm, 8x Ceeform, 58 Nos. The Type-E RFP v2.0
+  states the same cabinet as 600*1278*2300mm with caster at a 227 kW thermal
+  design power and ~1880 kg with liquid, and notes that the 605 mm marked on
+  the drawings is 600 mm of rack body plus 5 mm of engineering tolerance.
+note: >
+  THE 605 mm IS THE PITCH, NOT THE BOX. Use it to lay a row out and the
+  cabinets will not foul each other; use 600 mm to describe the cabinet. This
+  file carries 605 because a row is what it is for.
+
+  ~96% of its duty leaves in the coolant. The air-cooled share is what a CFD
+  of this hall has to remove, and it is about 9 kW of the 225, not 225 -- the
+  RFP asks for an overall air-cooled ratio of at least 15% including a 5%
+  buffer, set per datahall from the actual layout. State the air share per
+  position; this file will not guess it for a room it does not know.

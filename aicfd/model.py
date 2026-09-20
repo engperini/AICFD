@@ -1292,14 +1292,44 @@ def row_plan(spec: dict, count: int) -> list[dict]:
                 f"racks.row[{i}] is {entry!r}; each position is a mapping, "
                 f"empty for a standard cabinet"
             )
-        unknown = set(entry) - {"blank", "width", "load_kw"}
+        unknown = set(entry) - {"blank", "width", "load_kw", "type"}
         if unknown:
             raise ValueError(
                 f"racks.row[{i}] has {', '.join(sorted(unknown))}; a position "
-                f"takes blank, width and load_kw"
+                f"takes type, blank, width and load_kw"
             )
         plan.append(dict(entry))
     return plan
+
+
+def rack_type_defaults(spec: dict) -> dict:
+    """What `racks.type` contributes: the standard cabinet, from the catalogue.
+
+    Anything the case states still wins, here as everywhere (ADR-036). What
+    the type gives is the numbers nobody should be retyping -- a cabinet's
+    width, depth and height are the product's, the same in every project that
+    buys it (ADR-075).
+    """
+    type_id = (spec.get("racks") or {}).get("type")
+    if not type_id:
+        return {}
+    from aicfd import racklib
+
+    rack = racklib.resolve(str(type_id))
+    return {"size": list(rack.size), "load_kw": rack.load_kw}
+
+
+def resolved_size(spec: dict) -> list[float]:
+    """The standard cabinet: what the case says, else what its type says."""
+    stated = (spec.get("racks") or {}).get("size")
+    if stated is not None:
+        return [float(v) for v in stated]
+    defaults = rack_type_defaults(spec)
+    if "size" in defaults:
+        return [float(v) for v in defaults["size"]]
+    raise ValueError(
+        "racks.size is missing and racks.type names no cabinet to take it from"
+    )
 
 
 def rack_positions(row_id: str, plan: list[dict], size, load_kw: float,
@@ -1324,7 +1354,38 @@ def rack_positions(row_id: str, plan: list[dict], size, load_kw: float,
     for i, entry in enumerate(plan):
         rack_id = rack_ids(i)
         blank = blanks.get(rack_id, bool(entry.get("blank", False)))
-        asked = float(widths.get(rack_id, entry.get("width", size[0])))
+        # A position may name a cabinet type instead of typing its width. What
+        # the position itself states still wins over the type (ADR-075).
+        from_type: dict = {}
+        if entry.get("type"):
+            from aicfd import racklib
+
+            rack = racklib.resolve(str(entry["type"]))
+            from_type = {"width": rack.size[0]}
+            if rack.cooling == "air" and rack.load_kw is not None:
+                from_type["load_kw"] = rack.load_kw
+            elif rack.cooling != "air":
+                # A LIQUID CABINET'S RATED DUTY IS NOT ITS AIR LOAD. The
+                # Type-E rack is 225 kW and leaves ~96% of it in the coolant:
+                # taking the rated figure would put 225 kW into a room that
+                # receives about 9, and taking the hall's air standard would
+                # be a number meant for a different machine. Neither is
+                # guessed -- the position has to say what reaches the air
+                # (ADR-075).
+                if (rack_id not in loads and entry.get("load_kw") is None
+                        and not blank):
+                    raise ValueError(
+                        f"{rack_id} is a {rack.cooling}-cooled "
+                        f"{rack.id!r} and states no load. Its rated "
+                        f"{rack.load_kw:g} kW is the cabinet's duty, not what "
+                        f"reaches this room's air"
+                        + (f" -- about {rack.liquid_fraction:.0%} of it leaves "
+                           f"in the coolant" if rack.liquid_fraction else "")
+                        + ". Give the position the air load it really puts "
+                          "into the hall"
+                    )
+        asked = float(widths.get(
+            rack_id, entry.get("width", from_type.get("width", size[0]))))
         if asked <= 0:
             raise ValueError(f"{rack_id}: a position {asked:g} m wide has no width")
         width = asked
@@ -1344,8 +1405,10 @@ def rack_positions(row_id: str, plan: list[dict], size, load_kw: float,
             "id": rack_id,
             "blank": blank,
             "width": width,
-            "load_kw": 0.0 if blank
-                       else float(loads.get(rack_id, entry.get("load_kw", load_kw))),
+            "load_kw": 0.0 if blank else float(loads.get(
+                rack_id,
+                entry.get("load_kw", from_type.get("load_kw", load_kw)))),
+            "type": entry.get("type"),
         })
     return out
 
@@ -1664,7 +1727,7 @@ def _pod_layout(spec: dict, cell, rack_spec: dict | None = None) -> _Layout:
     ceiling = float(spec["hall"]["ceiling"])
     cold = float(spec["aisles"]["cold"])
     hot = float(spec["aisles"]["hot"])
-    size = tuple(float(v) for v in spec["racks"]["size"])
+    size = tuple(resolved_size(spec))
     rack_dz = size[2]
     count = int(spec["racks"]["count"])
     load_kw = float(spec["racks"]["load_kw"])
@@ -1785,7 +1848,7 @@ def _hall_layout(spec: dict, cell, rack_spec: dict | None = None) -> _Layout:
     cold = float(spec["aisles"]["cold"])
     hot = float(spec["aisles"]["hot"])
     perimeter = float(spec["aisles"].get("perimeter", cold))
-    size = tuple(float(v) for v in spec["racks"]["size"])
+    size = tuple(resolved_size(spec))
     rack_dx, rack_dy, rack_dz = size
     per_row = int(spec["racks"]["per_row"])
     load_kw = float(spec["racks"]["load_kw"])

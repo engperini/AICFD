@@ -42,6 +42,7 @@ services:
       # added later is only covered once its name is added there too. That is
       # how `components/` went a commit without a mount.
       - ./equipment:/app/equipment
+      - ./racks:/app/racks
       - ./components:/app/components
       - ./reports:/app/reports
       # Read-only: the three worked results are evidence, and nothing in the

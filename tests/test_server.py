@@ -323,8 +323,8 @@ class ComposeMountsTest(unittest.TestCase):
 
     def test_everything_written_at_run_time_comes_from_the_clone(self):
         bound = self.mounts()
-        for directory in ("equipment", "components", "reports", "runs",
-                          "results", "cases"):
+        for directory in ("equipment", "components", "racks", "reports",
+                          "runs", "results", "cases"):
             with self.subTest(directory=directory):
                 self.assertIn(directory, bound,
                               f"{directory}/ is written by the software and must be mounted")

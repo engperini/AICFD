@@ -1,0 +1,12 @@
+id: odf-special-600-300
+name: ODF special rack, 600 x 300
+cooling: air
+
+# A shallow optical distribution frame: 300 mm deep against the 1200 of the
+# cabinets it stands among. In a row it leaves 900 mm of the band open behind
+# it, which the model does not fill -- place it knowing that.
+size: [0.600, 0.300, 2.200]
+load_kw: 0.0
+source: >
+  Brazil Ascenty Vinhedo 03 15+15 MW layout: ODF Special rack
+  300(D) x 600(W) mm x 2200 mm, 4 Nos.

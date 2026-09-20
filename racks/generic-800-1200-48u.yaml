@@ -1,0 +1,15 @@
+id: generic-800-1200-48u
+name: 800 x 1200, 48U air-cooled cabinet
+cooling: air
+
+# The tall wide bay. 48U needs 2283 mm, which is 83 mm above the 2200 the
+# other two hold to -- worth knowing before a containment roof or a busway is
+# set at 2200.
+size: [0.800, 1.200, 2.283]
+u_height: 48
+height_note: 2283 mm without caster
+load_kw: 12.0
+source: >
+  Type-E Customer Colocation Facility Technical Requirement (Liquid Cooling)
+  RFP v2.0: air-cooled racks 800*1200*48U (2283mm without caster), 12~16 kW
+  per rack.

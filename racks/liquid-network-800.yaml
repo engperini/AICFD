@@ -1,0 +1,16 @@
+id: liquid-network-800
+name: Liquid-cooled network rack, 32 kW, 800 wide
+cooling: liquid
+
+# INCOMPLETE ON PURPOSE. The layout states this cabinet's width and its duty
+# and marks its depth and height "further confirmation". They are not guessed
+# here: a depth invented to fill a field is a row that does not fit and
+# nothing saying so (ADR-071).
+size: [0.800, null, null]
+load_kw: 32.0
+source: >
+  Brazil Ascenty Vinhedo 03 15+15 MW layout: 32 kW Liquid-cooled Network rack,
+  800(W)mm - "Further confirmation", 8x Ceeform, 58 Nos.
+note: >
+  Ask for the depth and height before placing this type. Until then a case
+  naming it is refused rather than built on two numbers nobody stated.

@@ -1,0 +1,15 @@
+id: generic-800-1200-46u
+name: 800 x 1200, 46U air-cooled cabinet
+cooling: air
+
+# The wide bay at the same height: 46U fits in 2200 mm once the casters are
+# out of the stack, which is why this one is quoted without them and the 45U
+# 600 mm bay is quoted with.
+size: [0.800, 1.200, 2.200]
+u_height: 46
+height_note: 2200 mm without caster
+load_kw: 12.0
+source: >
+  Type-E Customer Colocation Facility Technical Requirement (Liquid Cooling)
+  RFP v2.0: air-cooled racks 800*1200*46U (2200mm without caster), 12~16 kW
+  per rack. Also in the Brazil AZ2 VIN03 5MW rack schedule.

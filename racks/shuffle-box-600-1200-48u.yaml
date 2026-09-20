@@ -1,0 +1,18 @@
+id: shuffle-box-600-1200-48u
+name: Shuffle-box rack, 600 x 1200, 48U
+cooling: air
+
+# Structured cabling, no power fed to it. It stands in the row and blocks the
+# air like any other cabinet, which is the only thing the CFD cares about, so
+# it is a type rather than a blanking panel.
+size: [0.600, 1.200, 2.283]
+u_height: 48
+height_note: 2283 mm
+load_kw: 0.0
+source: >
+  Brazil Ascenty Vinhedo 03 15+15 MW layout, rack schedule: Shuffle-Box rack
+  600(W)mm x 1200(D)mm x 48U(2283mm), no power, 34 Nos.
+note: >
+  Zero load and a full cabinet, which is not the same as a blanking panel: it
+  breathes and it resists (ADR-074). The 48U height is the tall one, 83 mm
+  above the 45U cabinets beside it.

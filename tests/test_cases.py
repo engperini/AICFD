@@ -156,3 +156,82 @@ class TypicalRowTest(unittest.TestCase):
         for row in model.rows:
             self.assertEqual(len(row.racks), 4)
         self.assertEqual(len(self.blanks(model)), len(model.rows))
+
+
+class RackTypeTest(unittest.TestCase):
+    """The catalogue: what a cabinet is, kept out of the case (ADR-075)."""
+
+    def build(self, **racks):
+        spec = copy.deepcopy(support.spec("pod-fanwall"))
+        spec["racks"].update(racks)
+        return m.build_model(spec)
+
+    def test_every_shipped_type_parses(self):
+        from aicfd import racklib
+
+        self.assertTrue(racklib.available())
+        for type_id in racklib.available():
+            with self.subTest(type=type_id):
+                rack = racklib.load(type_id)
+                self.assertEqual(rack.id, type_id)
+                self.assertTrue(rack.source, "a type says where it came from")
+                self.assertIn(rack.cooling, ("air", "liquid"))
+
+    def test_a_case_can_take_its_standard_from_a_type(self):
+        spec = copy.deepcopy(support.spec("pod-fanwall"))
+        spec["racks"].pop("size")
+        spec["racks"]["type"] = "generic-800-1200-46u"
+        rack = m.build_model(spec).rows[0].racks[0]
+        self.assertAlmostEqual(rack.box.size[0], 0.8, places=2)
+
+    def test_what_the_case_states_still_wins(self):
+        rack = self.build(type="generic-800-1200-46u",
+                          size=[0.6, 1.2, 2.2]).rows[0].racks[0]
+        self.assertAlmostEqual(rack.box.size[0], 0.6, places=2)
+
+    def test_a_position_can_name_a_type(self):
+        model = self.build(row=[{"type": "generic-800-1200-46u"}, {}, {}])
+        widths = [round(r.box.size[0], 2) for r in model.rows[0].racks]
+        self.assertEqual(widths[0], 0.8)
+        self.assertEqual(widths[1], 0.6)
+
+    def test_an_air_type_brings_its_own_load(self):
+        model = self.build(row=[{"type": "shuffle-box-600-1200-48u"}, {}, {}])
+        self.assertEqual(model.rows[0].racks[0].load_kw, 0.0)
+        self.assertEqual(model.rows[0].racks[1].load_kw, 6.0)
+
+    def test_a_liquid_type_with_no_stated_load_is_refused(self):
+        """Its rated duty is the cabinet's, not what reaches the room's air:
+        225 kW where about 9 arrives. Neither that nor the hall's air standard
+        is guessed for it."""
+        with self.assertRaises(ValueError) as caught:
+            self.build(row=[{"type": "type-e-liquid-225kw"}, {}, {}])
+        said = str(caught.exception)
+        self.assertIn("not what reaches this room's air", said)
+        self.assertIn("96%", said)
+
+    def test_a_liquid_type_with_a_stated_load_builds(self):
+        model = self.build(row=[{"type": "type-e-liquid-225kw", "load_kw": 9.0},
+                                {}, {}])
+        self.assertEqual(model.rows[0].racks[0].load_kw, 9.0)
+
+    def test_an_incomplete_type_is_refused_by_name(self):
+        """Its own document marks the depth 'further confirmation'. A number
+        invented to fill the field is a row that does not fit."""
+        with self.assertRaises(ValueError) as caught:
+            self.build(row=[{"type": "liquid-network-800"}])
+        self.assertIn("does not state its depth", str(caught.exception))
+
+    def test_an_unknown_type_lists_what_there_is(self):
+        from aicfd import racklib
+
+        with self.assertRaises(racklib.UnknownRackType) as caught:
+            racklib.load("no-such-cabinet")
+        self.assertIn("generic-600-1200-45u", str(caught.exception))
+
+    def test_the_type_e_pitch_is_the_605_not_the_600(self):
+        """The RFP says the 605 mm on the drawings is 600 of rack body plus 5
+        of engineering tolerance. A row is laid out on the pitch."""
+        from aicfd import racklib
+
+        self.assertAlmostEqual(racklib.load("type-e-liquid-225kw").size[0], 0.605)

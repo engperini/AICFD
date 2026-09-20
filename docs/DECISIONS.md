@@ -3096,3 +3096,52 @@ list and validate them all. Validating an edit against `model.racks` — which
 holds only the cabinets — meant a position the case had just blanked read as
 an unknown id, and un-blanking it from the page was impossible. That is the
 kind of one-way door a form must never have.
+
+## ADR-075 — A rack type is a product, and lives out of the case
+
+**Decision.** `racks/<id>.yaml` holds one cabinet type — its width, depth,
+height, its U count, what its document says it dissipates, and the document
+itself. A case names one as its standard (`racks.type`) or per position
+(`racks.row[i].type`). Anything the case states still wins, as everywhere else
+(ADR-036).
+
+**Because a cabinet is the same cabinet in every project that buys it.** Typing
+600 × 1200 × 2200 into each case is how two halls of the same rack end up 5 mm
+apart with nobody able to say which is right — and this project has exactly
+that trap in it, documented: the Type-E RFP notes that the **605 mm** marked on
+its drawings is 600 mm of rack body plus 5 mm of engineering tolerance. The
+catalogue carries 605, because a row is laid out on the pitch and not on the
+box, and says so in the file.
+
+**Every type quotes its source.** A test asserts it. What a cabinet is has to
+be traceable to the document it came from, or the next engineer has no way to
+tell a measured number from a remembered one.
+
+**A dimension the source does not state is left `null`.** The Vinhedo 03 layout
+marks the 32 kW liquid network rack's depth and height "further confirmation",
+so `liquid-network-800` states its 800 mm width and nothing else, and a case
+naming it is refused by name. A plausible number in that field is a row that
+does not fit with nothing saying so (ADR-071).
+
+**A LIQUID CABINET'S RATED DUTY IS NOT ITS AIR LOAD, and the model refuses to
+assume either way.** The Type-E rack is 225 kW and leaves about 96% of it in
+the coolant. Taking the rated figure would put 225 kW into a room that receives
+roughly 9; taking the hall's air standard would be a number meant for a
+different machine. So an air-cooled type brings its own load and a liquid-cooled
+one brings only its geometry — and a position naming a liquid type without
+stating a load is refused, naming the fraction that leaves in the coolant. That
+is the one number in this whole exercise that could quietly make a hall look
+25 times worse than it is.
+
+**What the catalogue holds after this project's documents**: the three
+air-cooled cabinets the Type-E RFP standardises (600×1200 45U, 800×1200 46U,
+800×1200 48U at 12–16 kW), the Type-E liquid rack, and the four types the
+Vinhedo 03 15+15 MW schedule adds — shuffle-box, ODF, the shallow 300 mm ODF
+special, and the liquid network rack that is still missing two dimensions.
+
+**The lease's Exhibit A-2 states limits, not products**, so none of it is in
+the catalogue: maximum high-density rack 600–1800 (W) × 1800 (D) × 2600 (H),
+maximum low-density 1200 × 1800 × 2600, cold aisle 1800 mm low density and
+2438 mm high, hot aisle 2134 mm, perimeter 2438 mm. Those belong to a case's
+clearances, and a type that exceeded them would be a compliance question rather
+than a catalogue entry.
