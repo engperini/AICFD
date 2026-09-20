@@ -1,0 +1,61 @@
+# Uniflair Front Flow Chilled Water FWCV36L2F — fan wall unit.
+#
+# ONE manufacturer selection, which is all a unit needs: the coil is recovered
+# from it and answers at any return air the room really produces (ADR-063).
+# Validating that extrapolation is the engineer's, and the report says so.
+#
+# Selection sheet: 38.0 °C dry bulb / 23.4 °C wet bulb / 30% RH entering air,
+# 661 m, 150 Pa ESP, 20/30 °C water at 41,430 l/h, Type B fans at 100% speed,
+# China plant selection, 460/3ph/60Hz, standard tolerance, EU5 filter.
+#
+# The sheet prints both capacities: 481.4 kW gross and 453.7 kW NET, differing
+# by the 27.7 kW the fan array returns to the air. The net figure is the one
+# carried here and the one every comparison in this software uses (ADR-068).
+# It checks out against its own numbers: 115,500 m3/h from 38.0 to 24.6 °C at
+# 661 m carries 452.9 kW against the 453.7 stated, 0.17% apart.
+model: FWCV36L2F
+family: Uniflair Front Flow Chilled Water
+
+# Width x depth x height, metres. The sheet gives 3600 x 1600 and calls the
+# 4000 mm "Coil vane Height" rather than an overall unit height -- CONFIRM
+# that against the general arrangement before it decides a gallery's headroom.
+size: [3.60, 1.60, 4.00]
+weight_kg: 4000
+
+fans:
+  count: 8
+  type: Type B Fan
+  modulation: 100             # % of full speed, at the selection point
+
+selection:
+  # The conditions this selection was taken at. Change any of them and the
+  # numbers below are not this unit's: ask for a new selection.
+  elevation_m: 661
+  esp_pa: 150                 # external static pressure (unit max: 155 Pa)
+  entering_water_c: 20
+  leaving_water_c: 30
+  entering_air_rh: 30         # %
+
+design:
+  # THE selection. One machine at one duty -- the one this plant was bought
+  # on -- and the anchor for everything the software computes.
+  return_c: 38.0              # air the unit RECEIVES, dry bulb
+  supply_c: 24.6              # discharge air off the unit, dry bulb (67% RH)
+  airflow_m3h: 115500         # unit return airflow, actual air at 661 m
+  nscc_kw: 453.7              # NET sensible: 481.4 gross less 27.7 of fan power
+  power_kw: 27.7              # room unit absorbed power (41.8 A)
+
+curve:
+  # Representative, not the manufacturer's: the sheet gives the one point the
+  # unit was selected to overcome, and the rest has the shape of an EC array.
+  # Anchored on 155 Pa at the rated flow -- the sheet's MAX external static
+  # pressure, which is this unit at the 100% fan speed it was selected at; the
+  # selection itself runs at 150 Pa. Replace with the real P-Q curve when the
+  # manufacturer gives it, and tick `measured` on the page.
+  measured: false
+  points:
+    - [0, 400]
+    - [58000, 320]
+    - [115500, 155]
+    - [140000, 75]
+    - [162000, 0]

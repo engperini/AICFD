@@ -961,3 +961,52 @@ class GrossForNetTest(unittest.TestCase):
         why = self.unit(nscc_kw=self.GROSS, power_kw=None).coil_problem
         self.assertNotIn("GROSS", why)
         self.assertIn("site elevation of", why)
+
+
+class ShippedUniflairTest(unittest.TestCase):
+    """The Uniflair in the repository is real data; a typo in it is a wrong
+    report. One selection, so this is also the shipped proof that one is
+    enough (ADR-065)."""
+
+    SHEET = dict(elevation=661.0, return_c=38.0, supply_c=24.6,
+                 airflow_m3h=115500.0, nscc_kw=453.7, gross_kw=481.4,
+                 power_kw=27.7, water_in=20.0, water_out=30.0)
+
+    def setUp(self):
+        self.unit = equipment.load("FWCV36L2F")
+
+    def test_it_parses_with_one_selection_and_no_table(self):
+        self.assertEqual(self.unit.capacity, ())
+        self.assertEqual(self.unit.span, (38.0, 38.0))
+        self.assertIsNotNone(self.unit.coil, self.unit.coil_problem)
+
+    def test_every_number_is_the_sheets(self):
+        s = self.SHEET
+        self.assertEqual(self.unit.selection["elevation_m"], s["elevation"])
+        self.assertEqual(self.unit.selection["entering_water_c"], s["water_in"])
+        self.assertEqual(self.unit.selection["leaving_water_c"], s["water_out"])
+        for key in ("return_c", "supply_c", "airflow_m3h", "nscc_kw", "power_kw"):
+            self.assertAlmostEqual(float(self.unit.design[key]), s[key], msg=key)
+
+    def test_the_net_figure_was_taken_not_the_gross(self):
+        s = self.SHEET
+        self.assertAlmostEqual(s["gross_kw"] - s["power_kw"], s["nscc_kw"], places=1)
+        self.assertAlmostEqual(float(self.unit.design["nscc_kw"]), s["nscc_kw"])
+
+    def test_the_selection_closes_on_its_own_numbers(self):
+        from aicfd.coil import air_capacity_rate
+
+        s = self.SHEET
+        air = air_capacity_rate(s["airflow_m3h"], s["return_c"], s["elevation"])
+        self.assertAlmostEqual(air * (s["return_c"] - s["supply_c"]),
+                               s["nscc_kw"], delta=1.0)
+
+    def test_the_dimensions_are_the_sheets(self):
+        self.assertEqual(list(self.unit.size), [3.60, 1.60, 4.00])
+        self.assertEqual(self.unit.weight_kg, 4000)
+        self.assertEqual(self.unit.fans["count"], 8)
+
+    def test_the_curve_passes_through_the_rated_flow(self):
+        points = dict(self.unit.curve["points"])
+        self.assertEqual(points[115500], 155)
+        self.assertIs(self.unit.curve["measured"], False)
