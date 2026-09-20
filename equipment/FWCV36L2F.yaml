@@ -17,8 +17,14 @@ model: FWCV36L2F
 family: Uniflair Front Flow Chilled Water
 
 # Width x depth x height, metres. The sheet gives 3600 x 1600 and calls the
-# 4000 mm "Coil vane Height" rather than an overall unit height -- CONFIRM
-# that against the general arrangement before it decides a gallery's headroom.
+# 4000 mm "Coil vane Height" rather than an overall unit height.
+#
+# ON THE SIBLING IT IS NOT THE OVERALL. The FWCV40L2A general arrangement
+# gives width 4000, depth 1636 and three heights -- B 4250 / C 4150 / D 4000
+# -- where that D is exactly what this sheet calls its vane height. If this
+# model follows suit its casing is around 4250 mm, and the 4000 carried here
+# is 250 mm short of what a gallery has to fit. CONFIRM against this model's
+# own general arrangement; until then this is the only height its sheet gives.
 size: [3.60, 1.60, 4.00]
 weight_kg: 4000
 
