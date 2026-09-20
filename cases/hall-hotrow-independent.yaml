@@ -80,7 +80,7 @@ mesh:
   - 0.3
   - 0.25
 solver:
-  max_iterations: 600
+  max_iterations: 400
   residual_tolerance: 0.0001
   sensor_interval: 100
   warm_start: true
