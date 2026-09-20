@@ -139,8 +139,16 @@ async function main() {
     return;
   }
   if (model.error) {
+    // No form to fix it in: the page draws itself from a model the generator
+    // has refused to build. So it says where the file is and what it said,
+    // which is the shortest way back (ADR-055).
     document.getElementById('root').innerHTML =
-      `<div class="error"><strong>Error in the spec.</strong><p>${model.error}</p></div>`;
+      `<div class="error"><strong>This case cannot be built.</strong>
+       <p>${model.error}</p>
+       ${model.file ? `<p>Edit <code>${model.file}</code> — the value the
+         message names — and reload this page. Nothing was lost: the case is
+         the file, and the solver has not been asked for anything.</p>` : ''}
+       </div>`;
     return;
   }
   render();

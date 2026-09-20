@@ -9,6 +9,8 @@ from __future__ import annotations
 import unittest
 from pathlib import Path
 
+import yaml
+
 from aicfd import server
 
 
@@ -595,3 +597,71 @@ class RackPageTest(unittest.TestCase):
         self.assertIn("loads:", self.path.read_text())
         server.write_racks(self.CASE, {"loads": {first: None}})
         self.assertEqual(self.path.read_text(), self.before)
+
+
+class ImpossibleChangeTest(unittest.TestCase):
+    """A change the generator refuses must not reach the file (ADR-055).
+
+    Every value here is inside its own range; what they describe together is
+    a room that cannot exist. Saved before it was built, that refusal became
+    the case on disk, and from then on the page failed to load with the same
+    error -- so the form that could undo it never came back.
+    """
+
+    CASE = "hall-double-gallery"
+
+    def setUp(self):
+        self.path = server.CASES_DIR / f"{self.CASE}.yaml"
+        self.before = self.path.read_text()
+
+    def tearDown(self):
+        self.path.write_text(self.before)
+
+    def apply(self, changes):
+        """What the page's Apply does, as `do_POST` does it."""
+        spec, rejected = server.apply_changes(server.load_spec(self.CASE), changes)
+        try:
+            payload = server.payload_for(self.CASE, spec)
+        except ValueError as refused:
+            payload = server.build_payload(self.CASE)
+            payload["rejected"] = rejected + [str(refused)]
+            return payload
+        server.save_spec(self.CASE, spec)
+        payload["rejected"] = rejected
+        return payload
+
+    def test_it_is_refused_rather_than_written(self):
+        payload = self.apply({"fan_count": 40, "fan_width": 4.0})
+        self.assertTrue(payload["rejected"])
+        self.assertIn("do not fit", payload["rejected"][-1])
+        self.assertEqual(self.path.read_text(), self.before)
+
+    def test_the_page_still_loads_afterwards(self):
+        self.apply({"fan_count": 40, "fan_width": 4.0})
+        self.assertNotIn("error", server.build_payload(self.CASE))
+
+    def test_a_change_that_does_build_is_still_written(self):
+        payload = self.apply({"supply_temp_c": 21.0})
+        self.assertEqual(payload["rejected"], [])
+        self.assertNotEqual(self.path.read_text(), self.before)
+        self.assertEqual(
+            server.load_spec(self.CASE)["fanwall"]["supply_temp_c"], 21.0
+        )
+
+    def test_a_case_that_cannot_build_says_which_file_to_edit(self):
+        broken = yaml.safe_load(self.before)
+        broken["fanwall"]["count"] = 400
+        self.path.write_text(yaml.safe_dump(broken, sort_keys=False))
+
+        handler = server.Handler.__new__(server.Handler)
+        handler.case_name = self.CASE
+        sent = {}
+        handler._json = lambda payload: sent.update(payload)
+        handler.path = "/api/model"
+        server.Handler.do_GET(handler)
+        self.assertIn("error", sent)
+        self.assertEqual(sent["file"], f"cases/{self.CASE}.yaml")
+
+    def test_the_page_tells_the_reader_where_that_file_is(self):
+        js = (server.REPO_ROOT / "web" / "app.js").read_text()
+        self.assertIn("model.file", js)

@@ -289,7 +289,16 @@ def _which(name: str) -> str | None:
 
 
 def build_payload(name: str) -> dict:
-    spec = load_spec(name)
+    return payload_for(name, load_spec(name))
+
+
+def payload_for(name: str, spec: dict) -> dict:
+    """Everything the page draws, from a spec that need not be on disk yet.
+
+    Taking the spec rather than reading it is what lets a change be built
+    before it is saved: a spec the generator refuses is never written, so it
+    cannot take the page down with it (ADR-055).
+    """
     model = model_module.build_model(spec)
     payload = model_module.to_dict(model, spec)
     # The page needs the path of every editable field, so it can read the
@@ -501,6 +510,9 @@ def write_racks(name: str, body: dict) -> dict:
         else:
             spec["racks"].pop("loads", None)
 
+    # Built before it is written, the same order the model page uses: nothing
+    # writes a case it has not built (ADR-055).
+    m.build_model(spec)
     _save_case_racks(case, spec)
     out = read_racks(case)
     out["rejected"] = rejected
@@ -829,7 +841,17 @@ class Handler(SimpleHTTPRequestHandler):
 
     def do_GET(self):  # noqa: N802
         if self.path.startswith("/api/model"):
-            return self._json(self._safely(build_payload, self.case_name))
+            payload = self._safely(build_payload, self.case_name)
+            if "error" in payload:
+                # A case on disk the generator refuses leaves the page with no
+                # form to fix it in, so the error has to say where the file is
+                # and what to edit. The page can no longer put a case into
+                # this state; one edited by hand still can (ADR-055).
+                payload["case"] = self.case_name
+                payload["file"] = str(
+                    (CASES_DIR / f"{self.case_name}.yaml").relative_to(REPO_ROOT)
+                )
+            return self._json(payload)
         if self.path.startswith("/api/racks"):
             return self._json(self._safely(read_racks, self._query("case") or self.case_name))
         if self.path.startswith("/api/components"):
@@ -857,8 +879,20 @@ class Handler(SimpleHTTPRequestHandler):
         if self.path.startswith("/api/model"):
             def update():
                 spec, rejected = apply_changes(load_spec(self.case_name), body)
+                # Built before it is saved. A value can be inside its range
+                # and still describe a room that cannot exist -- seven 4 m fan
+                # walls along a 26 m wall -- and the generator refuses it.
+                # Saving first meant that refusal was already on disk: every
+                # reload afterwards failed on the same error, so the form that
+                # could undo it never loaded again, and the page was gone for
+                # good (ADR-055).
+                try:
+                    payload = payload_for(self.case_name, spec)
+                except ValueError as refused:
+                    payload = build_payload(self.case_name)
+                    payload["rejected"] = rejected + [str(refused)]
+                    return payload
                 save_spec(self.case_name, spec)
-                payload = build_payload(self.case_name)
                 payload["rejected"] = rejected
                 return payload
 

@@ -2181,3 +2181,38 @@ last one stops, so clearing the table gives back the file that was there
 before. The save is parsed and compared against what was asked before it is
 written; a rack block that did not survive the edit is refused rather than
 saved.
+
+---
+
+## ADR-055 — A change is built before it is saved
+
+**Decision.** The page's Apply builds the model from the edited spec first and
+writes the case only if the model builds. A spec the generator refuses is
+reported as a rejection, exactly like a value outside its range, and the file
+on disk is left as it was.
+
+**What it fixes.** Apply saved first and built second. Every field was inside
+its own range — seven fan walls, four metres each — and what they described
+together was a 26,1 m wall with 28 m of plant on it, which `place_fans`
+rightly refuses. By then the refusal was the case on disk: the next request
+for the model failed with the same error, so did the one after a reload, and
+the page that could have undone the change never drew its form again. One
+press of a button and the case was unreachable from the interface that wrote
+it.
+
+**Why a range check was never going to catch it.** `EDITABLE` holds each field
+to its own limits, and that is the right job for it: it is what stops a typed
+`4O` or a negative aisle. It cannot know that a count and a width are only
+wrong *together*, or wrong only in a hall of this length. The generator knows,
+because building the model is what finds out. So the generator is the check,
+and the only thing that had to change is the order.
+
+**A case that cannot be built says where it lives.** The page draws itself
+from the model, so when there is no model there is no form — nothing to edit
+and no way back. The error panel now names the case file and what the
+generator said, which is the shortest way to a file a person can open. The
+page can no longer put a case into that state; one edited by hand still can,
+and now it says so.
+
+**The general rule.** Nothing writes a case it has not built. The rack page
+follows it too, for the same reason and in the same order.
