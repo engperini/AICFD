@@ -1112,13 +1112,67 @@ class ShippedSpringerTest(unittest.TestCase):
 
 
 class EveryShippedUnitTest(unittest.TestCase):
-    """Whatever is in the library is real data behind somebody's report."""
+    """The admission rule: only sheets that close get into the library.
+
+    Whatever is here is real data behind somebody's report, and a sheet that
+    does not agree with itself cannot be made to by entering it anyway. Four
+    have been turned away on these checks -- a CM500W with its total and
+    sensible capacities transposed, a Delta coil selection that is not a unit,
+    an FA126HC whose air side misses by 4.4%, and a CA40NPVGT read at the
+    wrong elevation -- and each was sent back to its vendor instead (ADR-071).
+    """
 
     def test_they_all_fit_a_coil(self):
         for model in equipment.available():
             with self.subTest(model=model):
                 unit = equipment.load(model)
                 self.assertIsNotNone(unit.coil, unit.coil_problem)
+
+    def test_their_air_side_closes_on_the_net_figure(self):
+        """Airflow x density x cp x dT is the net sensible capacity. Every
+        manufacturer whose sheet is admitted here agrees within 1%."""
+        from aicfd.coil import air_capacity_rate
+
+        for model in equipment.available():
+            with self.subTest(model=model):
+                unit = equipment.load(model)
+                design, altitude = unit.design, unit.selection["elevation_m"]
+                air = air_capacity_rate(float(design["airflow_m3h"]),
+                                        float(design["return_c"]), float(altitude))
+                heat = air * (float(design["return_c"]) - float(design["supply_c"]))
+                stated = float(design["nscc_kw"])
+                self.assertLess(abs(heat - stated) / stated, 0.01)
+
+    def test_a_stated_water_flow_carries_the_gross_duty(self):
+        """Where the sheet gives its flow, it has to agree with net plus fan
+        power over the water's rise -- the third independent check, and the
+        one that catches a supply temperature read off the wrong side of the
+        fans (ADR-069, ADR-070)."""
+        for model in equipment.available():
+            unit = equipment.load(model)
+            flow = (unit.selection or {}).get("water_flow_lh")
+            if not flow:
+                continue
+            with self.subTest(model=model):
+                rise = (float(unit.selection["leaving_water_c"])
+                        - float(unit.selection["entering_water_c"]))
+                gross = (float(unit.design["nscc_kw"])
+                         + float(unit.design["power_kw"]))
+                self.assertAlmostEqual(float(flow) / 3600 * 4.18 * rise, gross,
+                                       delta=0.01 * gross)
+
+    def test_every_unit_states_what_a_report_will_quote(self):
+        for model in equipment.available():
+            with self.subTest(model=model):
+                unit = equipment.load(model)
+                for field in ("return_c", "supply_c", "airflow_m3h",
+                              "nscc_kw", "power_kw"):
+                    self.assertIsNotNone(unit.design.get(field), field)
+                for field in ("elevation_m", "entering_water_c",
+                              "leaving_water_c", "esp_pa"):
+                    self.assertIsNotNone(unit.selection.get(field), field)
+                self.assertEqual(len(unit.size), 3)
+                self.assertTrue(all(v > 0 for v in unit.size))
 
     def test_they_all_reproduce_their_own_leaving_water(self):
         for model in equipment.available():

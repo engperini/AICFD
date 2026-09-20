@@ -2892,3 +2892,44 @@ not exist.
 test walks the whole library asserting it within 0.15 K. That check catches
 both this and ADR-069's: a supply temperature read off the wrong side of the
 fans, or a water flow taken from the net, both show up there.
+
+## ADR-071 — Only sheets that close get into the library
+
+**Decision.** A unit is admitted to `equipment/` only when its own numbers
+agree with each other. Four checks, all enforced by a test that walks the whole
+library:
+
+1. **The air side closes on the net figure**, within 1%: airflow × density ×
+   cp × ΔT is the net sensible capacity, at the sheet's own site elevation.
+2. **A stated water flow carries the gross duty**, within 1%: flow × 4.18 ×
+   the water's rise is the net plus the fan power (ADR-069).
+3. **The unit reproduces its own leaving water temperature**, within 0.15 K.
+4. **Every field a report will quote is present**: the five of the design
+   selection, the four of the conditions, and three dimensions.
+
+**A sheet that does not agree with itself cannot be made to by entering it
+anyway.** Whatever is in this directory is real data behind somebody's report,
+and a study is only as defensible as the numbers under it. Four sheets have
+been turned away:
+
+- **CM500W** — "Sensible 464" printed above "Total 432", which is impossible;
+  the chilled water supply and return transposed; no fan power stated; and the
+  air side 8.6% out even on the kindest reading of the two capacities.
+- **Delta PAHV800** — a coil selection, not a unit: no fans, no external static
+  pressure, no casing. Taken at elevation 0 m for a 661 m site, and its airflow
+  is standard air, which is the 4% by which its air side misses while its water
+  side closes to 0.05%.
+- **FA126HC** — its net figure is right and provable twice over, and its air
+  side still misses by 4.4%. Its airflow, its supply temperature or its
+  elevation is wrong, and only its vendor knows which.
+- **CA40NPVGT** — a good sheet entered at the wrong elevation, which is the
+  same failure seen from the other side: 661 m makes it close to 0.03%.
+
+**What a rejected sheet gets instead is a question for its vendor**, naming the
+field. That is the whole point of the consistency check (ADR-068): it is cheap
+to ask, and a plant sized on a sheet that does not close is not.
+
+**This is not a claim that the admitted units are right** — only that they are
+self-consistent and that what the tool reports about them traces to a
+manufacturer's own arithmetic. A coil fitted from one selection still carries
+an extrapolation the engineer owns (ADR-063).
