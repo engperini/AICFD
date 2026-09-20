@@ -299,6 +299,12 @@ class Model:
     design selection, which is what the coil is fitted from and so what says
     how much it transfers at the return temperature the room actually
     produces (ADR-036, ADR-063)."""
+    fan_control: str = "independent"
+    """`independent` -- every unit runs to its own return, which is what a
+    unit with no network does. `team` -- the units of one mechanical gallery
+    share the worst return any of them sees, so a unit far from the load
+    opens its valve as far as the loaded one has to instead of idling at the
+    setpoint (ADR-064)."""
     plenum_depth: float | None = None
     """Distance between the two leaves of the wall into the hall, where the
     case asks for a supply plenum. None is a single wall with the units
@@ -612,6 +618,31 @@ class Model:
             return 0.0
         _d, f = reference.darcy_forchheimer()
         return 0.5 * self.rho * f * velocity**2 * reference.depth
+
+    @property
+    def fan_teams(self) -> list[list[str]]:
+        """The units that share a network, one list per mechanical gallery.
+
+        A gallery is the group: the units in it are on one set of pipes and
+        one controller, and a hall with a gallery at each end has two
+        networks that know nothing of each other. Read off the geometry --
+        the units at one dividing wall are one gallery's -- rather than from
+        a list somebody has to keep in step with the layout (ADR-064).
+        """
+        groups: dict[float, list[str]] = {}
+        for panel in self.fans:
+            groups.setdefault(round(panel.position, 6), []).append(panel.name)
+        return [names for _at, names in sorted(groups.items())]
+
+    def team_of(self, name: str) -> list[str]:
+        """The units sharing a network with this one, itself included. Just
+        itself where the units run independently."""
+        if self.fan_control != "team":
+            return [name]
+        for team in self.fan_teams:
+            if name in team:
+                return team
+        return [name]
 
     @property
     def unloaded_racks(self) -> int:
@@ -1116,6 +1147,7 @@ def build_model(spec: dict) -> Model:
         altitude_m=altitude,
         equipment=unit,
         blocks=layout.blocks,
+        fan_control=str(fan.get("control", "independent")).strip().lower(),
         fan_static_pa=(
             float(fan["static_pressure_pa"]) if "static_pressure_pa" in fan else None
         ),

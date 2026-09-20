@@ -74,6 +74,9 @@ EDITABLE = {
     # gallery (ADR-046). Defaults to the named unit's datasheet.
     "fan_depth": (("fanwall", "depth"), float, (0.1, 10.0)),
     "supply_temp_c": (("fanwall", "supply_temp_c"), float, (-10.0, 40.0)),
+    # Networked units: the ones sharing a mechanical gallery run to the worst
+    # return any of them sees, instead of each to its own (ADR-064).
+    "fan_team": (("fanwall", "control"), "team", None),
     # --- supply plenum ------------------------------------------------------
     # The wall into the hall doubled, the cavity between its leaves
     # pressurised, and grilles in the inner leaf deciding where the air
@@ -252,6 +255,11 @@ def apply_changes(spec: dict, changes: dict) -> tuple[dict, list[str]]:
             rejected.append(f"{key}: not an editable parameter")
             continue
         path, caster, limits = EDITABLE[key]
+        if caster == "team":
+            # A checkbox, stored as the word the spec uses, so a case reads
+            # `control: team` rather than `control: true`.
+            _place(spec, path, "team" if raw else "independent")
+            continue
         if caster == "component":
             from aicfd import components as library
 

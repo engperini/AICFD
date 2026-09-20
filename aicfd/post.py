@@ -362,6 +362,10 @@ def coil_capacity(model: Model, fans: list[dict], kpis: dict) -> dict:
     setpoint = model.supply_temp_c
     available = removed = 0.0
     saturated, warmest_supply, seen, air_seen = 0, setpoint, [], 0.0
+    # The worst return each gallery's network is reading. Read once, so the
+    # capacity reported here is worked out the same way the coupled loop
+    # worked out the supply it imposed (ADR-064).
+    by_name = {f["name"]: f.get("return_temp_c") for f in fans}
     for fan in fans:
         temperature = fan.get("return_temp_c")
         if temperature is None:
@@ -377,7 +381,9 @@ def coil_capacity(model: Model, fans: list[dict], kpis: dict) -> dict:
         air = (measured * CP_AIR / 1000 if measured
                else air_capacity_rate(per_unit, temperature, model.altitude_m))
         air_seen += air
-        point = coil.operate(temperature, air, setpoint)
+        worst = max((by_name[peer] for peer in model.team_of(fan["name"])
+                     if by_name.get(peer) is not None), default=temperature)
+        point = coil.operate_shared(worst, temperature, air, setpoint)
         fan["available_kw"] = round(point.ceiling_kw, 1)
         fan["coil_supply_c"] = round(point.supply_c, 2)
         # How much of its water-side authority the unit is using: the number

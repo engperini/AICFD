@@ -100,16 +100,23 @@ def supply_temperatures(model, step: str | Path) -> tuple[dict, dict, list]:
     if coil is None:
         return {}, {}, []
     supplies, returns, saturated = {}, {}, []
+    seen = {}
     for fan in fan_flows(step, supply_temp_c=model.supply_temp_c):
         temperature = fan.get("return_temp_c")
         mass = fan.get("intake_kg_s")
         if temperature is None or not mass:
             continue
-        point = coil.operate(temperature, mass * CP_AIR / 1000, model.supply_temp_c)
-        supplies[fan["name"]] = point.supply_c
-        returns[fan["name"]] = temperature
+        seen[fan["name"]] = (temperature, mass * CP_AIR / 1000)
+    for name, (temperature, air) in seen.items():
+        # On a network the unit runs to the worst return its own gallery
+        # sees, not to its own. Independent units are a team of one, so the
+        # same line covers both (ADR-064).
+        worst = max(seen[peer][0] for peer in model.team_of(name) if peer in seen)
+        point = coil.operate_shared(worst, temperature, air, model.supply_temp_c)
+        supplies[name] = point.supply_c
+        returns[name] = temperature
         if point.saturated:
-            saturated.append(fan["name"])
+            saturated.append(name)
     return supplies, returns, saturated
 
 

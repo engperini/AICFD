@@ -93,6 +93,10 @@ const SECTIONS = [
       { key: 'fan_height', label: 'Unit height', unit: 'm', step: 0.1 },
       { key: 'fan_depth', label: 'Unit depth', unit: 'm', step: 0.1, optional: true },
       { key: 'supply_temp_c', label: 'Supply temperature', unit: '°C', step: 0.5 },
+      // Off is every unit to its own return, which is a unit with no network.
+      // On, the units of one gallery run to the worst return any of them sees
+      // (ADR-064).
+      { key: 'fan_team', label: 'Units work as a team, per gallery', check: true, default: false, on: 'team' },
       { key: 'fan_static_pa', label: 'External static pressure', unit: 'Pa', step: 5, optional: true },
     ],
   },
@@ -588,8 +592,11 @@ function inputHtml(p) {
   if (p.check) {
     // Absent means the default, and the default is not always on: the hot
     // aisle is contained unless a case says otherwise, a supply plenum is
-    // there only where a case asks for one (ADR-058).
-    const on = value === undefined || value === null ? (p.default ?? true) : !!value;
+    // there only where a case asks for one (ADR-058). A switch whose spec
+    // value is a word rather than a flag says which word means on.
+    const on = value === undefined || value === null
+      ? (p.default ?? true)
+      : (p.on ? value === p.on : !!value);
     return `<div class="param">
       <label for="p-${p.key}">${p.label}</label>
       <input type="checkbox" id="p-${p.key}" ${on ? 'checked' : ''} />

@@ -2587,3 +2587,47 @@ an uncapped temperature describe a machine that does not exist.
 **What the model still does not know** is worth saying beside that number:
 condensation, whether the chiller and the pump can hold the design flow at
 that rise, and an air flow far from the one the fit was anchored at.
+
+---
+
+## ADR-064 — Units on a network run to the worst return their gallery sees
+
+**Decision.** `fanwall.control: team` puts the units of one mechanical
+gallery on a network: each runs to the worst return any of them sees, rather
+than to its own. `independent` is the default and is what a unit with no
+network does. The group is the gallery — a hall with a gallery at each end
+has two networks that know nothing of each other — and it is read off the
+geometry rather than from a list somebody has to keep in step with the
+layout.
+
+**What the shared reading buys is the valve.** A unit told that the room is
+at 34 °C opens as far as a unit really at 34 °C has to, and then delivers
+what *its* coil gives at *its* own return. On the worked unit a fan wall
+seeing 24 °C of return goes from 26 % valve and 65 kW, holding the setpoint,
+to 83 % and 140 kW delivering 19,5 °C. That is a unit that had stopped
+working taking a share of the load, which is the whole point of the network.
+
+**Capacity is reported on the air the unit really receives.** `air x (own
+return - what it delivers)`. Working it out on the shared return would quote
+heat the unit never moved, and the number would not tie back to the heat the
+field shows it carrying. The coupled loop and the results page apply the same
+chain, so the capacity reported matches the supply temperature imposed.
+
+**A coil told to open against cold air still does not heat.** ADR-062 holds
+here, and this is the arrangement that reaches it: a unit ordered to open by
+a hot neighbour over-cools its own zone and, on the next pass, sees a return
+below its setpoint. It delivers its own return and moves nothing, which is
+what its own supply sensor would make it do.
+
+**What it does not change is the airflow.** Networked control often stages or
+equalises fan speed as well; this is the thermal setpoint only, and saying so
+is cheaper than a reader assuming the fans moved too.
+
+**The risk, named.** `max` is not smooth. The coupled loop converges because
+the coil passes back only what its effectiveness leaves — a gain near 0,12 —
+but a shared maximum couples every unit to one, and two units swapping places
+as the worst between passes could chatter instead of settling. Nothing is
+damped for now: the loop already measures what moved and warns when it does
+not settle within its passes. A real case that chatters is the evidence that
+would justify damping, and inventing it first would hide the very behaviour
+worth seeing.

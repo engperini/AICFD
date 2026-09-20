@@ -158,6 +158,45 @@ class Coil:
     def supply(self, return_c: float, air: float, water: float) -> float:
         return return_c - self.epsilon(air, water) * (return_c - self.water_c)
 
+    def operate_shared(self, seen_c: float, return_c: float, air: float,
+                       setpoint_c: float | None = None) -> Operating:
+        """What this unit does when its control reads ``seen_c``, not its own
+        return.
+
+        Fan walls on a network run to the worst condition any of them sees.
+        What is shared is the reading, and what the reading buys is the valve:
+        a unit whose own air is cool is told to open as far as the worst-case
+        unit has to, and then delivers what ITS coil gives at ITS own return.
+        That is how a unit far from the load stops idling at the setpoint and
+        starts taking a share of it (ADR-064).
+
+        Reported against the air this unit really receives -- the capacity is
+        `air x (own return - what it delivers)`. Working it out on the shared
+        return would quote heat the unit never moved.
+
+        A chilled-water coil still has no heating mode (ADR-062): told to open
+        against air colder than its water, it delivers its own return and
+        moves nothing. A real unit's own supply sensor shuts the valve there.
+        """
+        if seen_c <= return_c:
+            return self.operate(return_c, air, setpoint_c)
+        ordered = self.operate(seen_c, air, setpoint_c)
+        water = ordered.valve * self.water_max
+        if water <= 0:
+            return self.operate(return_c, air, setpoint_c)
+        supply = min(self.supply(return_c, air, water), return_c)
+        coldest = self.supply(return_c, air, self.water_max)
+        return Operating(
+            return_c=return_c,
+            supply_c=supply,
+            capacity_kw=air * (return_c - supply),
+            ceiling_kw=max(0.0, air * (return_c - coldest)),
+            effectiveness=self.epsilon(air, water),
+            valve=ordered.valve,
+            saturated=ordered.saturated,
+            water_m3h=ordered.water_m3h,
+        )
+
     def leaving_water_c(self, capacity_kw: float) -> float:
         """What the water leaves at, carrying this heat at the design flow.
 

@@ -507,3 +507,80 @@ class FirstPassTest(unittest.TestCase):
         """Nothing moved because nothing has been compared, which is not the
         same as nothing moving."""
         self.assertNotIn("converged", self._pass(None).summary())
+
+
+class TeamControlTest(unittest.TestCase):
+    """Units on a network run to the worst return their own gallery sees
+    (ADR-064)."""
+
+    def model(self, control="team"):
+        from aicfd.model import build_model
+
+        spec = support.spec("hall-double-gallery")
+        spec["fanwall"] = {**spec["fanwall"], "control": control}
+        return build_model(spec)
+
+    def test_a_gallery_is_the_group(self):
+        """Read off the geometry: the units at one dividing wall are one
+        gallery's. A hall with a gallery at each end has two networks that
+        know nothing of each other."""
+        model = self.model()
+        teams = model.fan_teams
+        self.assertEqual([len(t) for t in teams], [7, 7])
+        self.assertEqual(model.team_of("fan1"), teams[0])
+        self.assertNotIn("fan1", model.team_of(teams[1][0]))
+
+    def test_independent_units_are_a_team_of_one(self):
+        model = self.model("independent")
+        self.assertEqual(model.team_of("fan1"), ["fan1"])
+
+    def test_a_cool_unit_opens_as_far_as_the_loaded_one_has_to(self):
+        """What the network buys: a unit far from the load stops idling at
+        the setpoint and takes a share."""
+        from aicfd import equipment
+        from aicfd.coil import air_capacity_rate
+
+        coil = equipment.load("CA80NPVG6").coil
+        air = air_capacity_rate(104181.0, 30.0, 750.0)
+        alone = coil.operate(24.0, air, 21.9)
+        networked = coil.operate_shared(34.0, 24.0, air, 21.9)
+        self.assertAlmostEqual(alone.supply_c, 21.9, places=2)
+        self.assertLess(networked.supply_c, alone.supply_c)
+        self.assertGreater(networked.valve, alone.valve)
+        self.assertGreater(networked.capacity_kw, alone.capacity_kw)
+
+    def test_the_loaded_unit_itself_is_unchanged(self):
+        from aicfd import equipment
+        from aicfd.coil import air_capacity_rate
+
+        coil = equipment.load("CA80NPVG6").coil
+        air = air_capacity_rate(104181.0, 30.0, 750.0)
+        alone = coil.operate(34.0, air, 21.9)
+        networked = coil.operate_shared(34.0, 34.0, air, 21.9)
+        self.assertAlmostEqual(networked.supply_c, alone.supply_c, places=6)
+        self.assertAlmostEqual(networked.capacity_kw, alone.capacity_kw, places=6)
+
+    def test_capacity_is_reported_on_the_air_the_unit_really_gets(self):
+        """Working it out on the shared return would quote heat the unit
+        never moved."""
+        from aicfd import equipment
+        from aicfd.coil import air_capacity_rate
+
+        coil = equipment.load("CA80NPVG6").coil
+        air = air_capacity_rate(104181.0, 30.0, 750.0)
+        point = coil.operate_shared(34.0, 24.0, air, 21.9)
+        self.assertAlmostEqual(point.return_c, 24.0, places=6)
+        self.assertAlmostEqual(point.capacity_kw,
+                               air * (24.0 - point.supply_c), places=6)
+
+    def test_a_coil_told_to_open_against_cold_air_still_does_not_heat(self):
+        """ADR-062 holds here too: a real unit's own supply sensor shuts the
+        valve rather than warming the room."""
+        from aicfd import equipment
+        from aicfd.coil import air_capacity_rate
+
+        coil = equipment.load("CA80NPVG6").coil
+        air = air_capacity_rate(104181.0, 30.0, 750.0)
+        point = coil.operate_shared(34.0, 15.0, air, 21.9)
+        self.assertLessEqual(point.supply_c, 15.0)
+        self.assertGreaterEqual(point.capacity_kw, 0.0)
