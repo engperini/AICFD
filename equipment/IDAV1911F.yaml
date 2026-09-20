@@ -1,0 +1,74 @@
+# Uniflair Air Cooled Room Cooling IDAV1911F + OCC2401EC — DOWNFLOW DX CRAC.
+#
+# NOT A FAN WALL, AND NOT CHILLED WATER. Two things this software does not
+# place or model:
+#
+#   * it is a room unit, not a wall of fans in a mechanical gallery, so the
+#     geometry cannot place it (`arrangement: downflow`, ADR-072);
+#   * it is direct expansion, so its capacity follows the refrigerant circuit,
+#     the compressor's speed and the outdoor air its condenser rejects into.
+#     The coil this software fits is a chilled-water one and there is no
+#     equivalent here (`cooling: dx`, ADR-073).
+#
+# What IS here is the selection, carried in full and checked against itself.
+# When a DX model is built this unit is ready for it; until then, its capacity
+# at any return other than 30.0 °C is not a question this tool answers.
+#
+# Sheet: 460/3ph/60Hz, R410A, EC backward-curved centrifugal motorfans, EU4
+# filter, standard tolerance. 30.0 °C dry bulb / 18.1 °C wet bulb / 32% RH
+# entering air, 661 m, 50 Pa ESP, OUTSIDE AIR 38.8 °C, one compressor at
+# 81 Hz, condenser OCC2401EC.
+#
+# The one check that applies (ADR-071):
+#   air    14,215 m3/h from 30.0 to 17.9 °C at 661 m  ->  51.7 kW  (-0.07%)
+#   gross less the 1.8 kW of FAN power                ->  51.7 kW  ( exact )
+#
+# Note which power nets the capacity: the FANS' 1.8 kW, not the 19.3 kW the
+# unit absorbs. The compressor's 17.6 kW and the condenser's 0.9 kW leave the
+# room through the refrigerant, so they never reach this air.
+model: IDAV1911F
+family: Uniflair Air Cooled Room Cooling
+arrangement: downflow
+cooling: dx
+
+# Width x depth x height, metres, INDOOR unit only. The OCC2401EC condenser is
+# a separate box, 2.41 x 0.80 x 1.15 m and 141 kg without legs, and goes
+# outdoors.
+size: [1.777, 0.90, 2.15]
+weight_kg: 695                # basic indoor unit
+
+fans:
+  count: 2
+  type: E.C. backward curved centrifugal motorfan
+  modulation: 68              # % of full speed, at the selection point
+
+selection:
+  elevation_m: 661
+  esp_pa: 50                  # external static pressure (unit max: 501.9 Pa)
+  entering_air_rh: 32         # %
+  outside_air_c: 38.8         # what the condenser rejects into. A DX unit's
+                              # capacity moves with this; a chilled-water one's
+                              # does not, which is why it has no field on the
+                              # other units here.
+
+design:
+  return_c: 30.0              # air the unit RECEIVES, dry bulb
+  supply_c: 17.9              # discharge air off the unit, dry bulb (66% RH)
+  airflow_m3h: 14215          # room unit air flow rate, actual air at 661 m
+  nscc_kw: 51.7               # NET sensible: 53.5 gross less 1.8 of FAN power
+  power_kw: 1.8               # FAN power, which is what nets the capacity.
+                              # The unit absorbs 19.3 kW in all: 17.6 of
+                              # compressor and 1.8 of fans, plus 0.9 at the
+                              # condenser outdoors.
+
+curve:
+  # Representative, not the manufacturer's. Anchored on the sheet's 501.9 Pa
+  # MAXIMUM external static pressure at the rated flow; the selection runs at
+  # 50 Pa with the fans at 68%, so this is the full-speed envelope.
+  measured: false
+  points:
+    - [0, 1150]
+    - [7000, 930]
+    - [14215, 502]
+    - [17500, 230]
+    - [20000, 0]

@@ -1020,6 +1020,13 @@ def equipment_for(spec: dict):
     from aicfd import equipment as library
 
     unit = library.load(name)
+    if unit.cooling != "chilled_water":
+        raise ValueError(
+            f"{name} is a {unit.cooling} unit and this model's coil is a "
+            f"chilled-water one. Its selection is in the library and checked; "
+            f"the model that would answer for a refrigerant circuit is not "
+            f"built. Name a chilled-water unit instead"
+        )
     if unit.arrangement != "fanwall":
         # The coil would be right and the room would be wrong, which is the
         # kind of wrong answer that looks like a right one (ADR-072).

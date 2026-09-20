@@ -1122,11 +1122,26 @@ class EveryShippedUnitTest(unittest.TestCase):
     wrong elevation -- and each was sent back to its vendor instead (ADR-071).
     """
 
-    def test_they_all_fit_a_coil(self):
+    def test_every_chilled_water_unit_fits_a_coil(self):
         for model in equipment.available():
+            unit = equipment.load(model)
+            if unit.cooling != "chilled_water":
+                continue
             with self.subTest(model=model):
-                unit = equipment.load(model)
                 self.assertIsNotNone(unit.coil, unit.coil_problem)
+
+    def test_a_dx_unit_says_what_is_not_modelled_rather_than_what_is_missing(self):
+        """Its selection is carried and checked; the model that would answer
+        for a refrigerant circuit is not built, and that is not the same thing
+        as a file somebody did not finish (ADR-073)."""
+        for model in equipment.available():
+            unit = equipment.load(model)
+            if unit.cooling == "chilled_water":
+                continue
+            with self.subTest(model=model):
+                self.assertIsNone(unit.coil)
+                self.assertIn("does not model", unit.coil_problem)
+                self.assertNotIn("missing", unit.coil_problem)
 
     def test_their_air_side_closes_on_the_net_figure(self):
         """Airflow x density x cp x dT is the net sensible capacity. Every
@@ -1168,16 +1183,24 @@ class EveryShippedUnitTest(unittest.TestCase):
                 for field in ("return_c", "supply_c", "airflow_m3h",
                               "nscc_kw", "power_kw"):
                     self.assertIsNotNone(unit.design.get(field), field)
-                for field in ("elevation_m", "entering_water_c",
-                              "leaving_water_c", "esp_pa"):
+                for field in ("elevation_m", "esp_pa"):
+                    self.assertIsNotNone(unit.selection.get(field), field)
+                # What the heat leaves into: water temperatures for a coil,
+                # the outdoor air for a condenser. One or the other, always.
+                needed = (("entering_water_c", "leaving_water_c")
+                          if unit.cooling == "chilled_water"
+                          else ("outside_air_c",))
+                for field in needed:
                     self.assertIsNotNone(unit.selection.get(field), field)
                 self.assertEqual(len(unit.size), 3)
                 self.assertTrue(all(v > 0 for v in unit.size))
 
     def test_they_all_reproduce_their_own_leaving_water(self):
         for model in equipment.available():
+            unit = equipment.load(model)
+            if unit.cooling != "chilled_water":
+                continue
             with self.subTest(model=model):
-                unit = equipment.load(model)
                 net = float(unit.design["nscc_kw"])
                 self.assertAlmostEqual(
                     unit.coil.leaving_water_c(net),
@@ -1304,7 +1327,7 @@ class ArrangementTest(unittest.TestCase):
     of room -- a wrong answer that looks like a right one (ADR-072).
     """
 
-    DOWNFLOW = ("HDCV5300F-HT", "HXCV5000F-HT", "39CRA150")
+    DOWNFLOW = ("HDCV5300F-HT", "HXCV5000F-HT", "39CRA150", "IDAV1911F")
 
     def test_the_room_units_declare_themselves(self):
         for model in self.DOWNFLOW:
@@ -1326,8 +1349,12 @@ class ArrangementTest(unittest.TestCase):
                 with self.assertRaises(ValueError) as caught:
                     equipment_for({"fanwall": {"model": model}})
                 said = str(caught.exception)
-                self.assertIn("not a fan wall", said)
-                self.assertIn("coil is in the library and correct", said)
+                # A DX room unit is refused on the coil before the geometry;
+                # either refusal names what is right about the file as well as
+                # what is missing, so nobody deletes a good one.
+                self.assertTrue("not a fan wall" in said
+                                or "chilled-water one" in said, said)
+                self.assertIn("in the library", said)
 
     def test_a_fan_wall_still_builds(self):
         from aicfd.model import equipment_for
@@ -1343,7 +1370,6 @@ class ArrangementTest(unittest.TestCase):
         for model in self.DOWNFLOW:
             with self.subTest(model=model):
                 unit = equipment.load(model)
-                self.assertIsNotNone(unit.coil, unit.coil_problem)
                 design = unit.design
                 air = air_capacity_rate(float(design["airflow_m3h"]),
                                         float(design["return_c"]),
@@ -1351,3 +1377,54 @@ class ArrangementTest(unittest.TestCase):
                 heat = air * (float(design["return_c"]) - float(design["supply_c"]))
                 self.assertLess(abs(heat - float(design["nscc_kw"]))
                                 / float(design["nscc_kw"]), 0.01)
+
+
+class DirectExpansionTest(unittest.TestCase):
+    """A CRAC is carried and checked, and not asked what it cannot answer.
+
+    Its capacity follows the refrigerant circuit, the compressor's speed and
+    the outdoor air its condenser rejects into. The coil this software fits is
+    a chilled-water one; there is no equivalent, and pretending otherwise
+    would put a number in a report that nothing stands behind (ADR-073).
+    """
+
+    def test_the_shipped_crac_declares_itself(self):
+        unit = equipment.load("IDAV1911F")
+        self.assertEqual(unit.cooling, "dx")
+        self.assertEqual(unit.arrangement, "downflow")
+        self.assertIsNone(unit.coil)
+
+    def test_everything_else_is_chilled_water(self):
+        for model in equipment.available():
+            if model == "IDAV1911F":
+                continue
+            with self.subTest(model=model):
+                self.assertEqual(equipment.load(model).cooling, "chilled_water")
+
+    def test_its_selection_still_closes_on_the_air_side(self):
+        """0.07%. Being unmodellable is not being unverified."""
+        from aicfd.coil import air_capacity_rate
+
+        air = air_capacity_rate(14215.0, 30.0, 661.0)
+        self.assertAlmostEqual(air * (30.0 - 17.9), 51.7, delta=0.5)
+
+    def test_the_fans_net_the_capacity_not_the_compressor(self):
+        """53.5 gross less 1.8 kW of FANS is the 51.7 net. The compressor's
+        17.6 kW and the condenser's 0.9 leave through the refrigerant and
+        never reach this air, so netting with the 19.3 kW the unit absorbs
+        would understate it by a third."""
+        unit = equipment.load("IDAV1911F")
+        self.assertAlmostEqual(float(unit.design["power_kw"]), 1.8)
+        self.assertAlmostEqual(53.5 - 1.8, float(unit.design["nscc_kw"]), places=1)
+
+    def test_it_states_the_outdoor_air_its_capacity_depends_on(self):
+        unit = equipment.load("IDAV1911F")
+        self.assertEqual(unit.selection["outside_air_c"], 38.8)
+        self.assertNotIn("entering_water_c", unit.selection)
+
+    def test_a_case_cannot_build_a_fan_wall_from_it(self):
+        from aicfd.model import equipment_for
+
+        with self.assertRaises(ValueError) as caught:
+            equipment_for({"fanwall": {"model": "IDAV1911F"}})
+        self.assertIn("chilled-water one", str(caught.exception))

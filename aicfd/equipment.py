@@ -80,6 +80,7 @@ class Equipment:
     none. `capacity` is reference: see aicfd.coil."""
     weight_kg: float | None = None
     raw_arrangement: str | None = None
+    raw_cooling: str | None = None
     source: Path | None = None
     _coil: object = None
     """Filled on first use by `coil`; `_UNFITTED` until then."""
@@ -142,6 +143,20 @@ class Equipment:
         return self.at(return_c, "nscc_kw")
 
     @property
+    def cooling(self) -> str:
+        """What removes the heat: `chilled_water` or `dx`.
+
+        The coil this software fits is a chilled-water one -- an epsilon-NTU
+        counterflow exchanger recovered from a water flow and an entering water
+        temperature. A direct-expansion unit has neither: its capacity follows
+        the refrigerant circuit, the compressor's speed and the outdoor air the
+        condenser rejects into. That is a different model and it is not built,
+        so a DX unit is carried and verified but not asked what it does off its
+        selection (ADR-073).
+        """
+        return str(self.raw_cooling or "chilled_water")
+
+    @property
     def arrangement(self) -> str:
         """How the unit is installed: `fanwall` or `downflow`.
 
@@ -187,6 +202,20 @@ class Equipment:
         """
         if self._coil is not _UNFITTED:
             return self._coil
+        if self.cooling != "chilled_water":
+            # Not a file that is unfinished: a machine this model does not
+            # describe. Said in its own terms, because "does not say what
+            # water it was selected at" would send somebody looking for a
+            # field that cannot exist (ADR-073).
+            object.__setattr__(self, "_coil", None)
+            object.__setattr__(self, "_coil_problem", (
+                f"{self.model} is a {self.cooling} unit: its capacity follows "
+                f"the refrigerant circuit and the outdoor air its condenser "
+                f"rejects into, which this software does not model. Its "
+                f"selection is carried and checked; what it does at any other "
+                f"return air is not answered"
+            ))
+            return None
         from aicfd import coil as model
 
         try:
@@ -246,6 +275,7 @@ class Equipment:
             "design": self.design,
             "derived": list(self.derived_fields),
             "arrangement": self.arrangement,
+            "cooling": self.cooling,
             "capacity": [dict(row) for row in self.capacity],
             "curve": self.curve,
             "span": list(self.span) if self.span else None,
@@ -318,6 +348,7 @@ def parse(raw: dict, source: Path | None = None) -> Equipment:
         coil_split=(raw.get("coil") or {}).get("air_split"),
         weight_kg=raw.get("weight_kg"),
         raw_arrangement=raw.get("arrangement"),
+        raw_cooling=raw.get("cooling"),
         source=source,
         _coil=_UNFITTED,
     )

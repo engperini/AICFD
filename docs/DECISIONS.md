@@ -3003,3 +3003,48 @@ same words — "Supply air Dry condition" — for two different things: on the f
 wall it is the air off the coil, and on the CRAH it is the unit's discharge.
 The arithmetic says which every time (ADR-070) and nothing else does. Never
 infer a convention from the manufacturer's name; multiply and check.
+
+## ADR-073 — Direct-expansion units are carried, checked, and not modelled
+
+**Decision.** `cooling: dx` marks a direct-expansion unit. Its selection is
+carried in the library and held to the checks that apply to it; no coil is
+fitted, and `equipment_for` refuses to build a fan wall from it.
+
+**The coil this software fits is a chilled-water one** — an ε-NTU counterflow
+exchanger recovered from a water flow and an entering water temperature
+(ADR-063). A DX unit has neither. Its capacity follows the refrigerant
+circuit, the compressor's speed and the outdoor air its condenser rejects
+into; the sheet here states 38.8 °C of outdoor air for exactly that reason,
+where no chilled-water sheet in this library states any. Fitting the
+chilled-water model to it anyway would produce a capacity-against-return curve
+with nothing behind it, and a report would quote it beside real ones.
+
+**So the message says what is not modelled rather than what is missing.**
+"Does not say what water it was selected at" would send somebody looking for a
+field that cannot exist on a DX sheet. It now reads: *its capacity follows the
+refrigerant circuit and the outdoor air its condenser rejects into, which this
+software does not model. Its selection is carried and checked; what it does at
+any other return air is not answered.*
+
+**The admission rule splits by what removes the heat** (ADR-071). Every unit's
+air side must close within 1% and every field a report quotes must be present.
+A chilled-water unit must additionally fit a coil, reproduce its own leaving
+water, and — where it states a flow — carry the gross duty. A DX unit must
+state the outdoor air instead of the water temperatures.
+
+**Which power nets the capacity is not obvious, and getting it wrong costs a
+third.** The shipped CRAC absorbs 19.3 kW, of which 17.6 is the compressor and
+1.8 the fans, plus 0.9 at the condenser outdoors. Only the **fans'** 1.8 kW
+reaches the room's air; the rest leaves through the refrigerant. Netting the
+53.5 kW gross with 19.3 would give 34.2 instead of the sheet's 51.7. Every
+chilled-water sheet here nets with the whole unit input because on those the
+whole input *is* fan power.
+
+**Three of four CRAC sheets were turned away, and the fourth is the control
+that proves it.** The Uniflair IDAV1911F and the Vertiv P1060DA quote the same
+airflow (14,215 m³/h) at the same return (30.0 °C). The Uniflair says 17.9 °C
+of supply and 51.7 kW, and closes to 0.07%. The Vertiv says 18.1 °C — *warmer*
+— and 53.5 kW, which is more heat from less temperature difference at the same
+mass flow. The three Vertiv PEX4 sheets miss by 4.65%, 5.02% and 5.32%, all in
+the same direction, against sheets that themselves declare "performance
+tolerance ±5%". That is systematic, and it is the vendor's, not this model's.
