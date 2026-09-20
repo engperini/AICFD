@@ -140,6 +140,17 @@ RETURN_PATH_TOLERANCE = 1.5
 #: low and must not be used to size a machine.
 RESISTANCE_TOLERANCE = 0.25
 
+#: Below this, in pascals, a resistance check compares absolute pressures
+#: rather than their ratio.
+#:
+#: A ratio is the right test while there is something to divide. A surface
+#: open enough to cost nothing -- a full-width mesh leaf, a ceiling return
+#: with no grille in it -- asks for hundredths of a pascal and the field
+#: delivers hundredths of a pascal, and the quotient of two numbers that are
+#: both nearly zero is noise. The mesh leaf failed at "0.00 Pa against 0.00
+#: Pa (0%)", which is not a disagreement about anything (ADR-060).
+NEGLIGIBLE_PRESSURE_PA = 0.5
+
 #: How much an instrumented place may still be moving between samples before
 #: the run counts as settled, in kelvin.
 #:
@@ -791,6 +802,20 @@ def rack_temperatures(model: Model, grid: dict) -> list[dict]:
 # --- the checks ---------------------------------------------------------------
 
 
+def _resistance_verdict(delivered: float, asked: float) -> tuple[bool, str]:
+    """Whether a surface's field drop agrees with its closed form, and why.
+
+    Two regimes, one rule: a ratio while the pressures are worth dividing, an
+    absolute difference once both are too small to tell apart.
+    """
+    if abs(delivered - asked) <= NEGLIGIBLE_PRESSURE_PA and asked <= NEGLIGIBLE_PRESSURE_PA:
+        return True, (
+            f" -- both under {NEGLIGIBLE_PRESSURE_PA:g} Pa, so this surface is "
+            f"too open for the ratio to mean anything"
+        )
+    return abs(delivered / asked - 1.0) <= RESISTANCE_TOLERANCE, ""
+
+
 def _checks(model: Model, step: Path, kpis: dict, grid: dict) -> list[Check]:
     checks: list[Check] = []
     flows = patch_flows(step)
@@ -912,13 +937,14 @@ def _checks(model: Model, step: Path, kpis: dict, grid: dict) -> list[Check]:
     grille_drop, grille_asked = kpis.get("grille_drop_pa"), kpis.get("grille_drop_asked_pa")
     if grille_drop is not None and grille_asked:
         ratio = grille_drop / grille_asked
+        passed, why = _resistance_verdict(grille_drop, grille_asked)
         checks.append(
             Check(
                 "grille_resistance",
-                abs(ratio - 1.0) <= RESISTANCE_TOLERANCE,
+                passed,
                 f"the field drops {grille_drop:.2f} Pa across the return grilles "
                 f"where their K at {model.airflow_m3h:,.0f} m3/h asks for "
-                f"{grille_asked:.2f} Pa ({ratio * 100:.0f}%)",
+                f"{grille_asked:.2f} Pa ({ratio * 100:.0f}%)" + why,
             )
         )
 
@@ -928,10 +954,11 @@ def _checks(model: Model, step: Path, kpis: dict, grid: dict) -> list[Check]:
         ratio = supply_drop / supply_asked
         velocity = kpis.get("supply_face_velocity_ms")
         limit = model.plenum_face_velocity_max_ms
+        passed, why = _resistance_verdict(supply_drop, supply_asked)
         checks.append(
             Check(
                 "plenum_resistance",
-                abs(ratio - 1.0) <= RESISTANCE_TOLERANCE,
+                passed,
                 f"the field drops {supply_drop:.2f} Pa across the supply grilles "
                 f"where their K at {model.airflow_m3h:,.0f} m3/h asks for "
                 f"{supply_asked:.2f} Pa ({ratio * 100:.0f}%)"
@@ -940,7 +967,8 @@ def _checks(model: Model, step: Path, kpis: dict, grid: dict) -> list[Check]:
                     + ("" if velocity <= limit
                        else f", over the {limit:.1f} m/s this case allows")
                     if velocity is not None else ""
-                ),
+                )
+                + why,
             )
         )
 

@@ -75,7 +75,6 @@ const SECTIONS = [
       { key: 'plenum_depth', label: 'Between the two leaves', unit: 'm', step: 0.1, optional: true },
       { key: 'plenum_grille_width', label: 'Supply grille width', unit: 'm', step: 0.1, optional: true },
       { key: 'plenum_grille_height', label: 'Supply grille height', unit: 'm', step: 0.1, optional: true },
-      { key: 'plenum_face_velocity', label: 'Most air may leave a grille at', unit: 'm/s', step: 0.1, optional: true },
     ],
   },
   {

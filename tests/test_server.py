@@ -691,8 +691,24 @@ class PlenumCardTest(unittest.TestCase):
         defaults = payload["plenum_defaults"]
         self.assertEqual(defaults["plenum_depth"], 1.2)
         self.assertEqual(defaults["plenum_grille_width"], 2.0)
-        self.assertEqual(defaults["plenum_face_velocity"], 3.0)
         self.assertAlmostEqual(defaults["plenum_grille_height"], 2.2, places=3)
+
+    def test_the_face_velocity_is_not_a_field(self):
+        """It is a consequence of the airflow and the opening, both of which
+        the engineer does choose. Offering it as an input said otherwise
+        (ADR-059)."""
+        self.assertNotIn("plenum_face_velocity", server.EDITABLE)
+        js = (server.REPO_ROOT / "web" / "app.js").read_text()
+        self.assertNotIn("plenum_face_velocity", js)
+
+    def test_it_is_reported_beside_the_fan_wall_s_own(self):
+        from aicfd import model as m
+
+        rows = m.summary_rows(m.build_model(server.load_spec("pod-plenum")))
+        labels = [r[0] for r in rows]
+        self.assertTrue(any(l.startswith("Supply grilles") for l in labels))
+        supply = next(r for r in rows if r[0].startswith("Supply grilles"))
+        self.assertIn("m/s", supply[2])
 
     def test_the_page_falls_back_to_it(self):
         js = (server.REPO_ROOT / "web" / "app.js").read_text()

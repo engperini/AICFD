@@ -2356,12 +2356,21 @@ form — is what the second compares against the unit's P-Q curve. After a run,
 `plenum_resistance` checks the field's drop across the supply grilles against
 the same closed form, exactly as `grille_resistance` does for the return.
 
+**The criterion is not a field.** The face velocity is a *consequence* of
+two things the engineer does choose — the airflow the units move and the size
+of the opening — so it is reported, beside the fan wall's own face velocity,
+in the derived numbers where the return grilles' velocity already was.
+Offering it as an input said the opposite: that the velocity was something to
+type in. The criterion it is judged against stays in the code at 3 m/s, and a
+case answering to a different specification may still write
+`plenum.max_face_velocity_ms`, but nothing has to and the form does not ask.
+
 **The card shows the standard rather than nothing.** A field a case says
 nothing about renders the house default it would get — 1,2 m, 2 m, the rack
-height, 3 m/s — so a reader takes it or changes it instead of guessing what
-an empty box means. And a checkbox renders whether or not the case mentions
-it: filtering the form on what a case states dropped both switches and left
-the plenum as four number boxes with no way to turn the thing on.
+height — so a reader takes it or changes it instead of guessing what an empty
+box means. And a checkbox renders whether or not the case mentions it:
+filtering the form on what a case states dropped both switches and left the
+plenum as number boxes with no way to turn the thing on.
 
 **Why before.** Both answers are arithmetic. Neither needs a solve, and
 finding out after one is finding out late — the run costs minutes and the

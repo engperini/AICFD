@@ -176,9 +176,10 @@ cavity, so the clearances a case asks for are unchanged (ADR-058).
 the two.
 
 Two questions are answered before any run and raised as design alerts: whether
-the grilles are big enough for the duty — `plenum.max_face_velocity_ms`, 3 m/s
-by default, against the flow over their gross face — and whether the units
-have the pressure for what the loop costs. The worked 5 MW hall with default
+the grilles are big enough for the duty — the flow over their gross face,
+against a 3 m/s criterion — and whether the units have the pressure for what
+the loop costs. The velocity itself is a consequence of the airflow and the
+opening, so it is reported among the derived numbers rather than asked for. The worked 5 MW hall with default
 2 m grilles fails the first at 7,5 m/s and 35 Pa, and says how much grille it
 would take (ADR-059).
 

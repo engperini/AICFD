@@ -636,3 +636,25 @@ class SupplyMeshDutyTest(unittest.TestCase):
         source = inspect.getsource(post._checks)
         self.assertIn("plenum_resistance", source)
         self.assertIn("supply_drop_pa", source)
+
+
+class NegligibleResistanceTest(unittest.TestCase):
+    """A ratio is the right test while there is something to divide
+    (ADR-060)."""
+
+    def test_two_pressures_that_are_both_nearly_zero_agree(self):
+        """The mesh leaf failed at "0.00 Pa against 0.00 Pa (0%)", which is
+        not a disagreement about anything."""
+        passed, why = post._resistance_verdict(0.001, 0.004)
+        self.assertTrue(passed)
+        self.assertIn("too open for the ratio", why)
+
+    def test_a_real_surface_is_still_judged_on_its_ratio(self):
+        self.assertTrue(post._resistance_verdict(2.4, 2.39)[0])
+        self.assertFalse(post._resistance_verdict(1.7, 26.8)[0])
+        self.assertEqual(post._resistance_verdict(2.4, 2.39)[1], "")
+
+    def test_a_big_miss_is_not_excused_by_a_small_asked(self):
+        """A surface that asks for nothing and delivers pascals is a
+        disagreement, and the absolute test has to catch it."""
+        self.assertFalse(post._resistance_verdict(3.0, 0.01)[0])

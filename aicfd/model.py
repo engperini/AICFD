@@ -65,9 +65,14 @@ PLENUM_GRILLE_WIDTH = 2.0
 #: the duty, in m/s on the gross face. Supply grilles into an occupied room
 #: are sized around 2-3 m/s: faster and the air arrives as a jet -- noisy,
 #: and thrown across the aisle instead of into the racks -- while the
-#: pressure it costs rises with the square of it. A case may set its own
-#: (`plenum.max_face_velocity_ms`), because it is a design criterion and not
-#: a law (ADR-059).
+#: pressure it costs rises with the square of it.
+#:
+#: NOT a field on the page. The velocity is a CONSEQUENCE of two things the
+#: engineer does choose -- the airflow the units move and the size of the
+#: opening -- so the page reports it beside the fan wall's own face velocity
+#: and this is only the line above which it says the opening is too small. A
+#: case that answers to a different specification may still set
+#: `plenum.max_face_velocity_ms`, but nothing has to (ADR-059).
 PLENUM_FACE_VELOCITY_MAX = 3.0
 
 #: How much room has to be left in front of the racks, in metres, once a mesh
@@ -1982,6 +1987,27 @@ def summary_rows(model: Model) -> list[tuple[str, str, str]]:
             face(fan),
             f"{num(fan.area)} m2 · {num(model.fan_face_velocity_ms)} m/s per unit",
         ),
+        *(
+            [(
+                "Supply mesh" if model.supply_mesh_k is not None
+                else f"Supply grilles ({len(model.plenum_grilles)})",
+                (
+                    f"{num(model.plenum_depth)} m plenum, "
+                    + ("closed by 13 x 13 mm mesh"
+                       if model.supply_mesh_k is not None
+                       else f"{face(model.plenum_grilles[0])} each")
+                ),
+                through(sum(g.area for g in model.plenum_grilles))
+                + (
+                    f" · K {num(model.plenum_grilles[0].resistance)} · "
+                    f"{num(model.plenum_pressure_drop_pa or 0.0, 2)} Pa"
+                    if model.plenum_grilles[0].resistance is not None
+                    else ""
+                ),
+            )]
+            if model.plenum_grilles
+            else []
+        ),
         (
             f"Return grilles ({len(grilles)})",
             (
@@ -2150,7 +2176,6 @@ def to_dict(model: Model, spec: dict) -> dict:
             "plenum_grille_height": (
                 round(model.racks[0].box.hi[2], 3) if model.racks else None
             ),
-            "plenum_face_velocity": PLENUM_FACE_VELOCITY_MAX,
         },
         # Which perforated surface each role uses here, and what else the
         # library offers. The model page picks; the components page edits.
