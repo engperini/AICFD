@@ -140,6 +140,9 @@ class Coil:
     reference_returns: tuple[float, ...] = ()
     """Return temperatures of any further manufacturer selections the unit
     carries. They set the split and then check the fit."""
+    fan_power_kw: float = 0.0
+    """What the array returns to the air, from the design selection. The water
+    carries this on top of the heat the air loses."""
     reference_error_k: float | None = None
     """RMS error against those reference selections, in K of supply air."""
     rejected_references: tuple[str, ...] = ()
@@ -211,7 +214,10 @@ class Coil:
         and the valve were sized for the selection's rise (ADR-063).
         """
         rate = self.water_max / 4.18 * 3.6 * 1000 / 3600 * CP_WATER / 1000
-        return self.water_c + capacity_kw / rate if rate else self.water_c
+        if not rate:
+            return self.water_c
+        # The water carries what the air lost PLUS what the fans put back.
+        return self.water_c + (capacity_kw + self.fan_power_kw) / rate
 
     # --- the machine under control -------------------------------------------
 
@@ -333,6 +339,15 @@ def fit(unit) -> Coil:
 
     anchor = _point(unit, design, water_in, rise, altitude)
     air0, water0, eps0, _ = anchor
+    # A selection that states its water flow is measured where this otherwise
+    # infers. The inference divides the NET capacity by the water's rise, but
+    # the water carries the GROSS duty -- the fan power is added back to the
+    # air downstream of the coil -- so it under-reads by that fraction, about
+    # 4 to 6% on the sheets in hand. Where the flow is given it is used, and
+    # the coil's water-side limit is the plant's real one (ADR-069).
+    stated_flow = (selection or {}).get("water_flow_lh")
+    if stated_flow:
+        water0 = float(stated_flow) / 3600.0 * CP_WATER / 1000.0
     ua0 = _solve(
         lambda ua: effectiveness(ua / min(air0, water0),
                                  min(air0, water0) / max(air0, water0))
@@ -380,6 +395,7 @@ def fit(unit) -> Coil:
         air_fitted=air0,
         design_return_c=float(design["return_c"]),
         air_split=split,
+        fan_power_kw=float(design.get("power_kw") or 0.0),
         reference_returns=tuple(p[3] for p in reference),
         rejected_references=tuple(rejected),
     )
@@ -413,7 +429,16 @@ def _point(unit, row: dict, water_in: float, rise: float, altitude: float):
         )
     # THE INFERENCE: the selection holds the water temperatures and sizes the
     # flow to them. See this module's docstring.
-    return air, heat / rise, (ret - sup) / (ret - water_in), ret
+    #
+    # The duty the WATER carries is the gross one. `heat` is the net effect on
+    # the air across the whole unit, and the fan array adds its power back to
+    # that air downstream of the coil, so the coil hands the water the sum of
+    # the two. Dividing the net by the rise under-read the flow by the fan
+    # power's share -- 4 to 6% on the sheets in hand -- and the Vertiv CA40,
+    # which prints its flow, settles it: 402.76 l/min is 28.06 kW/K, and
+    # gross/rise is 28.07 (ADR-069).
+    gross = heat + float(row.get("power_kw") or 0.0)
+    return air, gross / rise, (ret - sup) / (ret - water_in), ret
 
 
 def _what_would_close(row, ret: float, sup: float, stated: float,

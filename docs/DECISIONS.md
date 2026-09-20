@@ -2810,3 +2810,43 @@ own 661 m: 60,504 m³/h from 37.0 to 21.8 °C computes 270.0 kW against a printe
 NSCC of 270.1 -- **0.03%**. Two units, two independent selections, sub-percent
 both times. That is the ground the 3% tolerance stands on, and both sheets are
 now tests.
+
+## ADR-069 — The water carries the gross duty
+
+**Decision.** The design water flow is inferred by dividing the **gross** duty
+— the net sensible capacity plus the fan power — by the water's rise, not the
+net. `leaving_water_c` adds the fan power for the same reason. A selection that
+states its water flow (`selection.water_flow_lh`) uses that number instead of
+the inference.
+
+**Two errors that cancelled.** The flow was inferred from the net, which
+under-reads it by the fan power's share, and `leaving_water_c` was then fed the
+net capacity, which under-reads the duty by exactly the same amount. Their
+product was right at the design point, so nothing ever looked wrong. Both parts
+were wrong, and neither could be checked against a datasheet — which is how a
+pair of errors like this survives.
+
+**What exposed it was a sheet that prints its water flow.** The Uniflair
+FWCV36L2F gives 41,430 l/h against 20/30 °C water: 48.10 kW/K. The inference
+from the net gave 45.29, 6% low. From the gross it gives 48.14. The Vertiv
+CA40NPVGT settles it independently — it prints 402.76 l/min, which is 28.06
+kW/K, against a gross-over-rise of 28.07. **0.04% apart.** That is what makes
+the inference trustworthy on the units that do not print their flow, and the
+stated field a refinement rather than a necessity.
+
+**Physically it was never in doubt.** The coil hands its whole duty to the
+water. The fan array then puts its power back into the air *downstream of the
+coil*, which is why the net sensible figure a datasheet quotes is smaller than
+what the water carried. Every sheet in this repository prints the two and their
+difference is the fan power, to the decimal (ADR-068).
+
+**No result moves.** Because the two errors cancelled exactly at the design
+point, and every capacity is computed there, the CA80's capacities are
+identical before and after — 323.5 / 431.4 / 539.2 / 647.0 kW at 30 / 34 / 38 /
+42 °C. A test pins those four numbers. Off the design point the leaving water
+now reads about 0.1 K lower at a heavily loaded unit, and — the part that was
+plainly wrong — a unit carrying no cooling load no longer returns water at the
+temperature it entered, because the fans are still running.
+
+**Both sheets that print a leaving water temperature are now reproduced**:
+30.01 °C against the Uniflair's 30.0, 28.03 against the CA80's 28.0.

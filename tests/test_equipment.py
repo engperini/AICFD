@@ -1010,3 +1010,57 @@ class ShippedUniflairTest(unittest.TestCase):
         points = dict(self.unit.curve["points"])
         self.assertEqual(points[115500], 155)
         self.assertIs(self.unit.curve["measured"], False)
+
+
+class WaterCarriesTheGrossDutyTest(unittest.TestCase):
+    """The water side, against the sheets that state it.
+
+    Two errors used to cancel: the design water flow was inferred by dividing
+    the NET capacity by the water's rise, and `leaving_water_c` was then fed
+    the net capacity too. The product was right at the design point and the
+    parts were both wrong, so neither could be checked against a datasheet
+    (ADR-069).
+    """
+
+    def coil(self, model):
+        return equipment.load(model).coil
+
+    def test_the_inference_matches_a_stated_flow(self):
+        """Vertiv CA40NPVGT prints 402.76 l/min against 280.7 kW gross over a
+        10 K rise. The two agree to 0.04%, which is what makes the inference
+        usable on the units that do not print it."""
+        stated = 402.76 * 60 / 3600 * 4.18          # l/min -> kW/K
+        inferred = 280.7 / 10.0                     # gross / rise
+        self.assertAlmostEqual(stated, inferred, delta=0.05)
+
+    def test_a_stated_flow_is_used_where_it_is_given(self):
+        unit = equipment.load("FWCV36L2F")
+        self.assertEqual(unit.selection["water_flow_lh"], 41430)
+        self.assertAlmostEqual(unit.coil.water_max, 41430 / 3600 * 4.18, delta=0.05)
+
+    def test_the_leaving_water_reproduces_the_sheet(self):
+        """Both units print what the water leaves at. The model has to agree
+        at the design point or its water side means nothing."""
+        for model, net, sheet in (("FWCV36L2F", 453.7, 30.0),
+                                  ("CA80NPVG6", 432.6, 28.0)):
+            with self.subTest(model=model):
+                self.assertAlmostEqual(
+                    self.coil(model).leaving_water_c(net), sheet, delta=0.1)
+
+    def test_the_fans_heat_the_water_even_with_no_cooling_load(self):
+        """The array runs whatever the room asks, so the water carries its
+        power. Zero used to read as water leaving at the temperature it
+        entered, which is a unit that is not running."""
+        coil = self.coil("CA80NPVG6")
+        self.assertGreater(coil.leaving_water_c(0.0), coil.water_c)
+
+    def test_no_existing_capacity_moves(self):
+        """The change is to the water side and the parts that were wrong
+        cancelled, so every capacity this tool has ever reported stands."""
+        coil = self.coil("CA80NPVG6")
+        for return_c, expected in ((30.0, 323.5), (34.0, 431.4),
+                                   (38.0, 539.2), (42.0, 647.0)):
+            with self.subTest(return_c=return_c):
+                self.assertAlmostEqual(
+                    coil.operate(return_c, coil.air_fitted).ceiling_kw,
+                    expected, delta=0.5)

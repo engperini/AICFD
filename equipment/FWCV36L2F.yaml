@@ -35,6 +35,9 @@ selection:
   entering_water_c: 20
   leaving_water_c: 30
   entering_air_rh: 30         # %
+  water_flow_lh: 41430        # 11.51 l/s. Stated, so the coil's water-side
+                              # limit is the plant's real one rather than
+                              # inferred from the net capacity (ADR-069).
 
 design:
   # THE selection. One machine at one duty -- the one this plant was bought

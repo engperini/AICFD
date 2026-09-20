@@ -308,6 +308,7 @@ EDITABLE = (
     "selection.entering_water_c",
     "selection.leaving_water_c",
     "selection.entering_air_rh",
+    "selection.water_flow_lh",
     "design.return_c",
     "design.supply_c",
     "design.airflow_m3h",

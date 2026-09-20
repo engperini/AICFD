@@ -272,6 +272,10 @@ const SELECTION = [
   { path: 'selection.entering_water_c', label: 'Entering water', suffix: '°C', step: 0.1 },
   { path: 'selection.leaving_water_c', label: 'Leaving water', suffix: '°C', step: 0.1 },
   { path: 'selection.entering_air_rh', label: 'Entering air RH', suffix: '%', step: 1 },
+  // Optional, and worth having: the water carries the gross duty, so without
+  // it the coil's water-side limit is inferred from the net and under-reads
+  // by the fan power's share (ADR-069).
+  { path: 'selection.water_flow_lh', label: 'Water flow', suffix: 'l/h', step: 10 },
 ];
 
 function factsHtml() {
