@@ -82,6 +82,14 @@ EDITABLE = {
     "plenum_depth": (("plenum", "depth"), float, (0.3, 6.0)),
     "plenum_grille_width": (("plenum", "grille", "width"), float, (0.3, 12.0)),
     "plenum_grille_height": (("plenum", "grille", "height"), float, (0.3, 6.0)),
+    # The design criterion the grille's size is judged against, not a law:
+    # 2-3 m/s is what a supply grille into an occupied room is sized for
+    # (ADR-059).
+    "plenum_face_velocity": (("plenum", "max_face_velocity_ms"), float, (0.5, 15.0)),
+    # The same wall treatment the other way: the 13 x 13 mm mesh across the
+    # opening and no plenum, for a hall already built that cannot grow
+    # (ADR-060).
+    "plenum_as_mesh": (("plenum", "as_mesh"), bool, None),
     "supply_grille": (("components", "supply_grille"), "component", "supply_grille"),
     "fan_static_pa": (("fanwall", "static_pressure_pa"), float, (0.0, 2_000.0)),
     # --- return grilles -----------------------------------------------------

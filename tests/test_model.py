@@ -771,3 +771,113 @@ class SupplyPlenumTest(unittest.TestCase):
         with self.assertRaises(ValueError) as refused:
             m.build_model(self.spec(grille={"height": 99.0}))
         self.assertIn("false ceiling", str(refused.exception))
+
+
+class PlenumSizingTest(unittest.TestCase):
+    """The two things a supply plenum has to be checked for: whether the
+    openings have the area for the duty, and whether the units have the
+    pressure for what it costs (ADR-059)."""
+
+    def hall(self, **plenum) -> dict:
+        spec = support.spec("hall-double-gallery")
+        spec["plenum"] = {"enabled": True, "depth": 1.2, **plenum}
+        return spec
+
+    def test_the_face_velocity_is_the_flow_over_the_gross_area(self):
+        model = m.build_model(self.hall())
+        sides = {g.position: 0.0 for g in model.plenum_grilles}
+        for g in model.plenum_grilles:
+            sides[g.position] += g.area
+        expected = (model.airflow_m3s / len(sides)) / min(sides.values())
+        self.assertAlmostEqual(model.plenum_face_velocity_ms, expected, places=6)
+
+    def test_grilles_too_small_for_the_duty_are_said_so_before_the_run(self):
+        """5 MW through 2 m grilles is 7,5 m/s at the face. That is not a
+        detail: the air is thrown across the aisle instead of delivered, and
+        the pressure it costs goes with the square of it."""
+        model = m.build_model(self.hall())
+        self.assertGreater(model.plenum_face_velocity_ms, 3.0)
+        alerts = model.plenum_alerts()
+        self.assertTrue(any("small for the duty" in a for a in alerts))
+        self.assertTrue(any("m2" in a for a in alerts), "it says the area needed")
+
+    def test_a_case_may_set_its_own_criterion(self):
+        model = m.build_model(self.hall(max_face_velocity_ms=9.0))
+        self.assertEqual(model.plenum_face_velocity_max_ms, 9.0)
+        self.assertFalse(any("small for the duty" in a
+                             for a in model.plenum_alerts()))
+
+    def test_wide_enough_grilles_raise_nothing(self):
+        model = m.build_model(self.hall(grille={"width": 6.0, "height": 3.0}))
+        self.assertLess(model.plenum_face_velocity_ms, 3.0)
+        self.assertFalse(any("small for the duty" in a
+                             for a in model.plenum_alerts()))
+
+    def test_a_unit_short_of_pressure_is_said_so_before_the_run(self):
+        spec = self.hall(grille={"width": 0.6, "height": 0.6})
+        model = m.build_model(spec)
+        self.assertGreater(model.loop_pressure_drop_pa, model.fan_available_pa())
+        self.assertTrue(any("do not have the pressure" in a
+                            for a in model.plenum_alerts()))
+
+    def test_the_loop_total_is_the_closed_forms_added_up(self):
+        model = m.build_model(self.hall())
+        self.assertAlmostEqual(
+            model.loop_pressure_drop_pa,
+            model.rack_pressure_drop_pa
+            + model.grille_pressure_drop_pa
+            + (model.mesh_pressure_drop_pa or 0.0)
+            + (model.plenum_pressure_drop_pa or 0.0)
+            + (model.supply_mesh_pressure_drop_pa or 0.0),
+            places=6,
+        )
+
+
+class SupplyMeshTest(unittest.TestCase):
+    """The same wall treatment the other way: the 13 x 13 mm mesh across the
+    opening, no plenum, and a hall that keeps every dimension (ADR-060)."""
+
+    def spec(self, as_mesh=True) -> dict:
+        spec = support.spec("pod-plenum")
+        spec["plenum"] = {**spec.get("plenum", {}), "enabled": True,
+                          "as_mesh": as_mesh}
+        return spec
+
+    def test_the_hall_keeps_its_size(self):
+        """The reason to choose it: a hall already built cannot grow."""
+        plain = support.spec("pod-plenum")
+        plain["plenum"] = {"enabled": False}
+        mesh = m.build_model(self.spec())
+        self.assertEqual(mesh.domain.hi, m.build_model(plain).domain.hi)
+        self.assertGreater(
+            m.build_model(self.spec(as_mesh=False)).domain.hi[0], mesh.domain.hi[0])
+
+    def test_it_builds_no_plenum_and_no_grilles(self):
+        model = m.build_model(self.spec())
+        self.assertIsNone(model.plenum_depth)
+        self.assertEqual(model.plenum_grilles, [])
+        self.assertEqual(
+            [p for p in model.panels if p.name.startswith("plenum_wall")], [])
+
+    def test_it_is_the_same_mesh_as_the_return_side(self):
+        from aicfd import components as library
+
+        model = m.build_model(self.spec())
+        self.assertAlmostEqual(
+            model.supply_mesh_k, library.load("gallery-mesh-13").k, places=9)
+
+    def test_it_costs_the_unit_pressure_on_its_own_face(self):
+        model = m.build_model(self.spec())
+        self.assertAlmostEqual(
+            model.supply_mesh_pressure_drop_pa,
+            model.supply_mesh_k * 0.5 * model.rho * model.fan_face_velocity_ms**2,
+            places=9,
+        )
+        self.assertAlmostEqual(
+            model.loop_pressure_drop_pa
+            - model.rack_pressure_drop_pa
+            - model.grille_pressure_drop_pa
+            - (model.mesh_pressure_drop_pa or 0.0),
+            model.supply_mesh_pressure_drop_pa,
+            places=9,
+        )

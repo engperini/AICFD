@@ -1078,10 +1078,20 @@ def summary(model: Model) -> str:
             [
                 f"  Supply plenum   {model.plenum_depth:g} m between the two "
                 f"leaves of the hall wall, "
-                f"{len([p for p in model.panels if p.name.startswith('supply')])} "
-                f"grille(s)"
+                f"{len(model.plenum_grilles)} grille(s), "
+                f"{sum(g.area for g in model.plenum_grilles):.1f} m2 of face",
+                f"  Supply grilles  "
+                f"{model.plenum_face_velocity_ms:.2f} m/s on the face "
+                f"(most {model.plenum_face_velocity_max_ms:.1f}), "
+                f"{model.plenum_pressure_drop_pa or 0.0:.1f} Pa",
             ]
-            if model.plenum_depth
+            if model.plenum_depth and model.plenum_grilles
+            else [
+                f"  Supply mesh     13 x 13 mm mesh across the units' opening, "
+                f"{model.supply_mesh_pressure_drop_pa:.2f} Pa; no plenum, the "
+                f"hall keeps its size"
+            ]
+            if model.supply_mesh_k is not None
             else []
         ),
         f"  Site air        {model.altitude_m:.0f} m, {model.pressure_pa / 1000:.1f} kPa, "

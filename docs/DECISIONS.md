@@ -2341,3 +2341,76 @@ drawn in the grille red every other grille uses. The inner leaf is drawn as
 building fabric rather than in the containment green every `wall` wears --
 otherwise a green line across the end of the hall says that end is contained,
 which is the misreading ADR-045 answered over the racks.
+
+---
+
+## ADR-059 — A plenum is sized before it is solved
+
+**Decision.** Two questions are answered from the specification alone, and
+both raise a design alert on the model page: are the supply grilles big
+enough for the duty, and do the units have the pressure for what the loop
+costs. `plenum.max_face_velocity_ms` is the criterion for the first (3 m/s by
+default, editable); `loop_pressure_drop_pa` — the racks, the return grilles,
+the mesh into the gallery and the supply grilles, each from its own closed
+form — is what the second compares against the unit's P-Q curve. After a run,
+`plenum_resistance` checks the field's drop across the supply grilles against
+the same closed form, exactly as `grille_resistance` does for the return.
+
+**Why before.** Both answers are arithmetic. Neither needs a solve, and
+finding out after one is finding out late — the run costs minutes and the
+conclusion was available the moment the geometry was typed. The alert says
+the velocity, the criterion, the grille area there is and the grille area
+that would be needed, because "too small" without a number is a complaint
+rather than a finding.
+
+**What it found immediately.** The worked 5 MW hall, given a plenum with the
+default 2 m grilles, discharges at 7,5 m/s on the face — against a criterion
+of 3 — and those grilles alone cost 35 Pa of the unit's 131. Twenty-seven
+square metres of grille per plenum would have to be sixty-eight. That is the
+arrangement failing on paper, in the second it takes to build the model, and
+it is exactly the failure a CFD run would have taken half an hour to show
+less clearly.
+
+**Gross area, not free area.** The face velocity is the flow over the whole
+opening, which is what a grille catalogue quotes and what its pressure table
+is fitted to. The free area is already inside the loss coefficient; using it
+twice would double-count the perforation.
+
+**The loop total is a lower bound and says so.** It adds up the surfaces,
+which is all a closed form can see: the aisles, the turns and the plenum's
+own velocity pressure are not in it. So it can say a unit is obviously short
+and it can never say a unit is definitely enough — which is what the solved
+`fan_capacity` check is for.
+
+---
+
+## ADR-060 — The same wall, as a mesh, for a hall already built
+
+**Decision.** `plenum.as_mesh` replaces the plenum and its grilles with the
+13 x 13 mm woven mesh across the opening the units blow through — the same
+component that closes the return plenum into the mechanical gallery, because
+it is the same product and one house standard. The wall stays single, no
+grilles are built, and **the hall keeps every dimension it had**.
+
+**Why it exists.** A plenum lengthens the building by its depth at each
+gallery (ADR-058), which is the right answer for a hall being designed and no
+answer at all for one already built. What goes in those is a security mesh:
+it keeps people out of the room from the technical corridor, it costs the fan
+its loss coefficient, and it distributes nothing — where each unit aims is
+still where its air goes. Being able to model that, against the same hall
+with a plenum, is what makes the choice an engineering one rather than a
+preference.
+
+**It is a pressure, not a surface.** A mesh spanning the units' own opening
+is a uniform resistance in series with them: it cannot change where the air
+goes, so there is nothing for the mesher to build. Its whole effect is on the
+duty, so it is added to `fan_capacity` from its K and the check says it did —
+"includes N Pa for the mesh across the opening, from its K rather than from
+the field". A number the solver did not produce is always named as such
+(ADR-049).
+
+**One product, one number.** The supply side reads the same `gallery_mesh`
+component as the return side. A house that changes its mesh changes it on
+both sides of the loop, which is what a house standard means (ADR-048), and
+a second component holding the same 13 x 13 mm would be the two of them
+drifting apart.

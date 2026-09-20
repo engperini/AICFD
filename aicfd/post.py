@@ -270,6 +270,15 @@ def _analyse(model: Model, case_dir: str | Path, time: str | None = None) -> Pod
     kpis["grille_drop_pa"] = grille_pressure_drop(step)
     kpis["grille_drop_asked_pa"] = round(model.grille_pressure_drop_pa, 3)
     kpis["mesh_drop_pa"] = grille_pressure_drop(step, "plenum_opening")
+    kpis["supply_drop_pa"] = grille_pressure_drop(step, "supply")
+    kpis["supply_drop_asked_pa"] = (
+        round(model.plenum_pressure_drop_pa, 3)
+        if model.plenum_pressure_drop_pa is not None else None
+    )
+    kpis["supply_face_velocity_ms"] = (
+        round(model.plenum_face_velocity_ms, 3)
+        if model.plenum_face_velocity_ms is not None else None
+    )
     kpis["mesh_drop_asked_pa"] = round(model.mesh_pressure_drop_pa, 3) \
         if model.mesh_pressure_drop_pa is not None else None
     # The rise that sizes the machine is the one the most loaded unit has to
@@ -913,7 +922,37 @@ def _checks(model: Model, step: Path, kpis: dict, grid: dict) -> list[Check]:
             )
         )
 
+    supply_drop, supply_asked = (
+        kpis.get("supply_drop_pa"), kpis.get("supply_drop_asked_pa"))
+    if supply_drop is not None and supply_asked:
+        ratio = supply_drop / supply_asked
+        velocity = kpis.get("supply_face_velocity_ms")
+        limit = model.plenum_face_velocity_max_ms
+        checks.append(
+            Check(
+                "plenum_resistance",
+                abs(ratio - 1.0) <= RESISTANCE_TOLERANCE,
+                f"the field drops {supply_drop:.2f} Pa across the supply grilles "
+                f"where their K at {model.airflow_m3h:,.0f} m3/h asks for "
+                f"{supply_asked:.2f} Pa ({ratio * 100:.0f}%)"
+                + (
+                    f"; they run at {velocity:.1f} m/s on the face"
+                    + ("" if velocity <= limit
+                       else f", over the {limit:.1f} m/s this case allows")
+                    if velocity is not None else ""
+                ),
+            )
+        )
+
     rise = kpis.get("fan_rise_pa")
+    # A mesh across the units' opening is a uniform resistance in series with
+    # them: it cannot change where the air goes, so it is not a surface in
+    # the mesh -- but the unit still pays for it, and a duty that leaves it
+    # out is a duty that is wrong. Added here from its K, and said so
+    # (ADR-060).
+    mesh_drop = model.supply_mesh_pressure_drop_pa
+    if rise is not None and mesh_drop:
+        rise += mesh_drop
     available = model.fan_available_pa()
     if rise is not None and available:
         fans = kpis.get("fans") or []
@@ -939,6 +978,11 @@ def _checks(model: Model, step: Path, kpis: dict, grid: dict) -> list[Check]:
                     f"{kpis['fan_operating_m3h']:,.0f} m3/h and {kpis['fan_operating_pa']:.1f} Pa"
                     if kpis.get("fan_operating_m3h")
                     else ""
+                )
+                + (
+                    f"; includes {mesh_drop:.1f} Pa for the mesh across the "
+                    f"opening, from its K rather than from the field"
+                    if mesh_drop else ""
                 )
                 + ("" if rise <= available else " -- the unit cannot deliver this airflow"),
             )

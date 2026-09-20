@@ -175,6 +175,21 @@ cavity, so the clearances a case asks for are unchanged (ADR-058).
 `cases/pod-plenum.yaml` is `pod-fanwall` with that one change, for comparing
 the two.
 
+Two questions are answered before any run and raised as design alerts: whether
+the grilles are big enough for the duty — `plenum.max_face_velocity_ms`, 3 m/s
+by default, against the flow over their gross face — and whether the units
+have the pressure for what the loop costs. The worked 5 MW hall with default
+2 m grilles fails the first at 7,5 m/s and 35 Pa, and says how much grille it
+would take (ADR-059).
+
+**A mesh instead, for a hall already built.** `plenum.as_mesh` replaces the
+plenum and its grilles with the same 13 x 13 mm woven mesh used on the return,
+across the opening the units blow through. The wall stays single and the hall
+keeps every dimension — which is the whole point, since a room already built
+cannot grow 1,2 m at each end. It costs the fan its loss coefficient and it
+distributes nothing; the duty includes it, named as added from its K rather
+than solved (ADR-060). `cases/pod-mesh.yaml` is that case.
+
 Nothing in `cases/*.yaml` is an OpenFOAM dictionary. The mesh divisions, the
 porosity coefficients, the heat sources, the boundary conditions and the
 baffle surgery are all derived from engineering numbers, and the generated

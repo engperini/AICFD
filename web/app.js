@@ -68,9 +68,11 @@ const SECTIONS = [
     componentsLink: true,
     params: [
       { key: 'plenum', label: 'Double the wall into the hall', check: true, default: false },
+      { key: 'plenum_as_mesh', label: 'Mesh instead — keeps the hall\u2019s size', check: true, default: false },
       { key: 'plenum_depth', label: 'Between the two leaves', unit: 'm', step: 0.1, optional: true },
       { key: 'plenum_grille_width', label: 'Supply grille width', unit: 'm', step: 0.1, optional: true },
       { key: 'plenum_grille_height', label: 'Supply grille height', unit: 'm', step: 0.1, optional: true },
+      { key: 'plenum_face_velocity', label: 'Most air may leave a grille at', unit: 'm/s', step: 0.1, optional: true },
     ],
   },
   {

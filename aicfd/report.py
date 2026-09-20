@@ -706,6 +706,13 @@ def _methodology(doc, export: Export, drawn: dict) -> None:
                           "the cavity, so the clearances are unchanged. Without "
                           "a plenum the unit blows through a single wall into "
                           "the aisle it faces."),
+        ("Supply mesh", "The alternative for a hall already built: the same "
+                        "13 x 13 mm woven mesh as on the return, across the "
+                        "opening the units blow through, and no plenum. It is "
+                        "a uniform resistance in series with the units, so it "
+                        "changes no flow and is not a surface in the mesh; its "
+                        "pressure is added to the fan duty from its loss "
+                        "coefficient and the check says so."),
         ("Containment, false ceiling, row ends", "Two-sided adiabatic wall "
                                                  "baffles. A row not closed on "
                                                  "five sides leaks most of its "
