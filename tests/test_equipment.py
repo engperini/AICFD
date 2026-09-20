@@ -880,8 +880,10 @@ class WhatWouldCloseTest(unittest.TestCase):
 
     def test_it_names_the_elevation_that_would_close_it(self):
         """The reported case: a CA40 selection read at 750 m instead of ~330."""
+        # 2.0 kW of fan power: far too little to explain the 14 kW gap, so
+        # the gross/net branch does not fire and these two candidates do.
         unit = self.unit(750, return_c=37.0, supply_c=21.8, airflow_m3h=60504.0,
-                         nscc_kw=281.0, power_kw=16.9)
+                         nscc_kw=281.0, power_kw=2.0)
         why = unit.coil_problem
         self.assertIn("site elevation of 328 m", why)
         self.assertIn("this unit says 750 m", why)
@@ -889,13 +891,13 @@ class WhatWouldCloseTest(unittest.TestCase):
 
     def test_it_also_names_the_supply_that_would_close_it(self):
         unit = self.unit(750, return_c=37.0, supply_c=21.8, airflow_m3h=60504.0,
-                         nscc_kw=281.0, power_kw=16.9)
+                         nscc_kw=281.0, power_kw=2.0)
         self.assertIn("wants a supply of 21.0 degC", unit.coil_problem)
 
     def test_at_the_elevation_it_names_the_selection_fits(self):
         """Not just plausible -- the number is the answer."""
         unit = self.unit(328, return_c=37.0, supply_c=21.8, airflow_m3h=60504.0,
-                         nscc_kw=281.0, power_kw=16.9)
+                         nscc_kw=281.0, power_kw=2.0)
         self.assertIsNone(unit.coil_problem)
         self.assertIsNotNone(unit.coil)
 
@@ -907,3 +909,55 @@ class WhatWouldCloseTest(unittest.TestCase):
         self.assertIn("Two things would close it", why)
         self.assertIn("1,771 m", why)
         self.assertIn("25.6 degC", why)
+
+
+class GrossForNetTest(unittest.TestCase):
+    """The CA40NPVGT datasheet, as a test.
+
+    Vertiv CWA CA40NPVGT, 661 m, 37.0 degC / 30% RH entering air, 18/28 degC
+    water, 100 Pa ESP. The sheet prints `Gross Sensible Cooling Capacity`
+    280.7 kW directly above `NSCC` 270.1 kW, and they differ by exactly the
+    10.6 kW of fan power. Taking the wrong one of the two is the transcription
+    this product family invites, and the row itself carries the evidence.
+    """
+
+    SHEET = {"return_c": 37.0, "supply_c": 21.8, "airflow_m3h": 60504.0,
+             "power_kw": 10.6}
+    NSCC = 270.1
+    GROSS = 280.7
+
+    def unit(self, elevation=661.0, **design):
+        spec = yaml.safe_load((equipment.LIBRARY / "CA80NPVG6.yaml").read_text())
+        spec["model"] = "CA40NPVGT"
+        spec["selection"] = dict(spec["selection"], elevation_m=elevation)
+        merged = {**self.SHEET, **design}
+        spec["design"] = {k: v for k, v in merged.items() if v is not None}
+        spec.pop("capacity")
+        return equipment.parse(spec)
+
+    def test_the_model_reproduces_the_manufacturers_nscc(self):
+        """0.03% against the printed figure. This is the calibration that
+        makes the whole consistency check worth making."""
+        from aicfd.coil import air_capacity_rate
+
+        air = air_capacity_rate(self.SHEET["airflow_m3h"], 37.0, 661.0)
+        self.assertAlmostEqual(air * (37.0 - 21.8), self.NSCC, delta=0.5)
+
+    def test_the_sheet_as_printed_fits(self):
+        self.assertIsNone(self.unit(nscc_kw=self.NSCC).coil_problem)
+
+    def test_the_gross_figure_is_identified_by_name(self):
+        why = self.unit(nscc_kw=self.GROSS).coil_problem
+        self.assertIn("GROSS figure was taken", why)
+        self.assertIn("270.1 kW", why)
+        self.assertIn("net sensible (NSCC)", why)
+
+    def test_it_is_identified_even_at_the_wrong_elevation(self):
+        """Both fields wrong at once, which is how it was really reported."""
+        why = self.unit(elevation=750.0, nscc_kw=self.GROSS).coil_problem
+        self.assertIn("GROSS figure was taken", why)
+
+    def test_a_row_with_no_power_falls_back_to_the_other_candidates(self):
+        why = self.unit(nscc_kw=self.GROSS, power_kw=None).coil_problem
+        self.assertNotIn("GROSS", why)
+        self.assertIn("site elevation of", why)

@@ -420,15 +420,27 @@ def _what_would_close(row, ret: float, sup: float, stated: float,
                       altitude: float) -> str:
     """The numbers that would make this selection agree with itself.
 
-    A selection that misses by a few percent is rarely wrong about its
-    capacity. It is usually being read at the wrong site elevation -- that
-    field lives on another card and is the one most often left at whatever the
-    file was copied from -- or its supply air was rounded. Both are offered,
-    unranked: which of them is the transcription is the engineer's to know,
-    and guessing for them would send half the readers to the wrong field
-    (ADR-068).
+    Three candidates, and the first is not a guess. A CWA datasheet prints
+    `Gross Sensible Cooling Capacity` directly above `NSCC`, and they differ by
+    exactly the fan power the array returns to the air -- which this row
+    already carries. Where the stated figure less that power is what the
+    temperatures and airflow do carry, the gross figure was copied, and the
+    arithmetic says so rather than supposing it (ADR-068).
+
+    Otherwise: the site elevation, and the supply air at the stated elevation.
+    Both, unranked. Which of them is the transcription is the engineer's to
+    know -- the same miss reads as a copied elevation on one unit and a
+    rounded supply on the next -- and guessing would send half the readers to
+    the wrong field with the tool's confidence behind it.
     """
     air = air_capacity_rate(float(row["airflow_m3h"]), ret, altitude)
+    heat = air * (ret - sup)
+    power = row.get("power_kw")
+    if power and abs(heat - (stated - float(power))) <= max(0.03 * stated, 5.0):
+        return (f". {stated:,.1f} less this row's {float(power):,.1f} kW of fan "
+                f"power is {stated - float(power):,.1f} kW, which is what these "
+                f"temperatures and airflow do carry: the GROSS figure was "
+                f"taken. Every capacity here is net sensible (NSCC)")
     wants = f"{stated:,.0f} kW wants a supply of {ret - stated / air:.1f} degC"
     found = _solve(
         lambda alt: air_capacity_rate(float(row["airflow_m3h"]), ret, alt)

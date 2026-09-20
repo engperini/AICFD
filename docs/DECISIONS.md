@@ -2784,8 +2784,19 @@ another unit, and never appears in the message. Those numbers close at 328 m;
 the unit said 750. A message that names three correct fields and not the wrong
 one sends the reader to re-check the datasheet they already read correctly.
 
-**Both candidates are given, unranked.** Solving for the elevation is one
-bisection, and solving for the supply is arithmetic. Which of the two is the
+**Where the arithmetic identifies the field, it says so.** A CWA datasheet
+prints `Gross Sensible Cooling Capacity` directly above `NSCC`, and the two
+differ by exactly the fan power the array returns to the air -- which the row
+already carries. Where the stated figure less that power is what the
+temperatures and airflow do carry, the gross figure was copied, and the message
+says that instead of offering candidates. That is not a guess: it is the row
+proving it against itself. The CA40NPVGT that prompted this had both fields
+wrong at once -- 750 m for 661, and 280.7 kW for 270.1 -- and the gross/net
+identification survives the elevation being wrong too, because the fan power
+explains the gap at either.
+
+**Otherwise both candidates are given, unranked.** Solving for the elevation is
+one bisection, and solving for the supply is arithmetic. Which of the two is the
 transcription is the engineer's to know — the same miss reads as a copied
 elevation on one unit and a rounded supply temperature on the next, and
 guessing would send half of the readers to the wrong field with the tool's
@@ -2793,3 +2804,9 @@ confidence behind it.
 
 **Where no elevation in 0–5,000 m closes it**, only the supply is offered. A
 selection that far out is not a units or altitude question.
+
+**The calibration, restated on a second unit.** The CA40NPVGT datasheet, at its
+own 661 m: 60,504 m³/h from 37.0 to 21.8 °C computes 270.0 kW against a printed
+NSCC of 270.1 -- **0.03%**. Two units, two independent selections, sub-percent
+both times. That is the ground the 3% tolerance stands on, and both sheets are
+now tests.
