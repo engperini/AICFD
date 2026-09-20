@@ -1,0 +1,69 @@
+# Vertiv Liebert CWA CA80NEVGT — fan wall unit.
+#
+# ONE manufacturer selection, which is all a unit needs: the coil is recovered
+# from it and answers at any return air the room really produces (ADR-063).
+# Validating that extrapolation is the engineer's, and the report says so.
+#
+# Selection: Vertiv selection tool v2.7.87, issued by Lucca Mendonca, printed
+# 2025-12-02. 661 m, 38.0 °C dry bulb / 30% RH entering air, 150 Pa ESP,
+# 20/30 °C water at 14.43 l/s, fans at 99.1% speed, 380-400V/3ph/60Hz.
+#
+# Three independent checks, the tightest set in this library (ADR-071):
+#   air    140,165 m3/h from 38.0 to 24.1 °C at 661 m  ->  570.2 kW  (-0.61%)
+#   water  14.43 l/s over a 10 K rise                  ->  603.2 kW  ( 0.00%)
+#   gross less the 29.4 kW of fan power                ->  573.8 kW  (+0.02%)
+#
+# THE SAME MACHINE AS CA80NPVG6, AT DIFFERENT WATER. That one is selected on
+# 18/28 °C water and this on 20/30, which is why this one moves more air
+# (140,165 against 121,545) for its duty: warmer water buys less temperature
+# difference, so the coil needs more air to shift the heat. Keep both; a case
+# names the one its plant will really run.
+#
+# Its "Unit Airflow Rate of Standard Air" (109,324 m3/h) implies a density of
+# 0.936 kg/m3, which is air at no plausible temperature -- at 661 m and 38 °C
+# it is 1.048. That figure is not used here and should not be: the energy
+# balance runs on `Unit Return Airflow`, and that one closes.
+model: CA80NEVGT
+family: Vertiv Liebert CWA
+
+size: [3.96, 1.48, 3.67]      # width x depth x height, metres
+weight_kg: 3000
+
+fans:
+  count: 8
+  type: Backward Curve Blower
+  module: High Static Fan-HE
+  modulation: 99.1            # % of full speed, at the selection point
+
+selection:
+  # The conditions this selection was taken at. Change any of them and the
+  # numbers below are not this unit's: ask for a new selection.
+  elevation_m: 661
+  esp_pa: 150                 # external static pressure
+  entering_water_c: 20
+  leaving_water_c: 30
+  entering_air_rh: 30         # %
+  water_flow_lh: 51948        # 14.43 l/s, stated (ADR-069)
+
+design:
+  # THE selection. One machine at one duty -- the one this plant was bought
+  # on -- and the anchor for everything the software computes.
+  return_c: 38.0              # air the unit RECEIVES, dry bulb
+  supply_c: 24.1              # supply air off the unit, dry bulb (66.5% RH)
+  airflow_m3h: 140165         # unit return airflow, actual air at 661 m
+  nscc_kw: 573.7              # NET sensible: 603.2 gross less 29.4 of fan power
+  power_kw: 29.4              # unit electrical input (46.7 A operating)
+
+curve:
+  # Representative, not the manufacturer's: the sheet gives the one point the
+  # unit was selected to overcome, and the rest has the shape of an EC array.
+  # The fans are at 99.1% here, so 150 Pa at the rated flow is very nearly the
+  # full-speed point. Replace with the real P-Q curve when it is given, and
+  # tick `measured` on the page.
+  measured: false
+  points:
+    - [0, 390]
+    - [70000, 310]
+    - [140165, 150]
+    - [168000, 70]
+    - [190000, 0]
