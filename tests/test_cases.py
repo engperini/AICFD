@@ -200,20 +200,40 @@ class RackTypeTest(unittest.TestCase):
         self.assertEqual(model.rows[0].racks[0].load_kw, 0.0)
         self.assertEqual(model.rows[0].racks[1].load_kw, 6.0)
 
-    def test_a_liquid_type_with_no_stated_load_is_refused(self):
-        """Its rated duty is the cabinet's, not what reaches the room's air:
-        225 kW where about 9 arrives. Neither that nor the hall's air standard
-        is guessed for it."""
+    def test_a_liquid_types_air_load_is_the_share_that_is_not_coolant(self):
+        """Its rated duty is the cabinet's, not what reaches the room's air.
+        225 kW with 96% into the coolant is 9 kW of air load, and that is the
+        document's own arithmetic rather than anybody's assumption."""
+        model = self.build(row=[{"type": "type-e-liquid-225kw"}, {}, {}])
+        self.assertAlmostEqual(model.rows[0].racks[0].load_kw, 9.0, places=2)
+
+    def test_and_never_its_rated_duty_nor_the_halls_standard(self):
+        model = self.build(row=[{"type": "type-e-liquid-225kw"}, {}, {}])
+        carried = model.rows[0].racks[0].load_kw
+        self.assertNotAlmostEqual(carried, 225.0)
+        self.assertNotAlmostEqual(carried, 6.0)   # the hall's air standard
+
+    def test_a_stated_load_still_wins_over_the_derived_share(self):
+        model = self.build(row=[{"type": "type-e-liquid-225kw", "load_kw": 12.0},
+                                {}, {}])
+        self.assertAlmostEqual(model.rows[0].racks[0].load_kw, 12.0)
+
+    def test_a_liquid_type_that_states_no_fraction_is_refused(self):
+        """Then there really is nothing to go on, and a guess would be the
+        difference between 9 kW and 225."""
+        from aicfd import racklib
+
+        real = racklib.resolve
+
+        def without(type_id):
+            rack = real(type_id)
+            return rack.__class__(**{**rack.__dict__, "liquid_fraction": None})
+
+        racklib.resolve = without
+        self.addCleanup(lambda: setattr(racklib, "resolve", real))
         with self.assertRaises(ValueError) as caught:
             self.build(row=[{"type": "type-e-liquid-225kw"}, {}, {}])
-        said = str(caught.exception)
-        self.assertIn("not what reaches this room's air", said)
-        self.assertIn("96%", said)
-
-    def test_a_liquid_type_with_a_stated_load_builds(self):
-        model = self.build(row=[{"type": "type-e-liquid-225kw", "load_kw": 9.0},
-                                {}, {}])
-        self.assertEqual(model.rows[0].racks[0].load_kw, 9.0)
+        self.assertIn("leaves in the coolant", str(caught.exception))
 
     def test_an_incomplete_type_is_refused_by_name(self):
         """Its own document marks the depth 'further confirmation'. A number

@@ -22,8 +22,12 @@ note: >
   cabinets will not foul each other; use 600 mm to describe the cabinet. This
   file carries 605 because a row is what it is for.
 
-  ~96% of its duty leaves in the coolant. The air-cooled share is what a CFD
-  of this hall has to remove, and it is about 9 kW of the 225, not 225 -- the
+  ~96% of its duty leaves in the coolant, so a position that names this type
+  and states no load carries 225 x (1 - 0.96) = 9.0 kW of AIR load, which is
+  what a CFD of this hall has to remove. Never its 225: that is the cabinet's
+  duty and 25 times what reaches the room.
+
+  Override it per position where a rack really runs otherwise. And note the
   RFP asks for an overall air-cooled ratio of at least 15% including a 5%
-  buffer, set per datahall from the actual layout. State the air share per
-  position; this file will not guess it for a room it does not know.
+  buffer, set per datahall from the actual layout -- that is a ratio for the
+  HALL, counting its air-cooled cabinets, not a second figure for this one.

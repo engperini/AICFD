@@ -3123,15 +3123,20 @@ so `liquid-network-800` states its 800 mm width and nothing else, and a case
 naming it is refused by name. A plausible number in that field is a row that
 does not fit with nothing saying so (ADR-071).
 
-**A LIQUID CABINET'S RATED DUTY IS NOT ITS AIR LOAD, and the model refuses to
-assume either way.** The Type-E rack is 225 kW and leaves about 96% of it in
-the coolant. Taking the rated figure would put 225 kW into a room that receives
-roughly 9; taking the hall's air standard would be a number meant for a
-different machine. So an air-cooled type brings its own load and a liquid-cooled
-one brings only its geometry — and a position naming a liquid type without
-stating a load is refused, naming the fraction that leaves in the coolant. That
-is the one number in this whole exercise that could quietly make a hall look
-25 times worse than it is.
+**A LIQUID CABINET'S RATED DUTY IS NOT ITS AIR LOAD.** The Type-E rack is
+225 kW and leaves about 96% of it in the coolant, so what the room has to
+remove is the other 4% — **9.0 kW, not 225**. Taking the rated figure would
+make the hall look 25 times worse than it is; taking the hall's air standard
+would be a number meant for a different machine.
+
+**So the type carries the fraction, and the air load follows from it.** An
+air-cooled type brings its `load_kw` as it stands; a liquid-cooled one brings
+`load_kw × (1 − liquid_fraction)`. That is the source document's own
+arithmetic, not an assumption, which is why it is a default rather than a
+question — a position that really runs otherwise still states its own load and
+that still wins. Only a liquid type stating **no** fraction is refused, because
+there the gap between the two readings is 9 kW and 225 and nothing in the file
+chooses between them.
 
 **What the catalogue holds after this project's documents**: the three
 air-cooled cabinets the Type-E RFP standardises (600×1200 45U, 800×1200 46U,

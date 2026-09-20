@@ -1362,28 +1362,27 @@ def rack_positions(row_id: str, plan: list[dict], size, load_kw: float,
 
             rack = racklib.resolve(str(entry["type"]))
             from_type = {"width": rack.size[0]}
-            if rack.cooling == "air" and rack.load_kw is not None:
+            # A LIQUID CABINET'S RATED DUTY IS NOT ITS AIR LOAD. The Type-E
+            # rack is 225 kW and leaves ~96% of it in the coolant, so what
+            # this room has to remove is the other 4% -- about 9 kW, not 225.
+            # Where the type states that fraction the air share follows from
+            # it, which is the manufacturer's own number rather than anybody's
+            # assumption. Where it does not, nothing is guessed (ADR-075).
+            if rack.load_kw is None:
+                pass
+            elif rack.cooling == "air":
                 from_type["load_kw"] = rack.load_kw
-            elif rack.cooling != "air":
-                # A LIQUID CABINET'S RATED DUTY IS NOT ITS AIR LOAD. The
-                # Type-E rack is 225 kW and leaves ~96% of it in the coolant:
-                # taking the rated figure would put 225 kW into a room that
-                # receives about 9, and taking the hall's air standard would
-                # be a number meant for a different machine. Neither is
-                # guessed -- the position has to say what reaches the air
-                # (ADR-075).
-                if (rack_id not in loads and entry.get("load_kw") is None
-                        and not blank):
-                    raise ValueError(
-                        f"{rack_id} is a {rack.cooling}-cooled "
-                        f"{rack.id!r} and states no load. Its rated "
-                        f"{rack.load_kw:g} kW is the cabinet's duty, not what "
-                        f"reaches this room's air"
-                        + (f" -- about {rack.liquid_fraction:.0%} of it leaves "
-                           f"in the coolant" if rack.liquid_fraction else "")
-                        + ". Give the position the air load it really puts "
-                          "into the hall"
-                    )
+            elif rack.liquid_fraction is not None:
+                from_type["load_kw"] = rack.load_kw * (1.0 - rack.liquid_fraction)
+            elif (rack_id not in loads and entry.get("load_kw") is None
+                    and not blank):
+                raise ValueError(
+                    f"{rack_id} is a {rack.cooling}-cooled {rack.id!r} whose "
+                    f"type does not say what share of its {rack.load_kw:g} kW "
+                    f"leaves in the coolant. Give the position the air load it "
+                    f"really puts into the hall, or state `liquid_fraction` on "
+                    f"the type"
+                )
         asked = float(widths.get(
             rack_id, entry.get("width", from_type.get("width", size[0]))))
         if asked <= 0:
