@@ -2712,3 +2712,51 @@ case still wins (ADR-036). A unit is a machine and a case is a project, and one
 project runs a machine below its catalogue point often enough — N+2 sharing,
 a de-rated selection — that copying the datasheet into the case would quietly
 overwrite the number the engineer meant.
+
+## ADR-067 — What the page edits, and what the capacity card draws
+
+**Decision.** The equipment page's working copy carries every block the page
+shows; `plant` creates a missing one rather than throwing. The capacity card
+draws the **fitted coil**, not the reference table, and says why where there is
+no coil. A reference row whose own numbers disagree is set aside by name and
+does not block the fit.
+
+**Three defects, one cause: the page was changed and its edges were not.**
+ADR-065 put the design selection on the page. `clone` — which builds the draft
+the page edits, key by key — was not given `design`. Typing into the new card
+threw inside an input handler, where nothing shows it, so the value never
+reached the draft, Save posted a draft with no design, the server had nothing
+to write, and the page reported "Saved". The user typed five numbers, was told
+they were saved, and watched them come back empty. Twice, because ADR-066 fixed
+the server side of the same symptom and the browser side was still broken.
+
+**`plant` now creates what is missing.** `keys.reduce((n, k) => (n[k] ??= {}))`.
+The old form threw on the first absent block, and an exception in an input
+handler is the quietest failure this codebase has: the page looks like it took
+the value, and the value is nowhere. A field added to the form should at worst
+be ignored, never take the form down in silence.
+
+**The chart was the same mistake, from the same commit.** The card promises
+"net sensible capacity against the air the unit receives" and plotted
+`capacity`, bailing below two rows. Under ADR-065 that is exactly backwards:
+the coil answers that question, the table is optional evidence, and most units
+have none — so the card was blank for precisely the unit the page exists to
+enter. It now plots the coil across ±10 K of its design selection, floored at
+the entering water, with the design point marked and any reference rows on top.
+
+**A blank card is the worst possible answer**, because it reads as a broken
+page rather than as missing input. Where the coil cannot be fitted, the card
+carries the reason — which field is absent, or which number does not close.
+
+**A bad reference row is a bad row, not a bad unit.** One inconsistent row used
+to raise out of `fit` and cost the unit its coil entirely. Reference rows are
+evidence (ADR-039); they set the air/water split and then check the fit. A row
+that does not agree with itself is excluded, named in full, and drawn hollow so
+the picture and the message say the same thing. The design selection is held to
+the old standard: that one *is* the model, and a wrong number there is not
+evidence but a wrong model.
+
+**What this found in real data.** The unit that produced the bug report states
+108,986 m³/h from 38 to 24 °C at 390 kW. Those numbers carry 442 kW; 390 kW
+wants a supply of 25.6 °C. Something in that row is a transcription — and the
+page says so now instead of drawing nothing.

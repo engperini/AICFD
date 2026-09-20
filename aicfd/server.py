@@ -471,7 +471,44 @@ def read_equipment(model: str | None) -> dict:
     if not model:
         return {"models": models}
     unit = library.load(model)
-    return {"models": models, "unit": unit.to_dict()}
+    return {"models": models, "unit": unit.to_dict(), "coil": coil_curve(unit)}
+
+
+def coil_curve(unit, points: int = 33) -> dict:
+    """The fitted coil's capacity against return air, for the page to draw.
+
+    What the card promises -- capacity against the air the unit receives -- is
+    the coil's, not the reference table's. The table is evidence and most
+    units have none, so plotting it left the chart blank for exactly the unit
+    the page exists to enter (ADR-067).
+
+    Valve wide open at the design airflow: the ceiling at each return, which
+    is the curve a reader is looking for when they ask what the machine does
+    off its selection.
+    """
+    fitted = unit.coil
+    if fitted is None:
+        return {"problem": unit.coil_problem, "points": []}
+    design = float(fitted.design_return_c)
+    # Wide enough to show the selection sitting inside it rather than at an
+    # end, and bounded below by the water: colder air than that is a coil
+    # with nothing to remove, and the flat zero says so honestly.
+    low = max(fitted.water_c, design - 10.0)
+    high = design + 10.0
+    step = (high - low) / (points - 1)
+    air = fitted.air_fitted
+    return {
+        "problem": None,
+        "design_return_c": design,
+        "reference_returns": list(fitted.reference_returns),
+        "reference_error_k": fitted.reference_error_k,
+        "rejected_references": list(fitted.rejected_references),
+        "points": [
+            {"return_c": low + i * step,
+             "nscc_kw": fitted.operate(low + i * step, air).ceiling_kw}
+            for i in range(points)
+        ],
+    }
 
 
 def read_racks(name: str) -> dict:

@@ -142,6 +142,9 @@ class Coil:
     carries. They set the split and then check the fit."""
     reference_error_k: float | None = None
     """RMS error against those reference selections, in K of supply air."""
+    rejected_references: tuple[str, ...] = ()
+    """Reference rows whose own numbers do not agree with each other. They
+    take no part in the fit, and saying which is the point of keeping them."""
 
     # --- the machine ----------------------------------------------------------
 
@@ -341,8 +344,15 @@ def fit(unit) -> Coil:
             f"{unit.model}: no conductance reproduces its design selection"
         )
 
-    reference = [_point(unit, row, water_in, rise, altitude)
-                 for row in unit.capacity]
+    # A reference row that does not close is a bad row, not a bad unit. It is
+    # optional evidence (ADR-039), so it is set aside and named rather than
+    # blocking the coil the design selection already describes (ADR-067).
+    reference, rejected = [], []
+    for row in unit.capacity:
+        try:
+            reference.append(_point(unit, row, water_in, rise, altitude))
+        except CannotFit as why:
+            rejected.append(str(why).replace("selection at", "reference row at", 1))
     stated = (unit.coil_split if getattr(unit, "coil_split", None) else None)
     if stated is not None:
         split = float(stated)
@@ -371,6 +381,7 @@ def fit(unit) -> Coil:
         design_return_c=float(design["return_c"]),
         air_split=split,
         reference_returns=tuple(p[3] for p in reference),
+        rejected_references=tuple(rejected),
     )
     if len(reference) < 2:
         return fitted

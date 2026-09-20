@@ -14,7 +14,7 @@ from pathlib import Path
 
 import yaml
 
-from aicfd import equipment, post
+from aicfd import equipment, post, server
 from aicfd.model import build_model, equipment_for
 
 RAW = yaml.safe_load(
@@ -761,3 +761,90 @@ selection:
         raw["capacity"] = []
         equipment.save("ZZHALF", raw)
         self.assertNotIn("capacity:", self.path.read_text())
+
+
+class DesignSelectionReachesTheDraftTest(unittest.TestCase):
+    """The page's working copy has to carry every field the page shows.
+
+    `clone` in web/equipment.js builds the draft key by key. A card was added
+    to the page and its block was not added here, so typing into it threw
+    inside an input handler -- invisibly -- and Save posted a draft with no
+    design. The page said "Saved" and the fields came back empty (ADR-067).
+    """
+
+    def test_clone_carries_every_editable_block(self):
+        source = (server.REPO_ROOT / "web" / "equipment.js").read_text()
+        body = source[source.index("function clone(source)"):]
+        body = body[: body.index("\n}")]
+        for block in sorted({p.split(".")[0] for p in equipment.EDITABLE if "." in p}):
+            with self.subTest(block=block):
+                self.assertIn(f"{block}:", body)
+
+    def test_plant_creates_a_missing_block_instead_of_throwing(self):
+        source = (server.REPO_ROOT / "web" / "equipment.js").read_text()
+        body = source[source.index("function plant(target, path, value)"):]
+        self.assertIn("??=", body[: body.index("\n}")])
+
+
+class BadReferenceRowTest(unittest.TestCase):
+    """A reference row is optional evidence, so a bad one is a bad row."""
+
+    def raw(self, **design):
+        spec = yaml.safe_load((equipment.LIBRARY / "CA80NPVG6.yaml").read_text())
+        spec["capacity"] = [
+            # Consistent: 121,545 m3/h from 35.0 to 20.79 degC really is 504.9 kW.
+            {"return_c": 35.0, "nscc_kw": 504.9, "airflow_m3h": 121545.0,
+             "power_kw": 21.4, "supply_c": 20.79},
+            # Nonsense: the temperatures and airflow do not carry this.
+            {"return_c": 38.0, "nscc_kw": 390.0, "airflow_m3h": 108986.0,
+             "power_kw": 26.2, "supply_c": 24.0},
+        ]
+        return spec
+
+    def test_it_does_not_block_the_coil(self):
+        unit = equipment.parse(self.raw())
+        self.assertIsNotNone(unit.coil, unit.coil_problem)
+        self.assertIsNone(unit.coil_problem)
+
+    def test_it_is_named_rather_than_dropped_in_silence(self):
+        unit = equipment.parse(self.raw())
+        rejected = unit.coil.rejected_references
+        self.assertEqual(len(rejected), 1)
+        self.assertIn("reference row at 38.0", rejected[0])
+        self.assertNotIn(38.0, unit.coil.reference_returns)
+
+    def test_the_design_selection_itself_still_has_to_close(self):
+        """That one IS the model, so a wrong number there is not evidence."""
+        spec = self.raw()
+        spec["design"] = dict(spec["design"], nscc_kw=999.9)
+        unit = equipment.parse(spec)
+        self.assertIsNone(unit.coil)
+        self.assertIn("not self-consistent", unit.coil_problem)
+
+
+class CoilCurveForThePageTest(unittest.TestCase):
+    """What the capacity chart draws, and what it says when it cannot."""
+
+    def test_a_unit_with_one_selection_gets_a_curve(self):
+        spec = yaml.safe_load((equipment.LIBRARY / "CA80NPVG6.yaml").read_text())
+        spec.pop("capacity")
+        curve = server.coil_curve(equipment.parse(spec))
+        self.assertIsNone(curve["problem"])
+        self.assertGreater(len(curve["points"]), 10)
+        warmer = [p["nscc_kw"] for p in curve["points"]]
+        self.assertEqual(warmer, sorted(warmer), "capacity rises with return air")
+        self.assertAlmostEqual(curve["design_return_c"], 34.0)
+
+    def test_it_never_reads_below_the_water(self):
+        spec = yaml.safe_load((equipment.LIBRARY / "CA80NPVG6.yaml").read_text())
+        curve = server.coil_curve(equipment.parse(spec))
+        water = spec["selection"]["entering_water_c"]
+        self.assertGreaterEqual(min(p["return_c"] for p in curve["points"]), water)
+        self.assertTrue(all(p["nscc_kw"] >= 0 for p in curve["points"]))
+
+    def test_with_no_design_it_carries_the_reason_instead(self):
+        spec = yaml.safe_load((equipment.LIBRARY / "CA80NPVG6.yaml").read_text())
+        spec.pop("design")
+        curve = server.coil_curve(equipment.parse(spec))
+        self.assertEqual(curve["points"], [])
+        self.assertIn("design.return_c", curve["problem"])

@@ -19,6 +19,9 @@ const params = new URLSearchParams(location.search);
 
 let unit = null;
 let draft = null;
+/** The fitted coil's capacity curve, or why there is none. Server-computed:
+ *  the fit is the model's, and a second copy of it here could disagree. */
+let coilFit = null;
 
 main();
 
@@ -57,6 +60,7 @@ async function load(model) {
     return;
   }
   unit = payload.unit;
+  coilFit = payload.coil;
   draft = clone(unit);
   render();
 }
@@ -69,6 +73,10 @@ function clone(source) {
     weight_kg: source.weight_kg,
     fans: { ...(source.fans || {}) },
     selection: { ...(source.selection || {}) },
+    // Omitting this was the whole of ADR-067: the card was on the page, the
+    // server would have written it, and the draft the page edits had no
+    // `design` to put it in.
+    design: { ...(source.design || {}) },
     capacity: source.capacity.map((row) => ({ ...row })),
     curve: {
       ...(source.curve || {}),
@@ -321,7 +329,11 @@ function dig(source, path) {
 function plant(target, path, value) {
   const keys = path.split('.');
   const last = keys.pop();
-  const node = keys.reduce((n, key) => n[key], target);
+  // Create what is missing rather than throwing on it. A field whose block
+  // the draft does not carry used to raise inside an input handler, where
+  // nothing shows it: the page looked like it took the value and the value
+  // was never anywhere (ADR-067).
+  const node = keys.reduce((n, key) => (n[key] ??= {}), target);
   node[last] = value;
 }
 
@@ -407,12 +419,34 @@ function factsTable(rows) {
 
 // --- the chart ---------------------------------------------------------------
 
+/**
+ * The fitted coil's capacity against the air it receives.
+ *
+ * The card promises capacity against return air, and what answers that is the
+ * COIL, recovered from the design selection -- not the reference table. Most
+ * units have no reference rows, and plotting only those left the chart blank
+ * for exactly the unit this page exists to enter (ADR-067). The rows are
+ * drawn on top, where they exist, as what they are: the manufacturer's own
+ * points, to be read against the fit rather than instead of it.
+ *
+ * Where the coil cannot be fitted, the card says why. A selection that does
+ * not close -- an airflow and a temperature rise that do not carry the
+ * capacity claimed -- is the most useful thing this page can tell anyone, and
+ * an empty box tells them nothing.
+ */
 function drawChart() {
   const host = document.getElementById('chart');
   if (!host) return;
+  if (!coilFit || coilFit.problem || !coilFit.points.length) {
+    host.replaceChildren(note(coilFit?.problem
+      || 'Fill in the design selection above and the coil is fitted from it; '
+         + 'this is where its capacity against return air is drawn.'));
+    return;
+  }
   const width = Math.max(host.clientWidth || 640, 360);
   const height = Math.round(Math.min(380, Math.max(240, width * 0.42)));
-  const pad = { left: 62, right: 16, top: 16, bottom: 44 };
+  const pad = { left: 62, right: 16, top: 26, bottom: 58 };
+  const fit = coilFit.points;
   const rows = [...draft.capacity]
     .filter((r) => Number.isFinite(+r.return_c) && Number.isFinite(+r.nscc_kw))
     .sort((a, b) => a.return_c - b.return_c);
@@ -421,17 +455,13 @@ function drawChart() {
     width, height, role: 'img',
     'aria-label': 'net sensible capacity against return air temperature',
   });
-  if (rows.length < 2) {
-    host.replaceChildren(svg);
-    return;
-  }
-  const xs = rows.map((r) => +r.return_c);
-  const ys = rows.map((r) => +r.nscc_kw);
+  const xs = [...fit.map((p) => p.return_c), ...rows.map((r) => +r.return_c)];
   const x0 = Math.min(...xs);
   const x1 = Math.max(...xs);
   // The y axis starts at zero: this is a magnitude, and a truncated axis
   // would make a 45 % rise look like a tenfold one.
-  const yMax = niceTop(Math.max(...ys));
+  const yMax = niceTop(Math.max(...fit.map((p) => p.nscc_kw),
+                                ...rows.map((r) => +r.nscc_kw)));
   const X = (v) => pad.left + ((v - x0) / (x1 - x0 || 1)) * (width - pad.left - pad.right);
   const Y = (v) => height - pad.bottom - (v / yMax) * (height - pad.top - pad.bottom);
 
@@ -443,28 +473,74 @@ function drawChart() {
     }));
     svg.append(text(pad.left - 8, Y(value) + 4, fmt(value, 0), 'end'));
   }
-  for (const value of xs) {
+  const ticks = 5;
+  for (let i = 0; i < ticks; i += 1) {
+    const value = x0 + ((x1 - x0) * i) / (ticks - 1);
     svg.append(text(X(value), height - pad.bottom + 18, fmt(value, 0), 'middle'));
   }
-  svg.append(text((pad.left + width - pad.right) / 2, height - 8,
+  svg.append(text((pad.left + width - pad.right) / 2, height - 26,
     'return air temperature (°C)', 'middle', 'var(--text-secondary)'));
-  svg.append(text(14, pad.top - 2, 'kW', 'start', 'var(--text-secondary)'));
+  svg.append(text(14, pad.top - 8, 'kW', 'start', 'var(--text-secondary)'));
 
-  const d = rows.map((r, i) =>
-    `${i ? 'L' : 'M'}${X(+r.return_c)},${Y(+r.nscc_kw)}`).join(' ');
   svg.append(el('path', {
-    d, fill: 'none', stroke: 'var(--series-1)', 'stroke-width': 2,
+    d: fit.map((p, i) => `${i ? 'L' : 'M'}${X(p.return_c)},${Y(p.nscc_kw)}`).join(' '),
+    fill: 'none', stroke: 'var(--series-1)', 'stroke-width': 2,
     'stroke-linejoin': 'round',
   }));
+
+  // The design selection, marked where it sits on the curve it produced.
+  const design = coilFit.design_return_c;
+  const at = fit.reduce((best, p) =>
+    Math.abs(p.return_c - design) < Math.abs(best.return_c - design) ? p : best);
+  svg.append(el('circle', {
+    cx: X(at.return_c), cy: Y(at.nscc_kw), r: 4.5,
+    fill: 'var(--series-1)', stroke: 'var(--paper)', 'stroke-width': 2,
+  }));
+  svg.append(text(X(at.return_c), Y(at.nscc_kw) - 12,
+    `${fmt(at.nscc_kw, 0)} kW`, 'middle', 'var(--text-primary)', 650));
+
+  // A row the fit set aside is drawn hollow. It is still the manufacturer's
+  // number and belongs on the picture, but a filled dot would say it agreed
+  // with the curve when the message below says it does not.
+  const took = new Set((coilFit.reference_returns || []).map((v) => +v.toFixed(3)));
+  let counted = 0;
   for (const row of rows) {
+    const used = took.has(+(+row.return_c).toFixed(3));
+    counted += used ? 1 : 0;
     svg.append(el('circle', {
       cx: X(+row.return_c), cy: Y(+row.nscc_kw), r: 4,
-      fill: 'var(--series-1)', stroke: 'var(--paper)', 'stroke-width': 2,
+      fill: used ? 'var(--series-2)' : 'var(--paper)',
+      stroke: used ? 'var(--paper)' : 'var(--series-2)', 'stroke-width': 2,
     }));
-    svg.append(text(X(+row.return_c), Y(+row.nscc_kw) - 12,
-      fmt(+row.nscc_kw, 0), 'middle', 'var(--text-primary)', 650));
   }
-  host.replaceChildren(svg);
+
+  // Two things are drawn, so both are named. Colour alone never says which.
+  const legend = [['var(--series-1)', 'the coil, fitted from the design selection']];
+  if (rows.length) {
+    legend.push(['var(--series-2)',
+      `reference selections (${counted} of ${rows.length} in the fit)`
+      + (coilFit.reference_error_k != null
+        ? ` · fit within ${fmt(coilFit.reference_error_k, 1)} K` : '')]);
+  }
+  let x = pad.left;
+  for (const [colour, label] of legend) {
+    svg.append(el('circle', { cx: x + 4, cy: height - 8, r: 4, fill: colour }));
+    svg.append(text(x + 14, height - 4, label, 'start', 'var(--text-secondary)'));
+    x += 18 + label.length * 5.4;
+  }
+  // A reference row whose own numbers disagree takes no part in the fit, and
+  // the one place anybody will see that is here, next to the chart it is
+  // missing from.
+  const rejected = coilFit.rejected_references || [];
+  host.replaceChildren(svg, ...rejected.map((why) => note(why, 'warn')));
+}
+
+/** What the chart says when there is no curve to draw. */
+function note(message, kind = '') {
+  const box = document.createElement('p');
+  box.className = `chart-note${kind ? ` ${kind}` : ''}`;
+  box.textContent = message;
+  return box;
 }
 
 /** A top for the axis whose quarters are round numbers to read off. */
@@ -516,6 +592,7 @@ async function save(newModel = '') {
       return;
     }
     unit = payload.unit;
+    coilFit = payload.coil;
     draft = clone(unit);
     render();
     document.getElementById('status').textContent =
