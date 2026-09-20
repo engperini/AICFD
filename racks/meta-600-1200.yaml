@@ -2,20 +2,19 @@ id: meta-600-1200
 name: 600 x 1200 colocation cabinet (Fortaleza / Queretaro RFP)
 cooling: air
 
-# HEIGHT NOT STATED. The RFP gives this cabinet as a footprint and nothing
-# else, so the height is left null and a case naming this type is refused
-# until somebody states one (ADR-075). `generic-600-1200-45u` is the same
-# footprint at 45U / 2200 mm from the same customer's Type-E requirement -- if
-# that is confirmed as the same cabinet, name that one instead of filling this
-# field in.
-size: [0.600, 1.200, null]
+# HEIGHT IS NOT THE RFP'S. The RFP gives this cabinet as a footprint and
+# nothing else; 2200 mm is the engineer's instruction, and it matches the 45U
+# cabinet the same customer's Type-E requirement standardises on
+# (`generic-600-1200-45u`). Kept here rather than pointed at that type because
+# this one carries no load, and that one carries 12 kW.
+size: [0.600, 1.200, 2.200]
+height_note: 2200 mm, set by the engineer; the RFP states no height
 source: >
   Customer RFP, Fortaleza and Queretaro cages, deadline 2026-03-06. Rack
   sizing: Fortaleza 54 x 600x1200mm, Queretaro 95 x 600x1200mm. No height, no
   U count and no per-rack power are given.
 note: >
-  NO PER-RACK POWER EITHER. The RFP states a cage total, not a rack figure:
+  NO LOAD ON PURPOSE. The RFP states a cage total, not a rack figure:
   Fortaleza 75 racks at 580 kW and Queretaro 115 at 850 kW, each a mix of this
-  cabinet and the 800 x 1300 one, with no split between the two. The cage
-  averages are 7.73 and 7.39 kW per rack; they are averages over a mixed
-  population and this file states none of them. Give the case its load.
+  cabinet and the 800 x 1300 one, with no split between the two. A position
+  naming this type takes the load the case gives it.

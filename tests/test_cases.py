@@ -343,17 +343,20 @@ class RfpCabinetTest(unittest.TestCase):
                 self.assertAlmostEqual(rack.size[0], w)
                 self.assertAlmostEqual(rack.size[1], d)
 
-    def test_neither_states_a_height_and_neither_invents_one(self):
+    def test_the_height_is_the_engineers_and_the_file_says_so(self):
+        """2200 mm did not come from the RFP, which gives a footprint and
+        nothing else. A number somebody supplied has to be traceable to them
+        rather than read later as the customer's."""
         from aicfd import racklib
 
         for type_id in ("meta-600-1200", "meta-800-1300"):
             with self.subTest(type=type_id):
                 rack = racklib.load(type_id)
-                self.assertIsNone(rack.size[2])
-                self.assertEqual(rack.missing, ["height"])
-                with self.assertRaises(ValueError) as caught:
-                    racklib.resolve(type_id)
-                self.assertIn("does not state its height", str(caught.exception))
+                self.assertAlmostEqual(rack.size[2], 2.200)
+                self.assertTrue(rack.complete)
+                text = (racklib.LIBRARY / f"{type_id}.yaml").read_text()
+                self.assertIn("set by the engineer", text)
+                self.assertIn("RFP states no height", text)
 
     def test_neither_states_a_per_rack_load(self):
         """The RFP gives a cage total across a mix of both cabinets and never
