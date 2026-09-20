@@ -725,3 +725,70 @@ class PlenumCardTest(unittest.TestCase):
             with self.subTest(key=key):
                 self.assertIn(key, server.EDITABLE)
                 self.assertIs(server.EDITABLE[key][1], bool)
+
+
+class ApplyKeepsTheFileTest(unittest.TestCase):
+    """What Apply writes back is the case with the edited lines edited, not a
+    re-dump of the parsed document (ADR-061)."""
+
+    CASE = "hall-double-gallery"
+
+    def setUp(self):
+        support.sandbox(self)
+        self.path = server.CASES_DIR / f"{self.CASE}.yaml"
+        self.before = self.path.read_text()
+
+    def apply(self, changes):
+        spec, rejected = server.apply_changes(server.load_spec(self.CASE), changes)
+        server.save_spec(self.CASE, spec)
+        return rejected
+
+    def commented(self, text):
+        return [l for l in text.split("\n")
+                if "#" in l and not l.strip().startswith("#")]
+
+    def test_a_change_keeps_every_hand_written_line(self):
+        """One press used to save the right values and lose every reason
+        behind them."""
+        self.assertTrue(self.commented(self.before))
+        self.assertEqual(self.apply({"supply_temp_c": 21.5}), [])
+        after = self.path.read_text()
+        self.assertEqual(
+            server.load_spec(self.CASE)["fanwall"]["supply_temp_c"], 21.5)
+        for line in self.commented(self.before):
+            if "supply_temp_c" in line:
+                continue
+            self.assertIn(line, after, "a hand-written line was rewritten")
+
+    def test_the_edited_line_keeps_its_own_comment(self):
+        self.apply({"supply_temp_c": 21.5})
+        line = next(l for l in self.path.read_text().split("\n")
+                    if l.strip().startswith("supply_temp_c"))
+        self.assertIn("#", line)
+
+    def test_a_change_that_changes_nothing_leaves_the_file_alone(self):
+        spec = server.load_spec(self.CASE)
+        self.apply({"supply_temp_c": spec["fanwall"]["supply_temp_c"]})
+        self.assertEqual(self.path.read_text(), self.before)
+
+    def test_a_key_the_case_does_not_have_is_added_as_its_own_block(self):
+        self.apply({"ceiling_return": "ceiling-return-600-open"})
+        text = self.path.read_text()
+        self.assertIn("\ncomponents:\n  ceiling_return: ceiling-return-600-open",
+                      text)
+        self.assertEqual(len(self.commented(text)),
+                         len(self.commented(self.before)))
+
+    def test_the_values_win_where_the_comments_cannot_be_kept(self):
+        """A file that is correct and bare beats one that is pretty and
+        wrong, so an edit the line editor cannot express falls back to the
+        dump rather than refusing or guessing."""
+        from aicfd import yamledit
+
+        before = {"a": {"b": 1}, "gone": 2}
+        self.assertIsNone(yamledit.rewrite("a:\n  b: 1\ngone: 2\n",
+                                           before, {"a": {"b": 1}}))
+        spec = server.load_spec(self.CASE)
+        spec.pop("solver")
+        server.save_spec(self.CASE, spec)
+        self.assertNotIn("solver", server.load_spec(self.CASE))

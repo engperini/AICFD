@@ -1,9 +1,14 @@
 """The cases in `cases/` still describe rooms that can be built.
 
-This is the one place that answers that question. Every other test that reads
-a worked case does it through `support.spec`, which skips when the file cannot
-be used -- so a case broken on disk gives one failure that names the file
-instead of thirty that name nothing (ADR-056).
+This is the ONLY place that looks at the working folder, and it asks the only
+question that is fair to ask of it: does what is there still build. Every
+other test reads a case the suite owns, from `tests/cases/`.
+
+Nothing here asserts on the CONTENT of those files. A case edited through the
+page -- a few rack loads set, a dimension changed, the comments gone -- is the
+software doing its job, and a test that failed on it told the engineer to
+`git restore` the work he had just done. Whether a save keeps a file readable
+is tested on the save path, against a sandbox (ADR-056).
 
 `cases/` is the engineer's working folder, so a failure here is usually not a
 regression in the code: it is a case edited to something the generator
@@ -47,19 +52,3 @@ class WorkedCasesTest(unittest.TestCase):
                         f"value the message names, or put the file back with\n"
                         f"            git restore cases/{path.name}"
                     )
-
-    def test_the_shipped_cases_keep_their_comments(self):
-        """A case is a template a person reads: the comment beside a number
-        is what says where the number came from. Saving one from the page
-        used to re-dump the document and take every comment with it."""
-        for path in sorted(support.CASES.glob("*.yaml")):
-            with self.subTest(case=path.name):
-                commented = [
-                    line for line in path.read_text().split("\n")
-                    if "#" in line and not line.strip().startswith("#")
-                ]
-                self.assertTrue(
-                    commented,
-                    f"cases/{path.name} has lost the comments beside its "
-                    f"numbers; put it back with `git restore cases/{path.name}`",
-                )

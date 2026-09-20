@@ -212,3 +212,80 @@ def set_map(lines: list[str], path: list[str], values: dict) -> None:
             for name, value in values.items()
         ]
     lines[index:end] = block
+
+
+def _leaves(data, prefix=()):
+    """Every scalar (or list) in a nested mapping, by its path."""
+    for key, value in data.items():
+        path = (*prefix, str(key))
+        if isinstance(value, dict):
+            yield from _leaves(value, path)
+        else:
+            yield path, value
+
+
+def _insert_at(lines: list[str], parent: list[str]) -> int | None:
+    """Where a new key under ``parent`` goes: the end of that block."""
+    level = len(parent)
+    start = find(lines, parent) if parent else None
+    if parent and start is None:
+        return None
+    anchor = -1 if start is None else start
+    end = anchor + 1
+    while end < len(lines) and (
+        not lines[end].strip()
+        or len(lines[end]) - len(lines[end].lstrip()) >= level * len(INDENT)
+    ):
+        end += 1
+    while end - 1 > anchor and not lines[end - 1].strip():
+        end -= 1
+    return end
+
+
+def rewrite(text: str, before: dict, after: dict) -> str | None:
+    """``text`` with the values that changed between the two specs, or None.
+
+    The point is everything it does NOT touch. A case file is hand-written --
+    the comment beside `airflow_cfm_per_kw` is what tells the next person that
+    the number sizes the rack's resistance -- and re-dumping the parsed
+    document saves the right values and loses every reason behind them. This
+    edits the lines that changed and leaves the rest of the bytes alone.
+
+    None when the edit cannot be made faithfully: a key removed, a block whose
+    parent is not there, or a result that does not parse back to what was
+    asked for. The caller then falls back to the dump, because a file that is
+    correct and bare beats a file that is pretty and wrong (ADR-061).
+    """
+    old = dict(_leaves(before))
+    new = dict(_leaves(after))
+    if set(old) - set(new):
+        return None  # a key went away; not something this can express
+    lines = text.split("\n")
+    for path, value in new.items():
+        if path in old and old[path] == value:
+            continue
+        if isinstance(value, dict):
+            return None
+        if set_scalar(lines, list(path), value):
+            continue
+        parent = list(path[:-1])
+        # Walk up to the deepest block that exists, and build what is missing
+        # from there down.
+        while parent and find(lines, parent) is None:
+            parent = parent[:-1]
+        at = _insert_at(lines, parent)
+        if at is None:
+            return None
+        missing = list(path[len(parent):])
+        block = [
+            f"{INDENT * (len(parent) + i)}{name}:"
+            + (f" {render(value)}" if i == len(missing) - 1 else "")
+            for i, name in enumerate(missing)
+        ]
+        # A new top-level block reads as its own paragraph.
+        lines[at:at] = ([""] + block if not parent else block)
+    out = "\n".join(lines)
+    try:
+        return out if yaml.safe_load(out) == after else None
+    except yaml.YAMLError:
+        return None

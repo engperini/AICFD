@@ -193,6 +193,10 @@ at each end. The cavity comes out of the clearance instead, and the model says
 by how much (ADR-060). `cases/pod-mesh.yaml` is that case: the same 9 m room as
 `pod-fanwall`, against `pod-plenum`'s 10,2 m.
 
+Editing a case from the page keeps the file: only the values that changed are
+rewritten, comments and layout and all, and an Apply that changes nothing
+leaves the file byte for byte as it was (ADR-061).
+
 Nothing in `cases/*.yaml` is an OpenFOAM dictionary. The mesh divisions, the
 porosity coefficients, the heat sources, the boundary conditions and the
 baffle surgery are all derived from engineering numbers, and the generated

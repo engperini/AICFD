@@ -27,48 +27,36 @@ from pathlib import Path
 import yaml
 
 REPO = Path(__file__).resolve().parents[1]
+
+#: The engineer's working folder. Only `test_cases.py` looks in here, and only
+#: to ask whether what is shipped still builds.
 CASES = REPO / "cases"
 
-
-def case_text(name: str) -> str:
-    """The case file as written, or a skip naming it."""
-    path = CASES / f"{name}.yaml"
-    if not path.is_file():
-        raise unittest.SkipTest(f"cases/{name}.yaml is not in this checkout")
-    return path.read_text()
+#: Cases the tests own: what every other test reads, and what a sandbox is
+#: seeded from. Not `cases/`, because those belong to whoever is using the
+#: software and a test that reads them fails when they use it (ADR-056).
+FIXTURES = Path(__file__).resolve().parent / "cases"
 
 
 def spec(name: str) -> dict:
-    """A worked case as a spec, skipped when the file on disk cannot be used.
+    """A case the TESTS own, as a spec.
 
-    A skip rather than an error: the test has no fixture, which is not the
-    same as the code being wrong, and `test_cases.py` says so once instead of
-    every test that reads this file saying it again.
+    Never `cases/`. Reading the working folder was decoupled once already, for
+    a case edited into something that would not build (ADR-056) -- but a case
+    edited into something that builds perfectly well breaks a test just as
+    hard, and more confusingly: an engineer sets a few rack loads through the
+    page, which is the page doing its job, and the image stops building
+    because a test asserted that this hall states no overrides. A fixture the
+    user cannot edit is the only version of this that holds.
     """
-    try:
-        parsed = yaml.safe_load(case_text(name))
-    except yaml.YAMLError as broken:
-        raise unittest.SkipTest(
-            f"cases/{name}.yaml is not valid YAML ({broken}); "
-            f"restore it with `git restore cases/{name}.yaml`"
-        ) from None
-    from aicfd import model as m
-
-    try:
-        m.build_model(parsed)
-    except (ValueError, KeyError) as refused:
-        raise unittest.SkipTest(
-            f"cases/{name}.yaml does not build ({refused}); this is the case "
-            f"on disk, not the code -- fix the value the message names, or "
-            f"restore it with `git restore cases/{name}.yaml`"
-        ) from None
-    return parsed
-
-
-#: Cases the tests own, seeded into every sandbox. Not `cases/`: those belong
-#: to whoever is using the software, and a test that reads them as a fixture
-#: fails when they use it.
-FIXTURES = Path(__file__).resolve().parent / "cases"
+    path = FIXTURES / f"{name}.yaml"
+    if not path.is_file():
+        raise AssertionError(
+            f"tests/cases/{name}.yaml is missing -- a test asked for a case "
+            f"the suite does not own. Copy the shipped case into it rather "
+            f"than reading `cases/` (ADR-056)."
+        )
+    return yaml.safe_load(path.read_text())
 
 
 def sandbox(test: unittest.TestCase) -> Path:

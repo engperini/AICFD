@@ -2456,3 +2456,50 @@ came from the wall plan, so a porous surface that is nobody's hole was built
 and never listed. A grille punched through a wall is still counted on that
 wall's line — "less 3 opening(s)", which is the readable way round — and
 anything standing on its own is now named.
+
+---
+
+## ADR-061 — Apply edits the lines it owns, and the tests never read the
+## engineer's cases
+
+**Decision.** Saving from the model page rewrites only the values that
+changed and leaves every other byte of the case alone. And no test reads
+`cases/` except the one that asks whether what is shipped still builds:
+everything else reads a fixture under `tests/cases/` that the suite owns.
+
+**What happened.** An engineer set a few rack loads and changed a dimension
+through the page — the software doing exactly its job — and `docker build`
+stopped working. Four tests failed, and all four were asserting on the
+*contents* of his working case: that this hall states no per-rack overrides,
+that it is 49,2 m long, that its comments are still there. One of them told
+him to `git restore` the work he had just done.
+
+**ADR-056 fixed half of this and I said it was fixed.** It decoupled the
+tests from a case edited into something that would not *build*, and left them
+coupled to a case edited into something that builds perfectly well. The
+second is the commoner failure and the more confusing one, because nothing is
+wrong anywhere: the case is valid, the code is right, and the image will not
+build. A fixture the user cannot edit is the only version of this that holds.
+
+**Why the comments were gone in the first place.** Apply re-dumped the parsed
+document — `yaml.safe_dump` — so one press saved the right values and threw
+away every comment in the file. The machinery to avoid that had existed since
+ADR-047 and was being used by the component library and the rack page, and
+not by the page that writes cases. `yamledit.rewrite` now does for a case
+what `set_scalar` already did for a component: find the line, change the
+value, keep the trailing comment in its column, and touch nothing else. A
+change that changes nothing leaves the file byte for byte as it was.
+
+**The dump is still the fallback, and that is deliberate.** Where the edit
+cannot be made faithfully — a key removed, a shape the line editor cannot
+express — `rewrite` returns None and the dump runs. A file that is correct
+and bare beats a file that is pretty and wrong. The result is parsed back and
+compared against the spec that was asked for before it is written, so the
+comment-keeping path can never save something different from what the dump
+would have saved.
+
+**The test that punished the user is gone.** "The shipped cases keep their
+comments" asserted on files the software is built to edit. With Apply no
+longer destroying them the assertion is nearly always true, and it was still
+the wrong test: whether a save keeps a file readable belongs on the save
+path, against a sandbox, which is where it now is.

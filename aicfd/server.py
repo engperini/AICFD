@@ -215,9 +215,33 @@ def case_path(name: str) -> str:
 
 
 def save_spec(name: str, spec: dict) -> None:
-    (CASES_DIR / f"{name}.yaml").write_text(
-        yaml.safe_dump(spec, sort_keys=False, allow_unicode=True)
-    )
+    """Write the case back, keeping every line the page did not change.
+
+    A case file is hand-written: the comment beside `airflow_cfm_per_kw` is
+    what tells the next person that the number sizes the rack's resistance,
+    and the blank line above a block is what makes the file readable. Apply
+    used to re-dump the parsed document, so one press saved the right values
+    and threw all of that away -- a file that came back correct and
+    unrecognisable (ADR-061).
+
+    The dump is still the fallback. Where the edit cannot be made faithfully
+    -- a key removed, a shape the line editor cannot express -- the values win
+    over the comments, because a file that is correct and bare beats one that
+    is pretty and wrong.
+    """
+    path = CASES_DIR / f"{name}.yaml"
+    if path.is_file():
+        text = path.read_text()
+        try:
+            before = yaml.safe_load(text) or {}
+        except yaml.YAMLError:
+            before = None
+        if before is not None:
+            rewritten = yamledit.rewrite(text, before, spec)
+            if rewritten is not None:
+                path.write_text(rewritten)
+                return
+    path.write_text(yaml.safe_dump(spec, sort_keys=False, allow_unicode=True))
 
 
 def apply_changes(spec: dict, changes: dict) -> tuple[dict, list[str]]:
