@@ -312,7 +312,7 @@ POD at 0,20 m cells for that.
 
 ```
 aicfd/
-  model.py     the geometry: spec -> boxes, panels, rows, fan walls, sensors.
+  model.py     the geometry: spec -> boxes, panels, rows, fan walls, stations.
                The single source of truth; the drawing and the mesh both read it
   case.py      the OpenFOAM case generator (blockMesh, topoSet, createBaffles,
                fvOptions, boundary conditions, the parallel pipeline)

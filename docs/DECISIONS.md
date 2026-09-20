@@ -3356,3 +3356,47 @@ half-populated row wants to see. Where they disagree by more than the check's
 own tolerance the passing message says so in a clause, so a reader comparing
 the places table against the verdict is told why the two differ instead of
 concluding that one of them is broken.
+
+## ADR-079 — Four stations, measured as streams
+
+**Decision.** The four point-probe places — `cold_aisle`, `hot_aisle`,
+`plenum`, `fan_back`, three probes each — are gone. In their place are four
+STATIONS on the air loop, in the order the air passes them: `supply`,
+`rack_intake`, `aisle_exit`, `unit_return`. A station names a surface the whole
+airflow crosses and reports the mixing-cup temperature of the air crossing it,
+the range that air spans, the volume it carries and the velocity through it.
+Every written time is still recorded, so a running solve still shows the loop
+filling.
+
+**Because a place was never a temperature.** ADR-078 removed the probes from
+the one check that judged them; this removes the instrument. A probe measures
+the cell it sits in, and that is a fine thing to know and a poor thing to
+average: on a row of 0 kW and 32 kW cabinets the air under the ceiling runs
+from 20 to 37 degC, and a mean of three points in it describes air that never
+existed. What the next component of the loop receives is the mixing cup, and
+the mixing cup is what the rest of the model is built on.
+
+**The range is the finding, not the error bar.** Rack intakes 20,1 to 20,6 degC
+say the containment is holding. An aisle exit spanning 20,0 to 36,7 says the
+row is half empty — which it is, and which is exactly what an engineer laying
+out a half-populated hall wants to see. It is on the report table, on the page
+and shaded behind each line on both charts.
+
+**One flow through every station.** The first version reported the cabinets'
+RATED airflow at `rack_intake` and the row appeared to move 51 541 m3/h against
+26 000 delivered. The rated figure is real -- it sizes the resistance -- but it
+is not what the row passes, and a station table whose columns disagree is worse
+than no table. A test asserts every station reports the same flow.
+
+**Three things kept the probes honest and are kept.** They travelled with the
+geometry, they never sat inside a rack, and they were drawn on the section so
+the placement could be argued about before the run. None of that is needed by a
+station: it has no coordinates to get wrong. A test asserts a `Station` carries
+none, because the temptation to add "where" to a measurement that does not need
+it is exactly how this started.
+
+**`settled` is now measured on the streams**, which are far steadier than three
+probes in a recirculating room -- the same field that drifted 0,19 K on the
+probes drifts 0,01 K on the stations. `STEADY_TOLERANCE` is unchanged at
+0,25 K, which is therefore now conservative rather than tight. Re-calibrating
+it means re-running the worked cases and is not done here.

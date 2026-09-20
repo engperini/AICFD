@@ -15,6 +15,7 @@ import tempfile
 import unittest
 from pathlib import Path
 
+import numpy as np
 import yaml
 
 from aicfd import model as M
@@ -172,15 +173,54 @@ mesh: {cell_size: 0.1}
         self.assertEqual(case.fan_patches(pod), [("fanIntake", "fanSupply")])
 
 
-class SensorTest(unittest.TestCase):
-    def test_the_probes_spread_across_first_middle_and_last_aisle(self):
-        model = build()
-        groups = {g.name: g for g in M.sensors(model)}
-        ys = sorted(p[1] for p in groups["hot_aisle"].points)
-        mids = [sum(b) / 2 for b in model.hot_aisles]
-        self.assertEqual(ys, [mids[0], mids[1], mids[2]])
-        fan_ys = sorted(p[1] for p in groups["fan_back"].points)
-        self.assertEqual(len(set(fan_ys)), 3)
+def _uniform_grid(model, temperature=30.0, up=0.5):
+    """A field at one temperature, rising everywhere."""
+    nx, ny, nz = model.divisions
+    shape = (nz, ny, nx)
+    cx, cy, cz = model.cell_size
+    return {
+        "x": (np.arange(nx) + 0.5) * cx,
+        "y": (np.arange(ny) + 0.5) * cy,
+        "z": (np.arange(nz) + 0.5) * cz,
+        "T": np.full(shape, float(temperature)),
+        "U": np.stack([np.zeros(shape), np.zeros(shape), np.full(shape, float(up))]),
+    }
+
+
+class StationTest(unittest.TestCase):
+    """A hall is measured across all of itself, not in three chosen aisles."""
+
+    def setUp(self):
+        # Six pods, so there are more aisles than the old instrument had
+        # probes and the ones it never saw can be tested.
+        self.model = build(pods=6)
+        self.grid = _uniform_grid(self.model)
+        self.layer = int(np.argmin(abs(
+            self.grid["z"] - (self.model.ceiling_z - self.model.cell_size[2] / 2)
+        )))
+
+    def test_every_hot_aisle_reaches_the_cup(self):
+        """The probes sampled the first, middle and last aisle. A hall of
+        sixteen rows has thirteen the old instrument could not see; heat one
+        of those and the measurement has to move (ADR-078)."""
+        self.assertGreater(len(self.model.hot_aisles), 3)
+        for index, (lo, hi) in enumerate(self.model.hot_aisles):
+            with self.subTest(aisle=index):
+                grid = _uniform_grid(self.model)
+                rows = np.where((grid["y"] >= lo) & (grid["y"] <= hi))[0]
+                grid["T"][self.layer][rows] = 60.0
+                self.assertGreater(
+                    post.aisle_exit_temperature(self.model, grid), 30.0
+                )
+
+    def test_neither_gallery_is_counted(self):
+        """A gallery has no false ceiling, so this height is room air there."""
+        grid = _uniform_grid(self.model)
+        outside = np.where(
+            (grid["x"] < self.model.hall.lo[0]) | (grid["x"] > self.model.hall.hi[0])
+        )[0]
+        grid["T"][self.layer][:, outside] = 5.0
+        self.assertEqual(post.aisle_exit_temperature(self.model, grid), 30.0)
 
 
 class CaseTest(unittest.TestCase):
@@ -492,14 +532,22 @@ class DoubleGalleryTest(unittest.TestCase):
             spans, {(round(a, 6), round(b, 6)) for a, b in self.model.rack_blocks}
         )
 
-    def test_the_probes_sit_behind_the_units_in_both_galleries(self):
+    def test_the_air_in_both_galleries_is_left_out_of_the_aisle_cup(self):
+        """Two galleries, neither with a false ceiling: air at ceiling height
+        in either is room air and is not leaving the containment."""
         m = self.model
-        group = next(g for g in M.sensors(m) if g.name == "fan_back")
-        for x, _y, _z in group.points:
-            self.assertTrue(
-                any(g.lo[0] <= x <= g.hi[0] for g in m.galleries),
-                f"probe at x={x} is in neither gallery",
-            )
+        grid = _uniform_grid(m)
+        layer = int(np.argmin(abs(
+            grid["z"] - (m.ceiling_z - m.cell_size[2] / 2)
+        )))
+        self.assertEqual(len(m.galleries), 2)
+        for gallery in m.galleries:
+            columns = np.where(
+                (grid["x"] >= gallery.lo[0]) & (grid["x"] <= gallery.hi[0])
+            )[0]
+            self.assertGreater(columns.size, 0)
+            grid["T"][layer][:, columns] = 5.0
+        self.assertEqual(post.aisle_exit_temperature(m, grid), 30.0)
 
     def test_a_single_gallery_hall_is_unchanged(self):
         """The default is what it always was: one gallery, one block, one

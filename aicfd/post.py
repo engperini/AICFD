@@ -115,24 +115,6 @@ BACKFLOW_TOLERANCE = 0.02
 #: velocity and the buoyant velocity scale -- see ADR-013.
 PLAUSIBLE_SPEED_MARGIN = 5.0
 
-#: Places on the return path, in the order the air passes through them.
-#: Between the rack outlet and the fan intake nothing adds or removes heat --
-#: every wall is adiabatic and the containment is sealed -- so at steady state
-#: the AIR at each of them is the same air at the same temperature.
-#:
-#: They are reported, not judged. Each is three point probes, and a point probe
-#: measures the cell it sits in; the mean of three of them estimates the stream
-#: only where the stream is uniform. Give a row cabinets of different load and
-#: it is not: one column of the aisle carries a 32 kW discharge and the next
-#: carries the cold air a blanked cabinet passed through, twelve kelvin apart,
-#: and which of them the probe lands in is an accident of the layout. Worse,
-#: `hot_aisle` and `plenum` are the SAME three columns at two heights, and the
-#: typical row repeats down the hall, so a column that lands on a cold cabinet
-#: lands on a cold one in every row and both places read cold together while
-#: the units draw the real mixture. The check reads the streams instead
-#: (ADR-078).
-RETURN_PATH = ("hot_aisle", "plenum", "fan_back")
-
 #: Surfaces the air is MEANT to cross, by name prefix. Everything else that
 #: carries flow is a leak, which is what `sealed_envelope` is for.
 #:
@@ -350,7 +332,7 @@ def _analyse(model: Model, case_dir: str | Path, time: str | None = None) -> Pod
     kpis["hvac_lines"] = [line.strip() for line in _hvac_summary(model)]
     kpis["alerts"] = list(model.alerts) + _coil_alerts(kpis)
     history = read_history(case)
-    kpis["places_now"] = history[-1]["places"] if history else []
+    kpis["stations_now"] = history[-1]["stations"] if history else []
     return PodResults(
         case_name=model.name, time=time, kpis=kpis, checks=_checks(model, step, kpis, grid)
     )
@@ -734,11 +716,15 @@ def drift(case_dir: str | Path) -> float | None:
     if len(history) < 2:
         return None
     last, previous = history[-1], history[-2]
-    before = {place["name"]: place["temp_c"] for place in previous["places"]}
+    before = {
+        station["name"]: station["temp_c"]
+        for station in previous["stations"]
+        if station["temp_c"] is not None
+    }
     moves = [
-        abs(place["temp_c"] - before[place["name"]])
-        for place in last["places"]
-        if place["name"] in before
+        abs(station["temp_c"] - before[station["name"]])
+        for station in last["stations"]
+        if station["temp_c"] is not None and station["name"] in before
     ]
     moves.append(abs(last["return_temp_c"] - previous["return_temp_c"]))
     return round(max(moves), 3) if moves else None
@@ -942,29 +928,32 @@ def return_path_check(kpis: dict) -> "Check | None":
     opening is meant to pass this air, so a difference is air joining the path
     from somewhere else, or a volume that has not finished filling.
 
-    It used to compare the three point probes on the path instead, and a row of
-    uneven load broke it: the probes land where they land, `hot_aisle` and
-    `plenum` share their columns, and a typical row repeated down the hall
-    repeats whatever the columns landed on. A settled, sealed POD closing its
-    streams to 0,02 K failed this at 1,54 K, and a hall of 0 kW and 32 kW
-    cabinets failed it by nearly 9 K, with nothing wrong in either (ADR-078).
-    The probes are still reported here -- their scatter is the room's own
-    unevenness, which is a finding, not a fault.
+    It used to compare three point probes instead, and a row of uneven load
+    broke it: a probe measures the cell it sits in, `hot_aisle` and `plenum`
+    shared their columns, and a typical row repeated down the hall repeated
+    whatever those columns landed on. A settled, sealed POD closing its streams
+    to 0,02 K failed this at 1,54 K, and a hall of 0 kW and 32 kW cabinets
+    failed it by nearly 9 K, with nothing wrong in either (ADR-078).
+
+    The unevenness those probes were groping at is now measured properly, as
+    the range of the air actually leaving through the ceiling, and said here
+    where it explains why one number stands for a stream that spans twelve
+    kelvin.
     """
     leaving, arriving = kpis.get("aisle_exit_c"), kpis.get("return_temp_c")
     if leaving is None or arriving is None:
         return None
     spread = abs(arriving - leaving)
-    probes = [
-        place["temp_c"]
-        for place in kpis.get("places_now", [])
-        if place["name"] in RETURN_PATH
-    ]
+    exit_station = next(
+        (s for s in kpis.get("stations_now", []) if s["name"] == "aisle_exit"), None
+    )
+    low = exit_station and exit_station.get("low_c")
+    high = exit_station and exit_station.get("high_c")
     uneven = (
-        f"; the point probes on the path read {min(probes):.1f} to "
-        f"{max(probes):.1f} degC, which is the room being uneven, not the "
-        "path leaking"
-        if probes and max(probes) - min(probes) > RETURN_PATH_TOLERANCE
+        f"; the air crossing the ceiling spans {low:.1f} to {high:.1f} degC, "
+        "which is the room being uneven, not the path leaking"
+        if low is not None and high is not None
+        and high - low > RETURN_PATH_TOLERANCE
         else ""
     )
     return Check(
@@ -1175,7 +1164,7 @@ def _checks(model: Model, step: Path, kpis: dict, grid: dict) -> list[Check]:
             moved is not None and moved <= STEADY_TOLERANCE,
             "not enough samples to tell whether anything is still moving"
             if moved is None
-            else f"the places moved at most {moved:.2f} K since the previous "
+            else f"the stations moved at most {moved:.2f} K since the previous "
             f"sample (settled below {STEADY_TOLERANCE:.2f} K)",
         )
     )
@@ -1238,7 +1227,7 @@ def _is_number(text: str) -> bool:
 
 # --- sensors ------------------------------------------------------------------
 
-#: Where a running solve records what its instrumented places are doing. Kept
+#: Where a running solve records what its stations are reading. Kept
 #: beside the case rather than in memory so a sample survives the page being
 #: closed, the server restarting, and purgeWrite deleting the fields it came
 #: from.
@@ -1404,13 +1393,129 @@ def read_history(case_dir: str | Path) -> list[dict]:
         return []
 
 
+def station_readings(model: Model, step: str | Path, grid: dict,
+                     fans: list[dict]) -> list[dict]:
+    """What each station of the air loop reads, at one written time.
+
+    Four streams, in the order the air passes them, each reported the way an
+    air-side test report reports a duct: the mixing-cup temperature of the air
+    crossing it, the range that air spans, the volume it carries and the mean
+    velocity through the surface it crosses.
+
+    The mixing cup is the only temperature that means anything here. A room
+    with cabinets of different load has no single temperature at any station --
+    on a half-populated row the aisle runs twelve kelvin along its own length
+    -- so an average taken over area, or over three probes, describes air that
+    never existed. Weighted by what each part of the surface actually carries,
+    it describes the air the next component receives, which is the number the
+    rest of the loop is built on (ADR-078).
+
+    The range beside it is not error. It is the finding: intakes within a
+    kelvin of each other say the containment is holding; an aisle exit spanning
+    twelve says the row is half empty, which is true and worth reporting.
+    """
+    from aicfd.model import stations
+
+    step = Path(step)
+    racks = rack_temperatures(model, grid)
+    area = sum(fan.area for fan in model.fans) or None
+    flow_m3h = round(sum(f["supply_kg_s"] for f in fans) / _density(model) * 3600, 0)
+
+    supplies = [f["supply_temp_c"] for f in fans if f.get("supply_temp_c") is not None]
+    returns = [f["return_temp_c"] for f in fans if f.get("return_temp_c") is not None]
+    inlets = [r["inlet_c"] for r in racks]
+
+    # Rack intake is weighted by each cabinet's own airflow, which is its
+    # resistance and not its load: a blanked cabinet breathes (ADR-054) and the
+    # air it passes is part of what the row draws.
+    grille_area = sum(
+        panel.area for panel in model.panels if panel.name.startswith("grille")
+    )
+    weights = [rack.resistance_airflow_m3s for rack in model.racks] or [1.0]
+    drawn = sum(weights) or 1.0
+    exit_low, exit_high = _aisle_exit_range(model, grid)
+
+    reading = {
+        "supply": {
+            "temp_c": supply_temperature(step, model.supply_temp_c),
+            "low_c": round(min(supplies), 2) if supplies else None,
+            "high_c": round(max(supplies), 2) if supplies else None,
+            "flow_m3h": flow_m3h,
+            "speed_ms": round(flow_m3h / 3600 / area, 3) if area else None,
+        },
+        "rack_intake": {
+            # Weighted by each cabinet's own airflow, which is its resistance
+            # and not its load: a blanked cabinet breathes (ADR-054) and the
+            # air it passes is part of what the row draws.
+            "temp_c": round(
+                sum(t * w for t, w in zip(inlets, weights)) / drawn, 2
+            ) if inlets else None,
+            "low_c": round(min(inlets), 2) if inlets else None,
+            "high_c": round(max(inlets), 2) if inlets else None,
+            # The row passes what the loop passes. The cabinets' RATED flow is
+            # a different number -- it sizes their resistance and, on a row
+            # bought for more load than it carries, it is far larger. Reporting
+            # it here would say the row moves twice what the units deliver.
+            "flow_m3h": flow_m3h,
+            "speed_ms": round(
+                flow_m3h / 3600 / sum(rack.face_area for rack in model.racks), 3
+            ) if model.racks else None,
+        },
+        "aisle_exit": {
+            "temp_c": aisle_exit_temperature(model, grid),
+            "low_c": exit_low,
+            "high_c": exit_high,
+            "flow_m3h": flow_m3h,
+            "speed_ms": round(model.airflow_m3s / grille_area, 3)
+            if grille_area else None,
+        },
+        "unit_return": {
+            "temp_c": round(return_temperature(step) - KELVIN, 2),
+            "low_c": round(min(returns), 2) if returns else None,
+            "high_c": round(max(returns), 2) if returns else None,
+            "flow_m3h": round(
+                sum(f["intake_kg_s"] for f in fans) / _density(model) * 3600, 0
+            ),
+            "speed_ms": round(flow_m3h / 3600 / area, 3) if area else None,
+        },
+    }
+    return [
+        {"name": s.name, "label": s.label, "note": s.note, **reading[s.name]}
+        for s in stations(model)
+    ]
+
+
+def _aisle_exit_range(model: Model, grid: dict) -> tuple[float | None, float | None]:
+    """The coldest and warmest air actually leaving through the ceiling.
+
+    Only cells that carry flow upward count. A cell under solid ceiling can sit
+    at any temperature it likes; it is not leaving, so it is not in the range.
+    """
+    if not model.hot_aisles:
+        return None, None
+    x, y, z = grid["x"], grid["y"], grid["z"]
+    layer = int(np.argmin(abs(z - (model.ceiling_z - model.cell_size[2] / 2))))
+    aisle = np.concatenate(
+        [np.where((y >= lo) & (y <= hi))[0] for lo, hi in model.hot_aisles]
+    )
+    inside = np.where((x >= model.hall.lo[0]) & (x <= model.hall.hi[0]))[0]
+    if aisle.size == 0 or inside.size == 0:
+        return None, None
+    picks = np.ix_(aisle, inside)
+    leaving = grid["U"][2][layer][picks] > 0
+    if not leaving.any():
+        return None, None
+    values = grid["T"][layer][picks][leaving]
+    return round(float(values.min()), 2), round(float(values.max()), 2)
+
+
 def measure(model: Model, step: str | Path, iteration: int) -> dict:
     """One reading: every instrumented place, plus the two balances.
 
-    The places come from the cells the probes sit in; the balances come from
+    The stations come from the streams that cross them; the balances come from
     the patch values, because what crosses a patch is phi on that patch.
     """
-    from aicfd.model import sensors
+    from aicfd.model import stations
 
     step = Path(step)
     grid = read_grid(model, step)
@@ -1420,42 +1525,11 @@ def measure(model: Model, step: str | Path, iteration: int) -> dict:
     intake = sum(f["intake_kg_s"] for f in fans)
     recovered = recovered_load_w(step, model)
 
-    # Pressure is reported against the fan intake, so it reads as what a
-    # manometer in the room would show: how many pascals above the machine's
-    # suction each place sits. The absolute value is 101 325 Pa everywhere and
-    # says nothing. p_rgh rather than p because it has the hydrostatic column
-    # removed -- comparing a point at 1 m with one at 7 m on static pressure
-    # alone would just measure the height difference.
-    reference = float(np.mean(_intakes(step, "p_rgh")))
-
-    places = []
-    for group in sensors(model):
-        temperatures = [_at(grid, "T", point) for point in group.points]
-        speeds = [float(np.linalg.norm(_at(grid, "U", point))) for point in group.points]
-        pressures = [_at(grid, "p_rgh", point) - reference for point in group.points]
-        places.append(
-            {
-                "name": group.name,
-                "label": group.label,
-                "note": group.note,
-                "temp_c": round(float(np.mean(temperatures)), 3),
-                "pressure_pa": round(float(np.mean(pressures)), 3),
-                "pressure_spread_pa": round(
-                    float(max(pressures) - min(pressures)), 3
-                ),
-                "speed_spread_ms": round(float(max(speeds) - min(speeds)), 4),
-                # How much the three points disagree. A place whose probes are
-                # kelvin apart is not one place, and its mean should not be
-                # read as if it were.
-                "spread_k": round(float(max(temperatures) - min(temperatures)), 3),
-                "speed_ms": round(float(np.mean(speeds)), 4),
-                "points_c": [round(t, 2) for t in temperatures],
-            }
-        )
+    readings = station_readings(model, step, grid, fans)
 
     return {
         "iteration": iteration,
-        "places": places,
+        "stations": readings,
         "supply_kg_s": round(supply, 5),
         "intake_kg_s": round(intake, 5),
         "backflow_kg_s": round(sum(f["backflow_kg_s"] for f in fans), 5),
@@ -1533,32 +1607,34 @@ class Sampler(threading.Thread):
 
 
 def sensor_history(model: Model, case_dir: str | Path) -> dict:
-    """The recorded history, shaped for a chart: one series per place."""
-    from aicfd.model import sensors
+    """The recorded history, shaped for a chart: one series per station.
+
+    Every written time is kept, so the chart shows the loop filling rather than
+    only where it ended up: that partial record is the one thing a solve can
+    show an engineer while it is still running.
+    """
+    from aicfd.model import stations
 
     history = sample(model, case_dir)
-    groups = sensors(model)
     if not history:
         return {"iterations": [], "groups": [], "balance": []}
 
     series = []
-    for group in groups:
+    for station in stations(model):
         readings = [
-            next((p for p in row["places"] if p["name"] == group.name), None)
+            next((s for s in row["stations"] if s["name"] == station.name), None)
             for row in history
         ]
         series.append(
             {
-                "name": group.name,
-                "label": group.label,
-                "note": group.note,
-                "points": [list(point) for point in group.points],
+                "name": station.name,
+                "label": station.label,
+                "note": station.note,
                 "temp_c": [r["temp_c"] if r else None for r in readings],
-                "spread_k": [r["spread_k"] if r else None for r in readings],
+                "low_c": [r["low_c"] if r else None for r in readings],
+                "high_c": [r["high_c"] if r else None for r in readings],
+                "flow_m3h": [r["flow_m3h"] if r else None for r in readings],
                 "speed_ms": [r["speed_ms"] if r else None for r in readings],
-                "pressure_pa": [
-                    r.get("pressure_pa") if r else None for r in readings
-                ],
             }
         )
 
@@ -1597,14 +1673,14 @@ def compare(first: str | Path, second: str | Path) -> dict:
             return {"agree": None, "reason": f"no samples in {case}"}
         ends.append(history[-1])
 
-    places = []
-    for place in ends[0]["places"]:
+    readings = []
+    for place in ends[0]["stations"]:
         other = next(
-            (p for p in ends[1]["places"] if p["name"] == place["name"]), None
+            (p for p in ends[1]["stations"] if p["name"] == place["name"]), None
         )
-        if other is None:
+        if other is None or place["temp_c"] is None or other["temp_c"] is None:
             continue
-        places.append(
+        readings.append(
             {
                 "name": place["name"],
                 "label": place["label"],
@@ -1613,10 +1689,10 @@ def compare(first: str | Path, second: str | Path) -> dict:
                 "gap_k": round(abs(place["temp_c"] - other["temp_c"]), 3),
             }
         )
-    worst = max((p["gap_k"] for p in places), default=None)
+    worst = max((p["gap_k"] for p in readings), default=None)
     return {
         "iterations": [ends[0]["iteration"], ends[1]["iteration"]],
-        "places": places,
+        "stations": readings,
         "return_gap_k": round(
             abs(ends[0]["return_temp_c"] - ends[1]["return_temp_c"]), 3
         ),
@@ -1655,27 +1731,24 @@ def _fan_rise_line(kpis: dict) -> str:
 
 
 def _path_line(kpis: dict) -> str:
-    """The two ends of the return path, and how far the probes on it scatter.
+    """The two ends of the return path, and the range the aisle air spans.
 
     The ends are mixing-cup means of the whole stream and are what the check
-    judges; the probe range beside them is the room's own unevenness, which is
+    judges; the range beside them is the room's own unevenness, which is
     information and not a fault (ADR-078).
     """
     leaving, arriving = kpis.get("aisle_exit_c"), kpis.get("return_temp_c")
     if leaving is None or arriving is None:
         return "- (no samples yet)"
-    path = [
-        place["temp_c"]
-        for place in kpis.get("places_now", [])
-        if place["name"] in RETURN_PATH
-    ]
-    probes = (
-        f" (probes {min(path):.1f}-{max(path):.1f})"
-        if len(path) == len(RETURN_PATH) else ""
+    station = next(
+        (s for s in kpis.get("stations_now", []) if s["name"] == "aisle_exit"), None
     )
+    low = station and station.get("low_c")
+    high = station and station.get("high_c")
+    span = f" (aisle {low:.1f}-{high:.1f})" if low is not None and high is not None else ""
     return (
         f"{leaving:.1f} -> {arriving:.1f} degC, "
-        f"{abs(arriving - leaving):.2f} K apart{probes}"
+        f"{abs(arriving - leaving):.2f} K apart{span}"
     )
 
 
@@ -1755,14 +1828,18 @@ def report(results: PodResults) -> str:
             [f"  HVAC sizing     {line}" for line in k.get("hvac_lines", [])]
         ),
         "",
-        "  Place                  Temp    dP vs intake    Speed",
+        "  Station              Temp        Range        Flow     Speed",
     ]
-    for place in k.get("places_now", []):
-        pressure = place.get("pressure_pa")
+    for station in k.get("stations_now", []):
+        temp, low, high = station["temp_c"], station["low_c"], station["high_c"]
+        flow, speed = station.get("flow_m3h"), station.get("speed_ms")
         lines.append(
-            f"  {place['label']:<22}{place['temp_c']:>6.1f}"
-            + (f"{pressure:>16.1f}" if pressure is not None else f"{'-':>16}")
-            + f"{place['speed_ms']:>9.2f}"
+            f"  {station['label']:<20}"
+            + (f"{temp:>6.1f}" if temp is not None else f"{'-':>6}")
+            + (f"{low:>9.1f}-{high:<6.1f}"
+               if low is not None and high is not None else f"{'-':>16}")
+            + (f"{flow:>10,.0f}" if flow is not None else f"{'-':>10}")
+            + (f"{speed:>10.2f}" if speed is not None else f"{'-':>10}")
         )
     fans = k.get("fans", [])
     if len(fans) > 1:
@@ -1858,7 +1935,7 @@ def export(
     containment was, which is exactly the thing a picture is for.
     """
     from aicfd.foam import solverlog
-    from aicfd.model import sensors
+    from aicfd.model import stations
 
     case = Path(case_dir)
     results = analyse(model, case, time)
@@ -1932,13 +2009,9 @@ def export(
                 }
                 for panel in model.panels
             ],
-            "sensors": [
-                {
-                    "name": group.name,
-                    "label": group.label,
-                    "points": [list(point) for point in group.points],
-                }
-                for group in sensors(model)
+            "stations": [
+                {"name": s.name, "label": s.label, "note": s.note}
+                for s in stations(model)
             ],
             # Where to cut first. The middle of the box is a poor default for
             # a POD -- at 4 m it sits above the racks, in the one part of the
@@ -1998,6 +2071,7 @@ def _viewer_kpis(model: Model, results: PodResults) -> dict:
         "supply_temp_c": k["supply_temp_c"],
         "return_temp_c": k["return_temp_c"],
         "aisle_exit_c": k.get("aisle_exit_c"),
+        "stations": k.get("stations_now", []),
         "bulk_delta_t_k": k["delta_t_k"],
         "temp_max_c": k["peak_air_temp_c"],
         "speed_max_ms": k["peak_speed_ms"],

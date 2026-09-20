@@ -588,11 +588,13 @@ def ashrae(export: Export, out: Path) -> Path:
 
 
 def convergence(export: Export, out: Path) -> Path:
-    """Residuals, and the places that were watched while they fell.
+    """Residuals, and the loop stations that were watched while they fell.
 
     Both, because neither alone settles the question: residuals say how much
-    the last iteration moved, and the monitors say whether the answer stopped
-    moving (ADR-018).
+    the last iteration moved, and the stations say whether the answer stopped
+    moving (ADR-018). Each station is drawn as its mixing-cup temperature with
+    the range the air at it spans shaded behind, so a reader can see the loop
+    fill AND see how uneven the room it fills is (ADR-078).
     """
     plt = _pyplot()
     residuals = export.payload.get("residuals", {})
@@ -615,12 +617,26 @@ def convergence(export: Export, out: Path) -> Path:
     axes[0].set_title("Residuals", loc="left")
     axes[0].legend(frameon=False, fontsize=6, ncol=2)
 
-    for place in history.get("groups", []):
-        axes[1].plot(history.get("iterations", []), place.get("temp_c", []),
-                     linewidth=1.2, label=place.get("label", place.get("name")))
+    iterations = history.get("iterations", [])
+    for station in history.get("groups", []):
+        temps = station.get("temp_c", [])
+        line, = axes[1].plot(
+            iterations[: len(temps)], temps, linewidth=1.2,
+            label=station.get("label", station.get("name")),
+        )
+        # The band the air at that station actually spans, behind its mixing
+        # cup. A single line would say a half-populated row is one temperature
+        # (ADR-078); the band is where the reader sees that it is not.
+        low, high = station.get("low_c") or [], station.get("high_c") or []
+        span = min(len(low), len(high), len(iterations))
+        if span and all(v is not None for v in low[:span] + high[:span]):
+            axes[1].fill_between(
+                iterations[:span], low[:span], high[:span],
+                color=line.get_color(), alpha=0.12, linewidth=0,
+            )
     axes[1].set_xlabel("iteration")
     axes[1].set_ylabel("temperature (°C)")
-    axes[1].set_title("Instrumented places", loc="left")
+    axes[1].set_title("Air loop stations", loc="left")
     axes[1].legend(frameon=False, fontsize=6)
     for ax in axes:
         ax.grid(color=GRID, linewidth=0.6)

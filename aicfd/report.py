@@ -460,10 +460,12 @@ def _introduction(doc) -> None:
           "numbers that produced each verdict, and all of them pass before a "
           "temperature in this document is quoted.")
     _para(doc,
-          "Instrumented places — a cold aisle, a contained hot aisle, the "
-          "ceiling plenum and the space behind the units — are recorded while "
-          "the field settles, and the run is accepted once they have stopped "
-          "moving.")
+          "Four stations on the air loop — the units' supply, the cabinets' "
+          "intakes, the ceiling the contained aisles discharge through, and "
+          "the units' return — are recorded while the field settles, and the "
+          "run is accepted once they have stopped moving. Each is the "
+          "mixing-cup temperature of the whole stream crossing it, reported "
+          "with the range that stream spans.")
 
 
 # --- 2 summary ----------------------------------------------------------------
@@ -578,6 +580,30 @@ def _summary(doc, export: Export) -> None:
             f"{_num(hvac.get('cfm_per_kw'), 0)} CFM/kW",
         ))
     _table(doc, ["Quantity", "Value", "Against what"], rows, widths=[6.0, 3.6, 6.4])
+
+    stations = kpis.get("stations") or []
+    if stations:
+        _heading(doc, "The air loop, station by station", 3)
+        _para(doc,
+              "Each row is the whole stream crossing that surface, not a "
+              "probe in it: the temperature is the mixing cup, weighted by "
+              "what each part of the surface carries, and the range is what "
+              "the air at it actually spans. A room whose cabinets carry "
+              "different loads has no single temperature at any station, so "
+              "the range is part of the reading and not an error bar.",
+              size=9, colour=SECOND)
+        _table(doc,
+               ["Station", "Mixed", "Range", "Flow", "Face velocity"],
+               [(f"{s['label']}",
+                 f"{_num(s.get('temp_c'), 2)} °C",
+                 (f"{_num(s.get('low_c'), 1)} – {_num(s.get('high_c'), 1)} °C"
+                  if s.get("low_c") is not None else "—"),
+                 (f"{s['flow_m3h']:,.0f} m³/h".replace(",", " ")
+                  if s.get("flow_m3h") is not None else "—"),
+                 (f"{_num(s.get('speed_ms'), 2)} m/s"
+                  if s.get("speed_ms") is not None else "—"))
+                for s in stations],
+               widths=[4.0, 2.6, 3.6, 3.0, 2.8])
 
     verdict = (
         "All physical checks pass. The numbers below may be quoted."
@@ -899,12 +925,14 @@ def _results(doc, export: Export, drawn: dict) -> None:
 
     _heading(doc, "4.2  Convergence", 2)
     _figure(doc, drawn["convergence"],
-            "Left: initial residuals per iteration. Right: the instrumented "
-            "places — cold aisle, hot aisle, ceiling plenum and behind the fan "
-            "walls — recorded while the field settled.")
+            "Left: initial residuals per iteration. Right: the four stations "
+            "of the air loop — supply, rack intake, aisle exit and unit "
+            "return — recorded while the field settled, each drawn as its "
+            "mixing-cup temperature with the range the air spans shaded "
+            "behind it.")
     if kpis.get("drift_k") is not None:
         _para(doc,
-              f"The largest move any instrumented place made between the last "
+              f"The largest move any station made between the last "
               f"two samples was {_num(kpis['drift_k'], 3)} K. A field that "
               f"satisfies its balances while a volume is still filling is not "
               f"a steady answer, which is why this is measured separately from "

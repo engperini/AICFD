@@ -518,16 +518,15 @@ class SensorChartLegendTest(unittest.TestCase):
         self.assertIn('class="chart-leader"', js)
         self.assertIn(".chart-leader{", (self.WEB / "index.html").read_text())
 
-    def test_a_sensor_marker_has_a_colour_of_its_own(self):
-        """It is an instrument on a drawing, not a series on a chart. While it
-        borrowed a categorical slot, re-stepping that slot for a chart
-        repainted every sensor in every drawing."""
+    def test_the_drawing_no_longer_carries_an_instrument_colour(self):
+        """The crosses are gone with the point probes (ADR-078). The token
+        they needed went with them rather than lingering as a colour nothing
+        uses -- an unused token is the thing a later chart quietly borrows."""
         css = (self.WEB / "drawing.css").read_text()
-        self.assertIn("stroke:var(--sensor)", css)
-        self.assertNotIn("var(--series-4)", css)
+        self.assertNotIn("--sensor", css)
         for page in ("index.html", "results.html"):
             with self.subTest(page=page):
-                self.assertIn("--sensor", (self.WEB / page).read_text())
+                self.assertNotIn("--sensor", (self.WEB / page).read_text())
 
     def test_both_pages_define_the_same_series_colours(self):
         """A reader moves between them comparing the same places."""

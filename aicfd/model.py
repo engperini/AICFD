@@ -872,113 +872,48 @@ class Model:
 
 
 @dataclass(frozen=True)
-class SensorGroup:
-    """A handful of points whose average stands for one place in the POD.
+class Station:
+    """One station on the air loop, reported as a STREAM rather than a point.
 
-    A single probe in a recirculating room reports the eddy it happens to sit
-    in. Three points spread across the place being asked about report the
-    place. Each group is averaged before anything is shown, so what the page
-    plots is "the cold aisle", not "cell 143 872".
+    It used to be three probes whose mean stood for a place, and that was the
+    wrong instrument: a probe measures the cell it sits in, and a room with
+    cabinets of different load is not one temperature anywhere (ADR-078). A
+    station names a surface the whole airflow crosses -- the units' supply, the
+    cabinets' intakes, the ceiling, the units' return -- and reports the mixing
+    cup of the air crossing it, with the range that air actually spans beside
+    it. Nothing about it depends on where a logger was hung.
+
+    The range is not noise to be averaged away. On a half-populated row it is
+    the finding: intakes 20,0 to 20,6 degC say the containment is holding,
+    and an aisle running 24 to 37 degC says the row is half empty, which it is.
     """
 
     name: str
     label: str
-    points: tuple[tuple[float, float, float], ...]
-    note: str = ""
+    note: str
 
 
-def sensors(model: Model) -> list[SensorGroup]:
-    """Where to measure, in the places an engineer would put a data logger.
+def stations(model: Model) -> list[Station]:
+    """The four stations of the air loop, in the order the air passes them.
 
-    The heights and offsets mirror how a real POD is instrumented: rack
-    mid-height in the aisles, inside the plenum above the grilles, and on the
-    back of the fan wall where the return air arrives.
+    They are declared here and measured in `post.station_readings`, which is
+    the same split the rest of the model uses: what a case HAS is geometry,
+    what it DOES is the solved field.
     """
     if not model.racks:
         return []
-
-    rack_mid_z = model.racks[0].box.hi[2] / 2
-    mid = lambda band: (band[0] + band[1]) / 2  # noqa: E731
-    # Probe *inside a block*, never across the whole row: on a hall whose rows
-    # are cut in two, the middle of the row is the transverse aisle, and a
-    # "hot aisle" probe placed there reads the cold air passing between the
-    # blocks. It looks like perfect containment and it is a mislaid sensor.
-    blocks = model.rack_blocks
-    lo, hi = blocks[len(blocks) // 2]
-    columns = tuple(lo + (hi - lo) * f for f in (0.2, 0.5, 0.8))
-
-    def spread(bands: list[tuple[float, float]], z: float) -> tuple:
-        """Three points: across three aisles when there are that many, else
-        along the one aisle. A hall's three probes sit in its first, middle
-        and last aisle so the mean stands for the hall, not for one corner."""
-        if len(bands) >= 3:
-            picked = (bands[0], bands[len(bands) // 2], bands[-1])
-            return tuple((mid((lo, hi)), mid(band), z) for band in picked)
-        return tuple((x, mid(bands[0]), z) for x in columns)
-
-    plenum_z = (model.ceiling_z + model.domain.hi[2]) / 2
-    fans = model.fans
-
-    def behind(fan: Panel) -> float:
-        """0,3 m back from the unit, on its gallery side -- which is the low-x
-        side for the first gallery and the high-x side for the second."""
-        x = fan.position - 0.3 * fan.sign
-        return min(max(x, model.cell(0)), model.domain.hi[0] - model.cell(0))
-
-    def above(fan: Panel) -> tuple[float, float, float]:
-        """A downflow unit returns through its TOP face, so the air it draws
-        is the air just above that face -- not the air behind a wall it does
-        not have. Sampling where the fan wall's sensor used to sit reads the
-        gallery at rack height, which on this arrangement is nearly supply
-        air, and the return-path check then says the loop is broken when it
-        is only being measured in the wrong place (ADR-076)."""
-        (x0, x1), (y0, y1) = fan.extent
-        return ((x0 + x1) / 2, (y0 + y1) / 2,
-                fan.return_z + 0.3)  # type: ignore[operator]
-
-    downflow = [f for f in fans if f.return_z is not None]
-    if downflow:
-        picked = (downflow[0], downflow[len(downflow) // 2], downflow[-1])
-        fan_points = tuple(above(fan) for fan in picked)
-    elif len(fans) >= 3:
-        picked = (fans[0], fans[len(fans) // 2], fans[-1])
-        fan_points = tuple(
-            (behind(fan), mid(fan.extent[0]), fan.extent[1][1] * 0.5) for fan in picked
-        )
-    else:
-        fan = fans[0]
-        fan_points = tuple(
-            (behind(fan), mid(fan.extent[0]), fan.extent[1][1] * fraction)
-            for fraction in (0.25, 0.5, 0.75)
-        )
-
+    unit = "room unit" if model.floor_height else "fan wall"
     return [
-        SensorGroup(
-            "cold_aisle",
-            "Cold aisle",
-            spread(model.cold_aisles, rack_mid_z),
-            "mid-aisle, at rack height",
-        ),
-        SensorGroup(
-            "hot_aisle",
-            "Hot aisle",
-            spread(model.hot_aisles, rack_mid_z),
-            "inside the containment, at rack height",
-        ),
-        SensorGroup(
-            "plenum",
-            "Ceiling plenum",
-            spread(model.hot_aisles, plenum_z),
-            "above the return grilles",
-        ),
-        SensorGroup(
-            "fan_back",
-            "At the unit's return" if model.floor_height else "Behind the fan wall",
-            fan_points,
-            "at the top of the unit, where the return air reaches it"
-            if model.floor_height
-            else "in the gallery, where the return air reaches the units",
-        ),
+        Station("supply", "Supply",
+                f"leaving the {unit}, mixed over every unit"),
+        Station("rack_intake", "Rack intake",
+                "entering the cabinets, mixed over every rack by the airflow "
+                "each one draws"),
+        Station("aisle_exit", "Aisle exit",
+                "leaving the containment through the ceiling, weighted by the "
+                "mass flux crossing it"),
+        Station("unit_return", "Unit return",
+                f"arriving at the {unit}, mixed over every intake"),
     ]
 
 
@@ -2848,14 +2783,9 @@ def to_dict(model: Model, spec: dict) -> dict:
             "fan_static_pa": model.fan_static_pa,
             "fan_curve": [list(p) for p in model.fan_curve] if model.fan_curve else None,
         },
-        "sensors": [
-            {
-                "name": group.name,
-                "label": group.label,
-                "note": group.note,
-                "points": [list(point) for point in group.points],
-            }
-            for group in sensors(model)
+        "stations": [
+            {"name": s.name, "label": s.label, "note": s.note}
+            for s in stations(model)
         ],
         "summary": [list(row) for row in summary_rows(model)],
         "hvac": model.hvac(),

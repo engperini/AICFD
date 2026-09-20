@@ -218,15 +218,14 @@ function render() {
         <span><i class="swatch" style="background:var(--hot)"></i>grilles and return</span>
         <span><i class="swatch" style="background:var(--containment)"></i>containment</span>
         <span><i class="swatch" style="background:var(--rack);border:1px solid var(--text-primary)"></i>racks</span>
-        <span><i class="swatch" style="background:var(--sensor)"></i>sensors</span>
         <span>dashed = beyond the section plane</span>
       </div>
     </section>
 
     <section class="card" id="sensors-card">
       <div class="card-head">
-        <span class="card-title">Sensors</span>
-        <span class="card-sub">mean of 3 points per place, every
+        <span class="card-title">Air loop</span>
+        <span class="card-sub">the whole stream at each station, every
           ${model.spec?.solver?.sensor_interval ?? 100} iterations</span>
       </div>
       <div id="sensors"></div>
@@ -712,9 +711,9 @@ function renderSensors(history) {
   const iterations = history?.iterations || [];
   const last = iterations.length - 1;
 
-  const placed = (model.sensors || []).map((group) => {
-    const live = groups?.find((g) => g.name === group.name);
-    return { ...group, live };
+  const placed = (model.stations || []).map((station) => {
+    const live = groups?.find((g) => g.name === station.name);
+    return { ...station, live };
   });
 
   const balance = history?.balance?.length
@@ -724,28 +723,32 @@ function renderSensors(history) {
   host.innerHTML = `${balance ? balanceStrip(balance) : ''}
   <table class="sensors">
     <thead><tr>
-      <th>Place</th><th>Temp.</th><th>Spread</th>
-      <th>Pressure</th><th>Speed</th>
+      <th>Station</th><th>Mixed</th><th>Range</th>
+      <th>Flow</th><th>Face velocity</th>
     </tr></thead>
     <tbody>${placed
       .map(({ label, note, live }) => {
         const t = live?.temp_c?.[last];
-        const spread = live?.spread_k?.[last];
-        const dp = live?.pressure_pa?.[last];
+        const low = live?.low_c?.[last];
+        const high = live?.high_c?.[last];
+        const flow = live?.flow_m3h?.[last];
         const v = live?.speed_ms?.[last];
         return `<tr>
           <td><span class="sensor-label">${label}</span>
               <span class="sensor-note">${note}</span></td>
           <td>${t == null ? '—' : `${fmt(t, 1)} °C`}</td>
-          <td class="muted">${spread == null ? '—' : `${fmt(spread, 1)} K`}</td>
-          <td>${dp == null ? '—' : `${dp > 0 ? '+' : ''}${fmt(dp, 1)} Pa`}</td>
+          <td class="muted">${low == null || high == null ? '—' :
+            `${fmt(low, 1)}–${fmt(high, 1)} °C`}</td>
+          <td>${flow == null ? '—' : `${fmt(flow, 0)} m³/h`}</td>
           <td>${v == null ? '—' : `${fmt(v, 2)} m/s`}</td>
         </tr>`;
       })
       .join('')}</tbody></table>
-    <p class="sensor-foot">Pressure is relative to the fan wall intake, with the
-      hydrostatic column removed: the difference a manometer would read, and the
-      one that pushes the air round the loop.</p>
+    <p class="sensor-foot">Each row is the whole stream crossing that surface:
+      the temperature is the mixing cup, weighted by what each part of the
+      surface carries, and the range is what the air at it actually spans. A
+      room whose cabinets carry different loads has no single temperature at
+      any station, so the range is part of the reading.</p>
     ${iterations.length ? drawSensorChart(history) :
       `<p class="empty">readings appear from the first sample</p>`}`;
 }
@@ -787,7 +790,9 @@ function drawSensorChart(history) {
   const series = history.groups.filter((g) => g.temp_c?.length);
   if (!series.length || its.length < 2) return '';
 
-  const values = series.flatMap((g) => g.temp_c).filter((v) => Number.isFinite(v));
+  const values = series
+    .flatMap((g) => [...g.temp_c, ...(g.low_c || []), ...(g.high_c || [])])
+    .filter((v) => Number.isFinite(v));
   const lo = Math.floor(Math.min(...values) - 0.5);
   const hi = Math.ceil(Math.max(...values) + 0.5);
   const X = (i) => pad.left + (i / (its.length - 1)) * (W - pad.left - pad.right);
@@ -803,8 +808,8 @@ function drawSensorChart(history) {
     )
     .join('');
 
-  // Three of the four places sit within a kelvin of each other at steady
-  // state, so their end labels would overlap. Stack them apart, in order.
+  // The supply and the rack intake sit within a kelvin of each other at
+  // steady state, so their end labels would overlap. Stack them apart.
   const ends = series
     .map((g, i) => ({ i, y: Y(g.temp_c[g.temp_c.length - 1]) }))
     .sort((a, b) => a.y - b.y);
@@ -815,6 +820,26 @@ function drawSensorChart(history) {
     labelY[end.i] = y;
     previous = y;
   }
+
+  // The band the air at a station actually spans, behind its mixing cup. One
+  // line per station would say a half-populated row is one temperature, which
+  // is the reading ADR-078 got rid of; the band is where that shows.
+  const bands = series
+    .map((g, i) => {
+      const low = g.low_c || [];
+      const high = g.high_c || [];
+      const span = Math.min(low.length, high.length, its.length);
+      const usable = [];
+      for (let k = 0; k < span; k += 1) {
+        if (Number.isFinite(low[k]) && Number.isFinite(high[k])) usable.push(k);
+      }
+      if (usable.length < 2) return '';
+      const top = usable.map((k) => `${k === usable[0] ? 'M' : 'L'}${X(k).toFixed(1)},${Y(high[k]).toFixed(1)}`);
+      const bottom = [...usable].reverse().map((k) => `L${X(k).toFixed(1)},${Y(low[k]).toFixed(1)}`);
+      return `<path class="chart-band" fill="var(--series-${(i % 8) + 1})"
+                d="${top.join('')}${bottom.join('')}Z"/>`;
+    })
+    .join('');
 
   const lines = series
     .map((g, i) => {
@@ -848,7 +873,7 @@ function drawSensorChart(history) {
 
   return `<svg class="sensor-chart" viewBox="0 0 ${W} ${H}" role="img"
       aria-label="temperature at each place against iteration">
-    ${grid}${lines}
+    ${grid}${bands}${lines}
     <text class="chart-tick" x="${(pad.left + W - pad.right) / 2}" y="${H - 6}"
       text-anchor="middle">iteration ${its[its.length - 1]}</text>
   </svg>`;

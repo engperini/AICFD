@@ -7,6 +7,7 @@ residual. These check both on hand-written field files.
 
 from __future__ import annotations
 
+import dataclasses
 import copy
 import inspect
 import json
@@ -203,24 +204,24 @@ class SamplerTest(unittest.TestCase):
         step.rmdir()
         self.assertEqual(len(post.read_history(self.case)), 1)
 
-    def test_every_place_is_measured_and_its_spread_reported(self):
+    def test_every_station_is_measured_with_its_range(self):
         self.write_step(100)
         row = post.sample(self.model, self.case)[0]
-        names = {place["name"] for place in row["places"]}
         self.assertEqual(
-            names, {"cold_aisle", "hot_aisle", "plenum", "fan_back"}
+            [station["name"] for station in row["stations"]],
+            ["supply", "rack_intake", "aisle_exit", "unit_return"],
         )
-        for place in row["places"]:
-            self.assertIn("spread_k", place)
-            self.assertIn("pressure_pa", place)
-            self.assertEqual(len(place["points_c"]), 3)
+        for station in row["stations"]:
+            for key in ("temp_c", "low_c", "high_c", "flow_m3h", "speed_ms"):
+                self.assertIn(key, station)
 
-    def test_pressure_is_reported_against_the_fan_intake(self):
-        """Absolute pressure is 101 325 Pa everywhere and says nothing."""
+    def test_the_loop_carries_one_flow_through_every_station(self):
+        """A station that reported the cabinets' RATED flow said the row moved
+        twice what the units deliver, on a row bought for more than it carries."""
         self.write_step(100)
         row = post.sample(self.model, self.case)[0]
-        for place in row["places"]:
-            self.assertAlmostEqual(place["pressure_pa"], 0.0, places=3)
+        flows = {s["flow_m3h"] for s in row["stations"] if s["flow_m3h"] is not None}
+        self.assertEqual(len(flows), 1, f"stations disagree on the flow: {flows}")
 
     def test_the_fan_wall_rise_is_the_jump_across_the_pair(self):
         self.write_step(100)
@@ -244,56 +245,42 @@ class SamplerTest(unittest.TestCase):
         self.assertEqual(len(shaped["balance"]), 2)
 
 
-class SensorPlacementTest(unittest.TestCase):
+class StationTest(unittest.TestCase):
+    """Four stations on the loop, declared without a single coordinate."""
+
     def setUp(self):
         self.model = M.build_model(SPEC)
-        self.groups = M.sensors(self.model)
+        self.stations = M.stations(self.model)
 
-    def test_there_are_three_points_in_each_of_the_four_places(self):
-        self.assertEqual(len(self.groups), 4)
-        for group in self.groups:
-            self.assertEqual(len(group.points), 3)
+    def test_the_loop_is_measured_where_the_air_goes(self):
+        self.assertEqual(
+            [s.name for s in self.stations],
+            ["supply", "rack_intake", "aisle_exit", "unit_return"],
+        )
 
-    def test_the_aisle_probes_sit_at_rack_height_in_the_aisle(self):
-        rack_mid = self.model.racks[0].box.hi[2] / 2
-        for name, band in (
-            ("cold_aisle", self.model.cold_aisle),
-            ("hot_aisle", self.model.hot_aisle),
-        ):
-            group = next(g for g in self.groups if g.name == name)
-            for x, y, z in group.points:
-                self.assertAlmostEqual(z, rack_mid)
-                self.assertGreater(y, band[0])
-                self.assertLess(y, band[1])
+    def test_a_station_carries_no_coordinates(self):
+        """The fault ADR-078 fixed was a measurement tied to a location. A
+        station names a surface the whole airflow crosses; where a logger
+        would hang is not part of it."""
+        for station in self.stations:
+            self.assertFalse(
+                [f for f in dataclasses.fields(station)
+                 if f.name in ("points", "point", "position")],
+                f"{station.name} carries a coordinate",
+            )
 
-    def test_the_plenum_probes_sit_above_the_false_ceiling(self):
-        group = next(g for g in self.groups if g.name == "plenum")
-        for _x, _y, z in group.points:
-            self.assertGreater(z, self.model.ceiling_z)
-            self.assertLess(z, self.model.domain.hi[2])
+    def test_a_room_unit_and_a_fan_wall_are_named_as_what_they_are(self):
+        floor = copy.deepcopy(SPEC)
+        floor["floor"] = {"enabled": True, "height": 1.0}
+        wall = M.stations(self.model)[0].note
+        room = M.stations(M.build_model(floor))[0].note
+        self.assertIn("fan wall", wall)
+        self.assertIn("room unit", room)
 
-    def test_the_fan_back_probes_sit_in_the_gallery(self):
-        group = next(g for g in self.groups if g.name == "fan_back")
-        for x, _y, _z in group.points:
-            self.assertLess(x, self.model.hall.lo[0])
-            self.assertGreater(x, 0)
-
-    def test_no_probe_sits_inside_a_rack(self):
-        for group in self.groups:
-            for point in group.points:
-                for rack in self.model.racks:
-                    inside = all(
-                        rack.box.lo[a] <= point[a] <= rack.box.hi[a] for a in range(3)
-                    )
-                    self.assertFalse(inside, f"{group.name} probe inside {rack.id}")
-
-    def test_the_probes_travel_with_the_geometry(self):
-        """Move the aisle and the sensors move with it, or they measure nothing."""
-        wider = dict(SPEC, aisles={"cold": 3.0, "hot": 1.2})
-        moved = M.sensors(M.build_model(wider))
-        before = next(g for g in self.groups if g.name == "cold_aisle").points[0]
-        after = next(g for g in moved if g.name == "cold_aisle").points[0]
-        self.assertGreater(after[1], before[1])
+    def test_a_case_with_no_racks_has_nothing_to_measure(self):
+        empty = M.build_model(SPEC)
+        empty.racks = []
+        self.assertEqual(M.stations(empty), [])
 
 
 class DriftTest(unittest.TestCase):
@@ -310,9 +297,9 @@ class DriftTest(unittest.TestCase):
         return {
             "iteration": iteration,
             "return_temp_c": ret,
-            "places": [
-                {"name": "cold_aisle", "temp_c": cold},
-                {"name": "hot_aisle", "temp_c": hot},
+            "stations": [
+                {"name": "rack_intake", "temp_c": cold},
+                {"name": "aisle_exit", "temp_c": hot},
             ],
         }
 
@@ -320,13 +307,13 @@ class DriftTest(unittest.TestCase):
         self.history(self.row(100, 20.0, 27.5, 30.8))
         self.assertIsNone(post.drift(self.case))
 
-    def test_drift_is_the_largest_move_any_place_made(self):
+    def test_drift_is_the_largest_move_any_station_made(self):
         self.history(
             self.row(100, 20.0, 27.5, 30.8), self.row(200, 20.1, 25.1, 30.8)
         )
         self.assertAlmostEqual(post.drift(self.case), 2.4, places=3)
 
-    def test_the_return_temperature_counts_as_a_place(self):
+    def test_the_return_temperature_counts_as_a_station(self):
         self.history(
             self.row(100, 20.0, 27.5, 30.8), self.row(200, 20.0, 27.5, 29.0)
         )
@@ -349,16 +336,16 @@ class ReturnPathTest(unittest.TestCase):
         self.model = M.build_model(SPEC)
         self.case = Path(tempfile.mkdtemp())
 
-    def kpis(self, leaving, arriving, probes=(31.0, 30.9, 31.1)):
-        hot, plenum, fan = probes
+    def kpis(self, leaving, arriving, aisle=(30.9, 31.1)):
+        low, high = aisle
         return {
             "aisle_exit_c": leaving,
             "return_temp_c": arriving,
-            "places_now": [
-                {"name": "hot_aisle", "temp_c": hot},
-                {"name": "plenum", "temp_c": plenum},
-                {"name": "fan_back", "temp_c": fan},
-                {"name": "cold_aisle", "temp_c": 20.0},
+            "stations_now": [
+                {"name": "aisle_exit", "temp_c": leaving,
+                 "low_c": low, "high_c": high},
+                {"name": "unit_return", "temp_c": arriving,
+                 "low_c": arriving, "high_c": arriving},
             ],
             "drift_k": 0.05,
         }
@@ -379,36 +366,38 @@ class ReturnPathTest(unittest.TestCase):
     def test_a_row_of_uneven_load_is_not_a_broken_path(self):
         """The fault this check used to invent (ADR-078).
 
-        Three 0 kW cabinets between three 32 kW ones, and the aisle is twelve
-        kelvin apart across its length. The probes land where they land; the
-        streams still close, and the run is sound.
+        Three 0 kW cabinets between three 32 kW ones, and the air crossing the
+        ceiling spans sixteen kelvin. The streams still close, and the run is
+        sound.
         """
-        result = self.check(self.kpis(30.9, 30.92, probes=(28.1, 27.4, 36.3)))
+        result = self.check(self.kpis(30.9, 30.92, aisle=(20.0, 36.7)))
         self.assertTrue(result.passed)
         self.assertIn("the room being uneven", result.detail)
 
-    def test_an_even_room_says_nothing_about_its_probes(self):
+    def test_an_even_room_says_nothing_about_its_spread(self):
         """The note earns its place only where it explains a disagreement."""
         self.assertNotIn("uneven", self.check(self.kpis(31.0, 31.02)).detail)
 
-    def test_probes_that_scatter_cannot_fail_a_closed_path(self):
-        """The whole point: the probes are reported, the streams are judged."""
-        for probes in ((28.1, 27.4, 36.3), (20.0, 45.0, 31.0), (31.0, 31.0, 31.0)):
-            with self.subTest(probes=probes):
-                self.assertTrue(self.check(self.kpis(31.0, 31.0, probes)).passed)
+    def test_an_uneven_aisle_cannot_fail_a_closed_path(self):
+        """The whole point: the spread is reported, the streams are judged."""
+        for aisle in ((20.0, 36.7), (29.0, 45.0), (31.0, 31.0)):
+            with self.subTest(aisle=aisle):
+                self.assertTrue(self.check(self.kpis(31.0, 31.0, aisle)).passed)
 
-    def test_a_leak_is_still_caught_however_tidy_the_probes(self):
-        """And the converse: tidy probes cannot pass a path that leaks."""
-        result = self.check(self.kpis(31.0, 26.0, probes=(31.0, 31.0, 31.0)))
+    def test_a_leak_is_still_caught_however_even_the_room(self):
+        """And the converse: a uniform aisle cannot pass a path that leaks."""
+        result = self.check(self.kpis(31.0, 26.0, aisle=(31.0, 31.0)))
         self.assertFalse(result.passed)
         self.assertIn("air is joining the return path", result.detail)
 
     def test_a_step_with_no_streams_measured_is_not_judged(self):
         self.assertIsNone(self.check({"places_now": []}))
 
-    def test_the_cold_aisle_is_not_on_the_return_path(self):
-        """It is 11 K colder by design; including it would fail every run."""
-        self.assertNotIn("cold_aisle", post.RETURN_PATH)
+    def test_the_supply_is_not_on_the_return_path(self):
+        """It is 11 K colder by design; comparing it would fail every run."""
+        self.assertNotIn(
+            "supply", self.check(self.kpis(31.0, 31.02)).detail
+        )
 
     def test_the_tolerance_allows_real_stratification_but_not_a_filling_volume(self):
         self.assertGreater(post.RETURN_PATH_TOLERANCE, 1.0)
@@ -647,8 +636,8 @@ class CompareTest(unittest.TestCase):
             json.dumps([{
                 "iteration": iteration,
                 "return_temp_c": ret,
-                "places": [
-                    {"name": "hot_aisle", "label": "Corredor quente", "temp_c": hot}
+                "stations": [
+                    {"name": "aisle_exit", "label": "Aisle exit", "temp_c": hot}
                 ],
             }])
         )

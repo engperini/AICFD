@@ -190,7 +190,7 @@ def read_progress(case_name: str, max_points: int = 400) -> dict:
 
 
 def read_sensors(case_name: str) -> dict:
-    """What each instrumented place is doing, straight off the running solve."""
+    """What each station of the air loop reads, straight off the running solve."""
     from aicfd import post
 
     case = RUNS_DIR / case_name

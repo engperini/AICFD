@@ -579,7 +579,7 @@ def _mesh_only(spec: Path) -> int:
 def _short_solve(spec: Path, iterations: int) -> int:
     """Solve the worked POD briefly and hold it to its own physical checks.
 
-    Short on purpose: warm-started, the POD's places stop moving within a few
+    Short on purpose: warm-started, the POD's stations stop moving within a few
     hundred iterations, which is enough for every check to mean something. A
     converged run is `aicfd run`, not the audit.
     """

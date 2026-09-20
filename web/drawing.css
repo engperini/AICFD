@@ -4,7 +4,7 @@
  * Shared by the model page and the results page so the two never drift -- the
  * point of drawing the solved field under the same lines is that they are the
  * same lines. Colour tokens come from the page (--cold, --hot, --containment,
- * --solid, --rack, --paper, --surface, --text-*, --sensor, --axis, --grid).
+ * --solid, --rack, --paper, --surface, --text-*, --axis, --grid).
  */
 .dw-gallery{fill:var(--grid);opacity:.30;stroke:var(--axis);stroke-width:1}
 .dw-hallfill{fill:var(--paper);stroke:var(--solid);stroke-width:1.8}
@@ -42,12 +42,6 @@
 .dw-edge{stroke-width:4.5;stroke-linecap:butt}
 .dw-edge-beyond{stroke-width:2;stroke-dasharray:5 3;opacity:.55}
 .dw-edge-label{font-size:9px;font-weight:650;text-anchor:middle;stroke:none}
-/* A sensor is an instrument on a drawing, not a series on a chart. It had
-   been borrowing a categorical slot, which meant re-stepping that slot for a
-   chart would have repainted every sensor in every drawing (ADR-053). */
-.dw-sensor{stroke:var(--sensor);stroke-width:1.4;fill:none}
-.dw-sensor-dot{fill:var(--surface);stroke-width:1.2}
-.dw-sensor-far{opacity:.4}
 .dw-ceiling{stroke:var(--solid);stroke-width:2.6}
 /* The inner leaf of the plenum wall: building fabric, like the leaf it
    stands parallel to, and NOT the containment green every other wall
@@ -97,7 +91,6 @@ svg.dw-over-map .dw-rack{fill:none;stroke-width:1.6}
 svg.dw-over-map .dw-label{paint-order:stroke;stroke:var(--surface);stroke-width:3px}
 svg.dw-over-map .dw-note,svg.dw-over-map .dw-edge-label{paint-order:stroke;
   stroke:var(--surface);stroke-width:3px}
-svg.dw-over-map .dw-sensor{stroke:var(--text-primary)}
 
 
 /* --- the sheet the drawings sit on -------------------------------------- */
