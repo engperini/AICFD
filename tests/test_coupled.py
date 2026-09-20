@@ -17,6 +17,7 @@ import unittest
 from pathlib import Path
 
 from aicfd import coupled
+from tests import support
 
 #: A boundary field shaped like the ones a solved run leaves behind: a patch
 #: whose value is a long parenthesised list, another whose value is uniform,
@@ -230,10 +231,7 @@ class SupplyTemperatureTest(unittest.TestCase):
 
         from aicfd.model import build_model
 
-        spec = yaml.safe_load(
-            (Path(__file__).resolve().parents[1]
-             / "cases" / "hall-double-gallery.yaml").read_text()
-        )
+        spec = support.spec("hall-double-gallery")
         self.model = build_model(copy.deepcopy(spec))
 
     def _with_fans(self, fans):
@@ -283,10 +281,7 @@ class SupplyTemperatureTest(unittest.TestCase):
 
         from aicfd.model import build_model
 
-        spec = yaml.safe_load(
-            (Path(__file__).resolve().parents[1]
-             / "cases" / "pod-fanwall.yaml").read_text()
-        )
+        spec = support.spec("pod-fanwall")
         plain = build_model(copy.deepcopy(spec))
         self.assertEqual(
             coupled.supply_temperatures(plain, "unused"), ({}, {}, [])
@@ -303,10 +298,7 @@ class WaterTemperatureTest(unittest.TestCase):
 
         from aicfd.model import build_model
 
-        spec = yaml.safe_load(
-            (Path(__file__).resolve().parents[1]
-             / "cases" / "hall-double-gallery.yaml").read_text()
-        )
+        spec = support.spec("hall-double-gallery")
         spec = copy.deepcopy(spec)
         if water is not None:
             spec["fanwall"]["entering_water_c"] = water

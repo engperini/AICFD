@@ -12,6 +12,7 @@ from pathlib import Path
 import yaml
 
 from aicfd import server
+from tests import support
 
 
 class ApplyChangesTest(unittest.TestCase):
@@ -459,11 +460,20 @@ class ComponentChoiceTest(unittest.TestCase):
     is not (ADR-051)."""
 
     def spec(self) -> dict:
-        import yaml
+        """Built here rather than read from `cases/`.
 
-        return yaml.safe_load(
-            (server.REPO_ROOT / "cases" / "hall-double-gallery.yaml").read_text()
-        )
+        These tests assert what a spec that has chosen nothing does, and a
+        user who picks a grille on the page writes that choice into the case
+        -- which is the page working, not a regression (ADR-056)."""
+        return {
+            "name": "choice-test",
+            "hall": {"height": 7.5, "ceiling": 5.5},
+            "gallery": {"depth": 9.0, "sides": 2},
+            "racks": {"per_row": 22, "blocks": 2, "load_kw": 11.59,
+                      "size": [0.6, 1.2, 2.2], "airflow_cfm_per_kw": 158.0},
+            "fanwall": {"count": 14, "width": 3.96, "airflow_m3h": 104181.0},
+            "grilles": {"size": 0.6, "coverage": 1.0},
+        }
 
     def test_a_case_can_choose_another_ceiling_grille(self):
         spec, rejected = server.apply_changes(
@@ -508,14 +518,12 @@ class ComponentChoiceTest(unittest.TestCase):
 class RackPageTest(unittest.TestCase):
     """The page that sets a load per position (ADR-054)."""
 
-    CASE = "hall-double-gallery"
+    CASE = "hall"  # the fixture, not the user's case (ADR-056)
 
     def setUp(self):
+        support.sandbox(self)
         self.path = server.CASES_DIR / f"{self.CASE}.yaml"
         self.before = self.path.read_text()
-
-    def tearDown(self):
-        self.path.write_text(self.before)
 
     def test_it_lists_every_position_with_what_it_carries(self):
         payload = server.read_racks(self.CASE)
@@ -608,14 +616,12 @@ class ImpossibleChangeTest(unittest.TestCase):
     error -- so the form that could undo it never came back.
     """
 
-    CASE = "hall-double-gallery"
+    CASE = "hall"  # the fixture, not the user's case (ADR-056)
 
     def setUp(self):
+        support.sandbox(self)
         self.path = server.CASES_DIR / f"{self.CASE}.yaml"
         self.before = self.path.read_text()
-
-    def tearDown(self):
-        self.path.write_text(self.before)
 
     def apply(self, changes):
         """What the page's Apply does, as `do_POST` does it."""
@@ -660,7 +666,14 @@ class ImpossibleChangeTest(unittest.TestCase):
         handler.path = "/api/model"
         server.Handler.do_GET(handler)
         self.assertIn("error", sent)
-        self.assertEqual(sent["file"], f"cases/{self.CASE}.yaml")
+        self.assertTrue(sent["file"].endswith(f"cases/{self.CASE}.yaml"))
+        self.assertIn("do not fit", sent["error"])
+
+    def test_a_case_outside_the_repository_still_names_its_file(self):
+        """`relative_to` raises rather than declines, so the error panel's own
+        path lookup became a second error (ADR-056)."""
+        self.assertTrue(server.case_path(self.CASE).endswith(
+            f"cases/{self.CASE}.yaml"))
 
     def test_the_page_tells_the_reader_where_that_file_is(self):
         js = (server.REPO_ROOT / "web" / "app.js").read_text()

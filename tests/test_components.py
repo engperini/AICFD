@@ -16,6 +16,7 @@ import yaml
 
 from aicfd import components as C
 from aicfd import model as m
+from tests import support
 
 
 class LibraryTest(unittest.TestCase):
@@ -178,9 +179,7 @@ class WiringTest(unittest.TestCase):
     """What the model does with them."""
 
     def spec(self) -> dict:
-        return yaml.safe_load(
-            (Path(__file__).resolve().parents[1] / "cases" / "pod-fanwall.yaml").read_text()
-        )
+        return support.spec("pod-fanwall")
 
     def test_the_gallery_opening_carries_the_mesh(self):
         model = m.build_model(self.spec())

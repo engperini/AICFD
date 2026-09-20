@@ -34,7 +34,11 @@ COPY . /app
 #   report   the Word deliverable is produced -- every figure rendered and the
 #            document assembled, on the distribution's matplotlib and
 #            python-docx rather than on the versions it was developed against
-#   tests    the 208 unit tests, which need no OpenFOAM
+#   tests    the unit tests, which need no OpenFOAM. They include one
+#            that every case in `cases/` still builds: this image carries
+#            the working folder as it is, so a case edited to something
+#            the generator refuses stops the build -- by design, and with
+#            a message that names the file (ADR-056)
 #
 # It costs about a minute and it is the difference between an image that builds
 # and an image that works.

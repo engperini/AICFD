@@ -185,6 +185,22 @@ def load_spec(name: str) -> dict:
     return yaml.safe_load(path.read_text())
 
 
+def case_path(name: str) -> str:
+    """Where this case lives, said the shortest way a person can act on.
+
+    Relative to the repository when it is inside it, which is what a reader
+    can paste into `git restore`; absolute otherwise, because a path relative
+    to somewhere they are not is worse than a long one -- and because
+    `relative_to` raises rather than declines, which turned an error message
+    into a second error (ADR-056).
+    """
+    path = CASES_DIR / f"{name}.yaml"
+    try:
+        return str(path.relative_to(REPO_ROOT))
+    except ValueError:
+        return str(path)
+
+
 def save_spec(name: str, spec: dict) -> None:
     (CASES_DIR / f"{name}.yaml").write_text(
         yaml.safe_dump(spec, sort_keys=False, allow_unicode=True)
@@ -848,9 +864,7 @@ class Handler(SimpleHTTPRequestHandler):
                 # and what to edit. The page can no longer put a case into
                 # this state; one edited by hand still can (ADR-055).
                 payload["case"] = self.case_name
-                payload["file"] = str(
-                    (CASES_DIR / f"{self.case_name}.yaml").relative_to(REPO_ROOT)
-                )
+                payload["file"] = case_path(self.case_name)
             return self._json(payload)
         if self.path.startswith("/api/racks"):
             return self._json(self._safely(read_racks, self._query("case") or self.case_name))

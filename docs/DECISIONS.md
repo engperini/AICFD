@@ -2216,3 +2216,45 @@ and now it says so.
 
 **The general rule.** Nothing writes a case it has not built. The rack page
 follows it too, for the same reason and in the same order.
+
+---
+
+## ADR-056 — The tests own their cases, and `cases/` is not a fixture
+
+**Decision.** `tests/cases/` holds the cases the suite reads and writes.
+Nothing in the suite saves into `cases/`, and a test that reads a worked case
+from there does it through `support.spec`, which skips — naming the file —
+when that case cannot be used. Whether the shipped cases still build is one
+test of its own, `test_cases.py`.
+
+**What went wrong.** `cases/` is the engineer's working folder: the page
+writes to it, and a case edited through the page is the software doing its
+job. The tests read those same files as fixtures and asserted on their
+contents — that no component had been chosen, that the comments were still
+there. So a legitimate edit failed the suite, and because `docker build` runs
+the suite over the copied working tree, the image stopped building for a
+reason that had nothing to do with the image. One press of Apply, before
+ADR-055, left a case the generator refuses; the build came back with thirty
+errors and two failures, and not one of them named a file.
+
+**Why the answer is not just "restore the file".** That fixes the instance.
+The shape stays: every case a person edits is a fixture some test asserts on,
+so the next real edit breaks the build again. A fixture the tests own cannot
+be edited by the person using the software, which is the whole point.
+
+**A broken case now says so once.** The guard test fails with the file, the
+generator's sentence and the command that puts it back. Everything whose
+fixture that case was is skipped rather than errored: a missing fixture is
+not the code being wrong, and thirty tests saying so is thirty ways of not
+saying which file.
+
+**The image still builds the working folder.** `COPY . /app` carries the
+cases as they are, and the guard test runs inside the image, so a case that
+cannot be built does stop the build. That is right — an image whose cases do
+not build is not an image that works — and now it says which one and why.
+
+**What the sandbox caught on its way in.** Pointing `CASES_DIR` at a
+directory outside the repository broke the error panel itself:
+`Path.relative_to` raises rather than declines, so the code that was there to
+name a broken case's file raised a second error instead. `case_path` answers
+relative where it can and absolute where it cannot.

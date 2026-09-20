@@ -15,6 +15,7 @@ from __future__ import annotations
 import tempfile
 import unittest
 from pathlib import Path
+from tests import support
 
 #: The worked POD's export, tracked under reference/ because it is evidence
 #: rather than an artifact (ADR-032). A result solved locally lands in
@@ -299,8 +300,7 @@ def _export_naming_a_unit(directory: Path, model_name: str, rows_below: bool,
 
     saved, equipment.LIBRARY = equipment.LIBRARY, library
     try:
-        spec = yaml.safe_load(
-            (source / "cases" / "hall-double-gallery.yaml").read_text())
+        spec = support.spec("hall-double-gallery")
         model = build_model(spec)
         payload = json.loads((directory / "export" / "viewer.json").read_text())
         kpis = payload["kpis"]

@@ -15,6 +15,7 @@ from pathlib import Path
 import yaml
 
 from aicfd import model as m
+from tests import support
 
 SPEC = yaml.safe_load(
     """
@@ -547,12 +548,7 @@ class PerRackLoadTest(unittest.TestCase):
     """
 
     def spec(self) -> dict:
-        import yaml
-
-        return yaml.safe_load(
-            (Path(__file__).resolve().parents[1] / "cases" / "hall-double-gallery.yaml")
-            .read_text()
-        )
+        return support.spec("hall-double-gallery")
 
     def test_a_position_can_carry_its_own_load(self):
         spec = self.spec()
