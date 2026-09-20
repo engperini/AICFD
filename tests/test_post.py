@@ -620,16 +620,19 @@ if __name__ == "__main__":
 
 
 class SupplyMeshDutyTest(unittest.TestCase):
-    """A mesh across the units' opening is a pressure, not a surface: the
-    field cannot show it, so the duty adds it and says so (ADR-060)."""
+    """A mesh leaf is a surface the solver builds, not a number bolted onto
+    the duty afterwards (ADR-060)."""
 
-    def test_the_check_names_a_number_the_field_did_not_produce(self):
+    def test_the_field_is_what_says_what_it_costs(self):
+        """It was first modelled as a K added to `fan_capacity`, on the
+        grounds that a mesh over the units' own opening cannot redirect
+        anything. It is not over the opening: it closes the plenum's hall
+        side, so the solver has it and the duty must not count it twice."""
         source = inspect.getsource(post._checks)
-        self.assertIn("supply_mesh_pressure_drop_pa", source)
-        self.assertIn("from its K rather than from the field", source)
+        self.assertNotIn("supply_mesh_pressure_drop_pa", source)
+        self.assertNotIn("from its K rather than from the field", source)
 
-    def test_it_is_not_printed_as_zero(self):
-        """At a POD's face velocity it is four hundredths of a pascal, and
-        `includes 0.0 Pa` hides the number it is there to give."""
+    def test_the_mesh_leaf_is_checked_like_any_other_surface(self):
         source = inspect.getsource(post._checks)
-        self.assertIn("{mesh_drop:.2f} Pa", source)
+        self.assertIn("plenum_resistance", source)
+        self.assertIn("supply_drop_pa", source)

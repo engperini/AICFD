@@ -352,3 +352,29 @@ class SupplyPlenumCaseTest(unittest.TestCase):
         self.assertEqual([p for p in model.panels if p.name.startswith("supply")], [])
         _walls, holes = self.zones(model)["plenum_wall"]
         self.assertEqual(holes, [])
+
+
+class SurfaceListingTest(unittest.TestCase):
+    """The summary's list of what createBaffles builds has to be all of it."""
+
+    def test_a_porous_surface_that_is_nobody_s_hole_is_listed(self):
+        """A grille punched through a wall is counted on that wall's own line
+        -- "less 3 opening(s)" -- which is the readable way round. The mesh
+        leaf is a surface on its own, so no wall's line mentions it, and it
+        was built and not listed at all (ADR-060)."""
+        model = m.build_model(support.spec("pod-mesh"))
+        listed = case.summary(model).split(
+            "Internal surfaces built by createBaffles:")[1]
+        holes = {h.name for _z, _w, hs in case.wall_plan(model) for h in hs}
+        standalone = [p for p in case.porous(model) if p.name not in holes]
+        self.assertTrue(standalone, "this case has a surface of its own")
+        for panel in standalone:
+            with self.subTest(surface=panel.name):
+                self.assertIn(panel.name, listed)
+
+    def test_a_grille_in_a_wall_is_counted_on_that_wall(self):
+        model = m.build_model(support.spec("pod-plenum"))
+        listed = case.summary(model).split(
+            "Internal surfaces built by createBaffles:")[1]
+        self.assertIn("less 3 opening(s)", listed)   # the ceiling grilles
+        self.assertIn("less 1 opening(s)", listed)   # the supply grille

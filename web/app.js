@@ -64,11 +64,14 @@ const SECTIONS = [
   },
   {
     title: 'Supply plenum',
-    note: 'the hall wall doubled; the grilles decide where the air goes',
+    note: 'the hall wall doubled; what closes it decides where the air goes',
     componentsLink: true,
     params: [
       { key: 'plenum', label: 'Double the wall into the hall', check: true, default: false },
-      { key: 'plenum_as_mesh', label: 'Mesh instead — keeps the hall\u2019s size', check: true, default: false },
+      // Same cavity, different leaf: grilles aim the air and the building
+      // is designed longer for them; mesh is a barrier that goes into the
+      // room a hall already has (ADR-060).
+      { key: 'plenum_as_mesh', label: 'Close it with mesh, not grilles (hall keeps its size)', check: true, default: false },
       { key: 'plenum_depth', label: 'Between the two leaves', unit: 'm', step: 0.1, optional: true },
       { key: 'plenum_grille_width', label: 'Supply grille width', unit: 'm', step: 0.1, optional: true },
       { key: 'plenum_grille_height', label: 'Supply grille height', unit: 'm', step: 0.1, optional: true },
@@ -128,7 +131,12 @@ function activeSections() {
   return SECTIONS.map((section) => ({
     ...section,
     params: section.params.filter(
-      (p) => model.editable?.[p.key] && (p.optional || specValue(p.key) !== ''),
+      // A checkbox always has an answer -- on or off -- so it shows whether
+      // or not the case mentions it. Dropping the ones a case said nothing
+      // about is how the supply plenum ended up as four number boxes with no
+      // way to turn the thing on (ADR-059).
+      (p) => model.editable?.[p.key]
+        && (p.optional || p.check || specValue(p.key) !== ''),
     ),
   })).filter((section) => section.params.length);
 }
@@ -596,7 +604,14 @@ function specValue(key) {
   if (!path) return '';
   let node = model.spec;
   for (const step of path) node = node?.[step];
-  return node ?? '';
+  // A field a case says nothing about shows the house standard it would get,
+  // not an empty box. Blank says neither what the number would be nor that
+  // there is one, so the reader has to guess whether leaving it empty means
+  // anything (ADR-059).
+  if (node === undefined || node === null) {
+    return model.plenum_defaults?.[key] ?? '';
+  }
+  return node;
 }
 
 function renderSummary() {

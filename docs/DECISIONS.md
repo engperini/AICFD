@@ -2356,6 +2356,13 @@ form — is what the second compares against the unit's P-Q curve. After a run,
 `plenum_resistance` checks the field's drop across the supply grilles against
 the same closed form, exactly as `grille_resistance` does for the return.
 
+**The card shows the standard rather than nothing.** A field a case says
+nothing about renders the house default it would get — 1,2 m, 2 m, the rack
+height, 3 m/s — so a reader takes it or changes it instead of guessing what
+an empty box means. And a checkbox renders whether or not the case mentions
+it: filtering the form on what a case states dropped both switches and left
+the plenum as four number boxes with no way to turn the thing on.
+
 **Why before.** Both answers are arithmetic. Neither needs a solve, and
 finding out after one is finding out late — the run costs minutes and the
 conclusion was available the moment the geometry was typed. The alert says
@@ -2384,33 +2391,44 @@ and it can never say a unit is definitely enough — which is what the solved
 
 ---
 
-## ADR-060 — The same wall, as a mesh, for a hall already built
+## ADR-060 — The plenum's hall side, as a mesh, for a hall already built
 
-**Decision.** `plenum.as_mesh` replaces the plenum and its grilles with the
-13 x 13 mm woven mesh across the opening the units blow through — the same
-component that closes the return plenum into the mechanical gallery, because
-it is the same product and one house standard. The wall stays single, no
-grilles are built, and **the hall keeps every dimension it had**.
+**Decision.** `plenum.as_mesh` keeps the plenum and changes what closes it:
+the hall side is the 13 x 13 mm woven mesh — open over its whole face —
+instead of a wall with grilles in it. The cavity, its depth and the units are
+unchanged. What else changes is who pays for the cavity: **the building does
+not grow for a mesh leaf**, so the depth comes out of the clearance in front
+of the racks instead.
 
-**Why it exists.** A plenum lengthens the building by its depth at each
-gallery (ADR-058), which is the right answer for a hall being designed and no
-answer at all for one already built. What goes in those is a security mesh:
-it keeps people out of the room from the technical corridor, it costs the fan
-its loss coefficient, and it distributes nothing — where each unit aims is
-still where its air goes. Being able to model that, against the same hall
-with a plenum, is what makes the choice an engineering one rather than a
-preference.
+**Why the two differ that way.** A leaf of wall is designed in: the drawing
+is made with it, so the building is drawn longer and every clearance the case
+asked for survives (ADR-058). A leaf of mesh is what a hall ALREADY BUILT can
+be given — and a built room cannot grow 1,2 m at each end. It goes inside the
+room that exists, and the 1,2 m it takes is 1,2 m the racks no longer have.
+Both are real arrangements; the difference between them is a dimension, and
+saying which one a case is lets the dimension be checked.
 
-**It is a pressure, not a surface.** A mesh spanning the units' own opening
-is a uniform resistance in series with them: it cannot change where the air
-goes, so there is nothing for the mesher to build. Its whole effect is on the
-duty, so it is added to `fan_capacity` from its K and the check says it did —
-"includes N Pa for the mesh across the opening, from its K rather than from
-the field". A number the solver did not produce is always named as such
-(ADR-049).
+**A barrier, not a distributor.** The mesh is open everywhere, so it aims
+nothing: where each unit points is still where its air goes, and the cavity
+only evens out what the units do by being a cavity. That is the trade against
+grilles, which cost more and decide direction.
 
-**One product, one number.** The supply side reads the same `gallery_mesh`
+**It IS a surface.** The first attempt modelled it as a loss coefficient
+added to `fan_capacity`, on the reasoning that a mesh over the units' own
+opening cannot redirect anything. It is not over the opening: it closes the
+plenum's hall side, a metre away, and it is as much a surface as a ceiling
+grille. The solver builds it as a cyclic pair like any other porous surface,
+`plenum_resistance` checks the field against its K, and the duty must not
+count it twice.
+
+**One product, one number.** The mesh leaf reads the same `gallery_mesh`
 component as the return side. A house that changes its mesh changes it on
-both sides of the loop, which is what a house standard means (ADR-048), and
-a second component holding the same 13 x 13 mm would be the two of them
+both sides of the loop, which is what a house standard means (ADR-048), and a
+second component holding the same 13 x 13 mm would be the two of them
 drifting apart.
+
+**What the summary was hiding.** The list of surfaces `createBaffles` builds
+came from the wall plan, so a porous surface that is nobody's hole was built
+and never listed. A grille punched through a wall is still counted on that
+wall's line — "less 3 opening(s)", which is the readable way round — and
+anything standing on its own is now named.

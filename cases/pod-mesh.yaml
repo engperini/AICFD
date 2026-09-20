@@ -7,16 +7,18 @@
 #   opening above the dividing wall -> over the plenum lid -> gallery ->
 #   fan wall
 #
-# This is `pod-fanwall` with the wall treatment a hall ALREADY BUILT can
-# have: no plenum and no grilles, just the same 13 x 13 mm woven mesh that
-# closes the return plenum into the gallery, this time across the opening the
-# units blow through. It keeps people out of the room and costs the fan its
-# loss coefficient, and it distributes nothing -- where each unit aims is
-# still where its air goes.
+# This is `pod-plenum` with its inner leaf changed: the same 1,2 m cavity,
+# but the hall side is closed by the 13 x 13 mm woven mesh used on the return
+# instead of a wall with grilles in it. Open over its whole face, it is a
+# barrier rather than a distributor -- it keeps people out of the room and
+# costs the fan its loss coefficient, and where each unit aims is still where
+# its air goes.
 #
-# The point of it is the dimension: the wall stays single, so the hall is
-# exactly the hall of `pod-fanwall`. Run this against `pod-plenum` and the
-# difference is what a plenum buys and what it costs in floor (ADR-060).
+# The point of it is the dimension. A leaf of mesh goes into the room a hall
+# ALREADY HAS, so the building does not grow for it and this case is the same
+# 9 m as `pod-fanwall`; a leaf of wall is designed in and `pod-plenum` is
+# 10,2 m. The cavity comes out of the clearance instead: 0,8 m from the mesh
+# to the first rack here against 2,0 m there (ADR-060).
 name: pod-mesh
 
 site:
@@ -95,5 +97,6 @@ solver:
 
 plenum:
   enabled: true
-  as_mesh: true               # the mesh instead of the plenum: no second
-                              # leaf, no grilles, and the hall keeps its size
+  depth: 1.2                  # between the two leaves, as in pod-plenum
+  as_mesh: true               # the hall side closed by mesh, not by a wall
+                              # with grilles -- and the hall keeps its size

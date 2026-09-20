@@ -1048,6 +1048,36 @@ def _hvac_lines(model: Model) -> list[str]:
     return lines
 
 
+def _plenum_lines(model: Model) -> list[str]:
+    """What the wall between the hall and the gallery is, in the summary.
+
+    Three arrangements, and the summary has to say which one this is: a
+    single wall, a double wall with grilles in its inner leaf, or a double
+    wall whose inner leaf is mesh. The last two share their geometry and
+    differ in what the leaf is and in whether the building grew for it
+    (ADR-058, ADR-060).
+    """
+    if not model.plenum_depth or not model.plenum_grilles:
+        return []
+    face = sum(g.area for g in model.plenum_grilles)
+    if model.supply_mesh_k is not None:
+        return [
+            f"  Supply plenum   {model.plenum_depth:g} m deep, closed on the "
+            f"hall side by 13 x 13 mm mesh over {face:.1f} m2; the hall keeps "
+            f"the size it was built at",
+            f"  Supply mesh     {model.plenum_face_velocity_ms:.2f} m/s "
+            f"through it, {model.plenum_pressure_drop_pa or 0.0:.2f} Pa",
+        ]
+    return [
+        f"  Supply plenum   {model.plenum_depth:g} m between the two leaves "
+        f"of the hall wall, {len(model.plenum_grilles)} grille(s), "
+        f"{face:.1f} m2 of face",
+        f"  Supply grilles  {model.plenum_face_velocity_ms:.2f} m/s on the "
+        f"face (most {model.plenum_face_velocity_max_ms:.1f}), "
+        f"{model.plenum_pressure_drop_pa or 0.0:.2f} Pa",
+    ]
+
+
 def summary(model: Model) -> str:
     """What the generator derived, in the user's units."""
     dx, dy, dz = model.domain.size
@@ -1074,26 +1104,7 @@ def summary(model: Model) -> str:
         f"  Rack demand     {model.rack_demand_m3s * 3600:,.0f} m3/h "
         f"({model.rack_demand_m3s * 3600 / model.airflow_m3h * 100:.0f}% of supply)",
         f"  Design bulk dT  {model.design_delta_t_k:.1f} K",
-        *(
-            [
-                f"  Supply plenum   {model.plenum_depth:g} m between the two "
-                f"leaves of the hall wall, "
-                f"{len(model.plenum_grilles)} grille(s), "
-                f"{sum(g.area for g in model.plenum_grilles):.1f} m2 of face",
-                f"  Supply grilles  "
-                f"{model.plenum_face_velocity_ms:.2f} m/s on the face "
-                f"(most {model.plenum_face_velocity_max_ms:.1f}), "
-                f"{model.plenum_pressure_drop_pa or 0.0:.1f} Pa",
-            ]
-            if model.plenum_depth and model.plenum_grilles
-            else [
-                f"  Supply mesh     13 x 13 mm mesh across the units' opening, "
-                f"{model.supply_mesh_pressure_drop_pa:.2f} Pa; no plenum, the "
-                f"hall keeps its size"
-            ]
-            if model.supply_mesh_k is not None
-            else []
-        ),
+        *_plenum_lines(model),
         f"  Site air        {model.altitude_m:.0f} m, {model.pressure_pa / 1000:.1f} kPa, "
         f"rho {model.rho:.3f} kg/m3",
         *_hvac_lines(model),
@@ -1112,6 +1123,19 @@ def summary(model: Model) -> str:
         lines.append(
             f"    {name:<22} normal {'xyz'[panels[0].axis]} {where}, "
             f"{area:.2f} m2{holed}"
+        )
+    # A porous surface that is not a hole in any wall has no zone in the plan
+    # above, and this list is read as what createBaffles builds -- so the mesh
+    # leaf, which is a surface all by itself, was built and not listed
+    # (ADR-060).
+    holes = {h.name for _z, _w, hs in wall_plan(model) for h in hs}
+    for panel in porous(model):
+        if panel.name in holes:
+            continue
+        lines.append(
+            f"    {panel.name:<22} normal {'xyz'[panel.axis]} at "
+            f"{panel.position:g} m, {panel.area:.2f} m2, "
+            f"K {panel.resistance:.2f}"
         )
     for fan, (intake, supply) in zip(model.fans, fan_patches(model)):
         lines.append(

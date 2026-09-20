@@ -70,6 +70,12 @@ PLENUM_GRILLE_WIDTH = 2.0
 #: a law (ADR-059).
 PLENUM_FACE_VELOCITY_MAX = 3.0
 
+#: How much room has to be left in front of the racks, in metres, once a mesh
+#: leaf has taken its cavity out of the hall. A person has to stand there and
+#: open a cabinet door; below this the clearance the case asked for is not
+#: what the room has (ADR-060).
+PLENUM_MIN_CLEARANCE = 1.0
+
 
 @dataclass(frozen=True)
 class Box:
@@ -487,6 +493,23 @@ class Model:
                 f"and the grilles cost "
                 f"{num(self.plenum_pressure_drop_pa or 0.0, 1)} Pa."
             )
+        if self.supply_mesh_k is not None and self.racks and grilles:
+            # A leaf of mesh goes into the room the hall already has, so the
+            # cavity is taken out of the clearance in front of the racks --
+            # that is the trade, and it is only worth saying when what is
+            # left is too little to work in (ADR-060).
+            leaf = min(g.position for g in grilles)
+            clearance = min(r.box.lo[0] for r in self.racks) - leaf
+            if clearance < PLENUM_MIN_CLEARANCE:
+                alerts.append(
+                    f"The mesh leaf leaves {num(clearance, 2)} m between it "
+                    f"and the first rack, under the "
+                    f"{num(PLENUM_MIN_CLEARANCE, 1)} m a person needs to work "
+                    f"there. The cavity comes out of the room with a mesh -- "
+                    f"the building does not grow for it -- so the clearance "
+                    f"the case asked for is {num(self.plenum_depth)} m "
+                    f"smaller than it reads."
+                )
         available = self.fan_available_pa()
         cost = self.loop_pressure_drop_pa
         if available is not None and cost > available:
@@ -668,20 +691,6 @@ class Model:
         return grilles[0].resistance * 0.5 * self.rho * velocity**2
 
     @property
-    def supply_mesh_pressure_drop_pa(self) -> float | None:
-        """What a security mesh across the units' opening costs, from its K.
-
-        The same mesh as on the return, referred to the fan's own face
-        velocity, because that is the face it covers. It changes no flow -- it is a uniform resistance in
-        series with the units, not a thing that aims air anywhere -- so its
-        whole effect is on the pressure the unit has to produce, which is
-        exactly what has to be checked before choosing it (ADR-060).
-        """
-        if self.supply_mesh_k is None:
-            return None
-        return self.supply_mesh_k * 0.5 * self.rho * self.fan_face_velocity_ms**2
-
-    @property
     def loop_pressure_drop_pa(self) -> float:
         """What the surfaces the air has to cross cost it, added up.
 
@@ -696,8 +705,9 @@ class Model:
             self.rack_pressure_drop_pa
             + self.grille_pressure_drop_pa
             + (self.mesh_pressure_drop_pa or 0.0)
+            # The mesh leaf, where the case has one instead of grilles, is a
+            # `supply` surface like they are and is already in the line above.
             + (self.plenum_pressure_drop_pa or 0.0)
-            + (self.supply_mesh_pressure_drop_pa or 0.0)
         )
 
     def fan_available_pa(self, flow_m3h: float | None = None) -> float | None:
@@ -1350,7 +1360,8 @@ def plenum_for(spec: dict, rack_height: float) -> dict | None:
 
 def _plenum_panels(plenum: dict, dividers: list[float],
                    cold_aisles: list[tuple[float, float]],
-                   ceiling: float, width: float, k: float | None):
+                   ceiling: float, width: float, k: float | None,
+                   mesh_k: float | None = None):
     """The second leaf of the hall wall, and the grilles that let it out.
 
     The wall between the hall and the mechanical gallery becomes a double
@@ -1383,6 +1394,24 @@ def _plenum_panels(plenum: dict, dividers: list[float],
     for side, divider in enumerate(dividers):
         sign = 1 if side == 0 else -1
         face = divider + sign * depth
+        if plenum["as_mesh"]:
+            # The whole leaf is the mesh: one surface, open over its entire
+            # face, at the loss coefficient of the 13 x 13 mm mesh. There is
+            # no solid wall to pierce and no grille to aim, which is exactly
+            # what the arrangement is -- a barrier, not a distributor
+            # (ADR-060).
+            supplies.append(
+                Panel(
+                    "supply_mesh" if side == 0 else f"supply_mesh{side + 1}",
+                    "opening",
+                    axis=0,
+                    position=face,
+                    extent=((0.0, width), (0.0, ceiling)),
+                    resistance=mesh_k,
+                    sign=sign,
+                )
+            )
+            continue
         walls.append(
             Panel(
                 "plenum_wall" if side == 0 else f"plenum_wall{side + 1}",
@@ -1436,11 +1465,15 @@ def _pod_layout(spec: dict, cell, rack_spec: dict | None = None) -> _Layout:
     # which with a plenum is its inner leaf, and the hall grows by the depth
     # so nothing the case asked for moves (ADR-058).
     plenum = plenum_for(spec, rack_dz)
-    # A mesh instead of a plenum takes no room: the wall stays single and the
-    # hall keeps every dimension it had (ADR-060).
-    plenum_depth = plenum["depth"] if plenum and not plenum["as_mesh"] else 0.0
-    start_x = gallery_depth + plenum_depth + float(spec["racks"]["offset_x"])
-    hall_length += plenum_depth
+    plenum_depth = plenum["depth"] if plenum else 0.0
+    # A leaf of mesh goes into the room the hall already has: it is what a
+    # hall ALREADY BUILT can be given, so the building does not grow and the
+    # cavity comes out of the clearance instead. A leaf of wall is designed
+    # in, so the building grows and the clearance is untouched (ADR-058,
+    # ADR-060).
+    grows_by = 0.0 if (plenum and plenum["as_mesh"]) else plenum_depth
+    start_x = gallery_depth + grows_by + float(spec["racks"]["offset_x"])
+    hall_length += grows_by
 
     total_x = gallery_depth + hall_length
     domain = Box((0.0, 0.0, 0.0), (total_x, hall_width, height))
@@ -1487,10 +1520,10 @@ def _pod_layout(spec: dict, cell, rack_spec: dict | None = None) -> _Layout:
 
     cold_aisles = [(0.0, cold)]
     supplies: list[Panel] = []
-    if plenum and not plenum["as_mesh"]:
+    if plenum:
         plenum_walls, supplies = _plenum_panels(
             plenum, [gallery_depth], cold_aisles, ceiling, hall_width,
-            _plenum_k(spec),
+            _plenum_k(spec), _supply_mesh_k(spec),
         )
         walls += plenum_walls
 
@@ -1554,9 +1587,11 @@ def _hall_layout(spec: dict, cell, rack_spec: dict | None = None) -> _Layout:
     # has -- with a plenum that is its inner leaf -- so the plenum is added to
     # the building and taken out of nothing (ADR-058).
     plenum = plenum_for(spec, rack_dz)
-    # A mesh instead of a plenum takes no room (ADR-060).
-    plenum_depth = plenum["depth"] if plenum and not plenum["as_mesh"] else 0.0
-    hall_length = perimeter + row_length + perimeter + sides * plenum_depth
+    plenum_depth = plenum["depth"] if plenum else 0.0
+    # A leaf of mesh goes into the room the hall already has; a leaf of wall
+    # is designed in and the building grows for it (ADR-060).
+    grows_by = 0.0 if (plenum and plenum["as_mesh"]) else plenum_depth
+    hall_length = perimeter + row_length + perimeter + sides * grows_by
     total_x = sides * gallery_depth + hall_length
     width = 2 * perimeter + pods * (2 * rack_dy + hot) + (pods - 1) * cold
     domain = Box((0.0, 0.0, 0.0), (total_x, width, height))
@@ -1565,7 +1600,7 @@ def _hall_layout(spec: dict, cell, rack_spec: dict | None = None) -> _Layout:
     if sides == 2:
         galleries.append(Box((hall.hi[0], 0.0, 0.0), (total_x, width, height)))
 
-    x0 = gallery_depth + plenum_depth + perimeter
+    x0 = gallery_depth + grows_by + perimeter
     spans: list[tuple[float, float]] = []
     x = x0
     for _ in range(n_blocks):
@@ -1648,10 +1683,10 @@ def _hall_layout(spec: dict, cell, rack_spec: dict | None = None) -> _Layout:
             for i, extent in enumerate(extents)
         ]
     supplies: list[Panel] = []
-    if plenum and not plenum["as_mesh"]:
+    if plenum:
         plenum_walls, supplies = _plenum_panels(
             plenum, [hall.lo[0], hall.hi[0]][: len(galleries)],
-            cold_aisles, ceiling, width, _plenum_k(spec),
+            cold_aisles, ceiling, width, _plenum_k(spec), _supply_mesh_k(spec),
         )
         walls += plenum_walls
 
@@ -2105,6 +2140,18 @@ def to_dict(model: Model, spec: dict) -> dict:
         # the case asks for one. The panels say where the leaf is; this says
         # what the arrangement is, for a reader and for the report (ADR-058).
         "plenum_depth_m": model.plenum_depth,
+        # What a case gets where it states nothing. The page shows these in
+        # the fields rather than leaving them blank, so a reader sees the
+        # house standard and either takes it or changes it -- an empty box
+        # says neither what the number would be nor that there is one.
+        "plenum_defaults": {
+            "plenum_depth": PLENUM_DEPTH,
+            "plenum_grille_width": PLENUM_GRILLE_WIDTH,
+            "plenum_grille_height": (
+                round(model.racks[0].box.hi[2], 3) if model.racks else None
+            ),
+            "plenum_face_velocity": PLENUM_FACE_VELOCITY_MAX,
+        },
         # Which perforated surface each role uses here, and what else the
         # library offers. The model page picks; the components page edits.
         "components": components_in_use(spec),

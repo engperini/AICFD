@@ -678,3 +678,34 @@ class ImpossibleChangeTest(unittest.TestCase):
     def test_the_page_tells_the_reader_where_that_file_is(self):
         js = (server.REPO_ROOT / "web" / "app.js").read_text()
         self.assertIn("model.file", js)
+
+
+class PlenumCardTest(unittest.TestCase):
+    """The card a reader meets before deciding anything (ADR-059)."""
+
+    def test_the_house_standard_reaches_the_page(self):
+        """An empty box says neither what the number would be nor that there
+        is one, so the reader has to guess whether leaving it empty means
+        anything."""
+        payload = server.build_payload("pod-fanwall")
+        defaults = payload["plenum_defaults"]
+        self.assertEqual(defaults["plenum_depth"], 1.2)
+        self.assertEqual(defaults["plenum_grille_width"], 2.0)
+        self.assertEqual(defaults["plenum_face_velocity"], 3.0)
+        self.assertAlmostEqual(defaults["plenum_grille_height"], 2.2, places=3)
+
+    def test_the_page_falls_back_to_it(self):
+        js = (server.REPO_ROOT / "web" / "app.js").read_text()
+        self.assertIn("model.plenum_defaults?.[key]", js)
+
+    def test_a_checkbox_shows_whether_or_not_the_case_mentions_it(self):
+        """Filtering on what the case states dropped the two switches and
+        left the plenum as four number boxes with no way to turn it on."""
+        js = (server.REPO_ROOT / "web" / "app.js").read_text()
+        self.assertIn("p.optional || p.check || specValue(p.key) !== ''", js)
+
+    def test_both_arrangements_are_switches_and_both_are_editable(self):
+        for key in ("plenum", "plenum_as_mesh"):
+            with self.subTest(key=key):
+                self.assertIn(key, server.EDITABLE)
+                self.assertIs(server.EDITABLE[key][1], bool)

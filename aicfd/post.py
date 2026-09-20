@@ -945,14 +945,6 @@ def _checks(model: Model, step: Path, kpis: dict, grid: dict) -> list[Check]:
         )
 
     rise = kpis.get("fan_rise_pa")
-    # A mesh across the units' opening is a uniform resistance in series with
-    # them: it cannot change where the air goes, so it is not a surface in
-    # the mesh -- but the unit still pays for it, and a duty that leaves it
-    # out is a duty that is wrong. Added here from its K, and said so
-    # (ADR-060).
-    mesh_drop = model.supply_mesh_pressure_drop_pa
-    if rise is not None and mesh_drop:
-        rise += mesh_drop
     available = model.fan_available_pa()
     if rise is not None and available:
         fans = kpis.get("fans") or []
@@ -978,14 +970,6 @@ def _checks(model: Model, step: Path, kpis: dict, grid: dict) -> list[Check]:
                     f"{kpis['fan_operating_m3h']:,.0f} m3/h and {kpis['fan_operating_pa']:.1f} Pa"
                     if kpis.get("fan_operating_m3h")
                     else ""
-                )
-                + (
-                    # Two decimals: at a POD's face velocity the mesh costs
-                    # four hundredths of a pascal, and a sentence that reads
-                    # "includes 0.0 Pa" is worse than the number it hides.
-                    f"; includes {mesh_drop:.2f} Pa for the mesh across the "
-                    f"opening, from its K rather than from the field"
-                    if mesh_drop else ""
                 )
                 + ("" if rise <= available else " -- the unit cannot deliver this airflow"),
             )

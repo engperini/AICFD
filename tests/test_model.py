@@ -827,37 +827,55 @@ class PlenumSizingTest(unittest.TestCase):
             model.rack_pressure_drop_pa
             + model.grille_pressure_drop_pa
             + (model.mesh_pressure_drop_pa or 0.0)
-            + (model.plenum_pressure_drop_pa or 0.0)
-            + (model.supply_mesh_pressure_drop_pa or 0.0),
+            + (model.plenum_pressure_drop_pa or 0.0),
             places=6,
         )
 
 
 class SupplyMeshTest(unittest.TestCase):
-    """The same wall treatment the other way: the 13 x 13 mm mesh across the
-    opening, no plenum, and a hall that keeps every dimension (ADR-060)."""
+    """The plenum's hall side closed by mesh instead of by a wall with
+    grilles: the same cavity, a leaf that is open over its whole face, and a
+    building that does not grow for it (ADR-060)."""
 
     def spec(self, as_mesh=True) -> dict:
-        spec = support.spec("pod-plenum")
+        spec = support.spec("pod-mesh")
         spec["plenum"] = {**spec.get("plenum", {}), "enabled": True,
                           "as_mesh": as_mesh}
         return spec
 
-    def test_the_hall_keeps_its_size(self):
-        """The reason to choose it: a hall already built cannot grow."""
-        plain = support.spec("pod-plenum")
-        plain["plenum"] = {"enabled": False}
-        mesh = m.build_model(self.spec())
-        self.assertEqual(mesh.domain.hi, m.build_model(plain).domain.hi)
-        self.assertGreater(
-            m.build_model(self.spec(as_mesh=False)).domain.hi[0], mesh.domain.hi[0])
-
-    def test_it_builds_no_plenum_and_no_grilles(self):
+    def test_the_cavity_is_still_there(self):
+        """The first attempt removed the plenum altogether, which is not what
+        a mesh leaf is: the 1,2 m stays and only the leaf changes."""
         model = m.build_model(self.spec())
-        self.assertIsNone(model.plenum_depth)
-        self.assertEqual(model.plenum_grilles, [])
+        self.assertAlmostEqual(model.plenum_depth, 1.2, places=6)
+        leaf, = model.plenum_grilles
+        self.assertAlmostEqual(leaf.position, model.dividers[0] + 1.2, places=6)
+
+    def test_the_leaf_is_open_over_its_whole_face(self):
+        """A barrier, not a distributor: there is no solid wall to pierce and
+        no grille aimed anywhere."""
+        model = m.build_model(self.spec())
+        leaf, = model.plenum_grilles
+        self.assertEqual(leaf.kind, "opening")
         self.assertEqual(
             [p for p in model.panels if p.name.startswith("plenum_wall")], [])
+        self.assertAlmostEqual(leaf.area,
+                               model.domain.hi[1] * model.ceiling_z, places=6)
+
+    def test_the_building_does_not_grow_for_it(self):
+        """The reason to choose it: a hall already built cannot grow, so the
+        cavity comes out of the clearance instead."""
+        plain = support.spec("pod-mesh")
+        plain["plenum"] = {"enabled": False}
+        plain = m.build_model(plain)
+        mesh = m.build_model(self.spec())
+        walled = m.build_model(self.spec(as_mesh=False))
+        self.assertEqual(mesh.domain.hi, plain.domain.hi)
+        self.assertGreater(walled.domain.hi[0], mesh.domain.hi[0])
+        # and the clearance is what pays for it
+        leaf, = mesh.plenum_grilles
+        self.assertAlmostEqual(
+            min(r.box.lo[0] for r in mesh.racks) - leaf.position, 0.8, places=6)
 
     def test_it_is_the_same_mesh_as_the_return_side(self):
         from aicfd import components as library
@@ -865,19 +883,25 @@ class SupplyMeshTest(unittest.TestCase):
         model = m.build_model(self.spec())
         self.assertAlmostEqual(
             model.supply_mesh_k, library.load("gallery-mesh-13").k, places=9)
+        leaf, = model.plenum_grilles
+        self.assertAlmostEqual(leaf.resistance, model.supply_mesh_k, places=9)
 
-    def test_it_costs_the_unit_pressure_on_its_own_face(self):
+    def test_it_is_a_surface_the_solver_builds(self):
+        from aicfd import case as c
+
         model = m.build_model(self.spec())
-        self.assertAlmostEqual(
-            model.supply_mesh_pressure_drop_pa,
-            model.supply_mesh_k * 0.5 * model.rho * model.fan_face_velocity_ms**2,
-            places=9,
-        )
-        self.assertAlmostEqual(
-            model.loop_pressure_drop_pa
-            - model.rack_pressure_drop_pa
-            - model.grille_pressure_drop_pa
-            - (model.mesh_pressure_drop_pa or 0.0),
-            model.supply_mesh_pressure_drop_pa,
-            places=9,
-        )
+        self.assertIn("supply_mesh", [p.name for p in c.porous(model)])
+        self.assertIn("supply_mesh", c.create_baffles_dict(model))
+
+    def test_a_leaf_that_crowds_the_racks_is_said_so(self):
+        """The cavity comes out of the room with a mesh, so what is left in
+        front of the racks is what the case asked for minus the depth."""
+        model = m.build_model(self.spec())
+        self.assertTrue(any("mesh leaf leaves" in a for a in model.alerts))
+        self.assertTrue(any("0.80 m" in a for a in model.alerts))
+
+    def test_room_enough_raises_nothing(self):
+        spec = self.spec()
+        spec["racks"]["offset_x"] = 3.0
+        self.assertFalse(any("mesh leaf leaves" in a
+                             for a in m.build_model(spec).alerts))
