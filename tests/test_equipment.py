@@ -1293,3 +1293,61 @@ class DerivedFieldsAreDeclaredTest(unittest.TestCase):
             {"coil_model": {"air_split_pct": 62, "reference_selections": 0,
                             "reference_error_k": None, "derived_fields": []}})
         self.assertNotIn("read out of the sheet", line)
+
+
+class ArrangementTest(unittest.TestCase):
+    """A downflow unit's coil is right and its geometry is not modelled.
+
+    The library carries room units because their coils are the same physics.
+    The geometry side builds a wall of fans in a mechanical gallery, so naming
+    one as a case's fanwall.model would give the right coil in the wrong shape
+    of room -- a wrong answer that looks like a right one (ADR-072).
+    """
+
+    DOWNFLOW = ("HDCV5300F-HT", "HXCV5000F-HT", "39CRA150")
+
+    def test_the_room_units_declare_themselves(self):
+        for model in self.DOWNFLOW:
+            with self.subTest(model=model):
+                self.assertEqual(equipment.load(model).arrangement, "downflow")
+
+    def test_everything_else_is_a_fan_wall_by_default(self):
+        for model in equipment.available():
+            if model in self.DOWNFLOW:
+                continue
+            with self.subTest(model=model):
+                self.assertEqual(equipment.load(model).arrangement, "fanwall")
+
+    def test_a_case_cannot_build_a_fan_wall_from_one(self):
+        from aicfd.model import equipment_for
+
+        for model in self.DOWNFLOW:
+            with self.subTest(model=model):
+                with self.assertRaises(ValueError) as caught:
+                    equipment_for({"fanwall": {"model": model}})
+                said = str(caught.exception)
+                self.assertIn("not a fan wall", said)
+                self.assertIn("coil is in the library and correct", said)
+
+    def test_a_fan_wall_still_builds(self):
+        from aicfd.model import equipment_for
+
+        unit = equipment_for({"fanwall": {"model": "CA80NPVG6"}})
+        self.assertEqual(unit.arrangement, "fanwall")
+
+    def test_the_room_units_still_pass_every_admission_check(self):
+        """Being unplaceable is not being unverified: they are in the library
+        because their sheets close (ADR-071)."""
+        from aicfd.coil import air_capacity_rate
+
+        for model in self.DOWNFLOW:
+            with self.subTest(model=model):
+                unit = equipment.load(model)
+                self.assertIsNotNone(unit.coil, unit.coil_problem)
+                design = unit.design
+                air = air_capacity_rate(float(design["airflow_m3h"]),
+                                        float(design["return_c"]),
+                                        float(unit.selection["elevation_m"]))
+                heat = air * (float(design["return_c"]) - float(design["supply_c"]))
+                self.assertLess(abs(heat - float(design["nscc_kw"]))
+                                / float(design["nscc_kw"]), 0.01)

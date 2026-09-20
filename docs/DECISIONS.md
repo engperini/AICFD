@@ -2970,3 +2970,36 @@ to ask, and a plant sized on a sheet that does not close is not.
 self-consistent and that what the tool reports about them traces to a
 manufacturer's own arithmetic. A coil fitted from one selection still carries
 an extrapolation the engineer owns (ADR-063).
+
+## ADR-072 — Room units are carried, and refused as fan walls
+
+**Decision.** `equipment/` carries downflow CRAHs alongside fan walls, because
+a coil is a coil and the model that recovers it from one selection does not
+care how the box is installed. `arrangement: downflow` marks them, and
+`equipment_for` refuses to build a fan wall from one.
+
+**The geometry is the part that does not generalise.** This model builds a wall
+of fans across a mechanical gallery, with a return plenum above a false ceiling
+and a contained hot aisle. A downflow CRAH stands in the room and discharges
+under a raised floor. Everything the library knows about such a unit — its
+capacity against the air it receives, its water side, its P–Q curve — is
+correct and useful; the one thing missing is where to put it.
+
+**So the failure is made loud rather than left to be noticed.** Naming a room
+unit as `fanwall.model` used to give a fan wall 3.11 m wide and 2.61 m tall
+with a CRAH's coil in it: every number plausible, the room wrong, and nothing
+saying so. That is the worst kind of wrong answer. It now raises, and the
+message says what is right about the entry as well as what is missing, so
+nobody deletes a good file thinking it is broken.
+
+**Room units are admitted on the same evidence as everything else** (ADR-071).
+Three are carried and all three close on their sheets' own arithmetic. Being
+unplaceable is not being unverified, and when the downflow layout is built they
+are ready.
+
+**The conventions do not travel with the vendor.** Springer Tech's fan-wall
+sheet (396FWA500) and its CRAH sheet (39CRA150) use the same template and the
+same words — "Supply air Dry condition" — for two different things: on the fan
+wall it is the air off the coil, and on the CRAH it is the unit's discharge.
+The arithmetic says which every time (ADR-070) and nothing else does. Never
+infer a convention from the manufacturer's name; multiply and check.

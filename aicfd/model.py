@@ -1020,6 +1020,15 @@ def equipment_for(spec: dict):
     from aicfd import equipment as library
 
     unit = library.load(name)
+    if unit.arrangement != "fanwall":
+        # The coil would be right and the room would be wrong, which is the
+        # kind of wrong answer that looks like a right one (ADR-072).
+        raise ValueError(
+            f"{name} is a {unit.arrangement} unit, not a fan wall: it stands "
+            f"in the room and this model builds a wall of fans in a mechanical "
+            f"gallery. Its coil is in the library and correct; the geometry to "
+            f"place it is not built yet. Name a fan wall unit instead"
+        )
     # The one condition a plant changes without changing the machine, and the
     # one the supply air temperature follows almost one for one once the
     # valve is open. A study at another chilled water temperature is an

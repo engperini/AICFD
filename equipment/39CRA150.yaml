@@ -1,0 +1,69 @@
+# Springer Tech 39CRA150 — DOWNFLOW CRAH.
+#
+# NOT A FAN WALL. Its air throw is downflow front: it stands in the room,
+# where every fan-wall unit here is a wall of fans in a mechanical gallery.
+# The coil model, the capacity and the P-Q curve are the same physics and are
+# carried in full; what this entry does not do is place the unit, because the
+# geometry side models fan walls only (`arrangement: downflow` says so, and
+# the model refuses to build a fan wall from it).
+#
+# ONE manufacturer selection, which is all a unit needs (ADR-063). Validating
+# the extrapolation is the engineer's, and the report says so.
+#
+# Sheet: version 15.39CR.135.140726.H.04.S0, project Vinhedo (Ascenty), 8
+# units, 661 m, 38.0 °C dry bulb / 23.7 °C wet bulb / 30% RH entering air,
+# 150 Pa ESP, 18/28 °C water at 12.9 m3/h, 3 EC fans, 480/3/60, Belimo
+# EP080F+MOD 2-way valve, G4 filters, 6-row coil, 78 dB at 2 m.
+#
+# Three independent checks (ADR-071):
+#   air    33,700 m3/h from 38.0 to 23.2 °C at 661 m  ->  146.0 kW  (+0.67%)
+#   water  12.9 m3/h over a 10 K rise                 ->  149.8 kW  (-0.81%)
+#   gross less the 6 kW of fan power                  ->  145.0 kW  ( exact )
+#
+# ITS SUPPLY IS THE UNIT'S DISCHARGE -- and its maker's fan-wall sheet means
+# something else by the same words. On 396FWA500, "Supply air Dry condition"
+# times the airflow gives that sheet's GROSS, so it is the air off the coil
+# and the fan heat had to be added (ADR-070). Here the same field times the
+# airflow gives the NET, so it is the discharge and is carried as printed.
+# One manufacturer, one template, two conventions: test the arithmetic on
+# every sheet, and never infer the convention from the vendor's name.
+model: 39CRA150
+family: Springer Tech CRAH
+arrangement: downflow
+
+size: [2.73, 0.996, 2.875]    # width x depth x height, metres. The damper
+                              # adds 125 mm of depth; not modelled (ADR-046).
+weight_kg: 1650               # net; 1700 gross, crated
+
+fans:
+  count: 3
+  type: EC
+  modulation: 100             # % of full speed; the sheet states no other
+
+selection:
+  elevation_m: 661
+  esp_pa: 150                 # external static pressure
+  entering_water_c: 18
+  leaving_water_c: 28
+  entering_air_rh: 30         # %
+  water_flow_lh: 12900        # 12.9 m3/h, stated (ADR-069)
+
+design:
+  return_c: 38.0              # air the unit RECEIVES, dry bulb
+  supply_c: 23.2              # discharge air off the unit, dry bulb (72% RH)
+  airflow_m3h: 33700          # actual air at 661 m
+  nscc_kw: 145.0              # NET sensible: 151 gross less 6 of fan power
+  power_kw: 6.0               # electrical power input (28.8 A max, EER 25.2)
+
+curve:
+  # Representative, not the manufacturer's: the sheet gives the one point the
+  # unit was selected to overcome, and the rest has the shape of an EC array.
+  # Replace with the real P-Q curve when it is given, and tick `measured` on
+  # the page.
+  measured: false
+  points:
+    - [0, 390]
+    - [17000, 310]
+    - [33700, 150]
+    - [41000, 70]
+    - [47000, 0]

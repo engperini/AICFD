@@ -24,6 +24,7 @@
 # something being wrong.
 model: HXCV5000F-HT
 family: Schneider Electric Uniflair Chilled Water Room Cooling
+arrangement: downflow
 
 # Width x depth x height, metres. The dimensions page covers the HXCV5000A HT
 # rather than this F -- CONFIRM the two share an envelope. Its height comes in

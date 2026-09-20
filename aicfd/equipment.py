@@ -79,6 +79,7 @@ class Equipment:
     """THE selection this unit is described by, or {} for a unit that names
     none. `capacity` is reference: see aicfd.coil."""
     weight_kg: float | None = None
+    raw_arrangement: str | None = None
     source: Path | None = None
     _coil: object = None
     """Filled on first use by `coil`; `_UNFITTED` until then."""
@@ -139,6 +140,20 @@ class Equipment:
         this evaluated at the selection point and nowhere else.
         """
         return self.at(return_c, "nscc_kw")
+
+    @property
+    def arrangement(self) -> str:
+        """How the unit is installed: `fanwall` or `downflow`.
+
+        The coil model is the same physics for both, and the library carries
+        downflow room units for that reason. The GEOMETRY side is not: it
+        builds a wall of fans in a mechanical gallery, and a downflow CRAH
+        stands in the room and discharges under a floor. Naming one as a case's
+        `fanwall.model` would give the right coil in the wrong shape of room,
+        which is a wrong answer that looks like a right one, so `equipment_for`
+        refuses it (ADR-072).
+        """
+        return str(self.raw_arrangement or "fanwall")
 
     @property
     def derived_fields(self) -> tuple[str, ...]:
@@ -230,6 +245,7 @@ class Equipment:
             "selection": self.selection,
             "design": self.design,
             "derived": list(self.derived_fields),
+            "arrangement": self.arrangement,
             "capacity": [dict(row) for row in self.capacity],
             "curve": self.curve,
             "span": list(self.span) if self.span else None,
@@ -301,6 +317,7 @@ def parse(raw: dict, source: Path | None = None) -> Equipment:
         design=dict(raw.get("design") or {}),
         coil_split=(raw.get("coil") or {}).get("air_split"),
         weight_kg=raw.get("weight_kg"),
+        raw_arrangement=raw.get("arrangement"),
         source=source,
         _coil=_UNFITTED,
     )
