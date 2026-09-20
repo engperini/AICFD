@@ -3172,3 +3172,65 @@ this model does not build. A type named at a position contributes its width
 and, where its other two differ from the row's, says so — silently dropping
 them is how an 1800 mm cabinet ends up drawn 1200 deep. Named as `racks.type`
 it sizes the whole row instead.
+
+## ADR-076 — The raised floor, and the downflow unit that feeds it
+
+**Decision.** `floor.enabled` puts the room on an access floor. Everything
+already placed moves **up** by the floor's depth and the plenum is built
+beneath it, so the room is the room it always was — same aisles, same rack
+heights, same false ceiling, same return plenum — and the **building** is
+taller. The fan wall becomes a downflow unit in the same place on the same
+wall, and the air reaches the cold aisle through perforated plates in the
+floor instead of through the wall.
+
+**The loop, end to end.** Return plenum → the woven mesh above the false
+ceiling → the mechanical gallery → **the unit's top face** → *(not modelled:
+the machine)* → **the unit's bottom face** → the plenum under the gallery →
+**the woven mesh below the deck** → the plenum under the hall → the plates →
+the cold aisle → the cabinets → the hot aisle → the ceiling grilles → back.
+
+**The opening below is the twin of the one above.** The return plenum already
+opens into each gallery across the full width of the hall, closed with a woven
+13 mm mesh (ADR-048). The supply opening is the same hole in the same wall at
+the other end, closed the same way, and it carries the same component. The
+plant pays for that mesh twice — once going up and once coming down — and
+that is what the building really does.
+
+**A plate is as wide as the cabinet in front of it and as deep as the floor
+grid.** The count is what a case sets, not an area, because the floor is built
+in plates and the engineer thinks in plates: two fills a 1.2 m aisle, three an
+1.8 m one, one leaves the far half solid. `racks.tiles` is where a position
+disagrees with the standard, exactly as `racks.loads` is for its load
+(ADR-054). Zero is a cabinet fed only by what reaches it sideways, which is a
+real thing to study and the reason the field exists.
+
+**A downflow unit is two baffles, not one.** The fan wall is a single plane
+doing both jobs: the air leaves the gallery through one side and arrives in
+the hall through the other. Here the two faces are a storey apart, so each
+plane carries one condition and a wall behind it — the top draws from the
+gallery above and is a wall underneath, the bottom delivers into the plenum
+below and is a wall on top. **Give both sides of both planes a condition and
+the unit runs twice.** The same mass leaves the top as enters the bottom;
+volume would not do, for the reason it never does.
+
+**The body between the two faces is left open to the gallery.** Walling it
+would seal a region with no path to anywhere and no pressure reference in it,
+which is a solve that does not converge rather than a detail. The unit is
+drawn and not meshed, exactly as the fan wall's depth already is (ADR-046).
+
+**The orientation check is the same test turned on its side.** For a fan wall
+it measures that the intake's outward normal points at the gallery along x.
+For a downflow unit the faces are normal to z: the return's cells are the
+gallery above it so its normal points down, the supply's are the plenum below
+so its normal points up. Reversed, the unit draws from the plenum it is
+filling — and it would still read as converged, which is why this is measured
+and not assumed.
+
+**The two arrangements are exclusive, and so are the units.** A supply plenum
+at the gallery wall (ADR-058, ADR-060) and a raised floor are two ways of
+getting the same air from the same machines into the same aisles; a case
+asking for both has not chosen, and is refused. Likewise the unit: a case with
+a raised floor needs a `downflow` type and one without needs a `fanwall` one,
+and naming the other is refused with what is right about the file as well as
+what is wrong (ADR-072). This is where the three downflow room units already
+in the library stop being unplaceable.

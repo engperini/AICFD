@@ -383,3 +383,132 @@ class RfpCabinetTest(unittest.TestCase):
             with self.subTest(other=other):
                 self.assertAlmostEqual(racklib.load(other).size[1], 1.200)
         self.assertAlmostEqual(racklib.load("meta-800-1300").size[1], 1.300)
+
+
+class RaisedFloorTest(unittest.TestCase):
+    """The room on an access floor, and the plenum under it (ADR-076)."""
+
+    def spec(self, **floor):
+        spec = copy.deepcopy(support.spec("pod-fanwall"))
+        spec["fanwall"]["model"] = "HDCV5300F-HT"
+        spec["floor"] = {"enabled": True, "height": 1.0,
+                         "tiles_per_rack": 2, **floor}
+        return spec
+
+    def build(self, **floor):
+        return m.build_model(self.spec(**floor))
+
+    def named(self, model, prefix):
+        return [p for p in model.panels if p.name.startswith(prefix)]
+
+    def test_the_room_is_unchanged_and_the_building_is_taller(self):
+        flat = m.build_model(support.spec("pod-fanwall"))
+        up = self.build()
+        lift = 1.0
+        self.assertAlmostEqual(up.domain.hi[2], flat.domain.hi[2] + lift, places=2)
+        self.assertAlmostEqual(up.ceiling_z, flat.ceiling_z + lift, places=2)
+        # The room itself: the cabinet is the same cabinet, a storey higher.
+        a, b = flat.racks[0].box, up.racks[0].box
+        self.assertAlmostEqual(b.lo[2], a.lo[2] + lift, places=2)
+        self.assertAlmostEqual(b.size[2], a.size[2], places=2)
+        self.assertAlmostEqual(up.ceiling_z - b.hi[2], flat.ceiling_z - a.hi[2],
+                               places=2)
+
+    def test_the_aisles_do_not_move(self):
+        flat = m.build_model(support.spec("pod-fanwall"))
+        up = self.build()
+        self.assertEqual(up.cold_aisles, flat.cold_aisles)
+        self.assertEqual(up.hot_aisles, flat.hot_aisles)
+
+    def test_the_deck_covers_the_gallery_too(self):
+        """The units stand on it."""
+        deck = self.named(self.build(), "floor_deck")[0]
+        self.assertEqual(deck.kind, "wall")
+        self.assertEqual(deck.axis, 2)
+        self.assertAlmostEqual(deck.position, 1.0, places=2)
+        model = self.build()
+        (x0, x1), _ = deck.extent
+        self.assertAlmostEqual(x0, model.domain.lo[0], places=2)
+        self.assertAlmostEqual(x1, model.domain.hi[0], places=2)
+
+    def test_the_opening_below_mirrors_the_one_above(self):
+        """Same wall, same width, same mesh -- the plant pays for it twice."""
+        model = self.build()
+        below = self.named(model, "floor_opening")[0]
+        above = self.named(model, "plenum_opening")[0]
+        self.assertEqual(below.axis, above.axis)
+        self.assertAlmostEqual(below.position, above.position, places=6)
+        self.assertEqual(below.extent[0], above.extent[0])      # full width
+        self.assertAlmostEqual(below.resistance, above.resistance, places=6)
+        self.assertEqual((below.extent[1][0], below.extent[1][1]), (0.0, 1.0))
+
+    def test_two_plates_stand_in_front_of_every_cabinet(self):
+        model = self.build()
+        tiles = self.named(model, "tile_")
+        self.assertEqual(len(tiles), 2 * len(model.racks))
+        for tile in tiles:
+            self.assertEqual(tile.axis, 2)
+            self.assertAlmostEqual(tile.position, 1.0, places=2)
+            self.assertIsNotNone(tile.resistance)
+
+    def test_a_plate_is_as_wide_as_the_cabinet_in_front_of_it(self):
+        model = self.build()
+        rack = model.racks[0]
+        mine = [p for p in model.panels if p.name.startswith(f"tile_{rack.id}_")]
+        for tile in mine:
+            (x0, x1), _ = tile.extent
+            self.assertAlmostEqual(x0, rack.box.lo[0], places=2)
+            self.assertAlmostEqual(x1, rack.box.hi[0], places=2)
+
+    def test_the_plates_lie_in_the_cold_aisle(self):
+        model = self.build()
+        cold = model.cold_aisles[0]
+        for tile in self.named(model, "tile_"):
+            _, (y0, y1) = tile.extent
+            self.assertGreaterEqual(y0 + 1e-6, cold[0])
+            self.assertLessEqual(y1 - 1e-6, cold[1])
+
+    def test_the_count_is_what_the_case_sets(self):
+        self.assertEqual(len(self.named(self.build(tiles_per_rack=3), "tile_")),
+                         3 * 3)
+        self.assertEqual(self.named(self.build(tiles_per_rack=0), "tile_"), [])
+
+    def test_a_position_can_say_its_own_count(self):
+        spec = self.spec()
+        spec["racks"]["tiles"] = {"R2": 0}
+        model = m.build_model(spec)
+        self.assertEqual([p.name for p in model.panels
+                          if p.name.startswith("tile_R2_")], [])
+        self.assertEqual(len([p for p in model.panels
+                              if p.name.startswith("tile_R1_")]), 2)
+
+    def test_the_unit_keeps_its_place_and_gains_a_second_face(self):
+        model = self.build()
+        self.assertEqual(len(model.fans), 1, "one unit, not two panels")
+        unit = model.fans[0]
+        self.assertEqual(unit.axis, 2)
+        self.assertAlmostEqual(unit.position, 1.0, places=2)
+        self.assertIsNotNone(unit.return_z)
+        self.assertGreater(unit.return_z, unit.position)
+        # It reaches back into the gallery from the wall the fan wall stood in.
+        (x0, x1), _ = unit.extent
+        self.assertLessEqual(x1, model.hall.lo[0] + 1e-6)
+
+    def test_the_unit_moves_what_one_unit_moves(self):
+        """Two panels per unit would have halved this and nothing would say so."""
+        flat = m.build_model(support.spec("pod-fanwall"))
+        self.assertAlmostEqual(self.build().unit_airflow_m3h,
+                               flat.unit_airflow_m3h, places=3)
+
+    def test_a_raised_floor_and_a_supply_plenum_are_exclusive(self):
+        spec = self.spec()
+        spec["plenum"] = {"enabled": True}
+        with self.assertRaises(ValueError) as caught:
+            m.build_model(spec)
+        self.assertIn("Choose one", str(caught.exception))
+
+    def test_the_depth_is_held_to_a_range(self):
+        for bad in (0.1, 4.0):
+            with self.subTest(height=bad):
+                with self.assertRaises(ValueError):
+                    self.build(height=bad)

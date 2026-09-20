@@ -114,6 +114,15 @@ class Panel:
     hall is at higher x), -1 when the gallery is at higher x. A hall with a
     gallery at each end carries both, and the sign is what tells the fan wall
     which half of its baffle pair is the intake (ADR-027)."""
+    return_z: float | None = None
+    """A downflow unit's RETURN face, a storey above its supply one.
+
+    A fan wall is one vertical plane: the air leaves the gallery and arrives
+    in the hall across the same face. A downflow unit is two horizontal ones
+    -- it draws through its top and delivers through its bottom -- and the
+    two are a unit's height apart. Carried on the supply panel rather than as
+    a second panel so that everything counting units keeps counting units
+    (ADR-076)."""
     of_rack: bool = False
     """This face belongs to the rack row, not to the room: the rack's own lid
     and ends, which exist so the porous zone breathes front to back and not
@@ -320,6 +329,11 @@ class Model:
     """The x span of each block of rack rows. A row cut by a transverse
     divider is two blocks, each a containment volume of its own, each served
     by the gallery at its end. Empty means one block spanning every rack."""
+    floor_height: float | None = None
+    """Depth of the raised-floor supply plenum, where a case has one. The room
+    above it is unchanged and the building is taller by this (ADR-076)."""
+    floor_tile_k: float | None = None
+    """Loss coefficient of one perforated plate, on its gross face."""
     warnings: list[str] = field(default_factory=list)
     alerts: list[str] = field(default_factory=list)
     """Design criteria the HVAC does not meet. Alerts, never blockers: a
@@ -858,7 +872,22 @@ def sensors(model: Model) -> list[SensorGroup]:
         x = fan.position - 0.3 * fan.sign
         return min(max(x, model.cell(0)), model.domain.hi[0] - model.cell(0))
 
-    if len(fans) >= 3:
+    def above(fan: Panel) -> tuple[float, float, float]:
+        """A downflow unit returns through its TOP face, so the air it draws
+        is the air just above that face -- not the air behind a wall it does
+        not have. Sampling where the fan wall's sensor used to sit reads the
+        gallery at rack height, which on this arrangement is nearly supply
+        air, and the return-path check then says the loop is broken when it
+        is only being measured in the wrong place (ADR-076)."""
+        (x0, x1), (y0, y1) = fan.extent
+        return ((x0 + x1) / 2, (y0 + y1) / 2,
+                fan.return_z + 0.3)  # type: ignore[operator]
+
+    downflow = [f for f in fans if f.return_z is not None]
+    if downflow:
+        picked = (downflow[0], downflow[len(downflow) // 2], downflow[-1])
+        fan_points = tuple(above(fan) for fan in picked)
+    elif len(fans) >= 3:
         picked = (fans[0], fans[len(fans) // 2], fans[-1])
         fan_points = tuple(
             (behind(fan), mid(fan.extent[0]), fan.extent[1][1] * 0.5) for fan in picked
@@ -1029,14 +1058,24 @@ def equipment_for(spec: dict):
             f"the model that would answer for a refrigerant circuit is not "
             f"built. Name a chilled-water unit instead"
         )
-    if unit.arrangement != "fanwall":
-        # The coil would be right and the room would be wrong, which is the
-        # kind of wrong answer that looks like a right one (ADR-072).
+    # WHICH ARRANGEMENT THE CASE IS. A raised floor is fed by units that blow
+    # downward through it; a gallery wall is fed by a wall of fans. Each is
+    # the wrong machine in the other's room, and the coil being right is what
+    # makes that wrong answer look like a right one (ADR-072, ADR-076).
+    wanted = "downflow" if raised_floor_for(spec) else "fanwall"
+    if unit.arrangement != wanted:
+        how = ("stands in the room and discharges downward"
+               if unit.arrangement == "downflow"
+               else "is a wall of fans in a mechanical gallery")
+        needs = ("a raised floor, which this case has not got"
+                 if unit.arrangement == "downflow"
+                 else "no raised floor, and this case has one")
         raise ValueError(
-            f"{name} is a {unit.arrangement} unit, not a fan wall: it stands "
-            f"in the room and this model builds a wall of fans in a mechanical "
-            f"gallery. Its coil is in the library and correct; the geometry to "
-            f"place it is not built yet. Name a fan wall unit instead"
+            f"{name} {how}, which needs {needs}. Its coil is in the library "
+            f"and correct; it is the room that does not match. Name a "
+            f"{wanted} unit, or "
+            + ("add `floor.enabled: true`" if wanted == "fanwall"
+               else "remove `floor.enabled`")
         )
     # The one condition a plant changes without changing the machine, and the
     # one the supply air temperature follows almost one for one once the
@@ -1178,6 +1217,14 @@ def build_model(spec: dict) -> Model:
     # summary table and the solved case then describe the same geometry -- a
     # table that quotes the nominal area while the mesh builds another one is
     # exactly the kind of quiet disagreement this module exists to prevent.
+    # The floor goes under a room that is already placed: everything moves up
+    # by its depth and the plenum is built beneath (ADR-076). Done here, after
+    # the panels are assembled and before the mesh is snapped, so the snapper
+    # sees the finished geometry and the deck lands on a grid line like every
+    # other plane.
+    floor = raised_floor_for(spec)
+    if floor:
+        _raise_onto_floor(model, floor, spec, cell)
     # The row's own notes first: a cabinet width the mesh moved is said by
     # position, which is what a reader can act on, where the general alignment
     # check can only say a face fell between grid lines (ADR-074).
@@ -1300,6 +1347,214 @@ def row_plan(spec: dict, count: int) -> list[dict]:
             )
         plan.append(dict(entry))
     return plan
+
+
+def _raise_onto_floor(model: "Model", floor: dict, spec: dict, cell) -> None:
+    """Lift the room onto an access floor and build the plenum under it.
+
+    Everything already placed moves up by the floor's depth, so the room is
+    the room it always was and the building is taller. Then four things are
+    added under it and one is replaced (ADR-076):
+
+    * the DECK -- the finished floor itself, a wall across the whole footprint
+      at the new zero, the gallery included, because the units stand on it;
+    * the OPENING in each dividing wall, from the slab to the deck and the
+      full width of the hall. It is the same hole as the one above the false
+      ceiling and it is closed the same way, with the same woven mesh: the
+      plant pays for it once going up and once coming down;
+    * the PLATES, in the cold aisle floor in front of the cabinets;
+    * the UNITS' two faces, which is what the fan wall becomes here.
+
+    A downflow unit returns through its top face and supplies through its
+    bottom one, so its two faces are horizontal and a storey apart rather than
+    one vertical plane. The volume the unit's own body occupies between them
+    is left open to the gallery rather than walled: the body is drawn and not
+    meshed, as the fan wall's depth already is (ADR-046), and sealing it would
+    leave a region with no path to anywhere and no pressure reference in it.
+    """
+    lift = floor["height"]
+    up = lambda z: z + lift  # noqa: E731
+
+    model.domain = Box(model.domain.lo, (model.domain.hi[0], model.domain.hi[1],
+                                         up(model.domain.hi[2])))
+    model.hall = Box((model.hall.lo[0], model.hall.lo[1], up(model.hall.lo[2])),
+                     (model.hall.hi[0], model.hall.hi[1], up(model.hall.hi[2])))
+    model.galleries = [
+        Box((b.lo[0], b.lo[1], up(b.lo[2])), (b.hi[0], b.hi[1], up(b.hi[2])))
+        for b in model.galleries
+    ]
+    model.ceiling_z = up(model.ceiling_z)
+    for row in model.rows:
+        row.racks = [
+            dataclasses.replace(r, box=Box(
+                (r.box.lo[0], r.box.lo[1], up(r.box.lo[2])),
+                (r.box.hi[0], r.box.hi[1], up(r.box.hi[2]))))
+            for r in row.racks
+        ]
+    model.racks = [rack for row in model.rows for rack in row.racks]
+
+    def lifted(panel: Panel) -> Panel:
+        if panel.axis == 2:
+            return dataclasses.replace(panel, position=up(panel.position))
+        # The z range of a panel normal to x or y is its second in-plane axis.
+        (a0, a1), (b0, b1) = panel.extent
+        return dataclasses.replace(panel, extent=((a0, a1), (up(b0), up(b1))))
+
+    units = [p for p in model.panels if p.kind == "fan"]
+    others = [lifted(p) for p in model.panels if p.kind != "fan"]
+
+    deck_k = None
+    tile = component_for(spec, "floor_tile")
+    mesh = component_for(spec, "gallery_mesh")
+    added: list[Panel] = [
+        Panel("floor_deck", "wall", axis=2, position=lift,
+              extent=((model.domain.lo[0], model.domain.hi[0]),
+                      (model.domain.lo[1], model.domain.hi[1])))
+    ]
+    dividers = [model.hall.lo[0], model.hall.hi[0]][: len(model.galleries)]
+    for i, x in enumerate(dividers):
+        added.append(Panel(
+            "floor_opening" if i == 0 else f"floor_opening{i + 1}",
+            "opening", axis=0, position=x,
+            extent=((0.0, model.domain.hi[1]), (0.0, lift)),
+            resistance=mesh.k if mesh else None,
+            sign=1 if i == 0 else -1,
+        ))
+    added += _floor_tiles(model, spec, floor, lift, tile, cell)
+    added += _downflow_units(model, units, spec, lift)
+    model.panels = others + added
+    model.floor_height = lift
+    model.floor_tile_k = tile.k if tile else None
+    _ = deck_k
+
+
+def _floor_tiles(model: "Model", spec: dict, floor: dict, lift: float,
+                 tile, cell) -> list[Panel]:
+    """Perforated plates in the cold aisle floor, in front of the cabinets.
+
+    A plate is the floor grid's own tile -- 600 mm square as the component
+    states it -- and the count is how many rows of them stand between the
+    cabinet's face and the aisle. Two fills a 1.2 m aisle and three an 1.8 m
+    one, which is why the count is what a case sets rather than an area: the
+    engineer thinks in plates because the floor is built in plates.
+
+    A plate is as wide as the CABINET in front of it, not as wide as the grid:
+    a 800 mm cabinet gets 800 mm of open floor. The depth is the component's,
+    because the plates line up with the floor and not with the racks.
+    """
+    depth = float(tile.size[1]) if tile and getattr(tile, "size", None) else 0.6
+    standard = floor["tiles_per_rack"]
+    stated = rack_tiles(spec)
+    out: list[Panel] = []
+    for row in model.rows:
+        # The plates lie in the cold aisle, which is the side the cabinets
+        # face. `front_sign` says which way that is.
+        face = row.front_y
+        step = -depth if row.front_sign > 0 else depth
+        for rack in row.racks:
+            count = stated.get(rack.id, standard)
+            if count <= 0:
+                continue
+            for n in range(count):
+                edge = face + step * n
+                lo, hi = sorted((edge, edge + step))
+                out.append(Panel(
+                    f"tile_{rack.id}_{n + 1}".replace("-", "_").replace(".", "_"),
+                    "opening", axis=2, position=lift,
+                    extent=((rack.box.lo[0], rack.box.hi[0]), (lo, hi)),
+                    resistance=tile.k if tile else None,
+                ))
+    return out
+
+
+def _downflow_units(model: "Model", units: list[Panel], spec: dict,
+                    lift: float) -> list[Panel]:
+    """Each unit's two horizontal faces, in the place its fan wall stood.
+
+    The rectangle is the same one the fan wall drew -- same wall, same width,
+    same order along it -- so a layout swaps between the two arrangements
+    without moving a machine. What changes is where the air crosses: down
+    through the deck into the plenum, and in again through the top of the
+    unit, a storey above.
+    """
+    height = float(spec["fanwall"]["height"])
+    depth = float(spec["fanwall"].get("depth", 1.2))
+    out: list[Panel] = []
+    for unit in units:
+        # A fan wall is normal to x, so its in-plane ranges are (y, z): the
+        # first is its WIDTH along the dividing wall. A downflow unit's faces
+        # are normal to z, whose in-plane ranges are (x, y) -- so the width
+        # stays in y and the depth becomes the x range, reaching back into the
+        # gallery from the wall the fan wall stood in.
+        (y0, y1), _ = unit.extent
+        x0, x1 = sorted((unit.position, unit.position - depth * unit.sign))
+        # `sign` says which patch createBaffles hands the owner cell. For a
+        # z-normal face the owner is the cell BELOW: under the supply face
+        # that is the plenum, the side the air arrives on, so the supply is
+        # the master and the sign is negative (ADR-076).
+        out.append(Panel(
+            unit.name, "fan", axis=2, position=lift,
+            extent=((x0, x1), (y0, y1)), sign=-1,
+            return_z=lift + height,
+        ))
+    return out
+
+
+def raised_floor_for(spec: dict) -> dict | None:
+    """The raised floor, where a case has one (ADR-076).
+
+    An access floor turns the space under the room into a supply plenum. The
+    room above it is unchanged -- same aisles, same rack heights, same false
+    ceiling and the same return plenum over it -- and the BUILDING grows by
+    the floor's depth, because the plenum is added under the finished floor
+    rather than taken out of the room.
+
+    It replaces the fan wall with a downflow unit and it cannot be combined
+    with a supply plenum at the gallery wall: that plenum is the alternative
+    way of getting air from the same units into the same aisles, and a case
+    asking for both is a case that has not chosen (ADR-058, ADR-060).
+    """
+    raw = spec.get("floor") or {}
+    if not raw.get("enabled"):
+        return None
+    height = float(raw.get("height", 1.0))
+    if not 0.2 <= height <= 3.0:
+        raise ValueError(
+            f"floor.height: {height:g} m is outside 0.2-3.0 m"
+        )
+    tiles = int(raw.get("tiles_per_rack", 2))
+    if not 0 <= tiles <= 10:
+        raise ValueError(f"floor.tiles_per_rack: {tiles} is outside 0-10")
+    if (spec.get("plenum") or {}).get("enabled") or \
+            (spec.get("plenum") or {}).get("as_mesh"):
+        raise ValueError(
+            "a raised floor and a supply plenum are two ways of getting the "
+            "same air from the same units into the same aisles. Choose one: "
+            "`floor.enabled` with downflow units, or `plenum` with a fan wall"
+        )
+    return {"height": height, "tiles_per_rack": tiles}
+
+
+def rack_tiles(spec: dict) -> dict[str, int]:
+    """How many plates stand in front of each position, where it says its own.
+
+    The standard is `floor.tiles_per_rack`; this is the list of positions that
+    disagree, exactly as the load has always worked (ADR-054). Zero is a
+    cabinet fed by nothing but what reaches it sideways, which is a real thing
+    to model and the reason the field exists.
+    """
+    raw = (spec.get("racks") or {}).get("tiles") or {}
+    out = {}
+    for rack_id, value in raw.items():
+        if value is None:
+            continue
+        count = int(value)
+        if not 0 <= count <= 10:
+            raise ValueError(
+                f"racks.tiles[{rack_id}]: {count} is outside 0-10"
+            )
+        out[str(rack_id)] = count
+    return out
 
 
 def rack_type_defaults(spec: dict) -> dict:
@@ -2441,6 +2696,10 @@ def to_dict(model: Model, spec: dict) -> dict:
         "dividers": model.dividers,
         "blocks": [list(span) for span in model.rack_blocks],
         "ceiling_z": model.ceiling_z,
+        # The room stands this far above the slab, where a case is on an
+        # access floor. The drawing shades and names the volume under it
+        # (ADR-076).
+        "floor_height": model.floor_height,
         "aisles": {
             "cold": list(model.cold_aisle),
             "racks": list(model.rack_band),

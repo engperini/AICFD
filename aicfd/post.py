@@ -122,6 +122,17 @@ PLAUSIBLE_SPEED_MARGIN = 5.0
 #: has not finished arriving.
 RETURN_PATH = ("hot_aisle", "plenum", "fan_back")
 
+#: Surfaces the air is MEANT to cross, by name prefix. Everything else that
+#: carries flow is a leak, which is what `sealed_envelope` is for.
+#:
+#: A ceiling return grille and the woven mesh closing the plenum into a
+#: mechanical gallery are both holes with a pressure jump rather than walls
+#: (ADR-048); so are a supply plenum's grilles (ADR-058), a raised floor's
+#: perforated plates, and the mesh below its deck (ADR-076). Leaving one out
+#: makes the check fail on a hall that is sealed, which is how this list came
+#: to be a named constant instead of a literal buried in the check.
+PASSES_FLOW = ("grille", "plenum_opening", "supply", "floor_opening", "tile_")
+
 #: How far apart the return path may read before the run is not settled, in
 #: kelvin. Loose enough for real stratification in a 1,5 m plenum, tight enough
 #: to catch a volume still filling.
@@ -863,15 +874,11 @@ def _checks(model: Model, step: Path, kpis: dict, grid: dict) -> list[Check]:
         )
     )
 
-    # A perforated surface is meant to carry flow: a ceiling return grille and
-    # the woven mesh closing the plenum into a mechanical gallery are both
-    # holes with a pressure jump, not walls (ADR-048). Everything else that
-    # carries flow is a leak, which is what this check is for.
     leaks = {
         name: flow
         for name, flow in flows.items()
         if not _is_fan_patch(name)
-        and not name.startswith(("grille", "plenum_opening", "supply"))
+        and not name.startswith(PASSES_FLOW)
         and abs(flow) > MASS_TOLERANCE * supply
     }
     checks.append(

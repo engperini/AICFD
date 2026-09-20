@@ -53,6 +53,8 @@
    stands parallel to, and NOT the containment green every other wall
    wears (ADR-058). */
 .dw-partition{fill:none;stroke:var(--solid);stroke-width:2}
+/* The raised floor's deck: the floor of the room, not a wall to read. */
+.dw-deck{fill:none;stroke:var(--solid);stroke-width:.6;opacity:.35}
 
 .dw-divider{stroke:var(--solid);stroke-width:2.6}
 .dw-note{fill:var(--text-secondary);font-size:10px;text-anchor:middle;font-weight:600}

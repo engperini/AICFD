@@ -78,6 +78,23 @@ const SECTIONS = [
     ],
   },
   {
+    title: 'Raised floor',
+    note: 'the space under the room, as a supply plenum',
+    componentsLink: true,
+    params: [
+      // On, the units blow downward through the deck and the air reaches the
+      // cold aisle through plates in the floor. It cannot be combined with a
+      // supply plenum at the gallery wall: those are two ways of doing the
+      // same thing, and a case asking for both has not chosen (ADR-076).
+      { key: 'floor', label: 'Supply through a raised floor', check: true,
+        default: false },
+      { key: 'floor_height', label: 'Floor plenum depth', unit: 'm', step: 0.1,
+        optional: true },
+      { key: 'floor_tiles', label: 'Plates in front of each rack', unit: '',
+        step: 1, optional: true },
+    ],
+  },
+  {
     title: 'Fan walls',
     note: 'per unit, as the datasheet gives them',
     // The unit's own characterisation -- its capacity against the air it

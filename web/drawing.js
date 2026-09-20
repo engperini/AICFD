@@ -120,10 +120,16 @@ const PANEL_LABEL = {
 const EDGE_LABEL = {
   plenum_opening: 'return',
   plenum_opening2: 'return',
+  floor_opening: 'supply',
+  floor_opening2: 'supply',
 };
 
 const isSupply = (panel) => /^supply\d/.test(panel.name);
 const isPlenumWall = (panel) => /^plenum_wall/.test(panel.name);
+// A raised floor's pieces: the perforated plates in the cold aisle, the deck
+// itself, and the mesh in the dividing wall below it (ADR-076).
+const isTile = (panel) => /^tile_/.test(panel.name);
+const isDeck = (panel) => panel.name === 'floor_deck';
 
 /** A fan wall is named once: seventeen captions reading "fan wall" say less
  * than one, and the rest are the same blue rectangle in the same wall. */
@@ -175,8 +181,11 @@ const klass = (panel) =>
   // made it a new thing to learn on a drawing where red already means "a
   // grille is here".
   isPlenumWall(panel) ? 'dw-partition'
-    : panel.kind === 'wall' ? 'dw-wall'
-      : panel.kind === 'fan' ? 'dw-fan' : 'dw-opening';
+    // The deck is the floor, not a wall to look at: drawn faint so the room
+    // on top of it stays the thing being read.
+    : isDeck(panel) ? 'dw-deck'
+      : panel.kind === 'wall' ? 'dw-wall'
+        : panel.kind === 'fan' ? 'dw-fan' : 'dw-opening';
 
 function el(tag, attrs = {}, text) {
   const node = document.createElementNS(NS, tag);
@@ -400,6 +409,17 @@ export function drawView(model, view, scale, options = {}) {
       [model.hall.hi[0], model.domain.hi[1], model.domain.hi[2]],
       'dw-plenum',
     );
+    // 3b — the supply plenum under the deck, where a case has one. It runs
+    // under the gallery as well as under the hall, because that is where the
+    // units discharge into it (ADR-076). Cold rather than hot: it is the
+    // supply side of the loop, and the drawing already says cold in blue.
+    if (model.floor_height) {
+      paint(
+        [model.domain.lo[0], model.domain.lo[1], model.domain.lo[2]],
+        [model.domain.hi[0], model.domain.hi[1], model.floor_height],
+        'dw-cold',
+      );
+    }
   }
 
   // 4 — panels the section sees face-on: we look straight at the rectangle.
@@ -636,6 +656,10 @@ function annotate(svg, model, view, X, Y, bounds) {
     put([hallMidX, 0, model.ceiling_z + 0.6],
       galleries.length > 1 ? 'return plenum (shared)' : 'return plenum',
       'dw-note dw-hot-t');
+    if (model.floor_height) {
+      put([hallMidX, 0, model.floor_height / 2],
+        'underfloor supply plenum', 'dw-note dw-cold-t');
+    }
   }
   if (view.id === 'plan') {
     for (const x of galleryMids) put([x, model.domain.hi[1] - 0.35, 0], 'gallery');

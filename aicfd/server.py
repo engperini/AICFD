@@ -89,6 +89,12 @@ EDITABLE = {
     # opening and no plenum, for a hall already built that cannot grow
     # (ADR-060).
     "plenum_as_mesh": (("plenum", "as_mesh"), bool, None),
+    # --- raised floor --------------------------------------------------------
+    # The room on an access floor: the units blow down through the deck and the
+    # air reaches the cold aisle through plates in it (ADR-076).
+    "floor": (("floor", "enabled"), bool, None),
+    "floor_height": (("floor", "height"), float, (0.2, 3.0)),
+    "floor_tiles": (("floor", "tiles_per_rack"), int, (0, 10)),
     "supply_grille": (("components", "supply_grille"), "component", "supply_grille"),
     "fan_static_pa": (("fanwall", "static_pressure_pa"), float, (0.0, 2_000.0)),
     # --- return grilles -----------------------------------------------------

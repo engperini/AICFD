@@ -506,16 +506,20 @@ class GrilleAndFanBudgetTest(unittest.TestCase):
     def test_the_perforated_surfaces_are_not_leaks(self):
         """A cyclic pair carries the return flow by design.
 
-        Both of them: the ceiling return grilles and the woven mesh closing
-        the plenum where it opens into a mechanical gallery. Leaving the mesh
-        out made the sealed-envelope check fail on a hall that was sealed
-        (ADR-048).
+        The ceiling return grilles, the woven mesh closing the plenum where it
+        opens into a mechanical gallery, a supply plenum's grilles, and a
+        raised floor's plates and the mesh below its deck. Leaving any of them
+        out makes the sealed-envelope check fail on a hall that is sealed
+        (ADR-048, ADR-076).
         """
-        import inspect
-
-        source = inspect.getsource(post._checks)
-        self.assertIn(
-            'not name.startswith(("grille", "plenum_opening", "supply"))', source)
+        for prefix in ("grille", "plenum_opening", "supply",
+                       "floor_opening", "tile_"):
+            with self.subTest(prefix=prefix):
+                self.assertIn(prefix, post.PASSES_FLOW)
+        # And a real wall is still a leak when it carries flow.
+        for wall in ("divider", "forro", "piso", "rack_top", "containment_wall"):
+            with self.subTest(wall=wall):
+                self.assertFalse(wall.startswith(post.PASSES_FLOW))
 
     def test_the_fan_capacity_check_reads_the_curve_at_the_rated_flow(self):
         self.assertAlmostEqual(self.model.fan_available_pa(), 100.0)

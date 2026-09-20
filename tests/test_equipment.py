@@ -1351,10 +1351,25 @@ class ArrangementTest(unittest.TestCase):
                 said = str(caught.exception)
                 # A DX room unit is refused on the coil before the geometry;
                 # either refusal names what is right about the file as well as
-                # what is missing, so nobody deletes a good one.
-                self.assertTrue("not a fan wall" in said
+                # what is wrong, so nobody deletes a good one.
+                self.assertTrue("discharges downward" in said
                                 or "chilled-water one" in said, said)
                 self.assertIn("in the library", said)
+
+    def test_a_room_unit_is_what_a_raised_floor_wants(self):
+        """The same file that is wrong for a gallery wall is right for an
+        access floor, and the refusal names which room it needs (ADR-076)."""
+        from aicfd.model import equipment_for
+
+        spec = {"fanwall": {"model": "39CRA150"},
+                "floor": {"enabled": True, "height": 1.0}}
+        self.assertEqual(equipment_for(spec).arrangement, "downflow")
+        with self.assertRaises(ValueError) as caught:
+            equipment_for({"fanwall": {"model": "CA80NPVG6"},
+                           "floor": {"enabled": True, "height": 1.0}})
+        said = str(caught.exception)
+        self.assertIn("wall of fans", said)
+        self.assertIn("this case has one", said)
 
     def test_a_fan_wall_still_builds(self):
         from aicfd.model import equipment_for

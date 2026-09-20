@@ -241,7 +241,8 @@ def wall_plan(model: Model) -> list[tuple[str, list[Panel], list[Panel]]]:
         holes = [
             p
             for p in model.panels
-            if (p.kind == "fan" or p.name.startswith("plenum_opening"))
+            if (p.kind == "fan" or p.name.startswith(("plenum_opening",
+                                                       "floor_opening")))
             and abs(p.position - x) < 1e-6
         ]
         plan.append((name, [divider], holes))
@@ -259,6 +260,17 @@ def wall_plan(model: Model) -> list[tuple[str, list[Panel], list[Panel]]]:
 
     grilles = [p for p in model.panels if p.name.startswith("grille")]
     plan.append(("forro", [model.panel("ceiling")], grilles))
+
+    # The raised floor is the false ceiling's twin, the other way up: a wall
+    # across the whole footprint, perforated where the air is meant to come
+    # through. Its holes are the plates in the cold aisles and, in the
+    # gallery, the face each unit discharges through (ADR-076).
+    deck = next((p for p in model.panels if p.name == "floor_deck"), None)
+    if deck is not None:
+        holes = [p for p in model.panels
+                 if p.name.startswith("tile_")
+                 or (p.kind == "fan" and abs(p.position - deck.position) < 1e-6)]
+        plan.append(("piso", [deck], holes))
 
     for zone in dict.fromkeys(group for group, _prefix in WALL_GROUPS):
         prefixes = tuple(prefix for group, prefix in WALL_GROUPS if group == zone)
@@ -345,7 +357,17 @@ def topo_set_dict(model: Model) -> str:
         for name, panel, holes in wall_plan(model)
     ]
     for fan in model.fans:
-        actions.append(_face_selection(fan.name, [fan], [], cell))
+        if fan.return_z is None:
+            actions.append(_face_selection(fan.name, [fan], [], cell))
+            continue
+        # A downflow unit is two zones, one per face, because each carries its
+        # own condition and they are a storey apart (ADR-076).
+        import dataclasses as _dc
+
+        actions.append(_face_selection(f"{fan.name}_supply", [fan], [], cell))
+        actions.append(_face_selection(
+            f"{fan.name}_return",
+            [_dc.replace(fan, position=fan.return_z)], [], cell))
     # Each grille is its own zone: it becomes a cyclic pair carrying the
     # datasheet's pressure loss, not a hole. The forro zone above already has
     # these faces removed, so nothing is claimed twice.
@@ -408,7 +430,8 @@ def porous(model: Model) -> list[Panel]:
     """
     return [p for p in model.panels
             if p.resistance is not None
-            and p.name.startswith(("grille", "plenum_opening", "supply"))]
+            and p.name.startswith(("grille", "plenum_opening", "supply",
+                                   "floor_opening", "tile_"))]
 
 
 def _porous_baffle(grille: Panel, p0: float) -> str:
@@ -487,7 +510,10 @@ def create_baffles_dict(model: Model) -> str:
         )
 
     for fan in model.fans:
-        entries.append(_fan_baffle(model, fan, k, epsilon))
+        if fan.return_z is None:
+            entries.append(_fan_baffle(model, fan, k, epsilon))
+        else:
+            entries += _downflow_baffles(model, fan, k, epsilon)
 
     return f"""{_header(model, "dictionary", "createBafflesDict")}
 // Turn internal faces into real two-sided patches. Everything here is inside
@@ -499,6 +525,106 @@ baffles
 {chr(10).join(entries)}
 }}
 """
+
+
+def _downflow_baffles(model: Model, fan: Panel, k: float,
+                      epsilon: float) -> list[str]:
+    """A downflow unit as TWO baffles, each with one working side (ADR-076).
+
+    The fan wall is one plane doing both jobs: the air leaves the gallery
+    through one side of it and arrives in the hall through the other. A
+    downflow unit's two faces are a storey apart, so each plane carries one
+    condition and a wall behind it -- the return draws from the gallery above
+    it and is a wall underneath, the supply delivers into the plenum below it
+    and is a wall on top. Give both sides of both planes a condition and the
+    unit runs twice.
+
+    The mass is the same at each: what the top takes out, the bottom puts
+    back. Volume would not do -- the air leaving is warmer and thinner than
+    the air arriving, and in a loop with nowhere to store the difference a 1%
+    mismatch has no way out.
+    """
+    supply_k = model.supply_temp_c + KELVIN
+    p0 = model.pressure_pa
+    mass_flow = model.unit_airflow_m3h / 3600.0 * supply_density(model)
+    intake, supply = f"{fan.name}Intake", f"{fan.name}Supply"
+    wall = _wall_patch_fields(k, epsilon, p0)
+
+    intake_fields = f"""                patchFields
+                {{
+                    // {model.unit_airflow_m3h:,.0f} m3/h out of the gallery, through the
+                    // top of the unit: {mass_flow:.4g} kg/s over {fan.area:.2f} m2.
+                    U       {{ type flowRateOutletVelocity;
+                              massFlowRate {mass_flow:.6g};
+                              rho rho; value uniform (0 0 0); }}
+                    // inletOutlet and not zeroGradient, for the same reason
+                    // the fan wall's intake is: zeroGradient stores no value
+                    // on the patch, and the temperature of the air crossing
+                    // here is the number the energy balance is built from.
+                    T       {{ type inletOutlet;
+                              inletValue uniform {supply_k:.2f};
+                              value uniform {supply_k:.2f}; }}
+                    p_rgh   {{ type fixedFluxPressure; value uniform {p0:.0f}; }}
+                    p       {{ type calculated; value uniform {p0:.0f}; }}
+                    k       {{ type zeroGradient; }}
+                    epsilon {{ type zeroGradient; }}
+                    nut     {{ type calculated; value uniform 0; }}
+                    alphat  {{ type calculated; value uniform 0; }}
+                }}"""
+    supply_fields = f"""                patchFields
+                {{
+                    // The same {mass_flow:.4g} kg/s back in at {model.supply_temp_c:g} degC,
+                    // down through the deck into the underfloor plenum.
+                    U       {{ type flowRateInletVelocity;
+                              massFlowRate {mass_flow:.6g};
+                              rho rho; value uniform (0 0 0); }}
+                    T       {{ type fixedValue; value uniform {supply_k:.2f}; }}
+                    p_rgh   {{ type fixedFluxPressure; value uniform {p0:.0f}; }}
+                    p       {{ type calculated; value uniform {p0:.0f}; }}
+                    k       {{ type fixedValue; value uniform {k:.4g}; }}
+                    epsilon {{ type fixedValue; value uniform {epsilon:.4g}; }}
+                    nut     {{ type calculated; value uniform 0; }}
+                    alphat  {{ type calculated; value uniform 0; }}
+                }}"""
+
+    def half(role: str, name: str, fields: str, kind: str = "patch") -> str:
+        return f"""            {role}
+            {{
+                name    {name};
+                type    {kind};
+{fields}
+            }}"""
+
+    # createBaffles hands the master patch to the face's owner cell, which for
+    # a z-normal face of a blockMesh box is the cell BELOW it. Under the
+    # supply face that is the plenum, so the supply is the master; under the
+    # return face it is the unit's own body, and the gallery it draws from is
+    # above, so there the intake is the slave.
+    out = []
+    for zone, master, slave, note in (
+        (f"{fan.name}_supply",
+         (supply, supply_fields, "patch"),
+         (f"{fan.name}SupplyBack", wall, "wall"),
+         f"delivers into the plenum below it, at {model.supply_temp_c:g} degC"),
+        (f"{fan.name}_return",
+         (f"{fan.name}IntakeBack", wall, "wall"),
+         (intake, intake_fields, "patch"),
+         "draws from the gallery above it"),
+    ):
+        out.append(f"""    {zone}
+    {{
+        // The unit's {'bottom' if zone.endswith('supply') else 'top'} face: it {note}.
+        // The other side is a wall -- the unit's own body, which is drawn and
+        // not meshed, as the fan wall's depth already is (ADR-046, ADR-076).
+        type        faceZone;
+        zoneName    {zone};
+        patches
+        {{
+{half('master', *master)}
+{half('slave', *slave)}
+        }}
+    }}""")
+    return out
 
 
 def _fan_baffle(model: Model, fan: Panel, k: float, epsilon: float) -> str:
@@ -636,22 +762,32 @@ def check_fan_orientation(case_dir: str | Path, model: Model | None = None) -> l
     from aicfd.foam.polymesh import patch_normal
 
     pairs = fan_patches(model) if model is not None else [(FAN_INTAKE, FAN_SUPPLY)]
-    signs = [fan.sign for fan in model.fans] if model is not None else [1]
+    fans = list(model.fans) if model is not None else [None]
     problems = []
-    for (intake, supply), sign in zip(pairs, signs):
-        # The intake faces away from the hall, so its outward normal points
-        # along +x for a gallery at lower x and along -x for one at the far
-        # end; the supply is the other way round.
-        for patch, expected, side in (
-            (intake, float(sign), "mechanical gallery"),
-            (supply, -float(sign), "data hall"),
-        ):
+    for (intake, supply), fan in zip(pairs, fans):
+        if fan is not None and fan.return_z is not None:
+            # A DOWNFLOW UNIT IS THE SAME TEST TURNED ON ITS SIDE. Its two
+            # faces are normal to z: the return is the top one and its cells
+            # are the gallery ABOVE it, so its outward normal points down; the
+            # supply is the bottom one and its cells are the plenum BELOW, so
+            # its normal points up. Reversed, the unit would draw from the
+            # plenum it is filling (ADR-076).
+            tests = ((intake, 2, -1.0, "mechanical gallery above it"),
+                     (supply, 2, +1.0, "underfloor plenum below it"))
+        else:
+            # The intake faces away from the hall, so its outward normal points
+            # along +x for a gallery at lower x and along -x for one at the far
+            # end; the supply is the other way round.
+            sign = float(fan.sign) if fan is not None else 1.0
+            tests = ((intake, 0, sign, "mechanical gallery"),
+                     (supply, 0, -sign, "data hall"))
+        for patch, axis, expected, side in tests:
             normal = patch_normal(case_dir, patch)
-            if normal[0] * expected < 0.5:
+            if normal[axis] * expected < 0.5:
                 problems.append(
                     f"{patch} should open onto the {side} (outward normal "
-                    f"x = {expected:+.0f}) but its normal is "
-                    f"({', '.join(f'{v:+.2f}' for v in normal)}). The fan wall "
+                    f"{'xyz'[axis]} = {expected:+.0f}) but its normal is "
+                    f"({', '.join(f'{v:+.2f}' for v in normal)}). The unit's "
                     "pair is reversed: air would be supplied into the return."
                 )
     return problems

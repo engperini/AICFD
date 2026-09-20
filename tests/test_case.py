@@ -378,3 +378,71 @@ class SurfaceListingTest(unittest.TestCase):
             "Internal surfaces built by createBaffles:")[1]
         self.assertIn("less 3 opening(s)", listed)   # the ceiling grilles
         self.assertIn("less 1 opening(s)", listed)   # the supply grille
+
+
+class DownflowCaseTest(unittest.TestCase):
+    """What a raised-floor case hands OpenFOAM (ADR-076)."""
+
+    def model(self, **floor):
+        spec = copy.deepcopy(support.spec("pod-fanwall"))
+        spec["fanwall"]["model"] = "HDCV5300F-HT"
+        spec["floor"] = {"enabled": True, "height": 1.0,
+                         "tiles_per_rack": 2, **floor}
+        return m.build_model(spec)
+
+    def test_the_deck_is_a_wall_with_the_plates_cut_out_of_it(self):
+        model = self.model()
+        plan = dict((name, (panels, holes))
+                    for name, panels, holes in case.wall_plan(model))
+        self.assertIn("piso", plan)
+        panels, holes = plan["piso"]
+        self.assertEqual([p.name for p in panels], ["floor_deck"])
+        names = {p.name for p in holes}
+        self.assertTrue(any(n.startswith("tile_") for n in names), names)
+        # The unit discharges through the deck too, so its face is a hole.
+        self.assertTrue(any(p.kind == "fan" for p in holes))
+
+    def test_the_supply_opening_is_a_hole_in_the_dividing_wall(self):
+        model = self.model()
+        holes = next(holes for name, _p, holes in case.wall_plan(model)
+                     if name == "divider")
+        self.assertIn("floor_opening", {p.name for p in holes})
+
+    def test_the_plates_and_the_opening_are_porous_surfaces(self):
+        names = {p.name for p in case.porous(self.model())}
+        self.assertIn("floor_opening", names)
+        self.assertTrue(any(n.startswith("tile_") for n in names))
+
+    def test_the_unit_becomes_two_baffles_with_one_live_side_each(self):
+        """Give both sides of both planes a condition and the unit runs twice."""
+        text = case.create_baffles_dict(self.model())
+        self.assertIn("fan_supply", text)
+        self.assertIn("fan_return", text)
+        for patch in ("fanSupply", "fanIntake"):
+            self.assertIn(f"name    {patch};", text)
+        for backing in ("fanSupplyBack", "fanIntakeBack"):
+            self.assertIn(f"name    {backing};", text)
+        # Each plane carries exactly one mass-flow condition.
+        self.assertEqual(text.count("flowRateInletVelocity"), 1)
+        self.assertEqual(text.count("flowRateOutletVelocity"), 1)
+
+    def test_the_intake_stores_a_temperature(self):
+        """zeroGradient stores nothing, and the air crossing there is what the
+        energy balance is built from."""
+        text = case.create_baffles_dict(self.model())
+        supply = text.index("fan_supply")
+        self.assertIn("inletOutlet", text[text.index("fan_return"):])
+        self.assertLess(supply, text.index("fan_return"))
+
+    def test_both_faces_get_their_own_face_zone(self):
+        text = case.topo_set_dict(self.model())
+        self.assertIn("name    fan_supply;", text)
+        self.assertIn("name    fan_return;", text)
+
+    def test_a_fan_wall_case_is_untouched(self):
+        """One plane, one baffle, the names it always had."""
+        flat = m.build_model(support.spec("pod-fanwall"))
+        text = case.create_baffles_dict(flat)
+        self.assertNotIn("fanSupplyBack", text)
+        self.assertNotIn("floor_opening", case.topo_set_dict(flat))
+        self.assertEqual([p.name for p in flat.fans], ["fan"])
