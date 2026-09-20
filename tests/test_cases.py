@@ -240,7 +240,7 @@ class RackTypeTest(unittest.TestCase):
         invented to fill the field is a row that does not fit."""
         with self.assertRaises(ValueError) as caught:
             self.build(row=[{"type": "liquid-network-800"}])
-        self.assertIn("does not state its depth", str(caught.exception))
+        self.assertIn("does not state its depth, height", str(caught.exception))
 
     def test_an_unknown_type_lists_what_there_is(self):
         from aicfd import racklib
@@ -328,3 +328,55 @@ class Sum3RackTest(unittest.TestCase):
         box = m.build_model(spec).rows[0].racks[0].box
         self.assertAlmostEqual(box.size[1], 1.8, places=1)
         self.assertAlmostEqual(box.size[2], 2.6, places=1)
+
+
+class RfpCabinetTest(unittest.TestCase):
+    """The Fortaleza / Queretaro cabinets: a footprint and nothing else."""
+
+    def test_both_are_in_the_catalogue_with_their_footprints(self):
+        from aicfd import racklib
+
+        for type_id, w, d in (("meta-600-1200", 0.600, 1.200),
+                              ("meta-800-1300", 0.800, 1.300)):
+            with self.subTest(type=type_id):
+                rack = racklib.load(type_id)
+                self.assertAlmostEqual(rack.size[0], w)
+                self.assertAlmostEqual(rack.size[1], d)
+
+    def test_neither_states_a_height_and_neither_invents_one(self):
+        from aicfd import racklib
+
+        for type_id in ("meta-600-1200", "meta-800-1300"):
+            with self.subTest(type=type_id):
+                rack = racklib.load(type_id)
+                self.assertIsNone(rack.size[2])
+                self.assertEqual(rack.missing, ["height"])
+                with self.assertRaises(ValueError) as caught:
+                    racklib.resolve(type_id)
+                self.assertIn("does not state its height", str(caught.exception))
+
+    def test_neither_states_a_per_rack_load(self):
+        """The RFP gives a cage total across a mix of both cabinets and never
+        splits it. The averages -- 7.73 and 7.39 kW -- are over that mix, so
+        they belong to a case and not to either type."""
+        from aicfd import racklib
+
+        for type_id in ("meta-600-1200", "meta-800-1300"):
+            with self.subTest(type=type_id):
+                self.assertIsNone(racklib.load(type_id).load_kw)
+
+    def test_the_mix_accounts_for_the_whole_cage(self):
+        """54 + 21 = 75 and 95 + 20 = 115, so there is no third cabinet."""
+        for counts, cage in (((54, 21), 75), ((95, 20), 115)):
+            with self.subTest(cage=cage):
+                self.assertEqual(sum(counts), cage)
+
+    def test_it_is_deeper_than_the_other_800_wide_cabinets(self):
+        """The generic 800s are 1200 deep, so a row of these is 100 mm deeper
+        and does not drop into the same band."""
+        from aicfd import racklib
+
+        for other in ("generic-800-1200-46u", "generic-800-1200-48u"):
+            with self.subTest(other=other):
+                self.assertAlmostEqual(racklib.load(other).size[1], 1.200)
+        self.assertAlmostEqual(racklib.load("meta-800-1300").size[1], 1.300)

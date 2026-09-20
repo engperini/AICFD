@@ -1,0 +1,23 @@
+id: meta-800-1300
+name: 800 x 1300 colocation cabinet (Fortaleza / Queretaro RFP)
+cooling: air
+
+# HEIGHT NOT STATED, as for its 600 mm companion.
+#
+# THE 1300 mm DEPTH IS NEW AMONG THE 800 mm CABINETS. The three
+# `generic-800-1200-*` types are 1200 deep, so a row of these is 100 mm deeper
+# than a row of those and does not drop into the same band -- check it against
+# the hot aisle before assuming it fits. (The SUM3 cabinets are deeper still,
+# at 1800, but they are a different class of machine entirely.)
+size: [0.800, 1.300, null]
+source: >
+  Customer RFP, Fortaleza and Queretaro cages, deadline 2026-03-06. Rack
+  sizing: Fortaleza 21 x 800x1300mm, Queretaro 20 x 800x1300mm. No height, no
+  U count and no per-rack power are given.
+note: >
+  Both mixes add up exactly to their cage counts -- 54 + 21 = 75 at Fortaleza,
+  95 + 20 = 115 at Queretaro -- so the two footprints are the whole population
+  and there is no third cabinet unaccounted for.
+
+  NO PER-RACK POWER. See `meta-600-1200`: the RFP gives a cage total across
+  both types and never splits it, so neither file states a load.

@@ -122,10 +122,12 @@ def resolve(type_id: str) -> RackType:
     """
     rack = load(type_id)
     if not rack.complete:
+        missing = ", ".join(rack.missing)
+        one = len(rack.missing) == 1
         raise ValueError(
-            f"rack type {rack.id!r} does not state its "
-            f"{', '.join(rack.missing)}: its source marks "
-            f"{'it' if len(rack.missing) == 1 else 'them'} for confirmation. "
-            f"Ask for the number, or state it in the case"
+            f"rack type {rack.id!r} does not state its {missing}, because its "
+            f"source does not. Ask the supplier for "
+            f"{'that number' if one else 'those numbers'}, or state "
+            f"{'it' if one else 'them'} in the case"
         )
     return rack
