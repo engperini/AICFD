@@ -432,39 +432,20 @@ class UnitReportTest(_UnitReport):
 
 
 @unittest.skipUnless(HAVE_EXTRAS, "python-docx and matplotlib are not installed")
-class OutsideTheTableReportTest(_UnitReport):
-    """And what it says when it cannot read a capacity at all.
+class WaterSideReportTest(unittest.TestCase):
+    """A coil past its selection transfers more than the catalogue figure --
+    that is the heat exchanger -- and the report says what the water would
+    have to do for it (ADR-063)."""
 
-    A unit whose selections do not say what water they were taken at supports
-    no coil model, so the table is all there is -- and this hall returns air
-    below the coldest row of it. The report must say which units, over what
-    range, and that no margin can be stated, not quietly omit a column.
-    """
+    def test_it_says_what_the_water_would_have_to_do(self):
+        from aicfd import report
 
-    ROWS_BELOW = False
-    WATER = False
-
-    def test_it_says_what_it_left_out_and_what_would_answer(self):
-        self.assertIn("capacity table covers", self.text)
-        self.assertIn("left out of the figures above", self.text)
-        self.assertIn("A design selection for this unit gives its coil",
-                      self.text)
-
-    def test_it_still_names_the_unit(self):
-        self.assertIn("CA80NPVG6", self.text)
-
-    def test_there_is_no_available_column_to_mislead_anyone(self):
-        table = next(t for t in self.doc.tables if t.rows[0].cells[0].text == "Unit")
-        self.assertNotIn("Of available", [c.text for c in table.rows[0].cells])
-
-    def test_naming_a_unit_is_offered_where_none_was_named(self):
-        """The one limitation a reader can act on: the capacity compared
-        against is the catalogue's, and naming the unit gives its coil."""
-        self.assertIn("A design selection for the unit gives its coil",
-                      self.text)
+        source = Path(report.__file__).read_text()
+        self.assertIn("water side was sized for", source)
+        self.assertIn("coil_water_out_c", source)
+        self.assertNotIn("coil_outside_table_c", source)
 
 
-@unittest.skipUnless(HAVE_EXTRAS, "python-docx and matplotlib are not installed")
 class FixedIntroductionTest(unittest.TestCase):
     """Section 1 is the software's method, printed identically every time.
 

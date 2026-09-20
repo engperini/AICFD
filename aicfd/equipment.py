@@ -128,6 +128,13 @@ class Equipment:
         return self.at(return_c, "nscc_kw")
 
     @property
+    def design_leaving_water_c(self) -> float | None:
+        """What the selection says the water leaves at, for comparison with
+        what a condition off the selection would ask of it (ADR-063)."""
+        value = (self.selection or {}).get("leaving_water_c")
+        return float(value) if value is not None else None
+
+    @property
     def coil(self):
         """The heat exchanger behind the table, or None.
 
@@ -142,11 +149,22 @@ class Equipment:
         from aicfd import coil as model
 
         try:
-            fitted = model.fit(self)
-        except model.CannotFit:
-            fitted = None
+            fitted, problem = model.fit(self), None
+        except model.CannotFit as missing:
+            # Not a second kind of unit, a file that is not finished. One
+            # selection is all the fit needs and it is what every unit
+            # carries, so this says which field is absent rather than
+            # switching to a different way of answering (ADR-063).
+            fitted, problem = None, str(missing)
         object.__setattr__(self, "_coil", fitted)
+        object.__setattr__(self, "_coil_problem", problem)
         return fitted
+
+    @property
+    def coil_problem(self) -> str | None:
+        """Why this unit has no coil, where it has none."""
+        self.coil
+        return getattr(self, "_coil_problem", None)
 
     def covers(self, return_c: float) -> bool:
         low, high = self.span

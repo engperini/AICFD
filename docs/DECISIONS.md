@@ -2544,3 +2544,46 @@ cool reads as a unit with nothing to cool.
 the valve can pass takes the air past the setpoint, the unit delivers what
 that flow gives rather than the setpoint it cannot hold from above. Same
 principle: report what the machine does, not what it was asked for.
+
+---
+
+## ADR-063 — One coil model for every unit, and it says whose numbers it is
+
+**Decision.** Every fan wall is modelled the same way: the coil is fitted from
+the unit's design selection and answers at any return temperature. There is
+no second path. The capacity table read between its rows and refused outside
+them is gone, and with it the two classes of unit that had different answers
+to the same question. A unit that cannot be fitted is a file that is not
+finished, and it says which field is missing.
+
+**One selection is enough, and one selection is what a unit carries.** The
+fit needs the design selection — return and supply air, airflow, net sensible
+capacity — and the water it was selected at. Nothing else. The worked unit
+happens to carry seven of the manufacturer's selections, and all they do is
+refine how the resistance divides between air and water: the same unit fitted
+to its design selection alone answers within 0,1 K of it at 55 °C of return.
+That is no longer presented as the normal case, because it is not: a unit
+arrives with one selection.
+
+**So the model says whose numbers it is answering on.** It extrapolates with
+the same confidence either way, and the reader has to be able to tell the
+difference, because one of the two is theirs to validate. Fitted to a single
+selection it says so and names the assumption — "the air/water split assumed
+at 78 %, the one number here nobody measured". Checked against more it says
+how many and how closely — "reproduces 7 more of the manufacturer's to
+0,026 K". Refusing to answer was the old way of handling the uncertainty;
+naming it is the better one.
+
+**Capacity above the nameplate is the heat exchanger, not a mistake.** A
+430 kW unit at 55 °C of return really does transfer 916 kW: `Q = epsilon x
+C_air x (T_return - T_water)` and the return is 20 K past the selection. What
+was sized for 430 kW is everything around the coil. So the result now says
+what the water would have to do — "that would take the water out at 39,2 °C
+against the 28 °C of the selection" — and alerts when it exceeds the design
+rise. Capping the capacity at the nameplate would have been the wrong repair:
+the supply air temperature comes from the same model, so a capped capacity and
+an uncapped temperature describe a machine that does not exist.
+
+**What the model still does not know** is worth saying beside that number:
+condensation, whether the chiller and the pump can hold the design flow at
+that rise, and an air flow far from the one the fit was anchored at.

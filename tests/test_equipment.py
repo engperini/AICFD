@@ -10,6 +10,7 @@ from __future__ import annotations
 
 import copy
 import unittest
+from pathlib import Path
 
 import yaml
 
@@ -272,58 +273,47 @@ class CoilCapacityTest(unittest.TestCase):
         self.assertEqual(post.coil_capacity(plain, self._fans((38.0, 31.0)), {}), {})
 
 
-class TableFallbackTest(unittest.TestCase):
-    """A unit whose selections do not say what water they were taken at.
+class UnfittableUnitTest(unittest.TestCase):
+    """One model for every unit. A unit that cannot be fitted is a file that
+    is not finished, and it says which field is missing (ADR-063)."""
 
-    No coil can be recovered from those, so the table is read as before:
-    interpolated between the rows and refused outside them. Kept working
-    because a unit described by a capacity table alone is still worth judging
-    against that table -- it just cannot be asked what it does off it.
-    """
-
-    def setUp(self):
+    def unit(self):
         import tempfile
-        from pathlib import Path
 
         import yaml
 
-        self.tmp = tempfile.TemporaryDirectory()
-        self.saved = equipment.LIBRARY
-        equipment.LIBRARY = Path(self.tmp.name)
-        raw = yaml.safe_load(
-            (self.saved / "CA80NPVG6.yaml").read_text()
-        )
-        raw["selection"].pop("entering_water_c", None)
-        raw["selection"].pop("leaving_water_c", None)
-        (equipment.LIBRARY / "CA80NPVG6.yaml").write_text(yaml.safe_dump(raw))
-        self.model = build_model(copy.deepcopy(SPEC))
+        from aicfd import equipment as e
 
-    def tearDown(self):
-        equipment.LIBRARY = self.saved
-        self.tmp.cleanup()
+        spec = yaml.safe_load((e.LIBRARY / "CA80NPVG6.yaml").read_text())
+        spec["selection"].pop("leaving_water_c")
+        spec["model"] = "INCOMPLETE"
+        tmp = Path(tempfile.mkdtemp())
+        (tmp / "X.yaml").write_text(yaml.safe_dump(spec, sort_keys=False))
+        saved, e.LIBRARY = e.LIBRARY, tmp
+        self.addCleanup(lambda: setattr(e, "LIBRARY", saved))
+        return e.load("X")
 
-    def _fans(self, *pairs):
-        return [
-            {"name": f"fan{i + 1}", "return_temp_c": t, "heat_kw": q}
-            for i, (t, q) in enumerate(pairs)
-        ]
+    def test_it_names_the_field_that_is_missing(self):
+        unit = self.unit()
+        self.assertIsNone(unit.coil)
+        self.assertIn("leaving_water_c", unit.coil_problem)
 
-    def test_no_coil_is_fitted_without_the_water_it_was_selected_at(self):
-        self.assertIsNone(equipment.load("CA80NPVG6").coil)
+    def test_there_is_no_second_way_of_answering(self):
+        """A capacity table used to be read instead, which made two classes
+        of unit with different answers and a refusal off the table that a
+        fitted unit never hit."""
+        from aicfd import post
 
-    def test_the_table_is_read_as_before(self):
-        fans = self._fans((36.0, 400.0), (40.0, 600.0))
-        out = post.coil_capacity(self.model, fans, {"recovered_kw": 1000.0})
-        self.assertAlmostEqual(fans[0]["available_kw"], 545.0)
-        self.assertAlmostEqual(fans[1]["available_kw"], 697.6)
-        self.assertAlmostEqual(out["available_kw"], 1242.6)
+        self.assertFalse(hasattr(post, "_coil_from_table"))
+        source = Path(post.__file__).read_text()
+        self.assertNotIn("coil_outside_table_c", source)
 
-    def test_outside_the_table_is_still_refused_rather_than_guessed(self):
-        fans = self._fans((33.0, 400.0), (38.0, 500.0))
-        out = post.coil_capacity(self.model, fans, {"recovered_kw": 900.0})
-        self.assertEqual(out["coil_outside_table_c"], [33.0])
-        self.assertNotIn("available_kw", fans[0])
-        self.assertAlmostEqual(out["available_kw"], 622.7)
+    def test_the_result_says_so_rather_than_falling_silent(self):
+        from aicfd import post
+
+        out = post._coil_alerts({"coil_problem": "X has no design selection"})
+        self.assertTrue(out)
+        self.assertIn("cannot be modelled", out[0])
 
 
 class LibraryCopy(unittest.TestCase):
@@ -591,3 +581,48 @@ class ColdReturnTest(unittest.TestCase):
         floating = self.coil().operate(55.0, self.air(), 21.9)
         self.assertTrue(floating.saturated)
         self.assertGreater(floating.supply_c, 21.9)
+
+
+class ProvenanceTest(unittest.TestCase):
+    """The model answers at any return with the same confidence for a unit
+    fitted to seven manufacturer selections and for one fitted to a single
+    one. A reader has to be able to tell which (ADR-063)."""
+
+    def test_a_unit_checked_against_more_says_how_closely(self):
+        said = post._coil_provenance(
+            {"coil_model": {"reference_selections": 7, "reference_error_k": 0.026,
+                            "air_split_pct": 78}})
+        self.assertIn("7 more", said)
+        self.assertIn("0.026 K", said)
+
+    def test_a_unit_on_one_selection_says_what_was_assumed(self):
+        said = post._coil_provenance(
+            {"coil_model": {"reference_selections": 0, "air_split_pct": 78}})
+        self.assertIn("design selection alone", said)
+        self.assertIn("78%", said)
+        self.assertIn("nobody measured", said)
+
+    def test_one_selection_is_enough_to_model_a_unit(self):
+        """What every new unit will carry. The seven rows the worked unit
+        happens to have only refine the air/water split."""
+        import tempfile
+
+        spec = yaml.safe_load((equipment.LIBRARY / "CA80NPVG6.yaml").read_text())
+        minimal = {k: v for k, v in spec.items()
+                   if k in ("model", "family", "size", "selection", "design", "fans")}
+        minimal["model"] = "ONE-SELECTION"
+        tmp = Path(tempfile.mkdtemp())
+        (tmp / "X.yaml").write_text(yaml.safe_dump(minimal, sort_keys=False))
+        worked = equipment.load("CA80NPVG6").coil
+        saved, equipment.LIBRARY = equipment.LIBRARY, tmp
+        self.addCleanup(lambda: setattr(equipment, "LIBRARY", saved))
+        unit = equipment.load("X")
+        self.assertIsNotNone(unit.coil)
+        self.assertEqual(unit.coil.reference_returns, ())
+        from aicfd.coil import air_capacity_rate
+
+        air = air_capacity_rate(104181.0, 30.0, 750.0)
+        # and it answers well past the selection, as the worked unit does
+        self.assertAlmostEqual(unit.coil.operate(55.0, air, 21.9).supply_c,
+                               worked.operate(55.0, air, 21.9).supply_c,
+                               delta=0.1)

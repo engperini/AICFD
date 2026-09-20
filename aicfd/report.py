@@ -1080,17 +1080,18 @@ def _conclusions(doc, export: Export) -> None:
             "temperature it receives."
         )
         findings.append(sentence)
-    outside = kpis.get("coil_outside_table_c") or []
-    span = kpis.get("coil_table_span_c") or (
-        list(export.equipment.span) if export.equipment else None)
-    if outside and span:
+    water, design = (kpis.get("coil_water_out_c"),
+                     kpis.get("coil_water_out_design_c"))
+    if water and design and water > design + 0.5:
         findings.append(
-            f"{len(outside)} unit(s) returned air beyond the "
-            f"{_num(span[0], 0)} °C to {_num(span[1], 0)} °C this unit's "
-            f"capacity table covers — between {_num(min(outside), 1)} °C and "
-            f"{_num(max(outside), 1)} °C — so their available capacity is left "
-            f"out of the figures above. A design selection for this unit gives "
-            f"its coil, which answers at any return temperature."
+            f"At the air they are receiving the coils transfer more than the "
+            f"water side was sized for: the heat above would take the water "
+            f"out at {_num(water, 1)} °C against the {_num(design, 0)} °C of "
+            f"the selection. The heat exchanger really does that at this "
+            f"return — a coil's capacity is ε × C_air × (T_return − T_water) "
+            f"and grows with the return — but whether the chiller, the pump "
+            f"and the valve can hold the design water flow at that rise is a "
+            f"question outside this study."
         )
     if kpis.get("fan_rise_pa") and kpis.get("fan_static_pa"):
         findings.append(

@@ -367,10 +367,12 @@ function setZoom(view, cell, direction) {
 /**
  * The way through to the unit's own page, from the section that uses it.
  *
- * The capacity table decides every capacity number in a result, and it is not
- * a field anyone edits day to day -- so it is one click away rather than in
- * the form, and the link names the unit so a reader knows which machine the
- * numbers in front of them came from (ADR-036).
+ * One manufacturer selection describes the machine, and from it the coil --
+ * which is what decides every capacity number in a result and the supply air
+ * temperature with it. Not a field anyone edits day to day, so it is one
+ * click away rather than in the form, and the link names the unit so a reader
+ * knows which machine the numbers in front of them came from (ADR-036,
+ * ADR-063).
  */
 function equipmentLink() {
   const named = model.spec?.fanwall?.model;
@@ -379,8 +381,8 @@ function equipmentLink() {
     : './equipment.html';
   return `<a class="group-link" href="${href}" title="${
     named
-      ? `${named}: its capacity against the air it receives, and the rest of its characterisation`
-      : 'the equipment library. Name a unit with fanwall.model to use its capacity table'
+      ? `${named}: its selection, the coil fitted from it, and what it does at the air it receives`
+      : 'the equipment library. Name a unit with fanwall.model to model its coil'
   }">${named ? `${named} ▸` : 'equipment ▸'}</a>`;
 }
 

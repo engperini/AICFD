@@ -158,6 +158,19 @@ class Coil:
     def supply(self, return_c: float, air: float, water: float) -> float:
         return return_c - self.epsilon(air, water) * (return_c - self.water_c)
 
+    def leaving_water_c(self, capacity_kw: float) -> float:
+        """What the water leaves at, carrying this heat at the design flow.
+
+        The other half of the heat balance, and the one that says whether a
+        capacity is reachable by the plant rather than only by the coil. A
+        unit at a return far past its selection transfers far more than the
+        catalogue figure -- that is the heat exchanger and not a mistake --
+        but it asks the water to leave much warmer, and the chiller, the pump
+        and the valve were sized for the selection's rise (ADR-063).
+        """
+        rate = self.water_max / 4.18 * 3.6 * 1000 / 3600 * CP_WATER / 1000
+        return self.water_c + capacity_kw / rate if rate else self.water_c
+
     # --- the machine under control -------------------------------------------
 
     def operate(self, return_c: float, air: float,

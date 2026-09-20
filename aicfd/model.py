@@ -296,8 +296,9 @@ class Model:
     altitude_m: float = 0.0
     equipment: object | None = None
     """The unit out of `equipment/`, when the spec names one. Carries the
-    capacity table, which is what says how much a coil can transfer at the
-    return temperature the room actually produces (ADR-036)."""
+    design selection, which is what the coil is fitted from and so what says
+    how much it transfers at the return temperature the room actually
+    produces (ADR-036, ADR-063)."""
     plenum_depth: float | None = None
     """Distance between the two leaves of the wall into the hall, where the
     case asks for a supply plenum. None is a single wall with the units
