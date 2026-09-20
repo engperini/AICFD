@@ -2258,3 +2258,37 @@ directory outside the repository broke the error panel itself:
 `Path.relative_to` raises rather than declines, so the code that was there to
 name a broken case's file raised a second error instead. `case_path` answers
 relative where it can and absolute where it cannot.
+
+---
+
+## ADR-057 — A page's script and a shared module never share a file
+
+**Decision.** `web/` holds two kinds of file: the script a page loads, and
+the module other files import. No file is both. The rack-inlet card of the
+results page is `rack-inlets.js`, named for what it exports; `racks.js` is
+the page that configures the racks, named for the page that loads it. A test
+reads the import graph and fails when a name is imported that its file does
+not export, and when a page's entry script is also imported by another page.
+
+**What happened.** `web/racks.js` was the results page's rack-inlet card. The
+new rack page followed the convention every other page here uses —
+`equipment.html` loads `equipment.js`, `components.html` loads
+`components.js` — and was written straight over it. `results.js` then
+imported `RackInlets` from a file that no longer exported it, which in an ES
+module is a *parse* error: the whole module fails, so the whole results page
+fails. Not the rack card. The page, stuck on "loading…", after a solve that
+had worked perfectly.
+
+**Why nothing caught it.** There is no build step (ADR-005), which is a
+deliberate choice and a good one, but it means nothing reads the import graph
+until a browser does. The suite checked the contents of these files —
+several tests assert on what `app.js` and `drawing.js` contain — and never
+checked that they still fit together. A page can only be broken this way by
+something that is not visible in either file alone.
+
+**Why the convention is kept and the collision moved.** Page-named scripts
+are worth having: a reader looking for what `components.html` runs should
+find `components.js`. So the names pages want are reserved for pages, and a
+shared module is named for what it exports. `racks.js` was a poor name for a
+rack-inlet chart anyway — it said what the file was about rather than what it
+was.

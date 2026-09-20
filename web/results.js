@@ -9,7 +9,7 @@
 import { Results } from './data.js';
 import { ConvergenceChart } from './convergence.js';
 import { FieldMaps } from './maps.js';
-import { RackInlets } from './racks.js';
+import { RackInlets } from './rack-inlets.js';
 
 main();
 
