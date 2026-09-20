@@ -848,3 +848,62 @@ class CoilCurveForThePageTest(unittest.TestCase):
         curve = server.coil_curve(equipment.parse(spec))
         self.assertEqual(curve["points"], [])
         self.assertIn("design.return_c", curve["problem"])
+
+
+class WhatWouldCloseTest(unittest.TestCase):
+    """A selection that does not close names the fields that would close it.
+
+    The eight real Vertiv selections shipped here agree with their own
+    temperatures and airflow to within 0.6%, so a miss of several percent is a
+    transcription and the message's job is to say which field to look at.
+    """
+
+    def unit(self, elevation, **design):
+        spec = yaml.safe_load((equipment.LIBRARY / "CA80NPVG6.yaml").read_text())
+        spec["selection"] = dict(spec["selection"], elevation_m=elevation)
+        spec["design"] = design
+        spec.pop("capacity")
+        return equipment.parse(spec)
+
+    def test_the_shipped_selections_close_on_themselves(self):
+        """The calibration the tolerance rests on. If this drifts, the check
+        is measuring the model's physics rather than the manufacturer's data."""
+        from aicfd.coil import air_capacity_rate
+
+        spec = yaml.safe_load((equipment.LIBRARY / "CA80NPVG6.yaml").read_text())
+        altitude = spec["selection"]["elevation_m"]
+        for row in [*spec["capacity"], spec["design"]]:
+            with self.subTest(return_c=row["return_c"]):
+                air = air_capacity_rate(row["airflow_m3h"], row["return_c"], altitude)
+                heat = air * (row["return_c"] - row["supply_c"])
+                self.assertLess(abs(heat - row["nscc_kw"]) / row["nscc_kw"], 0.01)
+
+    def test_it_names_the_elevation_that_would_close_it(self):
+        """The reported case: a CA40 selection read at 750 m instead of ~330."""
+        unit = self.unit(750, return_c=37.0, supply_c=21.8, airflow_m3h=60504.0,
+                         nscc_kw=281.0, power_kw=16.9)
+        why = unit.coil_problem
+        self.assertIn("site elevation of 328 m", why)
+        self.assertIn("this unit says 750 m", why)
+        self.assertIn("Selected at", why)
+
+    def test_it_also_names_the_supply_that_would_close_it(self):
+        unit = self.unit(750, return_c=37.0, supply_c=21.8, airflow_m3h=60504.0,
+                         nscc_kw=281.0, power_kw=16.9)
+        self.assertIn("wants a supply of 21.0 degC", unit.coil_problem)
+
+    def test_at_the_elevation_it_names_the_selection_fits(self):
+        """Not just plausible -- the number is the answer."""
+        unit = self.unit(328, return_c=37.0, supply_c=21.8, airflow_m3h=60504.0,
+                         nscc_kw=281.0, power_kw=16.9)
+        self.assertIsNone(unit.coil_problem)
+        self.assertIsNotNone(unit.coil)
+
+    def test_neither_is_ranked_over_the_other(self):
+        """Which field is the transcription is the engineer's to know."""
+        unit = self.unit(750, return_c=38.0, supply_c=24.0, airflow_m3h=108986.0,
+                         nscc_kw=390.0, power_kw=26.2)
+        why = unit.coil_problem
+        self.assertIn("Two things would close it", why)
+        self.assertIn("1,771 m", why)
+        self.assertIn("25.6 degC", why)

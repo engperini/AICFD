@@ -2760,3 +2760,36 @@ evidence but a wrong model.
 108,986 m³/h from 38 to 24 °C at 390 kW. Those numbers carry 442 kW; 390 kW
 wants a supply of 25.6 °C. Something in that row is a transcription — and the
 page says so now instead of drawing nothing.
+
+## ADR-068 — A selection that does not close names the field to look at
+
+**Decision.** When a selection's capacity disagrees with its own airflow and
+temperatures, the message gives the two numbers that would close it: the site
+elevation, and the supply air at the stated elevation. Neither is ranked over
+the other.
+
+**The 3% tolerance is calibrated, not chosen.** The eight Vertiv selections
+shipped in `equipment/CA80NPVG6.yaml` — seven reference rows and the design
+point — agree with `airflow x density x cp x dT` to within **0.55%**, worst
+case. A test asserts 1%. That is what makes a miss of several percent
+meaningful: it is the manufacturer's own arithmetic that closes this tightly,
+so a row that does not is a transcription, not the model's physics being
+approximate.
+
+**The field at fault is usually not the one the message named.** The first
+real report of this was a CA40 selection: 60,504 m³/h from 37.0 to 21.8 °C,
+stated 281 kW, computed 267. Every number in that sentence was right. What was
+wrong was the *site elevation*, which is on a different card, was copied from
+another unit, and never appears in the message. Those numbers close at 328 m;
+the unit said 750. A message that names three correct fields and not the wrong
+one sends the reader to re-check the datasheet they already read correctly.
+
+**Both candidates are given, unranked.** Solving for the elevation is one
+bisection, and solving for the supply is arithmetic. Which of the two is the
+transcription is the engineer's to know — the same miss reads as a copied
+elevation on one unit and a rounded supply temperature on the next, and
+guessing would send half of the readers to the wrong field with the tool's
+confidence behind it.
+
+**Where no elevation in 0–5,000 m closes it**, only the supply is offered. A
+selection that far out is not a units or altitude question.

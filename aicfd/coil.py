@@ -409,10 +409,37 @@ def _point(unit, row: dict, water_in: float, rise: float, altitude: float):
             f"{unit.model} selection at {ret} degC is not self-consistent: "
             f"{row['airflow_m3h']:,.0f} m3/h from {ret} to {sup} degC carries "
             f"{heat:,.0f} kW, but the selection says {stated:,.0f} kW"
+            + _what_would_close(row, ret, sup, stated, altitude)
         )
     # THE INFERENCE: the selection holds the water temperatures and sizes the
     # flow to them. See this module's docstring.
     return air, heat / rise, (ret - sup) / (ret - water_in), ret
+
+
+def _what_would_close(row, ret: float, sup: float, stated: float,
+                      altitude: float) -> str:
+    """The numbers that would make this selection agree with itself.
+
+    A selection that misses by a few percent is rarely wrong about its
+    capacity. It is usually being read at the wrong site elevation -- that
+    field lives on another card and is the one most often left at whatever the
+    file was copied from -- or its supply air was rounded. Both are offered,
+    unranked: which of them is the transcription is the engineer's to know,
+    and guessing for them would send half the readers to the wrong field
+    (ADR-068).
+    """
+    air = air_capacity_rate(float(row["airflow_m3h"]), ret, altitude)
+    wants = f"{stated:,.0f} kW wants a supply of {ret - stated / air:.1f} degC"
+    found = _solve(
+        lambda alt: air_capacity_rate(float(row["airflow_m3h"]), ret, alt)
+        * (ret - sup) - stated,
+        0.0, 5000.0,
+    )
+    if found is None:
+        return f". At {altitude:,.0f} m, {wants}"
+    return (f". Two things would close it: a site elevation of {found:,.0f} m "
+            f"(this unit says {altitude:,.0f} m -- that field is on the "
+            f"`Selected at` card), or, at {altitude:,.0f} m, {wants}")
 
 
 def _misfit(split, ua0, air0, water0, points, water_in) -> float:
