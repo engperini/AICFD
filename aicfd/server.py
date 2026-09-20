@@ -527,35 +527,70 @@ def read_racks(name: str) -> dict:
     model = m.build_model(spec)
     standard = float(spec["racks"]["load_kw"])
     stated = m.rack_loads(spec)
-    rows = []
+    widths = m.rack_widths(spec)
+    blanks = m.rack_blanks(spec)
+    size = [float(v) for v in spec["racks"]["size"]]
+    count = int(spec["racks"].get("per_row") or spec["racks"].get("count") or 0)
+    plan = m.row_plan(spec, count)
+
+    # A blanking panel is a position too, and the page exists to place them,
+    # so the list has to hold them beside the cabinets rather than only the
+    # cabinets the model built (ADR-074).
+    by_row: dict[str, list] = {}
     for row in model.rows:
-        for position, rack in enumerate(row.racks, start=1):
+        by_row[row.id] = {rack.id: rack for rack in row.racks}
+    rows = []
+    for row_id, racks in by_row.items():
+        places = m.rack_positions(
+            row_id, plan, size, standard,
+            lambda i, row_id=row_id: _rack_id(row_id, i, len(by_row) == 1),
+            stated, widths, blanks,
+        )
+        for position, place in enumerate(places, start=1):
+            rack = racks.get(place["id"])
             rows.append({
-                "id": rack.id,
-                "row": row.id,
+                "id": place["id"],
+                "row": row_id,
                 "position": position,
-                "load_kw": rack.load_kw,
-                "stated": rack.id in stated,
-                "airflow_m3h": round(rack.rated_airflow_m3h),
+                "blank": place["blank"],
+                "load_kw": 0.0 if place["blank"] else place["load_kw"],
+                "width_m": place["width"],
+                "stated": place["id"] in stated,
+                "sized": place["id"] in widths,
+                "airflow_m3h": 0 if rack is None else round(rack.rated_airflow_m3h),
             })
-    loaded = [r for r in rows if r["load_kw"] > 0]
+    loaded = [r for r in rows if r["load_kw"] > 0 and not r["blank"]]
+    blanked = [r for r in rows if r["blank"]]
     return {
         "case": case,
         "standard": {
             "load_kw": standard,
-            "size": list(spec["racks"]["size"]),
+            "size": size,
             "cfm_per_kw": spec["racks"].get("airflow_cfm_per_kw"),
+            "cell_x": model.cell_size[0],
         },
+        # The typical row: what every row of this hall is built from, and what
+        # the page edits when the engineer wants them all to change at once.
+        "row": [dict(entry) for entry in plan],
+        "rows": sorted(by_row),
         "racks": rows,
         "totals": {
             "positions": len(rows),
+            "cabinets": len(rows) - len(blanked),
+            "blanks": len(blanked),
             "loaded": len(loaded),
-            "unloaded": len(rows) - len(loaded),
+            "unloaded": len(rows) - len(loaded) - len(blanked),
             "load_kw": round(sum(r["load_kw"] for r in rows), 1),
-            "nominal_kw": round(standard * len(rows), 1),
+            "nominal_kw": round(standard * (len(rows) - len(blanked)), 1),
             "airflow_m3h": round(sum(r["airflow_m3h"] for r in rows)),
         },
+        "warnings": [w for w in model.warnings if "fall between" in w],
     }
+
+
+def _rack_id(row_id: str, i: int, single_row: bool) -> str:
+    """The id a position carries, matching what the layouts hand the model."""
+    return f"R{i + 1}" if single_row else f"{row_id}-{i + 1:02d}"
 
 
 def write_racks(name: str, body: dict) -> dict:
@@ -585,7 +620,10 @@ def write_racks(name: str, body: dict) -> dict:
                 rejected.append(f"load_kw: {value:g} is outside 0.1-200")
 
     if "loads" in body:
-        known = {rack.id for rack in m.build_model(spec).racks}
+        # Every POSITION, not every cabinet. A position the case currently
+        # blanks is still a position, and refusing its id here made
+        # un-blanking it impossible from the page (ADR-074).
+        known = _position_ids(spec)
         loads: dict[str, float] = {}
         for rack_id, raw in (body.get("loads") or {}).items():
             if rack_id not in known:
@@ -608,6 +646,71 @@ def write_racks(name: str, body: dict) -> dict:
         else:
             spec["racks"].pop("loads", None)
 
+    if "size" in body:
+        # The standard cabinet, which every position takes unless it says
+        # otherwise. Same three numbers the model page shows; edited here too
+        # because this is the page where the row is laid out (ADR-074).
+        try:
+            size = [float(v) for v in body["size"]]
+        except (TypeError, ValueError):
+            rejected.append(f"size: {body['size']!r} is not three numbers")
+        else:
+            if len(size) != 3 or not all(0.1 <= v <= 3.0 for v in size):
+                rejected.append("size: three values, each 0.1-3.0 m")
+            else:
+                spec["racks"]["size"] = size
+
+    if "row" in body:
+        plan, bad = _row_from(body.get("row") or [])
+        rejected += bad
+        if not bad:
+            # A row of standard cabinets IS the count, so it is written as the
+            # count and the pattern goes away. A case should say what differs.
+            if plan and any(entry for entry in plan):
+                spec["racks"]["row"] = plan
+            else:
+                spec["racks"].pop("row", None)
+            if plan:
+                key = "per_row" if "per_row" in spec["racks"] else "count"
+                spec["racks"][key] = len(plan)
+
+    if "widths" in body:
+        known = _position_ids(spec)
+        widths: dict[str, float] = {}
+        for rack_id, raw in (body.get("widths") or {}).items():
+            if rack_id not in known:
+                rejected.append(f"{rack_id}: no such rack position")
+                continue
+            if raw is None or raw == "":
+                continue  # back to the standard
+            try:
+                value = float(raw)
+            except (TypeError, ValueError):
+                rejected.append(f"{rack_id}: {raw!r} is not a number")
+                continue
+            if not 0.1 <= value <= 3.0:
+                rejected.append(f"{rack_id}: {value:g} m is outside 0.1-3.0")
+                continue
+            if value != float(spec["racks"]["size"][0]):
+                widths[rack_id] = value
+        if widths:
+            spec["racks"]["widths"] = widths
+        else:
+            spec["racks"].pop("widths", None)
+
+    if "blanks" in body:
+        known = _position_ids(spec)
+        blanks = []
+        for rack_id in (body.get("blanks") or []):
+            if rack_id not in known:
+                rejected.append(f"{rack_id}: no such rack position")
+                continue
+            blanks.append(rack_id)
+        if blanks:
+            spec["racks"]["blanks"] = sorted(set(blanks))
+        else:
+            spec["racks"].pop("blanks", None)
+
     # Built before it is written, the same order the model page uses: nothing
     # writes a case it has not built (ADR-055).
     m.build_model(spec)
@@ -615,6 +718,57 @@ def write_racks(name: str, body: dict) -> dict:
     out = read_racks(case)
     out["rejected"] = rejected
     return out
+
+
+def _position_ids(spec: dict) -> set[str]:
+    """Every position id this case has, blanking panels included.
+
+    `build_model(...).racks` holds only the cabinets, so validating against it
+    would refuse an edit to a position the engineer had just blanked -- and
+    un-blanking it would then be impossible from the page (ADR-074).
+    """
+    from aicfd import model as m
+
+    model = m.build_model(spec)
+    size = [float(v) for v in spec["racks"]["size"]]
+    count = int(spec["racks"].get("per_row") or spec["racks"].get("count") or 0)
+    plan = m.row_plan(spec, count)
+    single = len(model.rows) == 1
+    ids = set()
+    for row in model.rows:
+        for i in range(len(plan)):
+            ids.add(_rack_id(row.id, i, single))
+    return ids
+
+
+def _row_from(raw) -> tuple[list[dict], list[str]]:
+    """The typical row as the page sends it, validated position by position."""
+    plan, bad = [], []
+    for i, entry in enumerate(raw):
+        if not isinstance(entry, dict):
+            bad.append(f"row[{i}]: each position is an object")
+            continue
+        out: dict = {}
+        if entry.get("blank"):
+            out["blank"] = True
+        for key, lo, hi in (("width", 0.1, 3.0), ("load_kw", 0.0, 200.0)):
+            value = entry.get(key)
+            if value in (None, ""):
+                continue
+            if key == "load_kw" and out.get("blank"):
+                continue  # a plate dissipates nothing; saying so twice invites
+                          # the two to disagree
+            try:
+                number = float(value)
+            except (TypeError, ValueError):
+                bad.append(f"row[{i}].{key}: {value!r} is not a number")
+                continue
+            if not lo <= number <= hi:
+                bad.append(f"row[{i}].{key}: {number:g} is outside {lo:g}-{hi:g}")
+                continue
+            out[key] = number
+        plan.append(out)
+    return plan, bad
 
 
 def _save_case_racks(name: str, spec: dict) -> None:
@@ -633,7 +787,19 @@ def _save_case_racks(name: str, spec: dict) -> None:
     # number and a diff on a file nobody changed.
     if float(on_disk.get("racks", {}).get("load_kw", 0)) != float(spec["racks"]["load_kw"]):
         yamledit.set_scalar(lines, ["racks", "load_kw"], spec["racks"]["load_kw"])
+    for key in ("size", "count", "per_row"):
+        value = spec["racks"].get(key)
+        if value is not None and (on_disk.get("racks") or {}).get(key) != value:
+            yamledit.set_or_add(lines, ["racks", key], value)
     yamledit.set_map(lines, ["racks", "loads"], spec["racks"].get("loads") or {})
+    yamledit.set_map(lines, ["racks", "widths"], spec["racks"].get("widths") or {})
+    # A list of ids, so it goes in as one flow sequence rather than a mapping.
+    blanks = spec["racks"].get("blanks") or []
+    if blanks:
+        yamledit.set_or_add(lines, ["racks", "blanks"], list(blanks))
+    else:
+        yamledit.set_map(lines, ["racks", "blanks"], {})
+    _write_row_block(lines, spec["racks"].get("row") or [])
     text = "\n".join(lines)
     # Parsed back before it is written, for the same reason a component save
     # is: a save path that can corrupt a file corrupts it before anything
@@ -642,6 +808,26 @@ def _save_case_racks(name: str, spec: dict) -> None:
     if (written.get("racks") or {}) != (spec.get("racks") or {}):
         raise ValueError("the rack block did not survive the edit; nothing was written")
     path.write_text(text)
+
+
+def _write_row_block(lines: list[str], plan: list[dict]) -> None:
+    """The typical row, one position per line, or gone when there is none.
+
+    Block style rather than one long flow sequence: a forty-position row on a
+    single line is a diff nobody can read, and this is a file people open
+    (ADR-074). The block is rewritten whole because the page owns it, the same
+    as `loads`.
+    """
+    # Removing first also removes it outright when the plan is empty, which is
+    # a row of standard cabinets -- and that is what `count` already says.
+    yamledit.set_map(lines, ["racks", "row"], {})
+    if not plan:
+        return
+    rows = []
+    for entry in plan:
+        inner = ", ".join(f"{k}: {yamledit.render(v)}" for k, v in entry.items())
+        rows.append(f"{yamledit.INDENT * 2}- {{{inner}}}")
+    yamledit.replace_list(lines, ["racks", "row"], rows)
 
 
 def read_component(chosen: str | None) -> dict:

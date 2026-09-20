@@ -914,6 +914,8 @@ class _Layout:
     blocks: list[tuple[float, float]] = field(default_factory=list)
     plenum_depth: float | None = None
     supply_mesh_k: float | None = None
+    row_notes: list[str] = field(default_factory=list)
+    """Widths the mesh moved, said by position rather than by face (ADR-074)."""
 
 
 #: What a case uses where it names nothing. The house specification: the
@@ -1176,7 +1178,10 @@ def build_model(spec: dict) -> Model:
     # summary table and the solved case then describe the same geometry -- a
     # table that quotes the nominal area while the mesh builds another one is
     # exactly the kind of quiet disagreement this module exists to prevent.
-    model.warnings = check_mesh_alignment(model)
+    # The row's own notes first: a cabinet width the mesh moved is said by
+    # position, which is what a reader can act on, where the general alignment
+    # check can only say a face fell between grid lines (ADR-074).
+    model.warnings = list(layout.row_notes) + check_mesh_alignment(model)
     # The fan placement snaps the unit's width itself (so units can be packed
     # without overlapping), so the alignment check never sees the nominal one.
     nominal = float(fan["width"]) if "width" in fan else None
@@ -1258,36 +1263,139 @@ def _grille_k(spec: dict) -> float | None:
     return grille_loss_coefficient(free_area) if free_area is not None else None
 
 
-def _make_row(row_id: str, band: tuple[float, float], sign: int, x0: float,
-              count: int, size: tuple[float, float, float], load_kw: float,
-              rack_ids, rack_spec: dict | None = None,
-              loads: dict | None = None) -> Row:
-    """One row of racks, each carrying the hall's load unless it says otherwise.
+def row_plan(spec: dict, count: int) -> list[dict]:
+    """What stands at each position of the TYPICAL row.
 
-    ``loads`` is the per-position override, by rack id. A hall is specified by
-    one load per rack because that is how a hall is bought, but no hall is
-    filled that way: positions are reserved, staged, or left for growth, and
-    where they sit decides how evenly the units load (ADR-054). Zero is a
-    position that exists and dissipates nothing.
+    A hall is bought as N identical cabinets, and that stays the default:
+    `count` positions of `racks.size` at `racks.load_kw`. `racks.row` states a
+    typical row instead -- a list of positions, each a cabinet or a blanking
+    panel, each free to carry its own width and load -- and every row of the
+    hall is built from it (ADR-074).
+
+    Its length governs the row. A row of eleven cabinets and a 300 mm blank is
+    twelve positions of two kinds, and stating the count a second time only
+    invites the two to disagree.
+
+    Each entry is a mapping and every key is optional:
+      ``{}``                     a standard cabinet
+      ``{"load_kw": 12}``        a cabinet at its own load
+      ``{"width": 0.8}``         a wider cabinet
+      ``{"blank": true, "width": 0.3}``   a blanking panel
     """
-    dx, _dy, dz = size
-    overrides = loads or {}
+    raw = (spec.get("racks") or {}).get("row")
+    if not raw:
+        return [{} for _ in range(count)]
+    plan = []
+    for i, entry in enumerate(raw):
+        if not isinstance(entry, dict):
+            raise ValueError(
+                f"racks.row[{i}] is {entry!r}; each position is a mapping, "
+                f"empty for a standard cabinet"
+            )
+        unknown = set(entry) - {"blank", "width", "load_kw"}
+        if unknown:
+            raise ValueError(
+                f"racks.row[{i}] has {', '.join(sorted(unknown))}; a position "
+                f"takes blank, width and load_kw"
+            )
+        plan.append(dict(entry))
+    return plan
 
-    def racked(i: int) -> Rack:
+
+def rack_positions(row_id: str, plan: list[dict], size, load_kw: float,
+                   rack_ids, loads: dict, widths: dict, blanks: dict,
+                   cell_x: float | None = None,
+                   warnings: list[str] | None = None) -> list[dict]:
+    """One row's positions, with the per-position overrides applied.
+
+    The plan is the pattern every row shares; the maps are where a single
+    position disagrees with it. Same division as the load has always had: the
+    case states the standard once and then only what differs (ADR-054).
+
+    EACH WIDTH IS SNAPPED HERE, not each box edge afterwards. The general
+    snapper moves every face to the nearest grid line, which on a row of one
+    width is exact and on a row of several is not: two identical 0.8 m
+    cabinets on a 0.6 m cell came out 0.60 m and 1.20 m, because their edges
+    landed on opposite sides of the same line and the error accumulated along
+    the row. Rounding the WIDTH instead makes every cabinet of a width the
+    same width, and lays the row out on grid lines by construction (ADR-074).
+    """
+    out = []
+    for i, entry in enumerate(plan):
         rack_id = rack_ids(i)
-        return Rack(
-            id=rack_id,
-            box=Box((x0 + i * dx, band[0], 0.0), (x0 + (i + 1) * dx, band[1], dz)),
-            load_kw=float(overrides.get(rack_id, load_kw)),
-            # The cabinet resists like every other cabinet in the row; only
-            # what it dissipates is its own.
-            resistance_kw=load_kw,
-            airflow_axis=1,
-            airflow_sign=sign,
-            **(rack_spec or {}),
-        )
+        blank = blanks.get(rack_id, bool(entry.get("blank", False)))
+        asked = float(widths.get(rack_id, entry.get("width", size[0])))
+        if asked <= 0:
+            raise ValueError(f"{rack_id}: a position {asked:g} m wide has no width")
+        width = asked
+        if cell_x:
+            width = max(1, round(asked / cell_x)) * cell_x
+            if warnings is not None and abs(width - asked) > 1e-9:
+                # Said once per WIDTH, not once per cabinet: a hall of 400
+                # positions built from one typical row would otherwise repeat
+                # the same sentence 40 times and bury everything else.
+                note = (f"cabinets {asked:.3f} m wide fall between {cell_x:g} m "
+                        f"grid lines; the mesh uses {width:.2f} m "
+                        f"({(width - asked) * 1000:+.0f} mm). "
+                        f"{_cell_note(asked, cell_x)}")
+                if note not in warnings:
+                    warnings.append(note)
+        out.append({
+            "id": rack_id,
+            "blank": blank,
+            "width": width,
+            "load_kw": 0.0 if blank
+                       else float(loads.get(rack_id, entry.get("load_kw", load_kw))),
+        })
+    return out
 
-    return Row(row_id, band, sign, [racked(i) for i in range(count)])
+
+def _make_row(row_id: str, band: tuple[float, float], sign: int, x0: float,
+              positions: list[dict], size: tuple[float, float, float],
+              load_kw: float, rack_spec: dict | None = None
+              ) -> tuple[Row, list[Panel], float]:
+    """One row, as its positions describe it: (row, blanking panels, end x).
+
+    ``load_kw`` here is the row's STANDARD, which calibrates every cabinet's
+    resistance. What a cabinet dissipates is its own; what it resists by is
+    the row's, because an unloaded position is blanked and resists like the
+    cabinets either side of it (ADR-054).
+
+    A BLANKING PANEL IS NOT A ZERO-LOAD CABINET. The zero-load cabinet is a
+    box that still breathes and still resists; the blank is a plate where no
+    cabinet stands, and no air crosses it at all. Both are real and they say
+    different things, so both exist (ADR-074).
+    """
+    _dx, _dy, dz = size
+    racks, blanks, x = [], [], x0
+    for place in positions:
+        left, right = x, x + place["width"]
+        x = right
+        if not place["blank"]:
+            racks.append(Rack(
+                id=place["id"],
+                box=Box((left, band[0], 0.0), (right, band[1], dz)),
+                load_kw=place["load_kw"],
+                resistance_kw=load_kw,
+                airflow_axis=1,
+                airflow_sign=sign,
+                **(rack_spec or {}),
+            ))
+            continue
+        # The plate faces the cold aisle, where a cabinet's front would be.
+        # Only that face is closed: sealing both would leave a pocket with no
+        # path to anywhere, and an isolated region is a pressure solve with no
+        # reference in it. Open to the hot aisle it is dead air, which is what
+        # the space behind a blanking panel is.
+        blanks.append(Panel(
+            f"blank_{place['id']}".replace(".", "_").replace("-", "_"),
+            "wall",
+            axis=1,
+            position=band[0] if sign > 0 else band[1],
+            extent=((left, right), (0.0, dz)),
+            of_rack=True,
+        ))
+    return Row(row_id, band, sign, racks), blanks, x
 
 
 def rack_loads(spec: dict) -> dict[str, float]:
@@ -1310,6 +1418,52 @@ def rack_loads(spec: dict) -> dict[str, float]:
             )
         out[str(rack_id)] = load
     return out
+
+
+def _cell_note(asked: float, cell_x: float) -> str:
+    """What x cell would carry this width exactly, where one reasonably would.
+
+    A 25% loss on a cabinet's width is not a rounding a reader should have to
+    work out the cure for. Halving the cell until the width divides into it is
+    the cure, and saying so costs one sentence (ADR-074).
+    """
+    cell = cell_x
+    for _ in range(4):
+        cell /= 2.0
+        if abs(round(asked / cell) * cell - asked) < 1e-9:
+            return (f"An x cell of {cell:g} m would carry it exactly, at "
+                    f"{(cell_x / cell) ** 1:.0f}x the cells across the row.")
+    return "No halving of the x cell inside four steps carries it exactly."
+
+
+def rack_widths(spec: dict) -> dict[str, float]:
+    """The per-position widths a case states, by rack id (ADR-074)."""
+    raw = (spec.get("racks") or {}).get("widths") or {}
+    out = {}
+    for rack_id, value in raw.items():
+        if value is None:
+            continue
+        width = float(value)
+        if not 0.1 <= width <= 3.0:
+            raise ValueError(
+                f"racks.widths[{rack_id}]: {width:g} m is outside 0.1-3.0 m"
+            )
+        out[str(rack_id)] = width
+    return out
+
+
+def rack_blanks(spec: dict) -> dict[str, bool]:
+    """Which positions are blanking panels rather than cabinets (ADR-074).
+
+    A list of ids, or a mapping to true/false where a case needs to say that
+    a position the typical row blanks is a cabinet here after all.
+    """
+    raw = (spec.get("racks") or {}).get("blanks")
+    if not raw:
+        return {}
+    if isinstance(raw, dict):
+        return {str(k): bool(v) for k, v in raw.items() if v is not None}
+    return {str(rack_id): True for rack_id in raw}
 
 
 def _row_walls(row: Row, span: tuple[float, float], rack_dz: float, suffix: str = "") -> list[Panel]:
@@ -1536,9 +1690,18 @@ def _pod_layout(spec: dict, cell, rack_spec: dict | None = None) -> _Layout:
 
     band = (cold, cold + size[1])
     hot_aisle = (cold + size[1], hall_width)
-    row = _make_row("F1", band, +1, start_x, count, size, load_kw,
-                    lambda i: f"R{i + 1}", rack_spec, rack_loads(spec))
-    span = (start_x, start_x + count * size[0])
+    plan = row_plan(spec, count)
+    row_notes: list[str] = []
+    places = rack_positions("F1", plan, size, load_kw, lambda i: f"R{i + 1}",
+                            rack_loads(spec), rack_widths(spec), rack_blanks(spec),
+                            cell_x=cell[0], warnings=row_notes)
+    row, blank_panels, end_x = _make_row("F1", band, +1, start_x, places, size,
+                                         load_kw, rack_spec)
+    # The row is as long as its parts. With every position the standard width
+    # that is count x size[0] again, and with a blank or a wider cabinet in it
+    # the old arithmetic would have run the containment past the row's end
+    # (ADR-074).
+    span = (start_x, end_x)
 
     fan = spec["fanwall"]
     fans = [
@@ -1568,7 +1731,7 @@ def _pod_layout(spec: dict, cell, rack_spec: dict | None = None) -> _Layout:
         for i in range(grille_count)
     ]
 
-    walls = _row_walls(row, span, rack_dz)
+    walls = _row_walls(row, span, rack_dz) + blank_panels
     if spec.get("containment", {}).get("enabled", True):
         walls += _containment(hot_aisle, span, rack_dz, ceiling, (band[1],))
 
@@ -1584,7 +1747,8 @@ def _pod_layout(spec: dict, cell, rack_spec: dict | None = None) -> _Layout:
     return _Layout(domain, [gallery], hall, [row], cold_aisles, [hot_aisle],
                    fans, grilles + supplies, walls, [span],
                    plenum_depth or None,
-                   _supply_mesh_k(spec) if plenum and plenum["as_mesh"] else None)
+                   _supply_mesh_k(spec) if plenum and plenum["as_mesh"] else None,
+                   row_notes)
 
 
 def _hall_layout(spec: dict, cell, rack_spec: dict | None = None) -> _Layout:
@@ -1631,8 +1795,17 @@ def _hall_layout(spec: dict, cell, rack_spec: dict | None = None) -> _Layout:
         raise ValueError(f"racks.blocks must be 1 or more, got {n_blocks}")
     transverse = float(spec["aisles"].get("transverse", cold)) if n_blocks > 1 else 0.0
 
-    # per_row is the count in one block, so a row of two blocks holds twice it
-    block_length = per_row * rack_dx
+    # per_row is the count in one block, so a row of two blocks holds twice it.
+    # With a typical row stated, the block is as long as that row's parts --
+    # a 300 mm blank makes the block 300 mm of blank longer, not 600 (ADR-074).
+    plan = row_plan(spec, per_row)
+    widths = rack_widths(spec)
+    blank_of = rack_blanks(spec)
+    row_notes: list[str] = []
+    block_length = sum(
+        max(1, round(float(e.get("width", rack_dx)) / cell[0])) * cell[0]
+        for e in plan
+    )
     row_length = n_blocks * block_length + (n_blocks - 1) * transverse
     # A supply plenum at each gallery lengthens the hall by its depth. The
     # perimeter clearance is between the racks and the wall the hall actually
@@ -1684,11 +1857,16 @@ def _hall_layout(spec: dict, cell, rack_spec: dict | None = None) -> _Layout:
             pair = []
             for offset, band, front in ((1, a, +1), (2, b, -1)):
                 row_id = f"F{n + offset}{tag}"
-                pair.append(
-                    _make_row(row_id, band, front, span[0], per_row, size, load_kw,
-                              lambda i, row_id=row_id: f"{row_id}-{i + 1:02d}",
-                              rack_spec, loads)
+                places = rack_positions(
+                    row_id, plan, size, load_kw,
+                    lambda i, row_id=row_id: f"{row_id}-{i + 1:02d}",
+                    loads, widths, blank_of, cell_x=cell[0], warnings=row_notes,
                 )
+                built, blanked, end_x = _make_row(row_id, band, front, span[0],
+                                                  places, size, load_kw, rack_spec)
+                pair.append(built)
+                walls += blanked
+                span = (span[0], end_x)
             rows += pair
             for row in pair:
                 walls += _row_walls(row, span, rack_dz, suffix=f"_{row.id}")
@@ -1744,7 +1922,8 @@ def _hall_layout(spec: dict, cell, rack_spec: dict | None = None) -> _Layout:
     return _Layout(domain, galleries, hall, rows, cold_aisles, hot_aisles,
                    fans, grilles + supplies, walls, spans,
                    plenum_depth or None,
-                   _supply_mesh_k(spec) if plenum and plenum["as_mesh"] else None)
+                   _supply_mesh_k(spec) if plenum and plenum["as_mesh"] else None,
+                   row_notes)
 
 
 def place_fans(aisles: list[tuple[float, float]], width: float, wall: float,

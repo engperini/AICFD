@@ -17,6 +17,7 @@ refuses, and the message says which value and how to put it back.
 
 from __future__ import annotations
 
+import copy
 import unittest
 
 import yaml
@@ -52,3 +53,106 @@ class WorkedCasesTest(unittest.TestCase):
                         f"value the message names, or put the file back with\n"
                         f"            git restore cases/{path.name}"
                     )
+
+
+class TypicalRowTest(unittest.TestCase):
+    """A row is a pattern of positions, not a count of identical cabinets.
+
+    Three things a position can now say for itself: how wide it is, what it
+    carries, and whether it is a cabinet at all (ADR-074).
+    """
+
+    def build(self, **racks):
+        spec = copy.deepcopy(support.spec("pod-fanwall"))
+        spec["racks"].update(racks)
+        return m.build_model(spec)
+
+    def widths(self, model):
+        return [round(r.box.size[0], 3) for r in model.rows[0].racks]
+
+    def blanks(self, model):
+        return [p for p in model.panels if p.name.startswith("blank_")]
+
+    def test_no_row_is_the_count_of_standard_cabinets(self):
+        model = self.build()
+        self.assertEqual(len(model.rows[0].racks), 3)
+        self.assertEqual(self.blanks(model), [])
+
+    def test_a_position_can_be_wider_than_the_standard(self):
+        model = self.build(row=[{}, {"width": 0.8}, {}])
+        self.assertEqual(self.widths(model), [0.6, 0.8, 0.6])
+
+    def test_a_position_can_carry_its_own_load(self):
+        model = self.build(row=[{}, {"load_kw": 12.0}, {}])
+        self.assertEqual([r.load_kw for r in model.rows[0].racks], [6.0, 12.0, 6.0])
+
+    def test_a_blank_is_a_plate_and_not_a_cabinet(self):
+        model = self.build(row=[{}, {}, {"blank": True, "width": 0.4}])
+        self.assertEqual(len(model.rows[0].racks), 2)
+        plates = self.blanks(model)
+        self.assertEqual(len(plates), 1)
+        plate = plates[0]
+        self.assertEqual(plate.kind, "wall")
+        self.assertAlmostEqual(plate.extent[0][1] - plate.extent[0][0], 0.4, places=2)
+        # Floor to rack height, facing the cold aisle: the path a cabinet
+        # would have taken is closed and nothing else is.
+        self.assertAlmostEqual(plate.extent[1][0], 0.0)
+        self.assertAlmostEqual(plate.extent[1][1], 2.2, places=2)
+
+    def test_a_blank_carries_no_load_and_no_air(self):
+        model = self.build(row=[{}, {}, {"blank": True}])
+        self.assertAlmostEqual(model.total_load_w / 1000.0, 12.0)
+
+    def test_the_row_is_as_long_as_its_parts(self):
+        """Not count x width. A blank or a wider cabinet used to leave the
+        containment running past the row's end."""
+        model = self.build(row=[{}, {"width": 1.0}, {"blank": True, "width": 0.4}])
+        racks = model.rows[0].racks
+        plate = self.blanks(model)[0]
+        self.assertAlmostEqual(plate.extent[0][0], racks[-1].box.hi[0], places=2)
+        span = plate.extent[0][1] - racks[0].box.lo[0]
+        self.assertAlmostEqual(span, 0.6 + 1.0 + 0.4, places=2)
+
+    def test_identical_widths_snap_identically(self):
+        """Two 0.8 m cabinets on a 0.6 m cell came out 0.60 and 1.20, because
+        the snapper moved each face and the error walked down the row. The
+        width is rounded now, so a width is a width."""
+        spec = copy.deepcopy(support.spec("pod-fanwall"))
+        spec["mesh"]["cell_size"] = [0.6, 0.2, 0.1]
+        spec["racks"]["row"] = [{"width": 0.8}, {"width": 0.8}, {"width": 0.8}]
+        widths = self.widths(m.build_model(spec))
+        self.assertEqual(len(set(widths)), 1, widths)
+
+    def test_it_says_which_width_the_mesh_moved(self):
+        spec = copy.deepcopy(support.spec("pod-fanwall"))
+        spec["mesh"]["cell_size"] = [0.6, 0.2, 0.1]
+        spec["racks"]["row"] = [{"width": 0.8}] * 3
+        said = [w for w in m.build_model(spec).warnings if "fall between" in w]
+        self.assertEqual(len(said), 1, "said once per width, not once per cabinet")
+        self.assertIn("0.800 m wide", said[0])
+
+    def test_a_per_position_width_overrides_the_pattern(self):
+        model = self.build(row=[{}, {"width": 0.8}, {}], widths={"R3": 1.0})
+        self.assertEqual(self.widths(model), [0.6, 0.8, 1.0])
+
+    def test_a_per_position_blank_overrides_the_pattern(self):
+        model = self.build(blanks=["R1"])
+        self.assertEqual([r.id for r in model.rows[0].racks], ["R2", "R3"])
+        self.assertEqual(len(self.blanks(model)), 1)
+
+    def test_a_malformed_position_is_refused_by_name(self):
+        for bad, why in (([{"colour": "red"}], "colour"),
+                         (["a cabinet"], "mapping")):
+            with self.subTest(bad=bad):
+                with self.assertRaises(ValueError) as caught:
+                    self.build(row=bad)
+                self.assertIn(why, str(caught.exception))
+
+    def test_a_hall_row_takes_the_pattern_too(self):
+        spec = copy.deepcopy(support.spec("hall-double-gallery"))
+        spec["racks"]["row"] = [{}] * 4 + [{"blank": True, "width": 0.6}]
+        model = m.build_model(spec)
+        self.assertTrue(model.rows)
+        for row in model.rows:
+            self.assertEqual(len(row.racks), 4)
+        self.assertEqual(len(self.blanks(model)), len(model.rows))

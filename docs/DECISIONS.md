@@ -3048,3 +3048,51 @@ of supply and 51.7 kW, and closes to 0.07%. The Vertiv says 18.1 °C — *warmer
 mass flow. The three Vertiv PEX4 sheets miss by 4.65%, 5.02% and 5.32%, all in
 the same direction, against sheets that themselves declare "performance
 tolerance ±5%". That is systematic, and it is the vendor's, not this model's.
+
+## ADR-074 — A row is a pattern of positions, not a count of cabinets
+
+**Decision.** `racks.row` states a **typical row**: a list of positions, each a
+cabinet or a blanking panel, each free to carry its own width and load. Every
+row of the hall is built from it, and its length is the row's count. Beside it,
+`racks.widths` and `racks.blanks` are where a single position disagrees — the
+same division the load has always had between `racks.load_kw` and
+`racks.loads` (ADR-054).
+
+**A blanking panel is not a cabinet at zero load.** The zero-load cabinet is a
+box that still breathes and still resists like the cabinets either side of it;
+that is what ADR-054 established and it is still right. A blanking panel is a
+**plate** where no cabinet stands, and no air crosses it at all. Both are real
+and they say different things: the zero is a position nobody has racked yet,
+the plate is the metres a row does not fill. The page says so in as many
+words, because using one for the other is a wrong answer in either direction —
+a plate where a zero belongs closes a path the real room leaves open, and a
+zero where a plate belongs opens one the real room closes.
+
+**The plate closes the cold-aisle face only.** Sealing both faces would leave a
+pocket with no path to anywhere, and an isolated cell region is a pressure
+solve with no reference in it. Open to the hot aisle it is dead air, which is
+what the space behind a blanking panel is.
+
+**The row is as long as its parts.** `count × size[0]` was right while every
+position was the same width and wrong the moment one was not: the containment
+and the row-end walls ran past the row's end, and the hall was sized from a
+length no row had. Both layouts now accumulate the widths.
+
+**Widths are snapped, not faces.** The general mesh snapper moves every face to
+the nearest grid line. On a row of one width that is exact; on a row of several
+it is not. Two identical 0.8 m cabinets on a 0.6 m cell came out **0.60 m and
+1.20 m** — their edges fell on opposite sides of the same line and the error
+walked down the row. Rounding the *width* instead makes every cabinet of a
+width the same width, and lays the row out on grid lines by construction.
+
+**And the warning is per width, not per cabinet.** A hall of 400 positions
+built from one typical row repeated the same sentence forty times and buried
+everything else. It is said once, with the x cell that would carry the width
+exactly — a 25% loss on a cabinet's width is not a rounding a reader should
+have to work out the cure for.
+
+**Every position is a position, including the plates.** The page and the API
+list and validate them all. Validating an edit against `model.racks` — which
+holds only the cabinets — meant a position the case had just blanked read as
+an unknown id, and un-blanking it from the page was impossible. That is the
+kind of one-way door a form must never have.

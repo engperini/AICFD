@@ -158,3 +158,89 @@ class PlenumDrawingTest(unittest.TestCase):
         js = self.drawing()
         self.assertNotIn("dw-supplyedge", js)
         self.assertEqual(js.count("// 6.4"), 1)
+
+
+class RacksPageTest(unittest.TestCase):
+    """The rack page writes widths, blanks and the typical row (ADR-074)."""
+
+    def setUp(self):
+        support.sandbox(self)
+
+    def test_it_serves_every_position_including_the_blanks(self):
+        from aicfd import server
+
+        out = server.read_racks("pod-fanwall")
+        self.assertIn("row", out)
+        self.assertIn("rows", out)
+        for place in out["racks"]:
+            for key in ("id", "row", "blank", "width_m", "load_kw", "sized"):
+                self.assertIn(key, place)
+        self.assertEqual(out["totals"]["cabinets"] + out["totals"]["blanks"],
+                         out["totals"]["positions"])
+
+    def test_the_standard_cabinet_is_editable_here(self):
+        from aicfd import server
+
+        out = server.write_racks("pod-fanwall", {"size": [0.7, 1.2, 2.2]})
+        self.assertEqual(out["rejected"], [])
+        self.assertEqual(server.read_racks("pod-fanwall")["standard"]["size"][0], 0.7)
+
+    def test_a_typical_row_survives_a_save_and_a_reload(self):
+        from aicfd import server
+
+        plan = [{}, {"width": 0.8, "load_kw": 12.0}, {"blank": True, "width": 0.4}]
+        out = server.write_racks("pod-fanwall", {"row": plan})
+        self.assertEqual(out["rejected"], [])
+        back = server.read_racks("pod-fanwall")
+        self.assertEqual(back["row"], plan)
+        self.assertEqual(back["totals"]["blanks"], 1)
+        self.assertEqual(back["totals"]["cabinets"], 2)
+
+    def test_the_rows_length_becomes_the_count(self):
+        """Saying it twice only invites the two to disagree."""
+        from aicfd import server
+
+        server.write_racks("pod-fanwall", {"row": [{}] * 7})
+        self.assertEqual(server.read_racks("pod-fanwall")["totals"]["positions"], 7)
+
+    def test_per_position_widths_and_blanks_survive(self):
+        from aicfd import server
+
+        server.write_racks("pod-fanwall", {"widths": {"R2": 0.9}, "blanks": ["R1"]})
+        back = {r["id"]: r for r in server.read_racks("pod-fanwall")["racks"]}
+        self.assertTrue(back["R1"]["blank"])
+        self.assertAlmostEqual(back["R2"]["width_m"], 0.9, places=2)
+        self.assertTrue(back["R2"]["sized"])
+
+    def test_a_blank_position_can_be_edited_back_into_a_cabinet(self):
+        """Validating against the built racks would refuse this: a blank is
+        not in `model.racks`, so its own id would read as unknown."""
+        from aicfd import server
+
+        server.write_racks("pod-fanwall", {"blanks": ["R1"]})
+        out = server.write_racks("pod-fanwall", {"blanks": [], "loads": {"R1": 9.0}})
+        self.assertEqual(out["rejected"], [])
+        back = {r["id"]: r for r in server.read_racks("pod-fanwall")["racks"]}
+        self.assertFalse(back["R1"]["blank"])
+        self.assertAlmostEqual(back["R1"]["load_kw"], 9.0)
+
+    def test_a_bad_position_is_named_and_nothing_else_is_lost(self):
+        from aicfd import server
+
+        out = server.write_racks("pod-fanwall", {
+            "row": [{}, {"width": 9.0}],
+            "widths": {"NOPE": 0.8},
+        })
+        self.assertTrue(any("9" in r for r in out["rejected"]))
+        self.assertTrue(any("NOPE" in r for r in out["rejected"]))
+
+    def test_the_file_keeps_its_comments(self):
+        from aicfd import server
+
+        server.write_racks("pod-fanwall", {
+            "row": [{}, {"blank": True, "width": 0.4}],
+            "widths": {"R1": 0.8},
+        })
+        text = (server.CASES_DIR / "pod-fanwall.yaml").read_text()
+        self.assertIn("sizes its resistance", text)
+        self.assertIn("from the gallery wall", text)
