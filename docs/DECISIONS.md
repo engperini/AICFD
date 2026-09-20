@@ -2850,3 +2850,35 @@ temperature it entered, because the fans are still running.
 
 **Both sheets that print a leaving water temperature are now reproduced**:
 30.01 °C against the Uniflair's 30.0, 28.03 against the CA80's 28.0.
+
+## ADR-070 — Which "supply air" a sheet means, and how to tell
+
+**Decision.** A unit's `design.supply_c` is the air leaving the **unit**, after
+the fan array. Where a sheet prints the air off the coil instead, the fan heat
+is added before the number is entered, and the file says so at the top.
+
+**The two conventions look identical on paper.** Vertiv and Uniflair print
+"Discharge air temperature off unit" and mean it: their airflow times that
+temperature difference gives the NET capacity, and both close to 0.2%.
+Springer Tech prints "Supply air Dry condition" and means the air off the
+coil: 116,000 m³/h from 38.0 to 24.4 °C carries 461.7 kW, which is that
+sheet's **gross** 462, not its net 436.2. Nothing on either sheet says which
+one it is. The arithmetic does.
+
+**The test is free and unambiguous.** Multiply the airflow by the temperature
+difference. If it lands on the net figure, the number is the unit's discharge.
+If it lands on the gross, it is the coil's, and the fan heat — the sheet's own
+power input divided by the air's capacity rate, 0.76 K here — has to be added.
+Where a sheet prints its water flow, that is a third independent check: 39.6
+m³/h over a 10 K rise is 460 kW, the gross again (ADR-069).
+
+**Taking it at face value is not a rounding error.** It would put air 0.76 K
+colder than the unit really delivers onto the fan patch — the boundary
+condition the whole solve hangs from — and quote a capacity of 462 kW where
+the room receives 436. On a 14-unit hall that is 360 kW of cooling that does
+not exist.
+
+**Every shipped unit now reproduces its own leaving water temperature**, and a
+test walks the whole library asserting it within 0.15 K. That check catches
+both this and ADR-069's: a supply temperature read off the wrong side of the
+fans, or a water flow taken from the net, both show up there.

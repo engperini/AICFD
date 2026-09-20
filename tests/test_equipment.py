@@ -1064,3 +1064,67 @@ class WaterCarriesTheGrossDutyTest(unittest.TestCase):
                 self.assertAlmostEqual(
                     coil.operate(return_c, coil.air_fitted).ceiling_kw,
                     expected, delta=0.5)
+
+
+class ShippedSpringerTest(unittest.TestCase):
+    """Springer Tech 396FWA500, and the supply-air convention it exposed.
+
+    This sheet's "Supply air Dry condition" is the air off the COIL, not off
+    the unit: 116,000 m3/h from 38.0 to 24.4 degC carries the sheet's GROSS
+    462 kW. Taken at face value it would put air 0.76 K colder than the unit
+    really delivers onto the fan patch, and quote a capacity the room never
+    receives. What this file carries is the unit's discharge.
+    """
+
+    def setUp(self):
+        self.unit = equipment.load("396FWA500")
+
+    def test_it_carries_the_units_discharge_not_the_coils(self):
+        from aicfd.coil import air_capacity_rate
+
+        air = air_capacity_rate(116000.0, 38.0, 661.0)
+        off_coil = 24.4                                   # what the sheet prints
+        self.assertAlmostEqual(air * (38.0 - off_coil), 462.0, delta=1.0)
+        self.assertAlmostEqual(float(self.unit.design["supply_c"]),
+                               off_coil + 25.8 / air, delta=0.02)
+
+    def test_the_selection_closes_on_the_net_figure(self):
+        from aicfd.coil import air_capacity_rate
+
+        air = air_capacity_rate(116000.0, 38.0, 661.0)
+        self.assertAlmostEqual(air * (38.0 - 25.15), 436.2, delta=1.0)
+
+    def test_the_water_side_agrees_independently(self):
+        """39.6 m3/h over a 10 K rise is 460 kW: the gross, a third time."""
+        self.assertAlmostEqual(self.unit.coil.water_max, 39600 / 3600 * 4.18,
+                               delta=0.05)
+        self.assertAlmostEqual(self.unit.coil.leaving_water_c(436.2), 28.0,
+                               delta=0.1)
+
+    def test_every_number_is_the_sheets(self):
+        self.assertEqual(list(self.unit.size), [3.40, 1.50, 4.00])
+        self.assertEqual(self.unit.weight_kg, 4000)
+        self.assertEqual(self.unit.fans["count"], 10)
+        self.assertEqual(self.unit.selection["elevation_m"], 661)
+        self.assertEqual(self.unit.selection["esp_pa"], 150)
+        self.assertAlmostEqual(float(self.unit.design["nscc_kw"]), 436.2)
+        self.assertAlmostEqual(float(self.unit.design["power_kw"]), 25.8)
+
+
+class EveryShippedUnitTest(unittest.TestCase):
+    """Whatever is in the library is real data behind somebody's report."""
+
+    def test_they_all_fit_a_coil(self):
+        for model in equipment.available():
+            with self.subTest(model=model):
+                unit = equipment.load(model)
+                self.assertIsNotNone(unit.coil, unit.coil_problem)
+
+    def test_they_all_reproduce_their_own_leaving_water(self):
+        for model in equipment.available():
+            with self.subTest(model=model):
+                unit = equipment.load(model)
+                net = float(unit.design["nscc_kw"])
+                self.assertAlmostEqual(
+                    unit.coil.leaving_water_c(net),
+                    float(unit.selection["leaving_water_c"]), delta=0.15)

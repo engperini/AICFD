@@ -1,0 +1,64 @@
+# Springer Tech 396FWA500 — fan wall unit.
+#
+# ONE manufacturer selection, which is all a unit needs: the coil is recovered
+# from it and answers at any return air the room really produces (ADR-063).
+# Validating that extrapolation is the engineer's, and the report says so.
+#
+# Selection sheet: version 15.39FW.430.140726.H.03.SO, project Vinhedo
+# (Ascenty), 14 units, 661 m, 38.0 °C dry bulb / 23.7 °C wet bulb / 30% RH
+# entering air, 150 Pa ESP, 18/28 °C water at 39.6 m3/h, 10 EC fans, 480/3/60,
+# Belimo EP100F+MOD 2-way valve, G4 filters, 80 dB at 2 m.
+#
+# READ THE SUPPLY TEMPERATURE BELOW BEFORE CHANGING IT. The sheet's "Supply
+# air Dry condition 24,4 °C" is the air leaving the COIL: 116,000 m3/h from
+# 38.0 to 24.4 °C at 661 m carries 461.7 kW, which is the sheet's GROSS 462,
+# not its net. The fan array adds its 25.8 kW back downstream, worth 0.76 K,
+# so the air leaving the UNIT is 25.15 °C -- and that is what this file
+# carries, because it is what the room receives and what the CFD imposes on
+# the fan patch. Both of the other conventions were checked: the water flow
+# gives 45.98 kW/K x 10 K = 460 kW, the gross again (ADR-069).
+model: 396FWA500
+family: Springer Tech Fan Wall
+
+size: [3.40, 1.50, 4.00]      # width x depth x height, metres. Damper extends
+                              # the depth by 125 mm; not modelled (ADR-046).
+weight_kg: 4000               # net; 4050 gross, crated
+
+fans:
+  count: 10
+  type: EC
+  modulation: 100             # % of full speed, at the selection point
+
+selection:
+  # The conditions this selection was taken at. Change any of them and the
+  # numbers below are not this unit's: ask for a new selection.
+  elevation_m: 661
+  esp_pa: 150                 # external static pressure
+  entering_water_c: 18
+  leaving_water_c: 28
+  entering_air_rh: 30         # %
+  water_flow_lh: 39600        # 39.6 m3/h, stated (ADR-069)
+
+design:
+  # THE selection. One machine at one duty -- the one this plant was bought
+  # on -- and the anchor for everything the software computes.
+  return_c: 38.0              # air the unit RECEIVES, dry bulb
+  supply_c: 25.15             # air leaving the UNIT: the sheet's 24.4 °C off
+                              # the coil plus the 0.76 K the fans add. See the
+                              # note at the top of this file.
+  airflow_m3h: 116000         # unit airflow, actual air at 661 m
+  nscc_kw: 436.2              # NET sensible: 462.0 gross less 25.8 of fan power
+  power_kw: 25.8              # electrical power input (72 A max, EER 17.9)
+
+curve:
+  # Representative, not the manufacturer's: the sheet gives the one point the
+  # unit was selected to overcome, and the rest has the shape of an EC array.
+  # Replace with the real P-Q curve when it is given, and tick `measured` on
+  # the page.
+  measured: false
+  points:
+    - [0, 390]
+    - [58000, 310]
+    - [116000, 150]
+    - [141000, 70]
+    - [162000, 0]
