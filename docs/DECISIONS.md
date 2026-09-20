@@ -2631,3 +2631,44 @@ damped for now: the loop already measures what moved and warns when it does
 not settle within its passes. A real case that chatters is the evidence that
 would justify damping, and inventing it first would hide the very behaviour
 worth seeing.
+
+## ADR-065 — One selection is the whole requirement, and the page says so
+
+**Decision.** A unit is described by its design selection. The reference
+table under it is optional — zero rows, one row, or seven, all load — and
+nothing in the parser, the page, or a message asks for a second selection.
+
+**The rule had already changed; three places had not.** ADR-063 made the
+coil recoverable from one selection and proved it: a unit carrying only
+`selection` + `design` answers within 0,1 K of the seven-row CA80 at 55 °C.
+What stayed behind was a completeness gate in `equipment.parse` that
+demanded a design selection or else a pair of capacity rows, an equipment
+page that titled the reference table "The selections" and locked its remove
+button once two rows were left, and a P–Q chart that draws nothing below two
+points. A user with one selection in hand read those three and concluded the
+tool wanted two. Nothing was broken; the tool was saying the wrong thing,
+which for an input form is the same defect.
+
+**Completeness is the coil fit's business, not the parser's.** The parser
+validates what is present — a row missing a column, two rows at the same
+`return_c` — and refuses those, because a bad number reaches a report. What
+is *absent* is reported where it can be named usefully: `CannotFit` says
+which field it wanted, `coil_problem` carries that to the result, and the
+unit still loads. A half-written unit has to be openable, or it cannot be
+finished; refusing to parse it means the page that would let you fill in the
+missing field will not open either.
+
+**The page now leads with the design selection.** Its own card, five
+editable fields, above a table renamed "Reference selections (optional)"
+whose rows delete down to none. Adding a row starts from the design point
+rather than from a row that may not exist.
+
+**A single reference row is legitimate and is not interpolated.** The old
+error — "one row cannot be interpolated" — described a table that was the
+model. It no longer is: the coil is the model, and the table is evidence
+against it. One row of evidence is less than seven, not invalid.
+
+**What the user owns.** A new unit entered with one selection gets a coil
+extrapolated from that point by the ε-NTU fit, and the report says so
+(ADR-063). Validating that extrapolation is the engineer's, and saying it
+plainly is cheaper than a gate that pretends the tool could check it.

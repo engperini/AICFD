@@ -93,10 +93,32 @@ function render() {
 
         <section class="card">
           <div class="card-head">
-            <span class="card-title">The selections</span>
-            <span class="card-sub">one row per manufacturer selection; edit to
-              re-characterise the unit</span>
+            <span class="card-title">The design selection</span>
+            <span class="card-sub">one selection describes the unit; the coil
+              is fitted from this</span>
           </div>
+          ${designHtml()}
+          <p class="prose note">
+            These five numbers and the water below are everything the model
+            needs. From them it answers at any return air temperature — above
+            this selection and below it — and at an airflow no selection
+            used.
+          </p>
+        </section>
+
+        <section class="card">
+          <div class="card-head">
+            <span class="card-title">Reference selections</span>
+            <span class="card-sub">optional; more of the manufacturer's, if
+              you have them</span>
+          </div>
+          <p class="prose note">
+            Not needed, and most units have none. What they do is refine how
+            the coil's resistance divides between air and water, and then
+            check the fit against themselves. With none, that split is
+            assumed — and the result says so, because it is then yours to
+            validate.
+          </p>
           <div style="overflow:auto">${tableHtml()}</div>
           <div class="actions">
             <button id="save" class="primary" type="button">Save</button>
@@ -150,8 +172,13 @@ function render() {
     render();
   });
   document.getElementById('add').addEventListener('click', () => {
-    const last = draft.capacity[draft.capacity.length - 1];
-    draft.capacity.push({ ...last, return_c: last.return_c + 1 });
+    // The table can now be emptied, so the first row back has to come from
+    // the design selection rather than from a last row that is not there.
+    const last = draft.capacity[draft.capacity.length - 1] ?? {
+      return_c: draft.design?.return_c ?? 35,
+      nscc_kw: draft.design?.nscc_kw ?? 0,
+    };
+    draft.capacity.push({ ...last, return_c: (last.return_c ?? 35) + 1 });
     render();
   });
   for (const input of document.querySelectorAll('[data-row]')) {
@@ -188,7 +215,7 @@ function tableHtml() {
           `<td><input type="number" step="any" value="${row[key]}"
              data-row="${i}" data-key="${key}" /></td>`,
       ).join('')}<td><button data-drop="${i}" type="button"
-          ${draft.capacity.length <= 2 ? 'disabled' : ''}>−</button></td></tr>`,
+          >−</button></td></tr>`,
     )
     .join('');
   return `<table><thead><tr>${head}<th></th></tr></thead><tbody>${rows}</tbody></table>`;
@@ -215,7 +242,22 @@ const IDENTITY = [
   { path: 'fans.modulation', label: 'Fan modulation', suffix: '%', step: 0.1 },
 ];
 
-/** The conditions the capacity table was selected at. */
+/**
+ * THE selection: the one the coil is fitted from, and all a unit needs.
+ *
+ * It was editable through the API and absent from this page, so a reader
+ * with one selection in hand typed it into the reference table below and was
+ * told the unit needed two of them. It never did (ADR-063, ADR-065).
+ */
+const DESIGN = [
+  { path: 'design.return_c', label: 'Return air', suffix: '°C', step: 0.1 },
+  { path: 'design.supply_c', label: 'Supply air', suffix: '°C', step: 0.1 },
+  { path: 'design.airflow_m3h', label: 'Airflow', suffix: 'm³/h', step: 100 },
+  { path: 'design.nscc_kw', label: 'Net sensible capacity', suffix: 'kW', step: 0.1 },
+  { path: 'design.power_kw', label: 'Power input', suffix: 'kW', step: 0.1 },
+];
+
+/** The conditions the selection was taken at. */
 const SELECTION = [
   { path: 'selection.elevation_m', label: 'Site elevation', suffix: 'm', step: 1 },
   { path: 'selection.esp_pa', label: 'External static pressure', suffix: 'Pa', step: 1 },
@@ -233,6 +275,10 @@ function factsHtml() {
 
 function selectionHtml() {
   return `<table class="facts"><tbody>${SELECTION.map(fieldRow).join('')}</tbody></table>`;
+}
+
+function designHtml() {
+  return `<table class="facts"><tbody>${DESIGN.map(fieldRow).join('')}</tbody></table>`;
 }
 
 function fieldRow(field) {

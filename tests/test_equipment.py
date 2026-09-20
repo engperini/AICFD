@@ -65,8 +65,14 @@ class TableTest(unittest.TestCase):
             [r["return_c"] for r in equipment.parse(shuffled).capacity],
             [35.0, 37.0, 41.0],
         )
+        # A single reference row is legitimate (ADR-065): the design selection
+        # is what describes the unit, and the table below it is optional.
+        self.assertEqual(
+            len(equipment.parse({**copy.deepcopy(RAW),
+                                 "capacity": RAW["capacity"][:1]}).capacity),
+            1,
+        )
         for broken, why in (
-            ({"capacity": RAW["capacity"][:1]}, "one row cannot be interpolated"),
             ({"capacity": [{"return_c": 35.0}]}, "a row missing its columns"),
             ({"capacity": [dict(RAW["capacity"][0]), dict(RAW["capacity"][0])]},
              "two rows at the same temperature"),
@@ -626,3 +632,57 @@ class ProvenanceTest(unittest.TestCase):
         self.assertAlmostEqual(unit.coil.operate(55.0, air, 21.9).supply_c,
                                worked.operate(55.0, air, 21.9).supply_c,
                                delta=0.1)
+
+
+class OneSelectionOnThePageTest(unittest.TestCase):
+    """A reader with one selection in hand must not be told the unit needs
+    two (ADR-065)."""
+
+    def page(self) -> str:
+        from aicfd import server
+
+        return (server.REPO_ROOT / "web" / "equipment.js").read_text()
+
+    def test_the_design_selection_is_on_the_page(self):
+        """It was editable through the API and absent from the page, so a
+        reader typed their one selection into the reference table instead."""
+        js = self.page()
+        for field in ("design.return_c", "design.supply_c",
+                      "design.airflow_m3h", "design.nscc_kw"):
+            with self.subTest(field=field):
+                self.assertIn(field, js)
+
+    def test_the_reference_table_can_be_emptied(self):
+        """It refused to go below two rows, which is where the impression
+        came from."""
+        self.assertNotIn("draft.capacity.length <= 2", self.page())
+
+    def test_it_is_not_called_the_selections(self):
+        js = self.page()
+        self.assertIn("The design selection", js)
+        self.assertIn("Reference selections", js)
+
+    def test_a_unit_with_no_reference_rows_parses(self):
+        spec = yaml.safe_load((equipment.LIBRARY / "CA80NPVG6.yaml").read_text())
+        one = {k: v for k, v in spec.items() if k != "capacity"}
+        one["model"] = "ONE"
+        unit = equipment.parse(one)
+        self.assertEqual(unit.capacity, ())
+        self.assertIsNotNone(unit.coil)
+
+    def test_a_unit_with_no_design_selection_says_what_is_missing(self):
+        """It loads -- a half-written unit has to be openable to be finished
+        -- and the coil says which field is absent."""
+        spec = yaml.safe_load((equipment.LIBRARY / "CA80NPVG6.yaml").read_text())
+        without = {k: v for k, v in spec.items() if k != "design"}
+        unit = equipment.parse(without)
+        self.assertIsNone(unit.coil)
+        self.assertIn("design.return_c", unit.coil_problem)
+        self.assertNotIn("at least two", unit.coil_problem)
+
+    def test_nothing_anywhere_asks_for_two_selections(self):
+        from aicfd import server
+
+        for path in (equipment.__file__, server.REPO_ROOT / "web" / "equipment.js"):
+            with self.subTest(file=Path(path).name):
+                self.assertNotIn("at least two", Path(path).read_text())

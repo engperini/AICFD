@@ -236,19 +236,14 @@ def parse(raw: dict, source: Path | None = None) -> Equipment:
     a report: a missing column would otherwise surface as a KeyError halfway
     through post-processing a run that took eleven minutes.
     """
+    # Completeness is not checked here. ONE selection describes a unit -- the
+    # design selection -- and whether it is there is the coil fit's business:
+    # `CannotFit` names the missing field, and `coil_problem` carries it to
+    # the result (ADR-063). A second gate here demanded a design selection or
+    # else a pair of capacity rows, and a reader holding a single selection
+    # read that as a minimum of two. It never was the rule, and a half-written
+    # unit has to be loadable to be finished (ADR-065).
     rows = raw.get("capacity") or []
-    design = raw.get("design") or {}
-    needed = [k for k in ("return_c", "supply_c", "airflow_m3h", "nscc_kw")
-              if design.get(k) is None]
-    if needed and len(rows) < 2:
-        # One design selection describes a unit. A unit given a capacity table
-        # and no design selection is the older shape and still reads, as long
-        # as the table has two rows to interpolate between.
-        raise ValueError(
-            f"{raw.get('model', '?')} needs a design selection "
-            f"(design.{', design.'.join(needed)} missing) or at least two "
-            f"capacity rows; it has {len(rows)}"
-        )
     table = []
     for i, row in enumerate(rows):
         missing = [k for k in ("return_c", *QUANTITIES) if row.get(k) is None]
