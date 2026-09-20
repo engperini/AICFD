@@ -3144,9 +3144,31 @@ air-cooled cabinets the Type-E RFP standardises (600×1200 45U, 800×1200 46U,
 Vinhedo 03 15+15 MW schedule adds — shuffle-box, ODF, the shallow 300 mm ODF
 special, and the liquid network rack that is still missing two dimensions.
 
-**The lease's Exhibit A-2 states limits, not products**, so none of it is in
-the catalogue: maximum high-density rack 600–1800 (W) × 1800 (D) × 2600 (H),
-maximum low-density 1200 × 1800 × 2600, cold aisle 1800 mm low density and
-2438 mm high, hot aisle 2134 mm, perimeter 2438 mm. Those belong to a case's
-clearances, and a type that exceeded them would be a compliance question rather
-than a catalogue entry.
+**The lease's Exhibit A-2 describes cabinets too, and they are types.** Its
+maxima are the envelope of a real rack, not a clearance: the SUM3 high-density
+GPU cabinet at 1800 × 1800 × 2600 and the low-density one at 1200 × 1800 ×
+2600, both deployed modularly — the first as one 1800 mm unit or up to four
+600 mm racks connected in place, the second as up to two. Three types carry
+them, split by the duties the same exhibit gives: GPU 1,100–2,200 kW, low
+density compute 34–54 kW, low density storage and network 14–34 kW. Each
+carries the TOP of its range, because a cooling study sized on the bottom of a
+range is the wrong error to make, and each says the range in its note.
+
+**Low density is 100% air, high density is not, and the difference is in the
+lease.** Low-density rows are provided with infrastructure for 100% air
+cooling, so those cabinets' whole duty is what the room removes. High-density
+rows carry both, and the lease gives the split **per colo** — up to 100% liquid
+and 55% air on the first, 35% after — never per rack. So `sum3-high-density`
+states no `liquid_fraction` and a position naming it is refused until it says
+what reaches the air. At 2,200 kW that refusal is worth megawatts.
+
+What is NOT in the catalogue is the exhibit's clearances — cold aisle 1800 mm
+low density and 2438 mm high, hot aisle 2134 mm, perimeter 2438 mm. Those are a
+case's aisles, and a rack type has nothing to say about them.
+
+**A row has one depth and one height.** Only the width is a position's own: a
+row is a single band across the hall and mixing depths inside it is geometry
+this model does not build. A type named at a position contributes its width
+and, where its other two differ from the row's, says so — silently dropping
+them is how an 1800 mm cabinet ends up drawn 1200 deep. Named as `racks.type`
+it sizes the whole row instead.

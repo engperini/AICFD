@@ -1,0 +1,30 @@
+id: sum3-high-density
+name: SUM3 high-density (GPU) rack
+cooling: liquid
+
+# The GPU cabinet of the Sumaré 03 lease. Its envelope is a maximum: it is
+# deployed either as one 1800 mm unit or as up to four 600 mm racks connected
+# in place, so 600, 1200 and 1800 are all real widths for it. What is carried
+# here is the full envelope, because that is what a row has to fit; state the
+# width per position where a bay is narrower.
+size: [1.800, 1.800, 2.600]
+load_kw: 2200.0
+source: >
+  Colocation and Data Center Lease (2025), Exhibit A-2, SUM3, signed.
+  1.5.4.1 Rack Dimensions: maximum single rack 600mm-1800mm (W) x 1800mm (D) x
+  2600mm (H); may be deployed as a single 1800mm wide unit or up to (4) 600mm
+  wide racks connected in place. 1.4.14.1 Maximum Rack Load: maximum high
+  density (GPU) rack load 2,200 kW, served by multiple 415V 3-phase circuits;
+  high density (GPU) racks range from 1,100 kW up to 2,200 kW. 1.1.2.1: high
+  density rows are provided with infrastructure for liquid AND air cooling.
+note: >
+  2,200 kW IS THE TOP OF THE RANGE, AND IT IS THE CABINET'S DUTY, NOT ITS AIR
+  LOAD. The range is 1,100 to 2,200. The lease gives the liquid/air split per
+  COLO -- infrastructure sized for up to 100% liquid cooling and 55% air on
+  the first colo, 35% on the ones after, against the colo's design maximum IT
+  power -- and never per rack. So this file states no `liquid_fraction`, and a
+  position naming this type is refused until it says what reaches the air.
+  That refusal is the point: at this duty the difference between a guess and
+  the truth is megawatts.
+
+  A high density row is 24 tile spaces: 16 IT and 8 network (1.4.15.1).

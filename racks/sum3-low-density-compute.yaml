@@ -1,0 +1,24 @@
+id: sum3-low-density-compute
+name: SUM3 low-density compute rack
+cooling: air
+
+# Air cooled, all of it: the lease provides low density rows with
+# infrastructure for 100% air cooling, so this cabinet's whole duty is what
+# the room has to remove.
+size: [1.200, 1.800, 2.600]
+load_kw: 54.0
+source: >
+  Colocation and Data Center Lease (2025), Exhibit A-2, SUM3, signed.
+  1.5.4.1 Rack Dimensions: a low density rack may be up to (2) 600mm wide
+  racks, for a maximum rack size of 1200mm (W) x 1800mm (D) x 2600mm (H).
+  1.4.14.1: low density compute racks range from 34 kW to 54 kW.
+  1.1.3.1: low density rows are provided with infrastructure for 100% air
+  cooling.
+note: >
+  54 kW is the TOP of the 34-54 kW range, carried because a cooling study
+  sized on the bottom of a range is the wrong error to make. Override it per
+  position for a row that really runs lower.
+
+  The 1200 mm envelope is a maximum too: the cabinet is up to two 600 mm racks
+  moved in individually, so 600 is a real width for it. A low density row is
+  24 tile spaces: 22 IT and 2 network (1.4.15.1).

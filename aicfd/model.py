@@ -1362,6 +1362,23 @@ def rack_positions(row_id: str, plan: list[dict], size, load_kw: float,
 
             rack = racklib.resolve(str(entry["type"]))
             from_type = {"width": rack.size[0]}
+            # A ROW HAS ONE DEPTH AND ONE HEIGHT. Only the width is a
+            # position's own, because the row is a single band across the hall
+            # and mixing depths inside it is geometry this model does not
+            # build. A type named at a position therefore contributes its
+            # width and nothing else, and where its other two differ from the
+            # row's that is said rather than silently dropped (ADR-075).
+            if warnings is not None:
+                for i_axis, axis_name in ((1, "deep"), (2, "tall")):
+                    theirs, ours = rack.size[i_axis], float(size[i_axis])
+                    if theirs is None or abs(theirs - ours) < 1e-9:
+                        continue
+                    note = (f"{rack.id} is {theirs:.3f} m {axis_name} and this "
+                            f"row is {ours:.3f} m; a row has one depth and one "
+                            f"height, so only its width is taken. Name it as "
+                            f"`racks.type` to make the row itself its size.")
+                    if note not in warnings:
+                        warnings.append(note)
             # A LIQUID CABINET'S RATED DUTY IS NOT ITS AIR LOAD. The Type-E
             # rack is 225 kW and leaves ~96% of it in the coolant, so what
             # this room has to remove is the other 4% -- about 9 kW, not 225.

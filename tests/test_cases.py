@@ -255,3 +255,76 @@ class RackTypeTest(unittest.TestCase):
         from aicfd import racklib
 
         self.assertAlmostEqual(racklib.load("type-e-liquid-225kw").size[0], 0.605)
+
+
+class Sum3RackTest(unittest.TestCase):
+    """The SUM3 lease's own cabinets, as rack types (ADR-075)."""
+
+    def build(self, **racks):
+        spec = copy.deepcopy(support.spec("pod-fanwall"))
+        spec["racks"].update(racks)
+        return m.build_model(spec)
+
+    def test_the_three_are_in_the_catalogue(self):
+        from aicfd import racklib
+
+        for type_id, size in (
+            ("sum3-high-density", [1.800, 1.800, 2.600]),
+            ("sum3-low-density-compute", [1.200, 1.800, 2.600]),
+            ("sum3-low-density-network", [1.200, 1.800, 2.600]),
+        ):
+            with self.subTest(type=type_id):
+                self.assertEqual(list(racklib.load(type_id).size), size)
+
+    def test_low_density_is_air_cooled_end_to_end(self):
+        """The lease provides low density rows for 100% air cooling, so the
+        cabinet's whole duty is what the room removes."""
+        from aicfd import racklib
+
+        for type_id, load in (("sum3-low-density-compute", 54.0),
+                              ("sum3-low-density-network", 34.0)):
+            with self.subTest(type=type_id):
+                rack = racklib.load(type_id)
+                self.assertEqual(rack.cooling, "air")
+                self.assertEqual(rack.load_kw, load)
+        model = self.build(row=[{"type": "sum3-low-density-compute"},
+                                {"type": "sum3-low-density-network"}, {}])
+        self.assertEqual([r.load_kw for r in model.rows[0].racks],
+                         [54.0, 34.0, 6.0])
+
+    def test_the_gpu_rack_states_no_split_so_it_is_refused(self):
+        """The lease gives the liquid/air ratio per COLO, never per rack. At
+        2,200 kW the gap between a guess and the truth is megawatts."""
+        from aicfd import racklib
+
+        rack = racklib.load("sum3-high-density")
+        self.assertEqual(rack.cooling, "liquid")
+        self.assertIsNone(rack.liquid_fraction)
+        with self.assertRaises(ValueError) as caught:
+            self.build(row=[{"type": "sum3-high-density"}, {}, {}])
+        self.assertIn("2200 kW leaves in the coolant", str(caught.exception))
+
+    def test_the_gpu_rack_builds_once_its_air_load_is_stated(self):
+        model = self.build(row=[{"type": "sum3-high-density", "load_kw": 176.0},
+                                {}, {}])
+        self.assertEqual(model.rows[0].racks[0].load_kw, 176.0)
+        self.assertAlmostEqual(model.rows[0].racks[0].box.size[0], 1.8, places=1)
+
+    def test_a_deeper_type_at_a_position_says_only_its_width_is_taken(self):
+        """A row is one band across the hall. Mixing depths inside it is
+        geometry this model does not build, and dropping the number in
+        silence is how a 1800 mm cabinet ends up drawn 1200 deep."""
+        said = [w for w in self.build(
+            row=[{"type": "sum3-low-density-compute"}, {}, {}]).warnings
+            if "row has one depth" in w]
+        self.assertEqual(len(said), 2, said)       # depth and height
+        self.assertIn("1.800 m deep", said[0])
+        self.assertIn("racks.type", said[0])
+
+    def test_and_as_the_standard_it_sizes_the_whole_row(self):
+        spec = copy.deepcopy(support.spec("pod-fanwall"))
+        spec["racks"].pop("size")
+        spec["racks"]["type"] = "sum3-low-density-compute"
+        box = m.build_model(spec).rows[0].racks[0].box
+        self.assertAlmostEqual(box.size[1], 1.8, places=1)
+        self.assertAlmostEqual(box.size[2], 2.6, places=1)
