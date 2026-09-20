@@ -49,6 +49,11 @@
 .dw-sensor-dot{fill:var(--surface);stroke-width:1.2}
 .dw-sensor-far{opacity:.4}
 .dw-ceiling{stroke:var(--solid);stroke-width:2.6}
+/* The inner leaf of the plenum wall: building fabric, like the leaf it
+   stands parallel to, and NOT the containment green every other wall
+   wears (ADR-058). */
+.dw-partition{fill:none;stroke:var(--solid);stroke-width:2}
+
 .dw-divider{stroke:var(--solid);stroke-width:2.6}
 .dw-note{fill:var(--text-secondary);font-size:10px;text-anchor:middle;font-weight:600}
 /* Every caption is set on a halo of the page's own background. The drawings

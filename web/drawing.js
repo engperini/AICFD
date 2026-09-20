@@ -122,9 +122,17 @@ const EDGE_LABEL = {
   plenum_opening2: 'return',
 };
 
+const isSupply = (panel) => /^supply\d/.test(panel.name);
+const isPlenumWall = (panel) => /^plenum_wall/.test(panel.name);
+
 /** A fan wall is named once: seventeen captions reading "fan wall" say less
  * than one, and the rest are the same blue rectangle in the same wall. */
 const fanLabel = (panel, seen) => {
+  if (isSupply(panel)) {
+    if (seen.supply) return null;
+    seen.supply = true;
+    return 'supply grille';
+  }
   if (panel.kind !== 'fan' || seen.fan) return null;
   seen.fan = true;
   return 'fan wall';
@@ -157,7 +165,18 @@ const hotAisles = (model) => model.hot_aisles || [model.aisles.hot];
 
 /** Colour class for a panel, by what it is. */
 const klass = (panel) =>
-  panel.kind === 'wall' ? 'dw-wall' : panel.kind === 'fan' ? 'dw-fan' : 'dw-opening';
+  // The plenum's inner leaf is the building, not containment. Every `wall`
+  // is drawn in the containment green, and a green line across the end of
+  // the hall says that end is contained, which it is not (ADR-058, and the
+  // same misreading ADR-045 answered over the racks).
+  //
+  // A supply grille is an `opening` and is drawn like every other grille.
+  // Giving it a colour of its own -- the cold blue of the air through it --
+  // made it a new thing to learn on a drawing where red already means "a
+  // grille is here".
+  isPlenumWall(panel) ? 'dw-partition'
+    : panel.kind === 'wall' ? 'dw-wall'
+      : panel.kind === 'fan' ? 'dw-fan' : 'dw-opening';
 
 function el(tag, attrs = {}, text) {
   const node = document.createElementNS(NS, tag);
@@ -439,6 +458,33 @@ export function drawView(model, view, scale, options = {}) {
     // a gallery at each end, the near one alone when there is only one.
     for (const x of model.dividers ?? [model.hall.lo[0]]) {
       line(X(x), Y(d.hi[view.v]), X(x), Y(d.lo[view.v]), 'dw-divider');
+    }
+  }
+
+  // 6.4 — the supply plenum, where the case asks for one.
+  //
+  // Only the volume: the inner leaf and the grilles are panels, and step 7
+  // already draws every panel this view sees edge-on. Drawing them here as
+  // well put a second line over the first and a second caption beside it.
+  //
+  // The cavity between the two leaves of the wall carries the same cold
+  // supply air as the room, so it is tinted the same. What makes it a plenum
+  // is not its air but its two boundaries: the wall the units are mounted in,
+  // which is the one that was always there, and the inner leaf whose grilles
+  // decide where the air leaves (ADR-058).
+  if (view.h === 0 || view.v === 0) {
+    for (const wall of model.panels.filter(isPlenumWall)) {
+      const divider = (model.dividers ?? [model.hall.lo[0]]).reduce(
+        (best, x) => (Math.abs(x - wall.position) < Math.abs(best - wall.position)
+          ? x : best),
+        model.hall.lo[0],
+      );
+      const a = [Math.min(wall.position, divider), d.lo[1], d.lo[2]];
+      const b = [Math.max(wall.position, divider), d.hi[1], model.ceiling_z];
+      // The cold aisle's own tint: it is the same air, on its way to the
+      // same place, and a colour of its own would be a third thing to learn
+      // on a drawing that already says what cold-side air looks like.
+      paint(a, b, 'dw-cold');
     }
   }
 

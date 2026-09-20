@@ -246,6 +246,17 @@ def wall_plan(model: Model) -> list[tuple[str, list[Panel], list[Panel]]]:
         ]
         plan.append((name, [divider], holes))
 
+    # A supply plenum makes that wall a double wall: the second leaf stands a
+    # short way into the hall, and it is the one the grilles are in. The units
+    # and the wall they are mounted in are untouched (ADR-058).
+    for wall in [p for p in model.panels if p.name.startswith("plenum_wall")]:
+        plan.append((
+            wall.name,
+            [wall],
+            [p for p in model.panels
+             if p.name.startswith("supply") and abs(p.position - wall.position) < 1e-6],
+        ))
+
     grilles = [p for p in model.panels if p.name.startswith("grille")]
     plan.append(("forro", [model.panel("ceiling")], grilles))
 
@@ -397,7 +408,7 @@ def porous(model: Model) -> list[Panel]:
     """
     return [p for p in model.panels
             if p.resistance is not None
-            and (p.name.startswith("grille") or p.name.startswith("plenum_opening"))]
+            and p.name.startswith(("grille", "plenum_opening", "supply"))]
 
 
 def _porous_baffle(grille: Panel, p0: float) -> str:
@@ -1063,6 +1074,16 @@ def summary(model: Model) -> str:
         f"  Rack demand     {model.rack_demand_m3s * 3600:,.0f} m3/h "
         f"({model.rack_demand_m3s * 3600 / model.airflow_m3h * 100:.0f}% of supply)",
         f"  Design bulk dT  {model.design_delta_t_k:.1f} K",
+        *(
+            [
+                f"  Supply plenum   {model.plenum_depth:g} m between the two "
+                f"leaves of the hall wall, "
+                f"{len([p for p in model.panels if p.name.startswith('supply')])} "
+                f"grille(s)"
+            ]
+            if model.plenum_depth
+            else []
+        ),
         f"  Site air        {model.altitude_m:.0f} m, {model.pressure_pa / 1000:.1f} kPa, "
         f"rho {model.rho:.3f} kg/m3",
         *_hvac_lines(model),

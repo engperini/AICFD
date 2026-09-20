@@ -18,6 +18,7 @@ import yaml
 
 from aicfd import model as m
 from aicfd import case
+from tests import support
 
 SPEC = yaml.safe_load(
     """
@@ -306,3 +307,48 @@ class SummaryTest(unittest.TestCase):
 
 if __name__ == "__main__":
     unittest.main()
+
+
+class SupplyPlenumCaseTest(unittest.TestCase):
+    """What the solver is given for a plenum (ADR-058)."""
+
+    def model(self, **plenum):
+        spec = support.spec("pod-plenum")
+        spec["plenum"] = {**spec.get("plenum", {}), "enabled": True, **plenum}
+        return m.build_model(spec)
+
+    def zones(self, model):
+        return {name: (walls, holes) for name, walls, holes in case.wall_plan(model)}
+
+    def test_the_wall_the_units_are_in_is_untouched(self):
+        """The plenum is a second leaf. The existing wall still carries the
+        fan walls and the opening into the return plenum, and nothing else."""
+        zones = self.zones(self.model())
+        _walls, holes = zones["divider"]
+        self.assertEqual(sorted(h.name for h in holes), ["fan", "plenum_opening"])
+
+    def test_the_grilles_pierce_the_second_leaf(self):
+        zones = self.zones(self.model())
+        self.assertIn("plenum_wall", zones)
+        _walls, holes = zones["plenum_wall"]
+        self.assertEqual([h.name for h in holes], ["supply1"])
+
+    def test_a_supply_grille_is_a_porous_baffle_like_the_return_ones(self):
+        model = self.model()
+        self.assertIn("supply1", [p.name for p in case.porous(model)])
+        text = case.create_baffles_dict(model)
+        self.assertIn("supply1_below", text)
+        self.assertIn("supply1_above", text)
+        self.assertIn("porousBafflePressure", text)
+
+    def test_every_surface_the_plenum_adds_is_written(self):
+        text = case.topo_set_dict(self.model())
+        for name in ("plenum_wall", "supply1"):
+            with self.subTest(surface=name):
+                self.assertIn(name, text)
+
+    def test_a_shut_grille_leaves_the_leaf_solid(self):
+        model = self.model(closed=["supply1"])
+        self.assertEqual([p for p in model.panels if p.name.startswith("supply")], [])
+        _walls, holes = self.zones(model)["plenum_wall"]
+        self.assertEqual(holes, [])

@@ -698,6 +698,14 @@ def _methodology(doc, export: Export, drawn: dict) -> None:
                  "across a rack is a result and not an input."),
         ("Return grille", "Cyclic pair carrying the datasheet's loss coefficient "
                           "as a pressure jump, then checked against the field."),
+        ("Supply plenum", "Where the case has one: the wall into the hall is "
+                          "doubled, the units stay in the outer leaf, and the "
+                          "cavity between the leaves is pressurised. The inner "
+                          "leaf carries the supply grilles, as cyclic pairs like "
+                          "the return ones. The hall is longer by the depth of "
+                          "the cavity, so the clearances are unchanged. Without "
+                          "a plenum the unit blows through a single wall into "
+                          "the aisle it faces."),
         ("Containment, false ceiling, row ends", "Two-sided adiabatic wall "
                                                  "baffles. A row not closed on "
                                                  "five sides leaks most of its "

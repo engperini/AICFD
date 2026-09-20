@@ -1,0 +1,19 @@
+id: supply-grille-2000
+name: Plenum supply grille, 2000 wide
+role: supply_grille
+
+# The wall between a supply plenum and the data hall carries these: one in
+# front of each cold aisle, as tall as a rack and wide enough to feed the
+# aisle evenly rather than as a jet.
+size: [2.0, 2.2]              # width x height of one grille, metres
+aperture: double-deflection blades in a 2000 mm frame
+pattern: slotted
+free_area: 0.7
+adjustable: [0.2, 0.9]        # the blades close down to a quarter open
+note: >
+  Fed by the plenum, not by a unit: where the hall wall is doubled the cavity
+  between its leaves is pressurised, and this grille in the inner leaf is what
+  decides where the air leaves and how fast. The free area is the trade --
+  open, the plenum costs almost nothing and distributes by whatever the units
+  do; closed down, it pressurises and the aisles share the air evenly, and the
+  fan pays for the difference.

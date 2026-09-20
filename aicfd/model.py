@@ -290,6 +290,11 @@ class Model:
     """The unit out of `equipment/`, when the spec names one. Carries the
     capacity table, which is what says how much a coil can transfer at the
     return temperature the room actually produces (ADR-036)."""
+    plenum_depth: float | None = None
+    """Distance between the two leaves of the wall into the hall, where the
+    case asks for a supply plenum. None is a single wall with the units
+    blowing straight through it, which is the arrangement without one
+    (ADR-058)."""
     blocks: list[tuple[float, float]] = field(default_factory=list)
     """The x span of each block of rack rows. A row cut by a transverse
     divider is two blocks, each a containment volume of its own, each served
@@ -711,6 +716,7 @@ class _Layout:
     grilles: list[Panel]
     walls: list[Panel]
     blocks: list[tuple[float, float]] = field(default_factory=list)
+    plenum_depth: float | None = None
 
 
 #: What a case uses where it names nothing. The house specification: the
@@ -718,6 +724,7 @@ class _Layout:
 #: fan duty nobody could reproduce (ADR-048).
 DEFAULT_COMPONENTS = {
     "gallery_mesh": "gallery-mesh-13",
+    "supply_grille": "supply-grille-2000",
     "ceiling_return": "ceiling-return-600",
     "floor_tile": "floor-tile-600",
     "containment": "containment-panel",
@@ -948,6 +955,7 @@ def build_model(spec: dict) -> Model:
         ),
         fan_curve=parse_fan_curve(fan.get("curve")),
         grille_free_area=_grille_free_area(spec),
+        plenum_depth=layout.plenum_depth,
     )
     # Snap to the mesh *before* anyone reads the model. The drawing, the
     # summary table and the solved case then describe the same geometry -- a
@@ -982,6 +990,25 @@ def _grille_free_area(spec: dict) -> float | None:
         return float(free_area)
     grille = component_for(spec, "ceiling_return")
     return grille.free_area if grille else None
+
+
+def _plenum_k(spec: dict) -> float | None:
+    """What a supply grille costs the plenum it is fed from.
+
+    The case wins where it states one; otherwise the component the case names
+    for this role, which is where a grille's free area belongs (ADR-048). A
+    grille with no resistance at all is a hole in the wall, which is a
+    legitimate thing to model -- it is the control case that says what the
+    grilles themselves cost.
+    """
+    plenum = spec.get("plenum") or {}
+    grille = plenum.get("grille") or {}
+    if "loss_coefficient" in grille:
+        return float(grille["loss_coefficient"])
+    if "free_area" in grille:
+        return grille_loss_coefficient(float(grille["free_area"]))
+    component = component_for(spec, "supply_grille")
+    return component.k if component else None
 
 
 def _grille_k(spec: dict) -> float | None:
@@ -1109,6 +1136,115 @@ def _containment(hot: tuple[float, float], span: tuple[float, float], rack_dz: f
     return panels
 
 
+#: A supply plenum, where the case asks for one, is this deep and its grilles
+#: this size. The depth is between the two leaves of the wall that divides the
+#: gallery from the hall; the grille is what the inner leaf carries (ADR-058).
+PLENUM_DEPTH = 1.2
+PLENUM_GRILLE_WIDTH = 2.0
+
+
+def plenum_for(spec: dict, rack_height: float) -> dict | None:
+    """The supply plenum this case asks for, or None where it asks for none.
+
+    Without a plenum the unit blows through the dividing wall straight into
+    the cold aisle it faces, and where it aims is where the air goes. A
+    plenum makes that wall a DOUBLE wall: the leaf the units are mounted in
+    is the one that was always there, a second leaf stands a short way into
+    the hall, and the cavity between them is pressurised. The room is then
+    fed by the grilles in the inner leaf rather than by the units, which is
+    what makes the supply even along the wall and aimed at the cold aisles
+    rather than at whatever each unit happens to face.
+    """
+    plenum = spec.get("plenum")
+    if not plenum or not plenum.get("enabled", False):
+        return None
+    grille = plenum.get("grille") or {}
+    closed = plenum.get("closed") or []
+    if isinstance(closed, str):
+        closed = [closed]
+    return {
+        "depth": float(plenum.get("depth", PLENUM_DEPTH)),
+        "width": float(grille.get("width", PLENUM_GRILLE_WIDTH)),
+        # As tall as a rack unless the case says otherwise: the grille feeds
+        # the cold aisle over the height the racks breathe from, and air let
+        # in above them is air the racks never see.
+        "height": float(grille.get("height", rack_height)),
+        "closed": {str(name) for name in closed},
+    }
+
+
+def _plenum_panels(plenum: dict, dividers: list[float],
+                   cold_aisles: list[tuple[float, float]],
+                   ceiling: float, width: float, k: float | None):
+    """The second leaf of the hall wall, and the grilles that let it out.
+
+    The wall between the hall and the mechanical gallery becomes a double
+    wall: the one that is already there, with the units mounted in it exactly
+    as before, and a second leaf a short way into the hall. Nothing about the
+    fan wall changes -- it is the same opening in the same wall. What changes
+    is what is on the other side of it: instead of the cold aisle it faces,
+    the unit blows into the cavity between the two leaves, which pressurises,
+    and the grilles in the inner leaf decide where that air leaves and in
+    which direction (ADR-058).
+
+    The cavity needs no lid. The false ceiling already covers the hall, this
+    strip included, so the plenum is closed at that level and the return
+    passes over it above the ceiling exactly as it did before.
+
+    The building grows by the plenum, it is not carved out of the room: the
+    clearances a case asks for are between the racks and the wall the hall
+    actually has, which is now the inner leaf. That is done by the layouts,
+    which start the rows past the plenum and lengthen the hall to match.
+    """
+    depth = plenum["depth"]
+    if plenum["height"] > ceiling + 1e-9:
+        raise ValueError(
+            f"a supply grille {num(plenum['height'])} m tall does not fit "
+            f"under a {num(ceiling)} m false ceiling"
+        )
+
+    walls: list[Panel] = []
+    supplies: list[Panel] = []
+    for side, divider in enumerate(dividers):
+        sign = 1 if side == 0 else -1
+        face = divider + sign * depth
+        walls.append(
+            Panel(
+                "plenum_wall" if side == 0 else f"plenum_wall{side + 1}",
+                "wall",
+                axis=0,
+                position=face,
+                extent=((0.0, width), (0.0, ceiling)),
+                sign=sign,
+            )
+        )
+        for index, aisle in enumerate(cold_aisles):
+            mid = (aisle[0] + aisle[1]) / 2
+            half = plenum["width"] / 2
+            lo, hi = max(0.0, mid - half), min(width, mid + half)
+            # Numbered by where it is, not by how many are open: shutting one
+            # must not renumber the rest, or a case that names a closed
+            # grille shuts a different one the next time it is read.
+            name = f"supply{side * len(cold_aisles) + index + 1}"
+            if name in plenum["closed"]:
+                # A grille shut is a grille that is not there: the wall it
+                # sits in closes over it, and the plenum sends its air to the
+                # ones still open. That is the whole point of shutting one.
+                continue
+            supplies.append(
+                Panel(
+                    name,
+                    "opening",
+                    axis=0,
+                    position=face,
+                    extent=((lo, hi), (0.0, plenum["height"])),
+                    resistance=k,
+                    sign=sign,
+                )
+            )
+    return walls, supplies
+
+
 def _pod_layout(spec: dict, cell, rack_spec: dict | None = None) -> _Layout:
     gallery_depth = float(spec["gallery"]["depth"])
     hall_length, hall_width, height = (float(v) for v in spec["hall"]["size"])
@@ -1119,7 +1255,15 @@ def _pod_layout(spec: dict, cell, rack_spec: dict | None = None) -> _Layout:
     rack_dz = size[2]
     count = int(spec["racks"]["count"])
     load_kw = float(spec["racks"]["load_kw"])
-    start_x = gallery_depth + float(spec["racks"]["offset_x"])
+
+    # A supply plenum lengthens the building rather than taking the room's
+    # clearances: `offset_x` is measured from the wall the hall actually has,
+    # which with a plenum is its inner leaf, and the hall grows by the depth
+    # so nothing the case asked for moves (ADR-058).
+    plenum = plenum_for(spec, rack_dz)
+    plenum_depth = plenum["depth"] if plenum else 0.0
+    start_x = gallery_depth + plenum_depth + float(spec["racks"]["offset_x"])
+    hall_length += plenum_depth
 
     total_x = gallery_depth + hall_length
     domain = Box((0.0, 0.0, 0.0), (total_x, hall_width, height))
@@ -1164,8 +1308,18 @@ def _pod_layout(spec: dict, cell, rack_spec: dict | None = None) -> _Layout:
     if spec.get("containment", {}).get("enabled", True):
         walls += _containment(hot_aisle, span, rack_dz, ceiling, (band[1],))
 
-    return _Layout(domain, [gallery], hall, [row], [(0.0, cold)], [hot_aisle],
-                   fans, grilles, walls, [span])
+    cold_aisles = [(0.0, cold)]
+    supplies: list[Panel] = []
+    if plenum:
+        plenum_walls, supplies = _plenum_panels(
+            plenum, [gallery_depth], cold_aisles, ceiling, hall_width,
+            _plenum_k(spec),
+        )
+        walls += plenum_walls
+
+    return _Layout(domain, [gallery], hall, [row], cold_aisles, [hot_aisle],
+                   fans, grilles + supplies, walls, [span],
+                   plenum["depth"] if plenum else None)
 
 
 def _hall_layout(spec: dict, cell, rack_spec: dict | None = None) -> _Layout:
@@ -1215,7 +1369,13 @@ def _hall_layout(spec: dict, cell, rack_spec: dict | None = None) -> _Layout:
     # per_row is the count in one block, so a row of two blocks holds twice it
     block_length = per_row * rack_dx
     row_length = n_blocks * block_length + (n_blocks - 1) * transverse
-    hall_length = perimeter + row_length + perimeter
+    # A supply plenum at each gallery lengthens the hall by its depth. The
+    # perimeter clearance is between the racks and the wall the hall actually
+    # has -- with a plenum that is its inner leaf -- so the plenum is added to
+    # the building and taken out of nothing (ADR-058).
+    plenum = plenum_for(spec, rack_dz)
+    plenum_depth = plenum["depth"] if plenum else 0.0
+    hall_length = perimeter + row_length + perimeter + sides * plenum_depth
     total_x = sides * gallery_depth + hall_length
     width = 2 * perimeter + pods * (2 * rack_dy + hot) + (pods - 1) * cold
     domain = Box((0.0, 0.0, 0.0), (total_x, width, height))
@@ -1224,7 +1384,7 @@ def _hall_layout(spec: dict, cell, rack_spec: dict | None = None) -> _Layout:
     if sides == 2:
         galleries.append(Box((hall.hi[0], 0.0, 0.0), (total_x, width, height)))
 
-    x0 = gallery_depth + perimeter
+    x0 = gallery_depth + plenum_depth + perimeter
     spans: list[tuple[float, float]] = []
     x = x0
     for _ in range(n_blocks):
@@ -1306,8 +1466,17 @@ def _hall_layout(spec: dict, cell, rack_spec: dict | None = None) -> _Layout:
                   sign=1 if side == 0 else -1)
             for i, extent in enumerate(extents)
         ]
+    supplies: list[Panel] = []
+    if plenum:
+        plenum_walls, supplies = _plenum_panels(
+            plenum, [hall.lo[0], hall.hi[0]][: len(galleries)],
+            cold_aisles, ceiling, width, _plenum_k(spec),
+        )
+        walls += plenum_walls
+
     return _Layout(domain, galleries, hall, rows, cold_aisles, hot_aisles,
-                   fans, grilles, walls, spans)
+                   fans, grilles + supplies, walls, spans,
+                   plenum["depth"] if plenum else None)
 
 
 def place_fans(aisles: list[tuple[float, float]], width: float, wall: float,
@@ -1748,6 +1917,10 @@ def to_dict(model: Model, spec: dict) -> dict:
         # drawing that leaves a 1,5 m deep machine as a line gives a reader
         # checking whether the gallery holds it nothing to measure (ADR-046).
         "fan_depth_m": fan_depth(spec),
+        # The cavity between the two leaves of the wall into the hall, where
+        # the case asks for one. The panels say where the leaf is; this says
+        # what the arrangement is, for a reader and for the report (ADR-058).
+        "plenum_depth_m": model.plenum_depth,
         # Which perforated surface each role uses here, and what else the
         # library offers. The model page picks; the components page edits.
         "components": components_in_use(spec),

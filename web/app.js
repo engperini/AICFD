@@ -63,6 +63,17 @@ const SECTIONS = [
     ],
   },
   {
+    title: 'Supply plenum',
+    note: 'the hall wall doubled; the grilles decide where the air goes',
+    componentsLink: true,
+    params: [
+      { key: 'plenum', label: 'Double the wall into the hall', check: true, default: false },
+      { key: 'plenum_depth', label: 'Between the two leaves', unit: 'm', step: 0.1, optional: true },
+      { key: 'plenum_grille_width', label: 'Supply grille width', unit: 'm', step: 0.1, optional: true },
+      { key: 'plenum_grille_height', label: 'Supply grille height', unit: 'm', step: 0.1, optional: true },
+    ],
+  },
+  {
     title: 'Fan walls',
     note: 'per unit, as the datasheet gives them',
     // The unit's own characterisation -- its capacity against the air it
@@ -532,9 +543,13 @@ function meshNote(text) {
 function inputHtml(p) {
   const value = specValue(p.key);
   if (p.check) {
+    // Absent means the default, and the default is not always on: the hot
+    // aisle is contained unless a case says otherwise, a supply plenum is
+    // there only where a case asks for one (ADR-058).
+    const on = value === undefined || value === null ? (p.default ?? true) : !!value;
     return `<div class="param">
       <label for="p-${p.key}">${p.label}</label>
-      <input type="checkbox" id="p-${p.key}" ${value === false ? '' : 'checked'} />
+      <input type="checkbox" id="p-${p.key}" ${on ? 'checked' : ''} />
     </div>`;
   }
   const field = `<input type="${p.text ? 'text' : 'number'}" id="p-${p.key}"

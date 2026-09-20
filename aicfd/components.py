@@ -36,6 +36,7 @@ LIBRARY = Path(__file__).resolve().parent.parent / "components"
 ROLES = {
     "gallery_mesh": "Plenum to mechanical gallery",
     "ceiling_return": "Ceiling return grilles",
+    "supply_grille": "Plenum supply grilles",
     "floor_tile": "Raised floor plates",
     "containment": "Aisle containment",
     "distribution_loss": "Power distribution",

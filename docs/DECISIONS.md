@@ -2292,3 +2292,52 @@ find `components.js`. So the names pages want are reserved for pages, and a
 shared module is named for what it exports. `racks.js` was a poor name for a
 rack-inlet chart anyway — it said what the file was about rather than what it
 was.
+
+---
+
+## ADR-058 — A supply plenum is the hall wall built twice
+
+**Decision.** `plenum.enabled` doubles the wall between the hall and the
+mechanical gallery. The leaf the units are mounted in is the one that was
+always there and does not move; a second leaf stands `plenum.depth` (1,2 m by
+default) into the hall; the cavity between them is pressurised; and the inner
+leaf carries a supply grille in front of each cold aisle, as tall as a rack
+and 2 m wide by default. The grilles are a component role of their own, so
+their free area is a house standard, and any of them can be shut.
+
+**What it is for.** Without a plenum the unit blows through the wall straight
+into the cold aisle it faces: where the unit aims is where the air goes, and
+a cold aisle with no unit in front of it is fed by whatever spills sideways.
+With a plenum the room is fed by the grilles instead. The cavity evens out
+what the units do, and the grille decides the direction — which is what makes
+the supply uniform along the wall and aimed at the aisles.
+
+**The hall grows; the clearances do not.** The plenum is added to the
+building, not carved out of the room. `aisles.perimeter` and `racks.offset_x`
+are the clearance between the racks and the wall the hall actually has, and
+with a plenum that wall is the inner leaf — so the rows start past the plenum
+and the hall is longer by its depth, at each gallery that has one. The worked
+hall goes from 51,0 m to 53,4 m for a plenum at both ends, and not one rack
+moves relative to the wall it faces.
+
+**The cavity needs no lid.** The false ceiling already covers the hall, this
+strip included, so the plenum is closed at that level and the return passes
+over it above the ceiling exactly as before. The whole arrangement adds two
+kinds of surface to the case — the inner leaf, and the grilles in it — and
+changes nothing else about the air loop.
+
+**What the first attempt got wrong, and why it mattered.** It read "1,2 m
+between the face of the unit and the wall" as the unit moving back into the
+gallery, with a partition of its own to be mounted in and a lid to keep the
+return out of the supply. That is a different building: it changes how the
+unit meets the wall, which is the one thing that was not to change. The
+symptom on the drawing was the fan wall coming away from the wall it lives
+in. The lesson is the cheaper one: when a change is described as a change to
+*one* element, the parts that were not named stay where they are.
+
+**Drawn like what it is.** The cavity takes the cold aisle's own tint,
+because it is the same air on its way to the same place. The grilles are
+drawn in the grille red every other grille uses. The inner leaf is drawn as
+building fabric rather than in the containment green every `wall` wears --
+otherwise a green line across the end of the hall says that end is contained,
+which is the misreading ADR-045 answered over the racks.

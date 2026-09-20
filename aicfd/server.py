@@ -74,6 +74,15 @@ EDITABLE = {
     # gallery (ADR-046). Defaults to the named unit's datasheet.
     "fan_depth": (("fanwall", "depth"), float, (0.1, 10.0)),
     "supply_temp_c": (("fanwall", "supply_temp_c"), float, (-10.0, 40.0)),
+    # --- supply plenum ------------------------------------------------------
+    # The wall into the hall doubled, the cavity between its leaves
+    # pressurised, and grilles in the inner leaf deciding where the air
+    # leaves (ADR-058). Off is a single wall, the unit blowing through it.
+    "plenum": (("plenum", "enabled"), bool, None),
+    "plenum_depth": (("plenum", "depth"), float, (0.3, 6.0)),
+    "plenum_grille_width": (("plenum", "grille", "width"), float, (0.3, 12.0)),
+    "plenum_grille_height": (("plenum", "grille", "height"), float, (0.3, 6.0)),
+    "supply_grille": (("components", "supply_grille"), "component", "supply_grille"),
     "fan_static_pa": (("fanwall", "static_pressure_pa"), float, (0.0, 2_000.0)),
     # --- return grilles -----------------------------------------------------
     "grille_size": (("grilles", "size"), float, (0.1, 3.0)),

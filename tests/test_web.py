@@ -129,3 +129,32 @@ class ModuleGraphTest(unittest.TestCase):
             "a page's entry script is also imported as a module by another "
             "page; give one of the two its own file",
         )
+
+
+class PlenumDrawingTest(unittest.TestCase):
+    """The plenum reads as what it is on a drawing (ADR-058)."""
+
+    def drawing(self) -> str:
+        return (WEB / "drawing.js").read_text()
+
+    def test_the_inner_leaf_is_not_drawn_in_the_containment_colour(self):
+        """Every `wall` wears the containment green. A green line across the
+        end of the hall says that end is contained, which it is not -- the
+        same misreading ADR-045 answered over the racks."""
+        self.assertIn("isPlenumWall", self.drawing())
+        self.assertIn(".dw-partition{", (WEB / "drawing.css").read_text())
+
+    def test_a_supply_grille_is_drawn_like_every_other_grille(self):
+        """Red is what a grille looks like here. A colour of its own was a
+        new thing to learn on a drawing that already had a word for it."""
+        js = self.drawing()
+        self.assertNotIn("dw-supply", js)
+        self.assertNotIn(".dw-supply", (WEB / "drawing.css").read_text())
+
+    def test_the_panels_are_drawn_once(self):
+        """Step 7 already draws every panel a view sees edge-on. Drawing the
+        plenum's again put a second line over the first and a second caption
+        beside it."""
+        js = self.drawing()
+        self.assertNotIn("dw-supplyedge", js)
+        self.assertEqual(js.count("// 6.4"), 1)

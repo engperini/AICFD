@@ -163,6 +163,18 @@ opens into both galleries — which is the redundancy the layout is bought for
 wall's baffle pair is the intake, and that is measured after meshing rather
 than assumed.
 
+**A supply plenum, where the hall has one.** `plenum.enabled` doubles the wall
+between the hall and the mechanical gallery: the units stay in the leaf they
+were always in, a second leaf stands `plenum.depth` (1,2 m) into the hall, and
+the cavity between them is pressurised. The inner leaf carries a supply grille
+in front of each cold aisle — as tall as a rack, 2 m wide, at the free area
+its component states, and any of them can be shut. The room is then fed by the
+grilles rather than by the units, which is what makes the supply even along
+the wall and aimed at the aisles. The hall is longer by the depth of the
+cavity, so the clearances a case asks for are unchanged (ADR-058).
+`cases/pod-plenum.yaml` is `pod-fanwall` with that one change, for comparing
+the two.
+
 Nothing in `cases/*.yaml` is an OpenFOAM dictionary. The mesh divisions, the
 porosity coefficients, the heat sources, the boundary conditions and the
 baffle surgery are all derived from engineering numbers, and the generated

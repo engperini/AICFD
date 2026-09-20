@@ -1,0 +1,14 @@
+id: supply-grille-2000-open
+name: Plenum supply opening, 2000 wide, no grille
+role: supply_grille
+
+# The control case: the same hole in the same wall with nothing in it. Run a
+# hall against this and against the specified grille, and the difference is
+# what the grille costs and what it buys in evenness.
+size: [2.0, 2.2]
+aperture: plain opening
+pattern: none
+free_area: 1
+note: >
+  Not a product. It answers what the grilles themselves do, by removing them
+  and leaving the plenum and its openings otherwise identical.

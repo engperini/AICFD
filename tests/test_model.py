@@ -639,3 +639,135 @@ class PerRackLoadTest(unittest.TestCase):
 
     def test_a_case_that_states_nothing_has_no_overrides(self):
         self.assertEqual(m.rack_loads(self.spec()), {})
+
+
+class SupplyPlenumTest(unittest.TestCase):
+    """The wall between the hall and the gallery made a double wall, with the
+    cavity pressurised and grilles deciding where the air leaves (ADR-058)."""
+
+    def spec(self, **plenum) -> dict:
+        spec = support.spec("pod-plenum")
+        spec["plenum"] = {**spec.get("plenum", {}), "enabled": True, **plenum}
+        return spec
+
+    def named(self, model, prefix):
+        return [p for p in model.panels if p.name.startswith(prefix)]
+
+    def test_without_one_the_unit_blows_straight_into_the_aisle(self):
+        spec = self.spec()
+        spec["plenum"]["enabled"] = False
+        model = m.build_model(spec)
+        self.assertIsNone(model.plenum_depth)
+        self.assertEqual(self.named(model, "plenum_wall"), [])
+        self.assertEqual(self.named(model, "supply"), [])
+
+    def test_the_fan_wall_does_not_move(self):
+        """The whole arrangement is a second leaf of the same wall. Nothing
+        about the unit or the opening it sits in changes -- moving it was the
+        first thing this got wrong."""
+        spec = self.spec()
+        spec["plenum"]["enabled"] = False
+        without = m.build_model(spec)
+        with_plenum = m.build_model(self.spec())
+        before = [(f.name, f.position, f.extent) for f in without.panels
+                  if f.kind == "fan"]
+        after = [(f.name, f.position, f.extent) for f in with_plenum.panels
+                 if f.kind == "fan"]
+        self.assertEqual(before, after)
+        for fan in [p for p in with_plenum.panels if p.kind == "fan"]:
+            self.assertAlmostEqual(fan.position, with_plenum.dividers[0], places=6)
+
+    def test_the_second_leaf_stands_the_plenum_depth_into_the_hall(self):
+        model = m.build_model(self.spec(depth=1.2))
+        self.assertAlmostEqual(model.plenum_depth, 1.2, places=6)
+        wall, = self.named(model, "plenum_wall")
+        self.assertEqual(wall.kind, "wall")
+        self.assertAlmostEqual(wall.position, model.dividers[0] + 1.2, places=6)
+        self.assertAlmostEqual(wall.extent[1][1], model.ceiling_z, places=6)
+
+    def test_the_cavity_needs_no_lid(self):
+        """The false ceiling already covers the hall, this strip included, so
+        the plenum is closed at that level and the return passes over it
+        exactly as it did before."""
+        model = m.build_model(self.spec())
+        self.assertEqual(self.named(model, "plenum_lid"), [])
+        ceiling = model.panel("ceiling")
+        wall, = self.named(model, "plenum_wall")
+        self.assertLessEqual(ceiling.extent[0][0], wall.position)
+        self.assertGreaterEqual(ceiling.extent[0][1], wall.position)
+
+    def test_a_grille_sits_in_that_leaf_at_every_cold_aisle(self):
+        model = m.build_model(self.spec())
+        wall, = self.named(model, "plenum_wall")
+        grilles = self.named(model, "supply")
+        self.assertEqual(len(grilles), len(model.cold_aisles))
+        for grille, aisle in zip(grilles, model.cold_aisles):
+            self.assertAlmostEqual(grille.position, wall.position, places=6)
+            self.assertAlmostEqual(grille.extent[1][0], 0.0, places=6)
+            middle = sum(aisle) / 2
+            self.assertLess(abs(sum(grille.extent[0]) / 2 - middle), model.cell(1))
+
+    def test_a_grille_is_as_tall_as_a_rack_unless_the_case_says_otherwise(self):
+        model = m.build_model(self.spec())
+        rack_height = model.racks[0].box.hi[2]
+        for grille in self.named(model, "supply"):
+            self.assertAlmostEqual(grille.extent[1][1], rack_height, places=6)
+        model = m.build_model(self.spec(grille={"height": 1.5}))
+        for grille in self.named(model, "supply"):
+            self.assertAlmostEqual(grille.extent[1][1], 1.5, places=6)
+
+    def test_a_grille_can_be_shut_without_renumbering_the_rest(self):
+        """A closed grille is a grille that is not there -- the leaf closes
+        over it. If shutting one renumbered the others, a case would shut a
+        different grille the next time it was read."""
+        model = m.build_model(self.spec())
+        names = [p.name for p in self.named(model, "supply")]
+        shut = m.build_model(self.spec(closed=[names[0]]))
+        self.assertNotIn(names[0], [p.name for p in self.named(shut, "supply")])
+        self.assertEqual([p.name for p in self.named(shut, "supply")], names[1:])
+
+    def test_the_grille_carries_its_component_s_resistance(self):
+        model = m.build_model(self.spec())
+        for grille in self.named(model, "supply"):
+            self.assertGreater(grille.resistance, 0)
+        model = m.build_model(self.spec(grille={"free_area": 1.0}))
+        for grille in self.named(model, "supply"):
+            self.assertAlmostEqual(grille.resistance, 0.0, places=6)
+
+    def test_the_building_grows_by_the_plenum_and_the_clearances_do_not(self):
+        """The plenum is added to the building, not taken out of the room: a
+        case asks for so much clearance between the racks and the wall the
+        hall has, and with a plenum that wall is its inner leaf."""
+        spec = self.spec()
+        spec["plenum"]["enabled"] = False
+        without = m.build_model(spec)
+        for depth in (1.2, 2.5):
+            with self.subTest(depth=depth):
+                with_plenum = m.build_model(self.spec(depth=depth))
+                self.assertAlmostEqual(
+                    with_plenum.domain.hi[0], without.domain.hi[0] + depth,
+                    delta=with_plenum.cell(0))
+                leaf, = self.named(with_plenum, "plenum_wall")
+                gap = min(r.box.lo[0] for r in with_plenum.racks) - leaf.position
+                was = (min(r.box.lo[0] for r in without.racks)
+                       - without.dividers[0])
+                # To within the mesh: every plane is snapped to a cell face,
+                # and the model warns where that moves one (ADR-013).
+                self.assertAlmostEqual(gap, was, delta=with_plenum.cell(0))
+
+    def test_a_hall_grows_by_a_plenum_at_each_gallery(self):
+        spec = support.spec("hall-double-gallery")
+        without = m.build_model(spec)
+        spec["plenum"] = {"enabled": True, "depth": 1.2}
+        with_plenum = m.build_model(spec)
+        self.assertEqual(len(with_plenum.dividers), 2)
+        self.assertAlmostEqual(
+            with_plenum.domain.hi[0], without.domain.hi[0] + 2 * 1.2, places=6)
+        near, far = self.named(with_plenum, "plenum_wall")
+        self.assertAlmostEqual(near.position, with_plenum.dividers[0] + 1.2, places=6)
+        self.assertAlmostEqual(far.position, with_plenum.dividers[1] - 1.2, places=6)
+
+    def test_a_grille_taller_than_the_ceiling_is_refused(self):
+        with self.assertRaises(ValueError) as refused:
+            m.build_model(self.spec(grille={"height": 99.0}))
+        self.assertIn("false ceiling", str(refused.exception))

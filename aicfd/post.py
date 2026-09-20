@@ -805,7 +805,7 @@ def _checks(model: Model, step: Path, kpis: dict, grid: dict) -> list[Check]:
         name: flow
         for name, flow in flows.items()
         if not _is_fan_patch(name)
-        and not name.startswith(("grille", "plenum_opening"))
+        and not name.startswith(("grille", "plenum_opening", "supply"))
         and abs(flow) > MASS_TOLERANCE * supply
     }
     checks.append(

@@ -299,6 +299,17 @@ def plan(export: Export, out: Path, z: float, title: str) -> Path:
     for x in model.get("dividers", [model["hall"]["lo"][0]]):
         line = ([0, span], [x, x]) if turned else ([x, x], [0, rise])
         ax.plot(*line, color=INK, linewidth=1.4)
+    # The inner leaf of the plenum wall, and the grilles that let it out.
+    # Seen from above both are lines: the leaf itself, and the runs of it that
+    # are open (ADR-058).
+    for panel in export.panels("plenum_wall"):
+        x = panel["position"]
+        line = ([0, span], [x, x]) if turned else ([x, x], [0, rise])
+        ax.plot(*line, color=INK, linewidth=1.4, linestyle=(0, (5, 2)))
+    for panel in export.panels("supply"):
+        at, lo, hi = panel["position"], panel["lo"][1], panel["hi"][1]
+        line = ([lo, hi], [at, at]) if turned else ([at, at], [lo, hi])
+        ax.plot(*line, color=FAN, linewidth=3.0, solid_capstyle="butt")
     depth = export.fan_depth
     for i, panel in enumerate(fans):
         at, lo, hi = panel["position"], panel["lo"][1], panel["hi"][1]
@@ -378,6 +389,19 @@ def section(export: Export, out: Path, normal: int, at: float, title: str,
             # so this one is solid: the chimney beside a rack row, seen edge-on.
             ax.plot([panel["position"]] * 2, [lo[2], hi[2]],
                     color=CONTAINMENT, linewidth=1.8, solid_capstyle="butt")
+
+    # A supply grille is a hole in the plenum's inner leaf: face-on where the
+    # section looks along x, edge-on where it looks across.
+    for panel in export.panels("supply"):
+        lo, hi = panel["lo"], panel["hi"]
+        if normal == 0:
+            if abs(panel["position"] - at) > 1e-6:
+                continue
+            _outline(ax, (lo[1], 0, lo[2]), (hi[1], 0, hi[2]), 0, 2,
+                     edgecolor=FAN, linewidth=1.0)
+        else:
+            ax.plot([panel["position"]] * 2, [lo[2], hi[2]],
+                    color=FAN, linewidth=2.4, solid_capstyle="butt")
 
     depth = export.fan_depth
     for panel in export.panels("fan"):

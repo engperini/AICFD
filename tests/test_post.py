@@ -513,7 +513,8 @@ class GrilleAndFanBudgetTest(unittest.TestCase):
         import inspect
 
         source = inspect.getsource(post._checks)
-        self.assertIn('not name.startswith(("grille", "plenum_opening"))', source)
+        self.assertIn(
+            'not name.startswith(("grille", "plenum_opening", "supply"))', source)
 
     def test_the_fan_capacity_check_reads_the_curve_at_the_rated_flow(self):
         self.assertAlmostEqual(self.model.fan_available_pa(), 100.0)
