@@ -2924,6 +2924,15 @@ been turned away:
   elevation is wrong, and only its vendor knows which.
 - **CA40NPVGT** — a good sheet entered at the wrong elevation, which is the
   same failure seen from the other side: 661 m makes it close to 0.03%.
+- **Trane DFWA 5560** — two revisions of the same model at identical stated
+  conditions, quoting different capacities: R2 500.0/473.6 kW, R3 480.8/465.5.
+  Both cannot be right, and neither closes. R3's total less its net is 15.3 kW
+  against its own fan power of 25.2 or 28.8; the water (12.3 L/s over 10 K =
+  514 kW) exceeds both totals; and the sheet's own STD-to-actual airflow ratio
+  implies a density for air at 27.7 °C, not the 36.3 °C it says enters the
+  coil, which is a 2.9% error in its air-side balance before anything else.
+  The later revision is the less self-consistent of the two, which usually
+  means a number was changed without the selection being re-run.
 
 **What a rejected sheet gets instead is a question for its vendor**, naming the
 field. That is the whole point of the consistency check (ADR-068): it is cheap
