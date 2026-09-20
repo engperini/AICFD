@@ -175,11 +175,12 @@ cavity, so the clearances a case asks for are unchanged (ADR-058).
 `cases/pod-plenum.yaml` is `pod-fanwall` with that one change, for comparing
 the two.
 
-Two questions are answered before any run and raised as design alerts: whether
-the grilles are big enough for the duty — the flow over their gross face,
-against a 3 m/s criterion — and whether the units have the pressure for what
-the loop costs. The velocity itself is a consequence of the airflow and the
-opening, so it is reported among the derived numbers rather than asked for. The worked 5 MW hall with default
+The velocity through the supply grilles — the flow over their gross face — is
+reported among the derived numbers beside the fan wall's own, and nothing
+passes judgement on it: what is high in one hall is ordinary in another. What
+is checked before any run, because it is the machine's own datasheet
+answering, is whether the units have the pressure for what the loop costs
+(ADR-059). The worked 5 MW hall with default
 2 m grilles fails the first at 7,5 m/s and 35 Pa, and says how much grille it
 would take (ADR-059).
 

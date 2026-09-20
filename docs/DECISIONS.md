@@ -2344,26 +2344,67 @@ which is the misreading ADR-045 answered over the racks.
 
 ---
 
-## ADR-059 — A plenum is sized before it is solved
+## ADR-059 — A plenum is sized before it is solved, and the velocity is
+## reported rather than judged
 
-**Decision.** Two questions are answered from the specification alone, and
-both raise a design alert on the model page: are the supply grilles big
-enough for the duty, and do the units have the pressure for what the loop
-costs. `plenum.max_face_velocity_ms` is the criterion for the first (3 m/s by
-default, editable); `loop_pressure_drop_pa` — the racks, the return grilles,
-the mesh into the gallery and the supply grilles, each from its own closed
-form — is what the second compares against the unit's P-Q curve. After a run,
-`plenum_resistance` checks the field's drop across the supply grilles against
-the same closed form, exactly as `grille_resistance` does for the return.
+**Decision.** Two questions are answered from the specification alone and
+raise a design alert: whether the units have the pressure for what the loop
+costs, and — for a mesh leaf — whether there is room left to work in front of
+the racks. The face velocity through the supply grilles is **reported** among
+the derived numbers, beside the fan wall's own, and nothing passes judgement
+on it. After a run, `plenum_resistance` checks the field's drop across the
+supply grilles against the closed form, exactly as `grille_resistance` does
+for the return, and quotes the velocity without a verdict.
 
-**The criterion is not a field.** The face velocity is a *consequence* of
-two things the engineer does choose — the airflow the units move and the size
-of the opening — so it is reported, beside the fan wall's own face velocity,
-in the derived numbers where the return grilles' velocity already was.
-Offering it as an input said the opposite: that the velocity was something to
-type in. The criterion it is judged against stays in the code at 3 m/s, and a
-case answering to a different specification may still write
-`plenum.max_face_velocity_ms`, but nothing has to and the form does not ask.
+**The velocity criterion was removed, and it was right to remove it.** It was
+3 m/s, taken from how a supply grille into an occupied room is usually sized.
+A real hall ran at 3,3 m/s — ordinary for a data hall — and the alert fired
+on a sound design, told the engineer his grilles were "small for the duty",
+and attributed the 3 m/s to *his case* when the number was the tool's own.
+Three faults in one sentence: a threshold that does not generalise, a verdict
+on someone else's specification, and a misattribution. An alert has to earn
+its interruption; this one spent attention and returned nothing.
+
+**What replaces it is the number.** 7,5 m/s and 35 Pa, beside the fan wall's
+1,98 m/s, is what an engineer needs to judge whether the opening is right.
+The tool is better at measuring than at having opinions, and the reader knows
+his own hall.
+
+**The velocity is a consequence, so it is never an input.** It is what the
+airflow and the size of the opening come to. It was briefly offered as a form
+field, which said the opposite — that it was a number to type in — and it sat
+among depth, width and height, which really are choices.
+
+**What stays, because it is not an opinion.** `loop_pressure_drop_pa` adds up
+the closed forms already in the model — racks, return grilles, the mesh into
+the gallery, the supply grilles — and compares them against the unit's own
+P-Q curve. That is the machine's own datasheet answering, not a rule of
+thumb, and the alert says the total is a lower bound because the aisles and
+the turns are not in it.
+
+**Pressure and velocity are the same fact**, which is why removing the
+velocity verdict loses nothing. A perforated surface costs `K rho v^2 / 2`
+and `v` is the flow over its area: a velocity high enough to matter *is* a
+pressure, and pressure has a reference to be judged against where velocity
+has only a rule of thumb.
+
+**So the alert names where the pressure goes, and how much face would fix
+it.** A total says the plant is short; the breakdown says what to change. And
+because the cost falls with the *square* of the area, the face that gives
+back exactly the pascals the unit is missing is arithmetic — no threshold in
+it: "3,6 m2 per plenum would have to be 17,4 m2 to give back the 1 903 Pa the
+unit is short". When even a free opening would not close the gap the sentence
+is left out, because the pressure is somewhere else and widening these would
+be the wrong repair.
+
+**Why before the run at all.** Both answers are arithmetic. Neither needs a
+solve, and finding out after one is finding out late — the run costs minutes
+and the conclusion was available the moment the geometry was typed.
+
+**Gross area, not free area.** The face velocity is the flow over the whole
+opening, which is what a grille catalogue quotes and what its pressure table
+is fitted to. The free area is already inside the loss coefficient; using it
+twice would double-count the perforation.
 
 **The card shows the standard rather than nothing.** A field a case says
 nothing about renders the house default it would get — 1,2 m, 2 m, the rack
@@ -2371,32 +2412,6 @@ height — so a reader takes it or changes it instead of guessing what an empty
 box means. And a checkbox renders whether or not the case mentions it:
 filtering the form on what a case states dropped both switches and left the
 plenum as number boxes with no way to turn the thing on.
-
-**Why before.** Both answers are arithmetic. Neither needs a solve, and
-finding out after one is finding out late — the run costs minutes and the
-conclusion was available the moment the geometry was typed. The alert says
-the velocity, the criterion, the grille area there is and the grille area
-that would be needed, because "too small" without a number is a complaint
-rather than a finding.
-
-**What it found immediately.** The worked 5 MW hall, given a plenum with the
-default 2 m grilles, discharges at 7,5 m/s on the face — against a criterion
-of 3 — and those grilles alone cost 35 Pa of the unit's 131. Twenty-seven
-square metres of grille per plenum would have to be sixty-eight. That is the
-arrangement failing on paper, in the second it takes to build the model, and
-it is exactly the failure a CFD run would have taken half an hour to show
-less clearly.
-
-**Gross area, not free area.** The face velocity is the flow over the whole
-opening, which is what a grille catalogue quotes and what its pressure table
-is fitted to. The free area is already inside the loss coefficient; using it
-twice would double-count the perforation.
-
-**The loop total is a lower bound and says so.** It adds up the surfaces,
-which is all a closed form can see: the aisles, the turns and the plenum's
-own velocity pressure are not in it. So it can say a unit is obviously short
-and it can never say a unit is definitely enough — which is what the solved
-`fan_capacity` check is for.
 
 ---
 

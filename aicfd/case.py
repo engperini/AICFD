@@ -1073,8 +1073,7 @@ def _plenum_lines(model: Model) -> list[str]:
         f"of the hall wall, {len(model.plenum_grilles)} grille(s), "
         f"{face:.1f} m2 of face",
         f"  Supply grilles  {model.plenum_face_velocity_ms:.2f} m/s on the "
-        f"face (most {model.plenum_face_velocity_max_ms:.1f}), "
-        f"{model.plenum_pressure_drop_pa or 0.0:.2f} Pa",
+        f"face, {model.plenum_pressure_drop_pa or 0.0:.2f} Pa",
     ]
 
 

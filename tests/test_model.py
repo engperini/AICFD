@@ -9,6 +9,7 @@ behind, and that the air loop it describes is closed.
 from __future__ import annotations
 
 import copy
+import inspect
 import unittest
 from pathlib import Path
 
@@ -791,27 +792,25 @@ class PlenumSizingTest(unittest.TestCase):
         expected = (model.airflow_m3s / len(sides)) / min(sides.values())
         self.assertAlmostEqual(model.plenum_face_velocity_ms, expected, places=6)
 
-    def test_grilles_too_small_for_the_duty_are_said_so_before_the_run(self):
-        """5 MW through 2 m grilles is 7,5 m/s at the face. That is not a
-        detail: the air is thrown across the aisle instead of delivered, and
-        the pressure it costs goes with the square of it."""
+    def test_the_velocity_is_reported_and_not_judged(self):
+        """3,3 m/s out of a supply grille is ordinary in a data hall. A 3 m/s
+        verdict fired on sound designs and spent the reader's attention for
+        nothing, so the number is reported and the engineer judges it
+        (ADR-059)."""
         model = m.build_model(self.hall())
         self.assertGreater(model.plenum_face_velocity_ms, 3.0)
-        alerts = model.plenum_alerts()
-        self.assertTrue(any("small for the duty" in a for a in alerts))
-        self.assertTrue(any("m2" in a for a in alerts), "it says the area needed")
-
-    def test_a_case_may_set_its_own_criterion(self):
-        model = m.build_model(self.hall(max_face_velocity_ms=9.0))
-        self.assertEqual(model.plenum_face_velocity_max_ms, 9.0)
         self.assertFalse(any("small for the duty" in a
                              for a in model.plenum_alerts()))
+        row = next(r for r in m.summary_rows(model)
+                   if r[0].startswith(("Supply grilles", "Supply mesh")))
+        self.assertIn("m/s", row[2])
 
-    def test_wide_enough_grilles_raise_nothing(self):
-        model = m.build_model(self.hall(grille={"width": 6.0, "height": 3.0}))
-        self.assertLess(model.plenum_face_velocity_ms, 3.0)
-        self.assertFalse(any("small for the duty" in a
-                             for a in model.plenum_alerts()))
+    def test_nothing_asks_for_a_velocity_criterion(self):
+        from aicfd import post, server
+
+        self.assertFalse(hasattr(m, "PLENUM_FACE_VELOCITY_MAX"))
+        self.assertNotIn("plenum_face_velocity", server.EDITABLE)
+        self.assertNotIn("this case allows", inspect.getsource(post._checks))
 
     def test_a_unit_short_of_pressure_is_said_so_before_the_run(self):
         spec = self.hall(grille={"width": 0.6, "height": 0.6})
@@ -905,3 +904,60 @@ class SupplyMeshTest(unittest.TestCase):
         spec["racks"]["offset_x"] = 3.0
         self.assertFalse(any("mesh leaf leaves" in a
                              for a in m.build_model(spec).alerts))
+
+
+class PressureBudgetTest(unittest.TestCase):
+    """An alert about the grilles has to rest on something real. Pressure and
+    velocity are the same fact -- dp = K rho v^2 / 2 -- and only pressure has
+    a reference to be judged against: the unit's own curve (ADR-059)."""
+
+    def hall(self, **grille) -> dict:
+        spec = support.spec("hall-double-gallery")
+        spec["plenum"] = {"enabled": True, "depth": 1.2, "grille": grille}
+        return m.build_model(spec)
+
+    def test_grilles_the_unit_can_pay_for_raise_nothing(self):
+        """7,5 m/s and 35 Pa, and the unit offers 131. Ordinary."""
+        model = self.hall(width=2.0)
+        self.assertGreater(model.plenum_face_velocity_ms, 3.0)
+        self.assertLess(model.loop_pressure_drop_pa, model.fan_available_pa())
+        self.assertEqual(model.alerts, [])
+
+    def test_grilles_the_unit_cannot_pay_for_are_named(self):
+        model = self.hall(width=0.8, height=0.8)
+        alert, = [a for a in model.alerts if "do not have the pressure" in a]
+        self.assertIn("Where it goes", alert)
+        self.assertIn("the supply grilles", alert)
+
+    def test_the_budget_is_ordered_by_what_costs_most(self):
+        model = self.hall(width=0.8, height=0.8)
+        budget = model.pressure_budget()
+        self.assertEqual(budget[0][0], "the supply grilles")
+        self.assertEqual([pa for _w, pa in budget],
+                         sorted((pa for _w, pa in budget), reverse=True))
+        self.assertAlmostEqual(sum(pa for _w, pa in budget),
+                               model.loop_pressure_drop_pa, places=6)
+
+    def test_the_area_it_asks_for_closes_the_gap(self):
+        """No threshold in it: pressure falls with the square of the face, so
+        the area that gives back what the unit is short is arithmetic."""
+        model = self.hall(width=0.8, height=0.8)
+        said = model.widening_needed()
+        self.assertIn("m2 per plenum would have to be", said)
+        import re
+
+        have, want = (float(x) for x in re.findall(r"([\d.]+) m2", said)[:2])
+        # at that face the grilles cost exactly what the unit has left
+        cost = model.plenum_pressure_drop_pa * (have / want) ** 2
+        left = model.fan_available_pa() - (model.loop_pressure_drop_pa
+                                           - model.plenum_pressure_drop_pa)
+        self.assertAlmostEqual(cost, left, delta=0.05 * left)
+
+    def test_it_says_nothing_when_widening_is_the_wrong_repair(self):
+        """If the pressure is somewhere else, no opening closes the gap."""
+        spec = support.spec("hall-double-gallery")
+        spec["plenum"] = {"enabled": True, "depth": 1.2}
+        spec["fanwall"]["curve"] = [[0, 10], [200000, 0]]
+        model = m.build_model(spec)
+        self.assertGreater(model.loop_pressure_drop_pa, model.fan_available_pa())
+        self.assertEqual(model.widening_needed(), "")

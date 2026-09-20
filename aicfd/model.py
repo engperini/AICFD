@@ -61,19 +61,6 @@ RACK_PRESSURE_DROP = 25.0
 PLENUM_DEPTH = 1.2
 PLENUM_GRILLE_WIDTH = 2.0
 
-#: How fast air may leave a supply grille before the opening is too small for
-#: the duty, in m/s on the gross face. Supply grilles into an occupied room
-#: are sized around 2-3 m/s: faster and the air arrives as a jet -- noisy,
-#: and thrown across the aisle instead of into the racks -- while the
-#: pressure it costs rises with the square of it.
-#:
-#: NOT a field on the page. The velocity is a CONSEQUENCE of two things the
-#: engineer does choose -- the airflow the units move and the size of the
-#: opening -- so the page reports it beside the fan wall's own face velocity
-#: and this is only the line above which it says the opening is too small. A
-#: case that answers to a different specification may still set
-#: `plenum.max_face_velocity_ms`, but nothing has to (ADR-059).
-PLENUM_FACE_VELOCITY_MAX = 3.0
 
 #: How much room has to be left in front of the racks, in metres, once a mesh
 #: leaf has taken its cavity out of the hall. A person has to stand there and
@@ -321,9 +308,6 @@ class Model:
     case asks for a supply plenum. None is a single wall with the units
     blowing straight through it, which is the arrangement without one
     (ADR-058)."""
-    plenum_face_velocity_max_ms: float = PLENUM_FACE_VELOCITY_MAX
-    """How fast the air may leave a supply grille before the case says the
-    opening is too small for the duty (ADR-059)."""
     supply_mesh_k: float | None = None
     """Loss coefficient of the mesh across the units' opening, where the case
     has one instead of a plenum -- the same 13 x 13 mm woven mesh that closes
@@ -471,33 +455,24 @@ class Model:
         return alerts
 
     def plenum_alerts(self) -> list[str]:
-        """The two things a supply plenum has to be checked for (ADR-059).
+        """What a supply plenum is checked for before it is solved (ADR-059).
 
-        Both are answered before the run, from the specification alone: the
-        openings either have the area for the duty or they do not, and the
-        unit either has the pressure for what the loop costs or it does not.
-        Neither needs a solve, and finding out after one is finding out late.
+        Two things, and both are answered from the specification alone: the
+        room a mesh leaf leaves in front of the racks, and whether the units
+        have the pressure for what the loop costs. Neither needs a solve, and
+        finding out after one is finding out late.
+
+        What is NOT here is a verdict on the face velocity. It was, at 3 m/s,
+        and it was wrong to be: 3,3 m/s out of a supply grille is ordinary in
+        a data hall, so the alert fired on a sound design and spent the
+        reader's attention for nothing. The velocity is reported among the
+        derived numbers, beside the fan wall's own, and the engineer judges
+        it. An alert has to earn its interruption (ADR-059).
         """
         grilles = self.plenum_grilles
         if not grilles and self.supply_mesh_k is None:
             return []
         alerts = []
-        velocity = self.plenum_face_velocity_ms
-        limit = self.plenum_face_velocity_max_ms
-        if grilles and velocity is not None and velocity > limit:
-            sides = len({g.position for g in grilles})
-            area = sum(g.area for g in grilles) / sides
-            needed = area * velocity / limit
-            alerts.append(
-                f"The supply grilles are small for the duty: air leaves them "
-                f"at {num(velocity, 1)} m/s against the {num(limit, 1)} m/s "
-                f"this case allows. {num(area, 1)} m2 of grille per plenum "
-                f"would have to be {num(needed, 1)} m2 -- widen or heighten "
-                f"them, or add one per aisle. At this velocity the air is "
-                f"thrown across the aisle rather than delivered to the racks, "
-                f"and the grilles cost "
-                f"{num(self.plenum_pressure_drop_pa or 0.0, 1)} Pa."
-            )
         if self.supply_mesh_k is not None and self.racks and grilles:
             # A leaf of mesh goes into the room the hall already has, so the
             # cavity is taken out of the clearance in front of the racks --
@@ -518,15 +493,65 @@ class Model:
         available = self.fan_available_pa()
         cost = self.loop_pressure_drop_pa
         if available is not None and cost > available:
+            widen = self.widening_needed()
             alerts.append(
                 f"The units do not have the pressure for this loop: the "
                 f"surfaces alone cost {num(cost, 0)} Pa and the unit's curve "
                 f"offers {num(available, 0)} Pa at "
                 f"{num(self.unit_airflow_m3h, 0)} m3/h. That total is a LOWER "
                 f"bound -- the aisles and the turns are not in it -- so the "
-                f"real duty is higher still."
+                f"real duty is higher still. Where it goes: "
+                + ", ".join(f"{what} {num(pa, 0)} Pa"
+                            for what, pa in self.pressure_budget())
+                + "."
+                + (f" {widen}" if widen else "")
             )
         return alerts
+
+    def pressure_budget(self) -> list[tuple[str, float]]:
+        """What each surface costs the fan, largest first.
+
+        A total says the plant is short; the breakdown says what to change.
+        """
+        items = [
+            ("the racks", self.rack_pressure_drop_pa),
+            ("the return grilles", self.grille_pressure_drop_pa),
+            ("the mesh into the gallery", self.mesh_pressure_drop_pa or 0.0),
+            ("the supply grilles", self.plenum_pressure_drop_pa or 0.0),
+        ]
+        return sorted(((w, pa) for w, pa in items if pa > 0),
+                      key=lambda row: -row[1])
+
+    def widening_needed(self) -> str:
+        """How much bigger the supply grilles would have to be to fit.
+
+        No threshold in it. A perforated surface costs `K rho v^2 / 2` and `v`
+        is the flow over its area, so its pressure falls with the SQUARE of
+        the area: to give back the pascals the unit is short, the face has to
+        grow by the square root of the ratio. That answer is arithmetic from
+        the datasheet and the geometry, which is why it can be stated where a
+        velocity limit could not (ADR-059).
+        """
+        grilles = self.plenum_grilles
+        cost = self.plenum_pressure_drop_pa
+        available = self.fan_available_pa()
+        if not grilles or not cost or available is None:
+            return ""
+        short = self.loop_pressure_drop_pa - available
+        target = cost - short
+        if short <= 0 or target <= 0:
+            # Even a free opening would not close the gap: the pressure is
+            # somewhere else, and widening these would be the wrong repair.
+            return ""
+        sides = len({g.position for g in grilles})
+        area = sum(g.area for g in grilles) / sides
+        return (
+            f"The supply grilles are {num(cost, 0)} Pa of it: "
+            f"{num(area, 1)} m2 per plenum would have to be "
+            f"{num(area * (cost / target) ** 0.5, 1)} m2 to give back the "
+            f"{num(short, 0)} Pa the unit is short, since their pressure "
+            f"falls with the square of the face."
+        )
 
     @property
     def total_load_w(self) -> float:
@@ -879,7 +904,6 @@ class _Layout:
     walls: list[Panel]
     blocks: list[tuple[float, float]] = field(default_factory=list)
     plenum_depth: float | None = None
-    plenum_face_velocity_max_ms: float = PLENUM_FACE_VELOCITY_MAX
     supply_mesh_k: float | None = None
 
 
@@ -1120,7 +1144,6 @@ def build_model(spec: dict) -> Model:
         fan_curve=parse_fan_curve(fan.get("curve")),
         grille_free_area=_grille_free_area(spec),
         plenum_depth=layout.plenum_depth,
-        plenum_face_velocity_max_ms=layout.plenum_face_velocity_max_ms,
         supply_mesh_k=layout.supply_mesh_k,
     )
     # Snap to the mesh *before* anyone reads the model. The drawing, the
@@ -1351,9 +1374,6 @@ def plenum_for(spec: dict, rack_height: float) -> dict | None:
         # coefficient, and it distributes nothing (ADR-060).
         "as_mesh": bool(plenum.get("as_mesh", False)),
         "depth": float(plenum.get("depth", PLENUM_DEPTH)),
-        "max_face_velocity_ms": float(
-            plenum.get("max_face_velocity_ms", PLENUM_FACE_VELOCITY_MAX)
-        ),
         "width": float(grille.get("width", PLENUM_GRILLE_WIDTH)),
         # As tall as a rack unless the case says otherwise: the grille feeds
         # the cold aisle over the height the racks breathe from, and air let
@@ -1535,8 +1555,6 @@ def _pod_layout(spec: dict, cell, rack_spec: dict | None = None) -> _Layout:
     return _Layout(domain, [gallery], hall, [row], cold_aisles, [hot_aisle],
                    fans, grilles + supplies, walls, [span],
                    plenum_depth or None,
-                   plenum["max_face_velocity_ms"] if plenum
-                   else PLENUM_FACE_VELOCITY_MAX,
                    _supply_mesh_k(spec) if plenum and plenum["as_mesh"] else None)
 
 
@@ -1698,8 +1716,6 @@ def _hall_layout(spec: dict, cell, rack_spec: dict | None = None) -> _Layout:
     return _Layout(domain, galleries, hall, rows, cold_aisles, hot_aisles,
                    fans, grilles + supplies, walls, spans,
                    plenum_depth or None,
-                   plenum["max_face_velocity_ms"] if plenum
-                   else PLENUM_FACE_VELOCITY_MAX,
                    _supply_mesh_k(spec) if plenum and plenum["as_mesh"] else None)
 
 

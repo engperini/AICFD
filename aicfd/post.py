@@ -953,7 +953,6 @@ def _checks(model: Model, step: Path, kpis: dict, grid: dict) -> list[Check]:
     if supply_drop is not None and supply_asked:
         ratio = supply_drop / supply_asked
         velocity = kpis.get("supply_face_velocity_ms")
-        limit = model.plenum_face_velocity_max_ms
         passed, why = _resistance_verdict(supply_drop, supply_asked)
         checks.append(
             Check(
@@ -962,12 +961,11 @@ def _checks(model: Model, step: Path, kpis: dict, grid: dict) -> list[Check]:
                 f"the field drops {supply_drop:.2f} Pa across the supply grilles "
                 f"where their K at {model.airflow_m3h:,.0f} m3/h asks for "
                 f"{supply_asked:.2f} Pa ({ratio * 100:.0f}%)"
-                + (
-                    f"; they run at {velocity:.1f} m/s on the face"
-                    + ("" if velocity <= limit
-                       else f", over the {limit:.1f} m/s this case allows")
-                    if velocity is not None else ""
-                )
+                # The velocity, with no verdict attached: what is high for
+                # one hall is ordinary in another, and the reader knows which
+                # they have (ADR-059).
+                + (f"; they run at {velocity:.1f} m/s on the face"
+                   if velocity is not None else "")
                 + why,
             )
         )
