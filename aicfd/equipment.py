@@ -38,6 +38,30 @@ from aicfd.yamledit import (
 
 LIBRARY = Path(__file__).resolve().parent.parent / "equipment"
 
+#: The units THIS REPOSITORY ships, and vouches for.
+#:
+#: `available()` lists whatever is in `equipment/`, which on a working
+#: installation is these plus the engineer's own. The two are not the same
+#: thing and only one of them is this project's to guarantee: the admission
+#: rule (ADR-071) is a promise about what is committed here, and a draft
+#: somebody is still filling in is theirs (ADR-077).
+#:
+#: Adding a unit to the repository means adding its id here. A test fails if
+#: an id names no file, which is the half that can be checked automatically;
+#: the other half is one line in a review.
+SHIPPED = (
+    "396FWA500",
+    "39CRA150",
+    "CA80NEVGT",
+    "CA80NPVG6",
+    "DFWA5560",
+    "FWCV36L2F",
+    "FWCV40L2F",
+    "HDCV5300F-HT",
+    "HXCV5000F-HT",
+    "IDAV1911F",
+)
+
 #: What each row of `capacity` carries, and the label a reader sees.
 QUANTITIES = {
     "nscc_kw": "net sensible capacity (kW)",

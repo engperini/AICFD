@@ -22,12 +22,12 @@ from tests import support
 class LibraryTest(unittest.TestCase):
     def test_every_file_in_the_library_parses(self):
         self.assertTrue(C.available(), "the library should not be empty")
-        for name in C.available():
+        for name in C.SHIPPED:
             with self.subTest(component=name):
                 C.load(name)
 
     def test_every_component_fills_a_role_the_page_knows(self):
-        for name in C.available():
+        for name in C.SHIPPED:
             with self.subTest(component=name):
                 self.assertIn(C.load(name).role, C.ROLES)
 
@@ -75,7 +75,7 @@ class KindsTest(unittest.TestCase):
         self.assertIsNone(pdu.k, "a dissipation has no face for air to cross")
 
     def test_a_surface_has_a_face_and_no_share(self):
-        for name in C.available():
+        for name in C.SHIPPED:
             unit = C.load(name)
             if unit.kind != "surface":
                 continue
@@ -106,7 +106,7 @@ class KindsTest(unittest.TestCase):
 
     def test_every_pattern_is_one_the_page_can_draw(self):
         js = (Path(__file__).resolve().parents[1] / "web" / "components.js").read_text()
-        for name in C.available():
+        for name in C.SHIPPED:
             pattern = C.load(name).pattern
             with self.subTest(component=name, pattern=pattern):
                 self.assertIn(pattern, C.PATTERNS)
@@ -135,7 +135,7 @@ class SavingTest(unittest.TestCase):
     def test_a_save_that_changes_nothing_leaves_the_file_identical(self):
         """The comments say where each number came from, and the alignment is
         hand-made. A save that reflows either has lost the reasons."""
-        for name in C.available():
+        for name in C.SHIPPED:
             if C.load(name).fixed:
                 continue
             with self.subTest(component=name):

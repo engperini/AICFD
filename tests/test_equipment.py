@@ -1123,7 +1123,7 @@ class EveryShippedUnitTest(unittest.TestCase):
     """
 
     def test_every_chilled_water_unit_fits_a_coil(self):
-        for model in equipment.available():
+        for model in equipment.SHIPPED:
             unit = equipment.load(model)
             if unit.cooling != "chilled_water":
                 continue
@@ -1134,7 +1134,7 @@ class EveryShippedUnitTest(unittest.TestCase):
         """Its selection is carried and checked; the model that would answer
         for a refrigerant circuit is not built, and that is not the same thing
         as a file somebody did not finish (ADR-073)."""
-        for model in equipment.available():
+        for model in equipment.SHIPPED:
             unit = equipment.load(model)
             if unit.cooling == "chilled_water":
                 continue
@@ -1148,7 +1148,7 @@ class EveryShippedUnitTest(unittest.TestCase):
         manufacturer whose sheet is admitted here agrees within 1%."""
         from aicfd.coil import air_capacity_rate
 
-        for model in equipment.available():
+        for model in equipment.SHIPPED:
             with self.subTest(model=model):
                 unit = equipment.load(model)
                 design, altitude = unit.design, unit.selection["elevation_m"]
@@ -1163,7 +1163,7 @@ class EveryShippedUnitTest(unittest.TestCase):
         power over the water's rise -- the third independent check, and the
         one that catches a supply temperature read off the wrong side of the
         fans (ADR-069, ADR-070)."""
-        for model in equipment.available():
+        for model in equipment.SHIPPED:
             unit = equipment.load(model)
             flow = (unit.selection or {}).get("water_flow_lh")
             if not flow:
@@ -1177,7 +1177,7 @@ class EveryShippedUnitTest(unittest.TestCase):
                                        delta=0.01 * gross)
 
     def test_every_unit_states_what_a_report_will_quote(self):
-        for model in equipment.available():
+        for model in equipment.SHIPPED:
             with self.subTest(model=model):
                 unit = equipment.load(model)
                 for field in ("return_c", "supply_c", "airflow_m3h",
@@ -1196,7 +1196,7 @@ class EveryShippedUnitTest(unittest.TestCase):
                 self.assertTrue(all(v > 0 for v in unit.size))
 
     def test_they_all_reproduce_their_own_leaving_water(self):
-        for model in equipment.available():
+        for model in equipment.SHIPPED:
             unit = equipment.load(model)
             if unit.cooling != "chilled_water":
                 continue
@@ -1279,14 +1279,14 @@ class DerivedFieldsAreDeclaredTest(unittest.TestCase):
         self.assertIn("derived", unit.to_dict())
 
     def test_the_sheets_that_close_declare_nothing(self):
-        for model in equipment.available():
+        for model in equipment.SHIPPED:
             if model == "DFWA5560":
                 continue
             with self.subTest(model=model):
                 self.assertEqual(equipment.load(model).derived_fields, ())
 
     def test_a_derived_field_must_name_a_real_design_field(self):
-        for model in equipment.available():
+        for model in equipment.SHIPPED:
             unit = equipment.load(model)
             for name in unit.derived_fields:
                 with self.subTest(model=model, field=name):
@@ -1335,7 +1335,7 @@ class ArrangementTest(unittest.TestCase):
                 self.assertEqual(equipment.load(model).arrangement, "downflow")
 
     def test_everything_else_is_a_fan_wall_by_default(self):
-        for model in equipment.available():
+        for model in equipment.SHIPPED:
             if model in self.DOWNFLOW:
                 continue
             with self.subTest(model=model):
@@ -1410,7 +1410,7 @@ class DirectExpansionTest(unittest.TestCase):
         self.assertIsNone(unit.coil)
 
     def test_everything_else_is_chilled_water(self):
-        for model in equipment.available():
+        for model in equipment.SHIPPED:
             if model == "IDAV1911F":
                 continue
             with self.subTest(model=model):
@@ -1443,3 +1443,42 @@ class DirectExpansionTest(unittest.TestCase):
         with self.assertRaises(ValueError) as caught:
             equipment_for({"fanwall": {"model": "IDAV1911F"}})
         self.assertIn("chilled-water one", str(caught.exception))
+
+
+class ShippedListsAreHonestTest(unittest.TestCase):
+    """What the repository ships is declared, not discovered (ADR-077).
+
+    The library-wide guards used to walk the FOLDER, which on a working
+    installation holds the engineer's own drafts as well. A unit somebody was
+    halfway through entering then failed the build -- the third time a test
+    has read a user's files and broken on them (ADR-056, ADR-061).
+    """
+
+    def libraries(self):
+        from aicfd import components, racklib
+
+        return ((equipment, "equipment"), (racklib, "racks"),
+                (components, "components"))
+
+    def test_every_declared_id_has_a_file(self):
+        for module, what in self.libraries():
+            for name in module.SHIPPED:
+                with self.subTest(library=what, id=name):
+                    self.assertTrue((module.LIBRARY / f"{name}.yaml").is_file())
+
+    def test_the_declarations_are_sorted_and_unique(self):
+        """So a reader can see at a glance what is there, and a second copy of
+        an id cannot hide in the middle."""
+        for module, what in self.libraries():
+            with self.subTest(library=what):
+                self.assertEqual(list(module.SHIPPED), sorted(set(module.SHIPPED)))
+
+    def test_a_users_own_file_does_not_enter_the_guards(self):
+        """The whole point. A draft in the folder is the engineer's business;
+        the page tells them what does not close, the build does not."""
+        draft = equipment.LIBRARY / "ZZ-USER-DRAFT.yaml"
+        draft.write_text("model: ZZ-USER-DRAFT\nfamily: Draft\n"
+                         "size: [1, 1, 1]\nselection: {}\ndesign: {}\n")
+        self.addCleanup(lambda: draft.exists() and draft.unlink())
+        self.assertIn("ZZ-USER-DRAFT", equipment.available())
+        self.assertNotIn("ZZ-USER-DRAFT", equipment.SHIPPED)

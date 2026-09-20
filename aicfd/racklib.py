@@ -28,6 +28,24 @@ import yaml
 
 LIBRARY = Path(__file__).resolve().parent.parent / "racks"
 
+#: The types THIS REPOSITORY ships. See `equipment.SHIPPED`: `available()`
+#: lists whatever is in `racks/`, which is these plus the engineer's own, and
+#: only these are this project's to guarantee (ADR-077).
+SHIPPED = (
+    "generic-600-1200-45u",
+    "generic-800-1200-46u",
+    "generic-800-1200-48u",
+    "liquid-network-800",
+    "meta-600-1200",
+    "meta-800-1300",
+    "odf-special-600-300",
+    "shuffle-box-600-1200-48u",
+    "sum3-high-density",
+    "sum3-low-density-compute",
+    "sum3-low-density-network",
+    "type-e-liquid-225kw",
+)
+
 
 class UnknownRackType(LookupError):
     pass

@@ -170,7 +170,7 @@ class RackTypeTest(unittest.TestCase):
         from aicfd import racklib
 
         self.assertTrue(racklib.available())
-        for type_id in racklib.available():
+        for type_id in racklib.SHIPPED:
             with self.subTest(type=type_id):
                 rack = racklib.load(type_id)
                 self.assertEqual(rack.id, type_id)

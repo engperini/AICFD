@@ -3263,3 +3263,42 @@ a raised floor needs a `downflow` type and one without needs a `fanwall` one,
 and naming the other is refused with what is right about the file as well as
 what is wrong (ADR-072). This is where the three downflow room units already
 in the library stop being unplaceable.
+
+## ADR-077 — What the repository ships is declared, not discovered
+
+**Decision.** `equipment.SHIPPED`, `racklib.SHIPPED` and `components.SHIPPED`
+name the entries this repository ships. The library-wide guards walk those
+lists; `available()` keeps listing whatever is in the folder, because that is
+what a user's page is for.
+
+**Because the two are not the same thing, and only one is ours to promise.**
+The admission rule (ADR-071) is a statement about what is committed here: the
+sheets behind it close, and a study quoting them traces to a manufacturer's
+own arithmetic. A unit an engineer is halfway through entering on their own
+machine is not that, and was never meant to be held to it.
+
+**It broke a build, which is how it was found.** `docker compose build` runs
+the suite, and `COPY . /app` brings the working copy's `equipment/` with it.
+Two drafts in that folder — one 1.1% out on the air side, one 1.6% and 0.15 K
+on its water — failed three library-wide guards and stopped the image. The
+tool was telling an engineer that their own draft was not allowed to exist.
+
+**THIS IS THE THIRD TIME A TEST HAS READ A USER'S FILES.** ADR-056 was the
+cases, ADR-061 was their contents, and this is the libraries. The pattern each
+time: a guard written to protect the repository's own data, pointed at a
+directory the user also writes to. The lesson is not "add fixtures again" — it
+is that **a guard must name what it guards**. A list of ids is one line per
+entry, it is visible in review, and it cannot quietly grow to cover somebody
+else's work.
+
+**A test asserts every declared id has a file**, which is the half that can be
+checked automatically. The other half — adding the id when adding the unit —
+is one line in the same commit. And a test creates a deliberately broken draft
+in the live folder and asserts the guards ignore it, so the next person to
+point a guard at `available()` finds out immediately.
+
+**What a user's own entry still gets is the page.** A unit that does not close
+shows its problem where the engineer is working on it, with the field named
+and the arithmetic shown (ADR-068). That is the right place for it: a draft is
+supposed to be incomplete while it is being written, and the build is not the
+thing that should say so.

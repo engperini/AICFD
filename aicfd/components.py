@@ -30,6 +30,22 @@ from aicfd.yamledit import dig, find, merge, render, set_scalar
 
 LIBRARY = Path(__file__).resolve().parent.parent / "components"
 
+#: The components THIS REPOSITORY ships. See `equipment.SHIPPED`: a house
+#: standard committed here is this project's to guarantee, and a component an
+#: engineer adds to the folder is theirs (ADR-077).
+SHIPPED = (
+    "ceiling-return-600",
+    "ceiling-return-600-eggcrate",
+    "ceiling-return-600-open",
+    "ceiling-return-600-perforated",
+    "containment-panel",
+    "floor-tile-600",
+    "gallery-mesh-13",
+    "pdu-distribution-loss",
+    "supply-grille-2000",
+    "supply-grille-2000-open",
+)
+
 #: Where a component goes, and what it is called on the page. A role is the
 #: surface, not the product: a hall has one kind of ceiling return grille
 #: whoever supplies it.
