@@ -7,9 +7,11 @@ residual. These check both on hand-written field files.
 
 from __future__ import annotations
 
+import copy
 import inspect
 import json
 import tempfile
+import copy
 import unittest
 from pathlib import Path
 
@@ -18,6 +20,7 @@ import yaml
 from aicfd import model as M
 from aicfd import post
 from aicfd.case import FAN_INTAKE, FAN_SUPPLY, KELVIN
+from tests import support
 
 SPEC = yaml.safe_load(
     """
@@ -662,3 +665,54 @@ class NegligibleResistanceTest(unittest.TestCase):
         """A surface that asks for nothing and delivers pascals is a
         disagreement, and the absolute test has to catch it."""
         self.assertFalse(post._resistance_verdict(3.0, 0.01)[0])
+
+
+class RackDropSamplingTest(unittest.TestCase):
+    """The drop is measured across the RACK, not across everything under it.
+
+    The two are the same room when the cabinets stand on the slab, which is
+    why this read right for years. Put the room on an access floor and
+    everything below the rack top includes the supply plenum, whose pressure
+    drives the whole loop: averaged into both planes it dragged the measured
+    drop to 70% of what the rack curve asks, and the check called the field
+    wrong when it was the sampling (ADR-076).
+    """
+
+    def grid(self, model, plenum_pa: float):
+        """A synthetic field: a clean drop across the row, and a plenum at a
+        wildly different pressure under it."""
+        import numpy as np
+
+        cell = model.cell_size
+        x = np.arange(cell[0] / 2, model.domain.hi[0], cell[0])
+        y = np.arange(cell[1] / 2, model.domain.hi[1], cell[1])
+        z = np.arange(cell[2] / 2, model.domain.hi[2], cell[2])
+        row = model.rows[0]
+        p = np.zeros((len(z), len(y), len(x)))
+        # 30 Pa in front of the row, 0 behind it, at every height.
+        p[:, y < row.front_y, :] = 30.0
+        # And the plenum, which is nothing to do with the row.
+        p[z < (model.floor_height or 0.0), :, :] = plenum_pa
+        return {"x": x, "y": y, "z": z, "p_rgh": p}
+
+    def model(self, raised: bool):
+        spec = copy.deepcopy(support.spec("pod-fanwall"))
+        if raised:
+            spec["fanwall"]["model"] = "HDCV5300F-HT"
+            spec["floor"] = {"enabled": True, "height": 1.0, "tiles_per_rack": 2}
+        return M.build_model(spec)
+
+    def test_the_plenum_does_not_reach_the_measurement(self):
+        model = self.model(raised=True)
+        quiet, loud = (post.rack_pressure_drop(model, self.grid(model, pa))[0]
+                       for pa in (0.0, 900.0))
+        self.assertAlmostEqual(quiet, loud, places=3,
+                               msg="the plenum's pressure leaked into the drop")
+        self.assertAlmostEqual(quiet, 30.0, places=3)
+
+    def test_a_case_on_the_slab_measures_what_it_always_did(self):
+        model = self.model(raised=False)
+        self.assertIsNone(model.floor_height)
+        drop, rows = post.rack_pressure_drop(model, self.grid(model, 0.0))
+        self.assertAlmostEqual(drop, 30.0, places=3)
+        self.assertEqual(len(rows), len(model.rows))

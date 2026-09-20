@@ -3226,6 +3226,16 @@ so its normal points up. Reversed, the unit draws from the plenum it is
 filling — and it would still read as converged, which is why this is measured
 and not assumed.
 
+**The rack drop is measured across the RACK, not across everything under it.**
+`rack_pressure_drop` sampled the whole column from the domain floor to the
+rack top. On the slab those are the same room, which is why it read right for
+years; on an access floor everything below the rack top includes the supply
+plenum, whose pressure drives the entire loop. Averaged into both planes it
+dragged the measured drop to **70%** of what the rack curve asks, and the
+check reported the field as wrong when it was the sampling. Narrowed to the
+cabinet's own z band it reads **101%**, and the cases on the slab are
+unchanged to the decimal because there the two windows are identical.
+
 **The two arrangements are exclusive, and so are the units.** A supply plenum
 at the gallery wall (ADR-058, ADR-060) and a raised floor are two ways of
 getting the same air from the same machines into the same aisles; a case

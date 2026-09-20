@@ -667,13 +667,21 @@ def rack_pressure_drop(model: Model, grid: dict) -> tuple[float | None, list[dic
     if not model.rows:
         return None, []
     coords = (grid["x"], grid["y"], grid["z"])
+    # THE RACK'S OWN BAND, not everything below its top. The two are the same
+    # room when the cabinets stand on the slab, which is why this read right
+    # for years. Put the room on an access floor and everything below the rack
+    # top includes the supply plenum, whose pressure is the one driving the
+    # whole loop -- averaged into both planes it dragged the measured drop to
+    # 70% of what the rack curve asks, and the check called the field wrong
+    # when it was the sampling (ADR-076).
+    rack_low = model.racks[0].box.lo[2]
     rack_top = model.racks[0].box.hi[2]
 
     def plane(position: float, span: tuple[float, float]) -> float:
         picks = [
             np.where((coords[0] >= span[0]) & (coords[0] <= span[1]))[0],
             [int(np.argmin(abs(coords[1] - position)))],
-            np.where(coords[2] <= rack_top)[0],
+            np.where((coords[2] >= rack_low) & (coords[2] <= rack_top))[0],
         ]
         return float(grid["p_rgh"][np.ix_(picks[2], picks[1], picks[0])].mean())
 
