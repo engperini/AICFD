@@ -246,6 +246,115 @@ class RacksPageTest(unittest.TestCase):
         self.assertIn("from the gallery wall", text)
 
 
+class CaseTravelsTest(unittest.TestCase):
+    """The case a reader is looking at survives every hop between pages.
+
+    ADR-087 made the API calls carry the case so the server stopped answering
+    with whichever one it was started on. It did not make the NAVIGATION carry
+    it, and the case lives in `location.search` -- so three separate things
+    threw it away and each one was silent:
+
+      a link between pages   `href="./"` and `href="./racks.html"` dropped it,
+                             so `back` and every group link landed on the
+                             server's start case
+      a page rewriting its
+      own query string       `location.search = "?model=X"` replaced the whole
+                             search, case included
+      a fetch without it     `/api/racks` then READ AND WROTE the start case.
+                             Measured: with the server on `pod-fanwall` and
+                             `hall-10mw` open, changing the standard load on
+                             the racks page and pressing Save wrote 13.75 kW
+                             into `cases/pod-fanwall.yaml` and left
+                             `hall-10mw.yaml` untouched (ADR-091)
+
+    The last one is why this is a test and not a fix. A page that shows the
+    wrong room is a nuisance; a page that SAVES to the wrong room is a
+    corruption, it announces nothing, and the only clue is a case name in a
+    header nobody reads twice.
+
+    So the case-scoped endpoints are read out of the server rather than listed
+    here: a route that starts using `self._case()` is covered the day it does.
+    """
+
+    #: Pages, as opposed to the modules they import. A page is what a reader
+    #: navigates to, so a page is what has to keep the case.
+    PAGES = ("app.js", "racks.js", "results.js", "equipment.js",
+             "components.js")
+
+    def case_scoped_routes(self) -> set[str]:
+        """The API paths whose answer depends on which case is open.
+
+        Read out of the router: a branch is case-scoped when its body reaches
+        for `self._case()`. Naming them here instead would be a list to keep,
+        and a list is what goes stale (ADR-056, ADR-084).
+        """
+        source = (support.REPO / "aicfd" / "server.py").read_text()
+        branch = re.compile(r'self\.path\.startswith\("(/api/[a-z/]+)"\)')
+        starts = [(m.group(1), m.end()) for m in branch.finditer(source)]
+        routes = set()
+        for i, (route, at) in enumerate(starts):
+            end = starts[i + 1][1] if i + 1 < len(starts) else len(source)
+            if "self._case()" in source[at:end]:
+                routes.add(route)
+        self.assertTrue(routes, "no case-scoped route found; the shape moved")
+        return routes
+
+    def test_every_page_keeps_the_case_on_its_links(self):
+        """`case.js` is the one place that does it, so every page imports it."""
+        for page in self.PAGES:
+            with self.subTest(page=page):
+                source = (WEB / page).read_text()
+                self.assertRegex(
+                    source, r"import\s+(?:\{[^}]*\}\s+from\s+)?'\./case\.js'",
+                    f"web/{page} does not import case.js, so every link out of "
+                    "it drops the case and the reader lands on the case the "
+                    "server was started with",
+                )
+
+    def test_a_page_never_replaces_its_query_string_without_the_case(self):
+        """`location.search = "?x=y"` throws away everything else in it.
+
+        The exception is a line that SETS the case, which is the case menu
+        opening another room -- it is the one place the old value should go.
+        """
+        for path in sorted(WEB.glob("*.js")):
+            for number, line in enumerate(path.read_text().splitlines(), 1):
+                if "location.search =" not in line:
+                    continue
+                with self.subTest(file=path.name, line=number):
+                    self.assertTrue(
+                        "withCase(" in line or "?case=" in line,
+                        f"web/{path.name}:{number} replaces the whole query "
+                        f"string and loses the case: {line.strip()!r}. Wrap it "
+                        "in withCase()",
+                    )
+
+    def test_every_case_scoped_fetch_carries_the_case(self):
+        routes = self.case_scoped_routes()
+        calls = re.compile(r"fetch\(\s*([^)]*?)[,)]", re.S)
+        for path in sorted(WEB.glob("*.js")):
+            source = path.read_text()
+            for match in calls.finditer(source):
+                target = match.group(1)
+                route = next(
+                    (r for r in routes
+                     if f"'{r}" in target or f"`{r}" in target
+                     or f"'..{r}" in target or f"`..{r}" in target),
+                    None,
+                )
+                if route is None:
+                    continue
+                number = source.count("\n", 0, match.start()) + 1
+                with self.subTest(file=path.name, line=number, route=route):
+                    self.assertTrue(
+                        "withCase(" in target or "case=" in target,
+                        f"web/{path.name}:{number} calls {route}, whose answer "
+                        "depends on which case is open, without saying which. "
+                        "The server falls back to the one it was started with, "
+                        "and for a POST that means writing the wrong case",
+                    )
+
+
 class DecimalSeparatorTest(unittest.TestCase):
     """One decimal separator, one place that decides it (ADR-083)."""
 

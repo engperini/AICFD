@@ -14,6 +14,12 @@
  * *looking* at the curve that is deciding the answer.
  */
 import { num, dec } from './decimal.js';
+// Keeps the case on the way back, so `back` returns to the case the reader
+// came here from rather than to the one the server was started with. This
+// page also REPLACES its own query string when the unit changes, which is
+// where the case was being thrown away a second time -- `withCase` rebuilds
+// it instead of overwriting it (ADR-091).
+import { withCase } from './case.js';
 
 const NS = 'http://www.w3.org/2000/svg';
 const params = new URLSearchParams(location.search);
@@ -30,7 +36,7 @@ async function main() {
   wireTheme();
   const picker = document.getElementById('model-picker');
   picker.addEventListener('change', () => {
-    location.search = `?model=${encodeURIComponent(picker.value)}`;
+    location.search = withCase(`?model=${encodeURIComponent(picker.value)}`);
   });
   await load(params.get('model'));
 }
@@ -57,7 +63,7 @@ async function load(model) {
         `<p>Add a unit as <code>equipment/&lt;model&gt;.yaml</code>.</p></div>`;
       return;
     }
-    location.search = `?model=${encodeURIComponent(payload.models[0])}`;
+    location.search = withCase(`?model=${encodeURIComponent(payload.models[0])}`);
     return;
   }
   unit = payload.unit;
@@ -593,7 +599,7 @@ async function save(newModel = '') {
       { method: 'POST', body: { ...draft, save_as: newModel } },
     );
     if (newModel) {
-      location.search = `?model=${encodeURIComponent(payload.unit.model)}`;
+      location.search = withCase(`?model=${encodeURIComponent(payload.unit.model)}`);
       return;
     }
     unit = payload.unit;

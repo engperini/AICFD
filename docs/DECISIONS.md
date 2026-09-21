@@ -3864,3 +3864,52 @@ per-position overrides, the fan curve, the coupling controls — lives in the
 test as `BEYOND_THE_FORM`, and that list can rot like any other (ADR-056,
 ADR-084). A further check reads `aicfd/` and fails when a name on it is no
 longer read anywhere, so the escape hatch cannot quietly become the stale part.
+
+---
+
+## ADR-091 — The case travels with the reader, on every hop
+
+**Decision.** Which case a page is looking at is kept on every link out of it,
+every query string it rewrites and every call whose answer depends on it. One
+module, `web/case.js`, does all three, and every page imports it.
+
+**What was wrong.** ADR-087 made the API calls carry the case, so the server
+stopped answering with whichever one `aicfd view` was started on. It did not
+make the NAVIGATION carry it. The case lives in `location.search`, and three
+separate things threw it away:
+
+- **a link between pages.** `href="./"` on the four back links, and
+  `href="./racks.html"` and `href="./components.html"` out of the model page.
+- **a page rewriting its own query string.** `location.search = "?model=X"` on
+  the equipment page replaces the whole search, case included.
+- **a fetch that never said which case.** `web/racks.js` called `/api/racks`
+  bare, for both the read and the write.
+
+**Why the third one is the serious one.** With the server on `pod-fanwall` and
+`hall-10mw` open on the model page, clicking through to the racks page loaded
+`pod-fanwall`'s racks; changing the standard load to 13.75 kW and pressing Save
+wrote it into `cases/pod-fanwall.yaml` and left `hall-10mw.yaml` untouched.
+Measured, both ways, on a copy of the repository. The page did exactly what it
+said it was doing; the only clue was a case name in a header nobody reads
+twice. A page that SHOWS the wrong room is a nuisance. A page that SAVES to it
+is a corruption that announces nothing.
+
+The case menu had the same fault more visibly: `/api/cases` marks which case is
+open, so the menu ticked the server's start case while the page was on another.
+
+**Why one module rather than five fixes.** A back link is not a special case of
+this — it is the same hop the other way, and so is a group link, and so is the
+page that rewrites its own address. Patching the four back links would have
+left the racks page still saving to the wrong file. `case.js` states the rule
+once: a link to a page of this tool carries the case unless it names one of its
+own. It rewrites the anchors present at load and listens in the capture phase
+for the ones a template builds later, and it rewrites `href` rather than
+intercepting the navigation, so ctrl-click, middle-click and "copy link" all
+carry the case too. `decimal.js` was made for the same reason, one separator
+ago (ADR-083).
+
+**Consequence.** The guard reads the case-scoped endpoints out of the router
+rather than listing them: a route that starts using `self._case()` is covered
+the day it does. Three checks — every page imports `case.js`, no page replaces
+its query string without the case, every case-scoped fetch names one — and each
+was shown to fail on the code as it was.

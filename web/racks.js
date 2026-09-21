@@ -30,6 +30,10 @@
  * below and only that one disagrees. Same division the load has always had.
  */
 import { num, dec } from './decimal.js';
+// The case this page is editing, on every call and every link out (ADR-091).
+// Without it `/api/racks` answered -- and SAVED -- whichever case the server
+// was started on, while the header named it too quietly to notice.
+import { withCase } from './case.js';
 
 const byId = document.getElementById.bind(document);
 let state = null;
@@ -44,7 +48,7 @@ const fmt = (v, digits = 2) =>
 const whole = (v) => (Number.isFinite(+v) ? (+v).toLocaleString('en-US') : '—');
 
 async function load() {
-  const res = await fetch('/api/racks');
+  const res = await fetch(withCase('/api/racks'));
   const payload = await res.json();
   if (payload.error) throw new Error(payload.error);
   state = payload;
@@ -503,7 +507,7 @@ async function save() {
     if (kind === true || (kind === undefined && rack.blank_stated)) blanks.push(rack.id);
   }
   try {
-    const res = await fetch('/api/racks', {
+    const res = await fetch(withCase('/api/racks'), {
       method: 'POST',
       headers: { 'Content-Type': 'application/json' },
       body: JSON.stringify({

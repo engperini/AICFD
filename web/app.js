@@ -9,20 +9,17 @@
 import { viewsFor, drawView, sheetScale } from './drawing.js';
 
 /**
- * Which case this page is looking at, from its own address.
+ * Which case this page is looking at, and keeping it across a hop: `case.js`.
  *
  * The server was launched with one case and answered `/api/model` with it
  * whatever the page asked -- so opening `?case=other` changed the address bar
  * and nothing else, and the only way to look at a second room was to stop
  * `aicfd view` and start it again. Every call carries the case now, and the
- * server prefers it over the one it was started with (ADR-087).
+ * server prefers it over the one it was started with (ADR-087). Importing
+ * `case.js` also keeps it on every link out of this page, which is what the
+ * links to the racks, equipment and components pages used to drop (ADR-091).
  */
-const CASE = new URLSearchParams(location.search).get('case');
-
-const withCase = (url) => {
-  if (!CASE || url.includes('case=')) return url;
-  return `${url}${url.includes('?') ? '&' : '?'}case=${encodeURIComponent(CASE)}`;
-};
+import { CASE, withCase } from './case.js';
 
 
 /**
@@ -1231,7 +1228,10 @@ async function loadCaseMenu() {
   const from = document.getElementById('case-new-from');
   if (!list) return;
   try {
-    const payload = await (await fetch('/api/cases')).json();
+    // `/api/cases` marks which one is OPEN, so it needs the case like
+    // every other call: without it the menu ticked whichever case the
+    // server was started on (ADR-091).
+    const payload = await (await fetch(withCase('/api/cases'))).json();
     if (payload.error) throw new Error(payload.error);
     list.innerHTML = payload.cases
       .map((c) => `<a href="?case=${encodeURIComponent(c.case)}"

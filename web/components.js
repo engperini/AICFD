@@ -20,6 +20,9 @@
  */
 
 import { num } from './decimal.js';
+// Keeps the case on the way back, so `back` returns to the case the reader came here from
+// rather than to the one the server was started with (ADR-091).
+import './case.js';
 
 const byId = document.getElementById.bind(document);
 let state = null;

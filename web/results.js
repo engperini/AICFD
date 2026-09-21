@@ -10,6 +10,9 @@ import { Results } from './data.js';
 import { ConvergenceChart } from './convergence.js';
 import { FieldMaps } from './maps.js';
 import { RackInlets } from './rack-inlets.js';
+// Keeps the case on the way back, so `back` returns to the model page this came from
+// rather than to the one the server was started with (ADR-091).
+import { withCase } from './case.js';
 
 main();
 
@@ -313,7 +316,7 @@ function residualTableHtml(chart) {
 async function announceIfSuperseded(caseName) {
   let run;
   try {
-    run = (await (await fetch('../api/progress')).json()).run;
+    run = (await (await fetch(withCase('../api/progress'))).json()).run;
   } catch {
     return; // no server, or not ours: nothing to say
   }
