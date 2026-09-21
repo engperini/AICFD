@@ -316,11 +316,22 @@ class UnfittableUnitTest(unittest.TestCase):
         self.assertNotIn("coil_outside_table_c", source)
 
     def test_the_result_says_so_rather_than_falling_silent(self):
+        """The alert carries the problem in its own words and says what the
+        capacity beside it therefore is.
+
+        It used to open "This unit cannot be modelled from what its file
+        says", which is right for an unfinished file and wrong for a DX unit
+        -- whose file is complete and whose coil is simply not a thing this
+        software models (ADR-073, ADR-097). The wrapper now states the
+        consequence and lets the problem speak for the cause.
+        """
         from aicfd import post
 
         out = post._coil_alerts({"coil_problem": "X has no design selection"})
         self.assertTrue(out)
-        self.assertIn("cannot be modelled", out[0])
+        self.assertIn("X has no design selection", out[0])
+        self.assertIn("catalogue figure", out[0])
+        self.assertIn("the return air the unit was selected for", out[0])
 
 
 class LibraryCopy(unittest.TestCase):
@@ -1439,11 +1450,20 @@ class DirectExpansionTest(unittest.TestCase):
         self.assertNotIn("entering_water_c", unit.selection)
 
     def test_a_case_cannot_build_a_fan_wall_from_it(self):
+        """Still refused, and now for the reason that is actually true of it.
+
+        It used to be refused for being DX, which was too wide: what is not
+        modelled is its COIL, and a room needs none of that (ADR-097). What
+        still stops it here is its ARRANGEMENT -- it stands in the room and
+        discharges downward, so it needs a raised floor (ADR-072).
+        """
         from aicfd.model import equipment_for
 
         with self.assertRaises(ValueError) as caught:
             equipment_for({"fanwall": {"model": "IDAV1911F"}})
-        self.assertIn("chilled-water one", str(caught.exception))
+        self.assertIn("raised floor", str(caught.exception))
+        self.assertNotIn("chilled-water one", str(caught.exception),
+                         "being DX is no longer the reason")
 
 
 class ShippedListsAreHonestTest(unittest.TestCase):

@@ -1,0 +1,82 @@
+# Emerson (Vertiv) Liebert P3100DA + ACV16106 -- DOWNFLOW DX CRAC.
+#
+# NOT DECLARED IN `equipment.SHIPPED`, and the reason is one field: the data
+# sheet states no EXTERNAL STATIC PRESSURE. Every unit this repository
+# guarantees has to state what a report will quote, and the ESP is one of
+# those (ADR-071) -- four sheets have been turned away on checks like it and
+# sent back to their vendor instead. So this unit is carried as a PROJECT
+# unit: usable in a case today, and declarable the moment Emerson supplies
+# the ESP at 27.500 m3/h.
+#
+# NOT CHILLED WATER. Direct expansion, two scroll compressors on R407-C and a
+# remote air-cooled condenser, so its capacity follows the refrigerant
+# circuit, the compressors' staging and the outdoor air the condenser rejects
+# into. The coil this software fits is a chilled-water one and there is no
+# equivalent here (`cooling: dx`, ADR-073). A case may still name it: the run
+# is the room at this RATED point, with the supply temperature held there
+# rather than re-solved against the return the room produces, and the model
+# says so in an alert before the solve (ADR-097).
+#
+# NOT A FAN WALL. It stands in the room and discharges downward into the
+# inter-floor plenum, so a case naming it needs `floor.enabled: true`
+# (`arrangement: downflow`, ADR-072, ADR-076).
+#
+# SOURCES, both from the client's pack:
+#   Data Sheet, Emerson Network Power do Brasil, proposta BR-16-1908_Rev3,
+#   25/04/2017, "ASCENTY DC FORTALEZA (460V)" -- every number below.
+#   EBM Engenharia, descriptive memorial 126/20 R00, section 7.1 -- the
+#   arrangement, and the quantities: 14 units per hall on Data Halls 03 to
+#   06, 12 operating and 2 reserve (N+2).
+#
+# THE ONE CHECK THAT APPLIES (ADR-071), computed at the sheet's own altitude:
+#   air   27.500 m3/h from 30,0 to 18,7 degC at 25 m  ->  100,5 kW  (0,0%)
+#   gross less the 7,5 kW of FAN power                ->  100,5 kW  (net)
+#
+# Note which power nets the capacity: the EC FANS' 7,5 kW, not the 27,8 kW of
+# compressors. The compressor heat leaves the room through the refrigerant
+# and is rejected outdoors, so it never reaches this air (ADR-073).
+model: P3100DA
+family: Emerson Liebert Self Contained Precision
+arrangement: downflow
+cooling: dx
+
+# Width x depth x height, metres, INDOOR unit only. The sheet gives
+# C 2553 / L 873 / A 1970 mm. The ACV16106 condenser is a separate box,
+# 2,624 x 1,098 x 1,416 m and 492 kg, and goes outdoors.
+size: [2.553, 0.873, 1.970]
+weight_kg: 950
+
+fans:
+  count: 3
+  type: EC fan
+  # 7,5 kW in all, as 3 x 2,5 kW.
+
+selection:
+  elevation_m: 25             # the sheet's stated altitude
+  entering_air_rh: 30         # %, at 30 degC return
+  outside_air_c: 37.6         # dry bulb the condenser rejects into. A DX
+                              # unit's capacity moves with this; a chilled
+                              # water one's does not.
+  # esp_pa: NOT ON THE SHEET. Ask Emerson for the external static pressure at
+  # 27.500 m3/h -- it is the field between this file and `SHIPPED`. A case
+  # that needs one states `fanwall.static_pressure_pa` itself meanwhile.
+  test_method: ASHRAE 127-2007
+  capacity_tolerance_pct: 5
+
+design:
+  return_c: 30.0              # air the unit RECEIVES, dry bulb, at 30% RH
+  supply_c: 18.7              # DERIVED, not stated: 30,0 - 100,5 kW over
+                              # 27.500 m3/h of 1,161 kg/m3 air at 25 m, which
+                              # is 11,3 K. The sheet gives the capacity and
+                              # the flow and leaves the discharge implicit.
+  airflow_m3h: 27500          # "Vazão de ar", the sheet's own figure
+  nscc_kw: 100.5              # "Calor Sensível NET"
+  power_kw: 7.5               # EC FAN power (3 x 2,5 kW), which is what nets
+                              # the capacity. The unit also absorbs 27,8 kW of
+                              # compressors, 12 kW of electric reheat and
+                              # 9,6 kW of humidifier, and the condenser 3,35 kW
+                              # outdoors -- none of which is this air.
+
+# NO CURVE. The sheet states no P-Q curve and no external static pressure, so
+# there is nothing to anchor one on. `fan_capacity` is not checked for this
+# unit until one is added; a case may state `fanwall.curve` itself.

@@ -459,6 +459,11 @@ class Model:
     def hvac_alerts(self) -> list[str]:
         h = self.hvac()
         alerts = []
+        # First, because it qualifies every capacity figure under it: a DX
+        # unit's rated point is a point, not a curve (ADR-097).
+        limitation = dx_limitation(self.equipment)
+        if limitation:
+            alerts.append(limitation)
         if h["capacity_ratio"] is not None and h["capacity_ratio"] < 1.0:
             alerts.append(
                 f"Cooling capacity is below the load: {h['units']} x "
@@ -1043,13 +1048,15 @@ def equipment_mismatch(unit, spec: dict) -> str | None:
     machine the Apply then refuses -- or, worse, greying out one that would
     have worked (ADR-092).
     """
-    if unit.cooling != "chilled_water":
-        return (
-            f"{unit.model} is a {unit.cooling} unit and this model's coil is "
-            f"a chilled-water one. Its selection is in the library and "
-            f"checked; the model that would answer for a refrigerant circuit "
-            f"is not built. Name a chilled-water unit instead"
-        )
+    # A DX UNIT IS USABLE, AT ITS RATED POINT. What is not modelled is its
+    # COIL: capacity against return air follows the refrigerant circuit, the
+    # compressor's speed and the outdoor air its condenser rejects into
+    # (ADR-073). Everything the room needs -- the airflow, the supply
+    # temperature, the dimensions, the sensible capacity at the rated return
+    # -- is on the sheet and as well defined as any chilled-water unit's. So
+    # the case runs, the coupled re-solve is skipped because there is nothing
+    # to re-ask, and `dx_limitation` below says so before the solve rather
+    # than after it (ADR-097).
     wanted = wanted_arrangement(spec)
     if unit.arrangement != wanted:
         how = ("stands in the room and discharges downward"
@@ -1089,6 +1096,35 @@ def equipment_defaults(unit, design_return_c=None) -> dict:
         "static_pressure_pa": unit.selection.get("esp_pa"),
         "curve": (unit.curve or {}).get("points"),
     }
+
+
+def dx_limitation(unit) -> str | None:
+    """What a direct-expansion unit's result does NOT answer, or None.
+
+    A DX unit's capacity is not a curve this software can evaluate, so the
+    run holds the supply temperature at the unit's selected one instead of
+    re-solving it against the return the room produces (ADR-040, ADR-097).
+    The result is this room at the plant's RATED duty, which is a real answer
+    to a real question and not the same question a chilled-water case answers.
+    Said before the solve, because after it the number is already on a page.
+    """
+    if unit is None or unit.cooling == "chilled_water":
+        return None
+    point = unit.design or {}
+    rated = point.get("nscc_kw")
+    at = point.get("return_c")
+    supply = point.get("supply_c")
+    return (
+        f"{unit.model} is a {unit.cooling} unit: its capacity follows the "
+        f"refrigerant circuit and the outdoor air its condenser rejects into, "
+        f"which is not modelled. This result is the room at the unit's RATED "
+        + (f"point -- {num(rated, 1)} kW at {num(at, 1)} degC return, "
+           f"supplying {num(supply, 1)} degC -- " if rated and at else "point ")
+        + "with the supply temperature held there rather than re-solved "
+        "against the return the room produces. Read the return this run "
+        "reports against that rated return: the further apart they are, the "
+        "less the rated capacity says about what the machine would do here"
+    )
 
 
 def equipment_in_use(spec: dict) -> dict | None:

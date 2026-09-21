@@ -1297,9 +1297,18 @@ def summary(model: Model) -> str:
             f"K {panel.resistance:.2f}"
         )
     for fan, (intake, supply) in zip(model.fans, fan_patches(model)):
-        lines.append(
-            f"    {fan.name + ' (' + intake + '/' + supply + ')':<22} normal x at "
-            f"{fan.position:g} m, y {fan.extent[0][0]:g}-{fan.extent[0][1]:g}, "
-            f"{fan.area:.2f} m2"
-        )
+        # A FAN WALL AND A DOWNFLOW UNIT ARE NOT THE SAME SHAPE, and this line
+        # said "normal x ... y" for both. On a raised floor it printed the
+        # x range of a z-normal face under the label y, so five units that
+        # were correctly spread down two galleries read as three stacked in
+        # one place and two in another -- a reader checking the placement was
+        # shown a room that did not exist (ADR-097).
+        label = fan.name + " (" + intake + "/" + supply + ")"
+        (a0, a1), (b0, b1) = fan.extent
+        if fan.return_z is not None:
+            where = (f"horizontal, supplies at {fan.position:g} m and returns "
+                     f"at {fan.return_z:g} m, x {a0:g}-{a1:g} y {b0:g}-{b1:g}")
+        else:
+            where = f"normal x at {fan.position:g} m, y {a0:g}-{a1:g}"
+        lines.append(f"    {label:<22} {where}, {fan.area:.2f} m2")
     return "\n".join(lines) + "\n"

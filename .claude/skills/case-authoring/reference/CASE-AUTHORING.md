@@ -408,7 +408,23 @@ it needs `floor.enabled: true`. Choosing one for the wrong room is refused at
 build time with a sentence naming both halves, and the model page's picker
 offers every unit with the same sentence beside the ones that do not fit — so
 a CRAH is visible on a hall without a raised floor, and says what it would
-take (ADR-092). Only chilled-water units have a coil model.
+take (ADR-092).
+
+**Chilled water and direct expansion.** A unit's file also states its
+`cooling`. Both run. What differs is what the result answers:
+
+| | `chilled_water` | `dx` |
+|---|---|---|
+| the coil | fitted from the manufacturer's selections, so the unit can be asked what it does at the return **this room** produces | not modelled: capacity follows the refrigerant circuit, the compressors' staging and the outdoor air the condenser rejects into |
+| the supply temperature | re-solved against the room, pass by pass (ADR-040) | held at the selected one |
+| the result is | the room at the plant's real duty | the room at the plant's **rated point** |
+
+A DX case is a real answer to a real question, and the build says which
+question before the solve. After it, the result compares the return the room
+produced against the return the unit was rated at — the further apart they
+are, the less the plate figure says about what the machine would do here
+(ADR-097). Get the manufacturer's capacity at the return the run reports and
+put it in the file.
 
 **When you add a file**, it carries its source in its own words: which document,
 which revision, who issued it, when. The existing files are the pattern —

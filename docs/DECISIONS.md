@@ -4163,3 +4163,55 @@ the cage wall lands on the hall wall and the cage is the room rather than a
 boundary in it. That is refused with the gap on each side and the clearance
 that would fit — the smaller of the two gaps, not half the leftover, because
 rows are rarely centred in a room.
+
+---
+
+## ADR-097 — A direct-expansion unit runs, at its rated point
+
+**Decision.** `equipment_for` no longer refuses a DX unit. The case builds, the
+coupled re-solve is skipped because there is nothing to re-ask, and the result
+is the room at the plant's RATED duty. Three places say so: an alert off the
+build, the coil problem in the export, and — after the solve — the return the
+room produced against the return the unit was rated at.
+
+**What was too wide about ADR-073.** It said a DX unit is "carried, checked,
+and not modelled", and refused to build a case from one. The reasoning was
+about the COIL, and it is still right: capacity against return air follows the
+refrigerant circuit, the compressors' staging and the outdoor air the
+condenser rejects into, and the ε-NTU chilled-water exchanger this software
+fits has no equivalent for it. But a ROOM needs none of that. It needs the
+airflow, the supply temperature, the dimensions and the sensible capacity at
+the rated return — all of which a DX sheet states as plainly as any other.
+
+Refusing the whole unit for the sake of one property left entire sites
+unmodellable. Ascenty Fortaleza is direct expansion throughout: six data halls
+of Emerson P3100DA and Stulz ASD 1112 AU, self-contained, downflow into an
+inter-floor plenum. Nothing about that room is beyond this software except the
+one curve nobody asked it for.
+
+**Everything downstream already handled it.** `supply_temperatures` returns
+empty for a unit with no coil; `solve_coupled` falls back to a plain solve;
+`coil_capacity` returns the problem instead of a fit; the report prints it.
+The change is one branch removed and the consequences made loud.
+
+**Loud, because a rated point is not a duty.** The first DX case run here
+rates 51.7 kW at 30.0 °C return, and the room returns 21.8 °C — 8.2 K below
+the plate, where a DX circuit does markedly less sensible work than its plate
+says. A reader should not have to find those two numbers and subtract them, so
+the result does it and names the number to ask the manufacturer about.
+
+**A project unit is not a shipped one.** `equipment/P3100DA.yaml` carries the
+Fortaleza CRAC from its data sheet and is deliberately **not** in
+`equipment.SHIPPED`: the sheet states no external static pressure, and every
+unit this repository guarantees must state what a report will quote (ADR-071).
+It is usable in a case today and declarable the moment Emerson supplies the
+figure. That is what `equipment/` being the engineer's folder is for (ADR-077),
+and the file says so at the top rather than leaving the omission to be found.
+
+**One reporting fault fell out of the same case.** The build summary printed
+`normal x ... y ...` for every unit, including a downflow one whose faces are
+horizontal — so it showed the x range of a z-normal face under the label y,
+and five units correctly spread down two galleries read as three stacked in
+one place and two in another. A reader checking the placement was shown a room
+that does not exist. It now prints a downflow unit as what it is: horizontal,
+with the height it supplies at, the height it returns at, and its footprint.

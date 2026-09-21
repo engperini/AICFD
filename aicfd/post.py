@@ -42,7 +42,7 @@ import numpy as np
 
 from aicfd.case import FAN_INTAKE, FAN_SUPPLY, KELVIN
 from aicfd.foam.fields import patch_names, read_field, read_patch_field, to_grid
-from aicfd.model import CP_AIR, Model
+from aicfd.model import CP_AIR, Model, num
 
 # ASHRAE TC 9.9 rack *inlet* envelopes, degrees C dry bulb. The recommended
 # band is what a design is held to; the allowable classes say how far outside
@@ -395,7 +395,12 @@ def coil_capacity(model: Model, fans: list[dict], kpis: dict) -> dict:
         # instead used to be the fallback, and it meant two classes of unit
         # with different answers and a refusal off the table that the fitted
         # ones never hit (ADR-063).
-        return {"unit_model": unit.model, "coil_problem": unit.coil_problem}
+        # A DX unit also carries the return its rating was taken at, because
+        # the alert below compares the two and a rating is only a rating at
+        # its own return (ADR-097).
+        return {"unit_model": unit.model, "coil_problem": unit.coil_problem,
+                "rated_return_c": (unit.design or {}).get("return_c"),
+                "rated_nscc_kw": (unit.design or {}).get("nscc_kw")}
 
     from aicfd.coil import air_capacity_rate
 
@@ -537,9 +542,31 @@ def _coil_alerts(kpis: dict) -> list[str]:
     problem = kpis.get("coil_problem")
     if problem:
         out.append(
-            f"This unit cannot be modelled from what its file says: {problem}. "
-            f"Capacity is compared against the catalogue figure alone, which "
-            f"holds only at the return air the unit was selected for."
+            f"Capacity here is the catalogue figure alone, which holds only "
+            f"at the return air the unit was selected for: {problem}."
+        )
+    # HOW FAR OFF ITS RATING THE ROOM ACTUALLY RUNS. The sentence above says
+    # the rating holds at one return; this says what return the room produced,
+    # and a reader should not have to find the two numbers and subtract them.
+    # Measured on the first DX case run here: a unit rated 51,7 kW at 30,0 degC
+    # return, in a room that returns 21,8 -- 8,2 K below the rating, where a
+    # DX circuit does markedly less sensible work than its plate says
+    # (ADR-097).
+    rated_at = kpis.get("rated_return_c")
+    actual = kpis.get("return_temp_c")
+    if problem and rated_at and actual is not None and abs(actual - rated_at) > 2.0:
+        rated = kpis.get("rated_nscc_kw")
+        out.append(
+            f"The room returns {num(actual, 1)} degC and "
+            f"{kpis.get('unit_model')} is rated"
+            + (f" {num(rated, 1)} kW" if rated else "")
+            + f" at {num(rated_at, 1)} degC -- "
+            f"{num(abs(actual - rated_at), 1)} K "
+            + ("below" if actual < rated_at else "above")
+            + " it. The capacity quoted above is the plate figure and this "
+            "run cannot say what the machine does at the return it is "
+            "actually given; ask the manufacturer for its capacity at "
+            f"{num(actual, 1)} degC."
         )
     water, design = kpis.get("coil_water_out_c"), kpis.get("coil_water_out_design_c")
     if water and design and water > design + 0.5:
