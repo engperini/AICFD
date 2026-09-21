@@ -2136,6 +2136,24 @@ def _hall_layout(spec: dict, cell, rack_spec: dict | None = None) -> _Layout:
         raise ValueError(f"racks.blocks must be 1 or more, got {n_blocks}")
     transverse = float(spec["aisles"].get("transverse", cold)) if n_blocks > 1 else 0.0
 
+    # SNAP THE BANDS, THEN ACCUMULATE. The hall's width is a chain -- perimeter,
+    # row, hot aisle, row, cold aisle, row, ... -- and laying it out from
+    # unsnapped parts leaves every boundary between cell faces, for
+    # `snap_to_mesh` to round one at a time. The rounding then drifts down the
+    # chain: a 2,2 m hot aisle on a 0,3 m grid came out 2,1 in three pods of a
+    # hall and 2,4 in the fourth, so one contained aisle had 14% more chimney
+    # than its neighbours and nothing said so. A band that cannot be exact has
+    # to be inexact the SAME way everywhere, which means deciding it once, here
+    # (ADR-085).
+    def on_grid(value: float, axis: int) -> float:
+        return max(1, round(value / cell[axis])) * cell[axis]
+
+    cold, hot, perimeter = (on_grid(v, 1) for v in (cold, hot, perimeter))
+    rack_dy = on_grid(rack_dy, 1)
+    size = (size[0], rack_dy, size[2])
+    if transverse:
+        transverse = on_grid(transverse, 0)
+
     # per_row is the count in one block, so a row of two blocks holds twice it.
     # With a typical row stated, the block is as long as that row's parts --
     # a 300 mm blank makes the block 300 mm of blank longer, not 600 (ADR-074).
@@ -2367,7 +2385,14 @@ def snap_to_mesh(model: Model) -> Model:
     model.galleries = [snap_box(box) for box in model.galleries]
     model.hall = snap_box(model.hall)
     model.domain = snap_box(model.domain)
-    model.blocks = [(snap(lo, 0), snap(hi, 0)) for lo, hi in model.blocks]
+    # A BLOCK IS WHAT ITS ROWS TURNED OUT TO BE, not the span they were asked
+    # to fill. Snapping the stored span on its own let the two disagree: the
+    # rows came out 10,20 m and the block still said 10,40, so the drawing
+    # dimensioned a row two hundred millimetres longer than the row, and
+    # `chimney_area` measured a contained aisle that long too. Every row in a
+    # block shares a span, so the rows are the answer (ADR-085).
+    spans = sorted({row.span for row in model.rows if row.racks})
+    model.blocks = spans or [(snap(lo, 0), snap(hi, 0)) for lo, hi in model.blocks]
     model.ceiling_z = snap(model.ceiling_z, 2)
     return model
 

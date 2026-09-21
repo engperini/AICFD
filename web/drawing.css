@@ -146,3 +146,13 @@ svg.dw-over-map .dw-note,svg.dw-over-map .dw-edge-label{paint-order:stroke;
 .view-stage,.map-stage{position:relative;width:max-content;margin-inline:auto}
 .view-stage canvas,.map-stage canvas{position:absolute;left:0;top:0}
 .view-stage svg,.map-stage svg{position:relative;display:block}
+
+/* Plan annotation: the band chains' names, and what each cabinet is.
+   The figure stays in the dimension colour and the NAME goes quieter, so a
+   reader scanning for numbers is not competing with a column of words. */
+.dw-bandlabel{fill:var(--text-muted);font-size:8px;text-anchor:middle;
+  letter-spacing:.02em}
+.dw-rack-id{fill:var(--text-primary);text-anchor:middle;font-weight:600;
+  dominant-baseline:middle;pointer-events:none}
+.dw-rack-kw{fill:var(--text-secondary);text-anchor:middle;
+  dominant-baseline:middle;pointer-events:none}

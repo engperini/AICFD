@@ -3638,3 +3638,49 @@ hall instead of being re-rounded at every block.
 the grid** and asserts one distinct row across all of them, no cabinet at a
 width nobody asked for, every face on a cell face, and the row the length its
 pattern says. Without the fix it fails seven times.
+
+**The same fault was in the hall's WIDTH, and it was worse.** The width is a
+chain too -- perimeter, row, hot aisle, row, cold aisle, row, ... -- and it was
+laid out from unsnapped parts and rounded afterwards, one boundary at a time.
+On a 0,3 m grid a 2,2 m hot aisle cannot be exact, so it has to move; what it
+must not do is move DIFFERENTLY in different pods. It did: three pods of the
+same hall came out at 2,1 m and the fourth at 2,4 m, so one contained aisle had
+**14% more chimney cross-section** than its neighbours, and nothing in the
+output said so. Each band is now snapped once, before the chain is laid out, so
+a figure the grid cannot carry is carried the same way everywhere. A band the
+grid CAN carry is left alone -- 2,4 m is eight cells of 0,3 and stays 2,4.
+
+**And a block is now what its rows turned out to be.** `model.blocks` was
+snapped on its own, so after the rows were fixed the two still disagreed: the
+rows measured 10,20 m and the block went on saying 10,40. The plan dimensioned
+a row two hundred millimetres longer than the row, and `chimney_area` measured
+a contained aisle that long. Every row in a block shares a span, so the rows
+are the answer.
+
+**One rule, three places it was broken:** snap the quantity, then accumulate.
+Never accumulate, then snap.
+
+## ADR-086 — The plan is dimensioned like a layout drawing
+
+**Decision.** The plan carries band chains on both axes: along x the gallery,
+the supply plenum, the row and the cross aisle; along y the row depth, the hot
+aisle, the cold aisle and the fan wall. Each distinct part is dimensioned ONCE,
+where it first occurs. Every cabinet carries its name and its load, written
+inside it. The two sections are untouched, and have their own margins so this
+cannot move them.
+
+**Because a hall repeats.** Four pods, sixteen rows, the same aisle between
+each pair: dimensioning every instance would put seventeen figures down one
+margin and say nothing the first four do not. Measuring each part where it
+first appears and letting the reader carry it along the repeat is how a layout
+drawing has always been read, and it is what keeps the sheet legible.
+
+**The cabinet labels are sized from the drawn rectangle**, not fixed, so they
+fit whatever the sheet scale turned out to be -- small on a hall of 224
+cabinets, comfortable on a POD of three -- and below 1,4 px they are dropped,
+because a name too small to read is a smudge that hides the rectangle under it.
+An engineer who wants to read them zooms, which is what they asked for.
+
+**The chains found the geometry faults of ADR-085.** The engineer saw two
+different rows on the two sides of one hall, on the plan, and asked. A drawing
+that dimensions what it draws is a test that runs every time somebody looks.

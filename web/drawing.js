@@ -15,6 +15,13 @@
 const NS = 'http://www.w3.org/2000/svg';
 const PAD = { left: 88, right: 30, top: 16, bottom: 44 };
 
+//: What the plan needs below and beside the geometry for its band chains.
+//: Per view, so adding them cannot move a section the engineer did not ask to
+//: have changed.
+const PLAN_PAD = { bottom: 84, left: 130 };
+const padFor = (view) => (view.id === 'plan'
+  ? { ...PAD, ...PLAN_PAD } : PAD);
+
 /**
  * The tallest a drawing may be, in px.
  *
@@ -248,8 +255,9 @@ export function sheetScale(model, views, maxWidths) {
   views.forEach((view, i) => {
     const hSpan = d.hi[view.h] - d.lo[view.h];
     const vSpan = d.hi[view.v] - d.lo[view.v];
-    const plotW = Math.max(maxWidths[i] - PAD.left - PAD.right, 80);
-    const plotH = Math.min(view.height, heightCap()) - PAD.top - PAD.bottom;
+    const plotW = Math.max(maxWidths[i] - padFor(view).left - PAD.right, 80);
+    const pad = padFor(view);
+    const plotH = Math.min(view.height, heightCap()) - pad.top - pad.bottom;
     scale = Math.min(scale, plotW / hSpan, plotH / vSpan);
   });
   return Math.max(scale, 8);
@@ -258,9 +266,10 @@ export function sheetScale(model, views, maxWidths) {
 /** Canvas a view needs at the sheet scale. */
 export function viewSize(model, view, scale) {
   const d = model.domain;
+  const pad = padFor(view);
   return {
-    width: (d.hi[view.h] - d.lo[view.h]) * scale + PAD.left + PAD.right,
-    height: (d.hi[view.v] - d.lo[view.v]) * scale + PAD.top + PAD.bottom,
+    width: (d.hi[view.h] - d.lo[view.h]) * scale + pad.left + PAD.right,
+    height: (d.hi[view.v] - d.lo[view.v]) * scale + pad.top + pad.bottom,
   };
 }
 
@@ -274,8 +283,8 @@ export function viewTransform(model, view, scale) {
   return {
     width,
     height,
-    X: (v) => PAD.left + (v - d.lo[view.h]) * scale,
-    Y: (v) => PAD.top + (d.hi[view.v] - v) * scale,
+    X: (v) => padFor(view).left + (v - d.lo[view.h]) * scale,
+    Y: (v) => padFor(view).top + (d.hi[view.v] - v) * scale,
   };
 }
 
@@ -458,9 +467,41 @@ export function drawView(model, view, scale, options = {}) {
     (a, b) => Number(straddles(b.lo, b.hi, view.normal, at))
             - Number(straddles(a.lo, a.hi, view.normal, at)),
   );
+  const labelled = [];
   for (const rack of racks) {
     const cut = straddles(rack.lo, rack.hi, view.normal, at);
-    paint(rack.lo, rack.hi, cut ? 'dw-rack' : 'dw-rack dw-behind', rack.id);
+    const box = paint(rack.lo, rack.hi, cut ? 'dw-rack' : 'dw-rack dw-behind',
+      rack.id);
+    if (cut && view.id === 'plan') labelled.push([rack, box]);
+  }
+
+  // 5b — what each cabinet is, written in it. Only on the plan: a section
+  // cuts a row lengthways and the same name would print once over a strip of
+  // fifteen. The type is sized from the drawn rectangle rather than fixed, so
+  // it fits whatever the sheet scale turned out to be -- small on a hall of
+  // 224, comfortable on a POD of three, and legible in either at a zoom.
+  for (const [rack, box] of labelled) {
+    const w = box.x1 - box.x0;
+    const h = box.y1 - box.y0;
+    const along = Math.max(w, h);          // the text runs the long way
+    const across = Math.min(w, h);         // and two lines have to fit across
+    const size = Math.min(across / 2.9, along / 5.5);
+    if (size < 1.4) continue;              // below this it is a smudge, not a name
+    const cx = (box.x0 + box.x1) / 2;
+    const cy = (box.y0 + box.y1) / 2;
+    const turn = h > w ? `rotate(-90 ${cx} ${cy})` : '';
+    // Centred as a PAIR, so the two lines sit inside the cabinet rather than
+    // the name in it and the load half out of the bottom of it.
+    const rows = [
+      [rack.id, 'dw-rack-id', -size * 0.6],
+      [`${fmt(rack.load_kw ?? 0)} kW`, 'dw-rack-kw', size * 0.6],
+    ];
+    for (const [text, cls, dy] of rows) {
+      svg.append(el('text', {
+        x: cx, y: cy + dy, class: cls, transform: turn,
+        'font-size': `${size.toFixed(2)}px`,
+      }, text));
+    }
   }
 
   // 6 — the building's own lines: false ceiling and the gallery/hall wall
@@ -603,7 +644,7 @@ export function drawView(model, view, scale, options = {}) {
 
 
   // 9 — annotation
-  const bounds = { left: PAD.left - 26, right: width - 6 };
+  const bounds = { left: padFor(view).left - 26, right: width - 6 };
   annotate(svg, model, view, X, Y, bounds);
   dimensions(svg, model, view, X, Y, width, height, hSpan);
   return svg;
@@ -652,9 +693,125 @@ function annotate(svg, model, view, X, Y, bounds) {
   }
 }
 
+/**
+ * The parts a plan is read for, each dimensioned ONCE where it first occurs.
+ *
+ * A hall repeats: four pods, sixteen rows, the same aisle between each pair.
+ * Dimensioning every instance would put seventeen figures down one margin and
+ * say nothing the first four do not. So each distinct part is measured where
+ * it first appears, and the reader carries it along the repeat -- which is how
+ * a layout drawing has always been read.
+ *
+ * Returns segments along one axis as `{lo, hi, label}`, in order.
+ */
+function planBands(model, axis) {
+  const seg = [];
+  const seen = new Set();
+  const add = (lo, hi, label) => {
+    const key = `${label}|${(hi - lo).toFixed(2)}`;
+    if (hi - lo < 0.05 || seen.has(key)) return;
+    seen.add(key);
+    seg.push({ lo, hi, label });
+  };
+  if (axis === 0) {
+    for (const g of model.galleries) add(g.lo[0], g.hi[0], 'gallery');
+    const supply = model.panels.filter((p) => p.name.startsWith('supply_mesh'));
+    if (supply.length) {
+      const wall = model.galleries[0].hi[0];
+      add(Math.min(wall, supply[0].position), Math.max(wall, supply[0].position),
+        'supply plenum');
+    }
+    const blocks = model.blocks || [];
+    if (blocks.length) {
+
+      for (const [lo, hi] of blocks) add(lo, hi, 'row');
+      for (let i = 1; i < blocks.length; i += 1) {
+        add(blocks[i - 1][1], blocks[i][0], 'cross aisle');
+      }
+    }
+  } else {
+    const rows = model.rows || [];
+    for (const r of rows) add(r.band[0], r.band[1], 'row');
+    for (const [lo, hi] of model.hot_aisles || []) add(lo, hi, 'hot aisle');
+    for (const [lo, hi] of model.cold_aisles || []) add(lo, hi, 'cold aisle');
+    const fan = (model.panels || []).find((q) => q.kind === 'fan');
+    if (fan) add(fan.extent[0][0], fan.extent[0][1], 'fan wall');
+  }
+  return seg.sort((a, b) => a.lo - b.lo || a.hi - b.hi);
+}
+
+/**
+ * The band chains, one per axis. Horizontal below the geometry, vertical in
+ * the left margin, each on its own lane so two short dimensions side by side
+ * cannot print over one another.
+ */
+function planDimensions(svg, model, view, X, Y, width, height) {
+  const d = model.domain;
+  const tick = (x1, y1, x2, y2) =>
+    svg.append(el('line', { x1, x2, y1, y2, class: 'dw-dim' }));
+
+  const lanes = [];
+  const lane = (lo, hi) => {
+    // The first lane this segment does not collide in. Short dimensions next
+    // to each other are the whole reason a chain needs more than one line.
+    for (let i = 0; i < lanes.length; i += 1) {
+      if (lanes[i].every(([a, b]) => hi <= a + 0.01 || lo >= b - 0.01)) {
+        lanes[i].push([lo, hi]);
+        return i;
+      }
+    }
+    lanes.push([[lo, hi]]);
+    return lanes.length - 1;
+  };
+
+  for (const axis of [view.h, view.v]) {
+    lanes.length = 0;
+    const horizontal = axis === view.h;
+    // The level leaders already own the first 26 px of the left margin, so the
+    // vertical chain starts outside them and grows further out.
+    const base = horizontal ? Y(d.lo[view.v]) + 18 : X(d.lo[view.h]) - 46;
+    for (const { lo, hi, label } of planBands(model, axis)) {
+      // A horizontal chain packs into as few lanes as it can. A vertical one
+      // does not: its text runs along the band and overhangs it, so two
+      // dimensions that do not overlap in metres still overlap on the page.
+      const step = (horizontal ? lane(lo, hi) : lanes.push([]) - 1) * 15;
+      const a = horizontal ? X(lo) : Y(hi);
+      const b = horizontal ? X(hi) : Y(lo);
+      const at = horizontal ? base + step : base - step;
+      if (horizontal) {
+        tick(a, at, b, at);
+        tick(a, at - 3, a, at + 3);
+        tick(b, at - 3, b, at + 3);
+        svg.append(el('text', { x: (a + b) / 2, y: at - 4, class: 'dw-dimtext' },
+          fmt(hi - lo)));
+        svg.append(el('text', { x: (a + b) / 2, y: at + 9, class: 'dw-bandlabel' },
+          label));
+      } else {
+        tick(at, a, at, b);
+        tick(at - 3, a, at + 3, a);
+        tick(at - 3, b, at + 3, b);
+        // ONE line, not two. A vertical chain's text runs along the band, and
+        // a 1,2 m row on a hall's scale is shorter than the words describing
+        // it -- so two rotated lines side by side collide with each other and
+        // with the level leaders. Value and name on one line halves the ink
+        // and reads the way a dimension is spoken.
+        const m = (a + b) / 2;
+        svg.append(el('text', {
+          x: at - 4, y: m, class: 'dw-dimtext',
+          transform: `rotate(-90 ${at - 4} ${m})`,
+        }, `${fmt(hi - lo)}  ${label}`));
+      }
+    }
+  }
+}
+
 function dimensions(svg, model, view, X, Y, width, height, hSpan) {
   const d = model.domain;
-  const y = Y(d.lo[view.v]) + 20;
+  // The plan carries the band chains between the geometry and this line, so
+  // the overall stands clear of them. The sections have nothing in between.
+  const plan = view.id === 'plan';
+  if (plan) planDimensions(svg, model, view, X, Y, width, height);
+  const y = Y(d.lo[view.v]) + (plan ? 56 : 20);
   const x0 = X(d.lo[view.h]);
   const x1 = X(d.hi[view.h]);
   svg.append(el('line', { x1: x0, x2: x1, y1: y, y2: y, class: 'dw-dim' }));

@@ -634,3 +634,62 @@ class EveryRowIsTheSameRowTest(unittest.TestCase):
                 self.assertAlmostEqual(
                     row.racks[-1].box.hi[0] - row.racks[0].box.lo[0], asked,
                     places=6)
+
+
+class EveryPodIsTheSamePodTest(unittest.TestCase):
+    """A hall repeats, so its bands have to repeat identically.
+
+    The hall's width is a chain -- perimeter, row, hot aisle, row, cold aisle,
+    row, ... -- laid out by accumulating unsnapped parts and rounded afterwards
+    one boundary at a time. The rounding drifts down the chain: a 2,2 m hot
+    aisle on a 0,3 m grid came out 2,1 m in three pods and 2,4 m in the fourth,
+    so one contained aisle had 14% more chimney cross-section than its
+    neighbours and nothing in the output said so (ADR-085).
+    """
+
+    def hall(self, hot=2.2, cold=2.7, cell=(0.2, 0.3, 0.25)):
+        spec = copy.deepcopy(SPEC)
+        spec["pods"] = 4
+        spec["mesh"] = {"cell_size": list(cell)}
+        spec["aisles"] = {"cold": cold, "hot": hot,
+                          "perimeter": 2.3, "transverse": 2.3}
+        return M.build_model(spec)
+
+    def test_every_hot_aisle_is_the_same_width(self):
+        widths = {round(hi - lo, 6) for lo, hi in self.hall().hot_aisles}
+        self.assertEqual(len(widths), 1, f"hot aisles came out {sorted(widths)}")
+
+    def test_every_row_is_the_same_depth(self):
+        depths = {round(r.band[1] - r.band[0], 6) for r in self.hall().rows}
+        self.assertEqual(len(depths), 1, f"row depths came out {sorted(depths)}")
+
+    def test_the_inner_cold_aisles_agree(self):
+        """The perimeter is its own figure and may differ; the aisles between
+        pods are all the same aisle and may not."""
+        model = self.hall()
+        inner = {round(hi - lo, 6) for lo, hi in model.cold_aisles[1:-1]}
+        self.assertEqual(len(inner), 1, f"cold aisles came out {sorted(inner)}")
+
+    def test_a_band_that_cannot_be_exact_is_inexact_the_same_way(self):
+        """2,2 m does not fit a 0,3 m grid at all. What it must not do is fit
+        differently in different pods."""
+        model = self.hall(hot=2.2)
+        widths = {round(hi - lo, 6) for lo, hi in model.hot_aisles}
+        self.assertEqual(widths, {2.1})
+
+    def test_a_band_that_fits_is_left_alone(self):
+        """The correction is for the chain, not an excuse to move a figure the
+        grid can carry: 2,4 m is eight cells of 0,3 and stays 2,4."""
+        self.assertEqual(
+            {round(hi - lo, 6) for lo, hi in self.hall(hot=2.4).hot_aisles},
+            {2.4},
+        )
+
+    def test_every_band_boundary_lands_on_a_cell_face(self):
+        model = self.hall()
+        cell = model.cell(1)
+        for lo, hi in [*model.hot_aisles, *model.cold_aisles,
+                       *(r.band for r in model.rows)]:
+            for face in (lo, hi):
+                with self.subTest(face=face):
+                    self.assertAlmostEqual(face / cell, round(face / cell), places=6)
