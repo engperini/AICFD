@@ -459,11 +459,6 @@ class Model:
     def hvac_alerts(self) -> list[str]:
         h = self.hvac()
         alerts = []
-        # First, because it qualifies every capacity figure under it: a DX
-        # unit's rated point is a point, not a curve (ADR-097).
-        limitation = dx_limitation(self.equipment)
-        if limitation:
-            alerts.append(limitation)
         if h["capacity_ratio"] is not None and h["capacity_ratio"] < 1.0:
             alerts.append(
                 f"Cooling capacity is below the load: {h['units']} x "
@@ -1344,13 +1339,20 @@ def build_model(spec: dict) -> Model:
     # walls run from the deck up; before the snap, because its planes land on
     # cell faces like every other (ADR-096).
     cage = cage_for(spec)
+    cage_notes: list[str] = []
     if cage:
-        model.panels.extend(_cage_panels(model, cage, spec))
+        model.panels.extend(_cage_panels(model, cage, spec, cage_notes))
         model.cage = cage["construction"]
     # The row's own notes first: a cabinet width the mesh moved is said by
     # position, which is what a reader can act on, where the general alignment
     # check can only say a face fell between grid lines (ADR-074).
-    model.warnings = list(layout.row_notes) + check_mesh_alignment(model)
+    #
+    # The cage's notes are collected into a list of their own and added here
+    # rather than appended to `model.warnings` as they are found: this line
+    # REPLACES that list, so a note written before it disappeared -- silently,
+    # which for a note saying "no cage wall is built on this side" is the
+    # worst way to lose one (ADR-098).
+    model.warnings = list(layout.row_notes) + cage_notes + check_mesh_alignment(model)
     # The fan placement snaps the unit's width itself (so units can be packed
     # without overlapping), so the alignment check never sees the nominal one.
     nominal = float(fan["width"]) if "width" in fan else None
@@ -1682,6 +1684,21 @@ def _downflow_units(model: "Model", units: list[Panel], spec: dict,
 
 CAGE_CONSTRUCTIONS = ("mesh", "drywall")
 
+#: The four walls of a cage, and where each one stands. Rows run along x and
+#: PODs stack along y, so `near`/`far` close the ROW ENDS and `left`/`right`
+#: run along the rows.
+#:
+#: A case states them only to overrule the default, which is to build every
+#: side the hall wall does not already close. That default is what makes a
+#: cage in the CORNER of a hall work without saying anything: two of its
+#: sides are the room, and a wall on a wall is not a cage (ADR-098).
+CAGE_SIDES = {
+    "near": "the row end nearest the first gallery, normal to x",
+    "far": "the far row end, normal to x",
+    "left": "along the rows at low y",
+    "right": "along the rows at high y",
+}
+
 
 def cage_for(spec: dict) -> dict | None:
     """The customer cage this case has, or None where it has none (ADR-096).
@@ -1718,11 +1735,39 @@ def cage_for(spec: dict) -> dict | None:
             "the gap from the outermost cabinet faces to the cage wall"
         )
     height = raw.get("height")
+    pods = raw.get("pods")
+    if pods is not None:
+        try:
+            pods = sorted({int(p) for p in pods})
+        except (TypeError, ValueError):
+            raise ValueError(
+                f"cage.pods: {pods!r} is not a list of pod numbers. A cage "
+                "encloses whole PODs, counted from 1 in the order they stand "
+                "along the hall"
+            ) from None
+        if not pods:
+            raise ValueError("cage.pods: an empty list encloses nothing")
+        if pods != list(range(pods[0], pods[-1] + 1)):
+            raise ValueError(
+                f"cage.pods: {pods} is not contiguous. A cage is one "
+                "rectangle, so the pods inside it have to be neighbours"
+            )
+    sides = raw.get("sides")
+    if sides is not None:
+        sides = [str(s).strip().lower() for s in sides]
+        unknown = sorted(set(sides) - set(CAGE_SIDES))
+        if unknown:
+            raise ValueError(
+                f"cage.sides: {', '.join(unknown)} is not a side. They are "
+                + ", ".join(f"{name} ({where})" for name, where in CAGE_SIDES.items())
+            )
     return {
         "construction": how,
         "clearance": clearance,
         "height": None if height is None else float(height),
         "roof": bool(raw.get("roof", False)),
+        "pods": pods,
+        "sides": sides,
     }
 
 
@@ -1740,54 +1785,119 @@ def cage_k(spec: dict) -> float | None:
     return mesh.k if mesh else None
 
 
-def _cage_panels(model: "Model", cage: dict, spec: dict) -> list[Panel]:
-    """The four walls of the cage, and its roof where it has one.
+def _cage_panels(model: "Model", cage: dict, spec: dict,
+                 notes: list[str]) -> list[Panel]:
+    """The walls of the cage, and its roof where it has one.
 
     The rectangle is the cabinets it encloses, grown by the clearance: a cage
-    is built around the rows, and the drawing dimensions it from them. The
-    floor is the room's floor -- the deck, on a raised-floor hall -- and the
-    top is `cage.height`, or the false ceiling where the case states none.
+    is built round the rows and the drawing dimensions it from them. Which
+    cabinets is `cage.pods` -- a contiguous run of PODs, or every rack where
+    the case names none. The floor is the room's floor (the deck, on a
+    raised-floor hall) and the top is `cage.height`, or the false ceiling.
+
+    WHICH SIDES ARE BUILT is the part that makes a cage placeable. A cage in
+    the middle of a hall has four walls. A cage in a CORNER has two, because
+    the room already closes the other two, and a wall built on the hall wall
+    is not a boundary -- `topoSet` would take the boundary faces the room is
+    made of and `createBaffles` would split the room's own wall in two. So a
+    side whose plane lands on the hall wall is left out by default and said in
+    a warning, and a case that NAMES it is refused (ADR-098).
     """
     if not model.racks:
         raise ValueError("cage.enabled: this case has no racks to enclose")
+    inside = _cage_racks(model, cage)
     gap = cage["clearance"]
-    x0 = min(r.box.lo[0] for r in model.racks) - gap
-    x1 = max(r.box.hi[0] for r in model.racks) + gap
-    y0 = min(r.box.lo[1] for r in model.racks) - gap
-    y1 = max(r.box.hi[1] for r in model.racks) + gap
+    x0 = min(r.box.lo[0] for r in inside) - gap
+    x1 = max(r.box.hi[0] for r in inside) + gap
+    y0 = min(r.box.lo[1] for r in inside) - gap
+    y1 = max(r.box.hi[1] for r in inside) + gap
     z0 = model.hall.lo[2]
     z1 = z0 + cage["height"] if cage["height"] else model.ceiling_z
 
-    # A cage wall ON the hall wall is not a cage: `topoSet` would take the
-    # boundary faces the room is already made of, and `createBaffles` would
-    # split the room's own wall in two. Refused by name, with the clearance
-    # that would fit, rather than built into something nobody can read.
-    # BOTH AXES, and the tighter one decides. Reporting the first that fails
-    # gives a clearance the other still refuses, which is a refusal that sends
-    # the reader round again.
     room = ((model.hall.lo[0], model.hall.hi[0]), (model.hall.lo[1], model.hall.hi[1]))
-    tight = None
-    for axis, (lo, hi), (wall_lo, wall_hi) in ((0, (x0, x1), room[0]),
-                                               (1, (y0, y1), room[1])):
-        rack_lo = min(r.box.lo[axis] for r in model.racks)
-        rack_hi = max(r.box.hi[axis] for r in model.racks)
-        # The SMALLER of the two gaps, not half the leftover: the rows are
-        # rarely centred in the room -- a POD's hot aisle is contained against
-        # one wall -- so a clearance that fits on average still lands on the
-        # near side.
-        fits = min(rack_lo - wall_lo, wall_hi - rack_hi)
-        touches = lo <= wall_lo + 1e-6 or hi >= wall_hi - 1e-6
-        if touches and (tight is None or fits < tight[0]):
-            tight = (fits, axis, rack_lo - wall_lo, wall_hi - rack_hi)
-    if tight:
-        fits, axis, near, far = tight
+    edge = {"near": (0, 0, x0), "far": (0, 1, x1),
+            "left": (1, 0, y0), "right": (1, 1, y1)}
+
+    # WHICH SIDES THE ROOM CLOSES. A clearance that reaches or passes the hall
+    # wall means the room is the boundary there -- which is what a cage in a
+    # corner IS -- so the side is not built and the rectangle is CLIPPED to the
+    # room. Clipping is the half that matters: without it the wall that IS the
+    # cage stops short of the room at both ends, and the drawing shows a
+    # partition with a gap at each end that nothing in the case asked for
+    # (ADR-098).
+    def at_the_room(axis: int, side: int, at: float) -> bool:
+        lo, hi = room[axis]
+        return at <= lo + 1e-6 if side == 0 else at >= hi - 1e-6
+
+    closed = {name for name, (axis, side, at) in edge.items()
+              if at_the_room(axis, side, at)}
+    asked = cage["sides"]
+    if asked is None:
+        wanted = [name for name in edge if name not in closed]
+        for name in sorted(closed):
+            notes.append(
+                f"cage {name} side: the cage reaches the hall wall there, so "
+                f"the room already closes it and no cage wall is built. Say "
+                f"`cage.sides` to choose the walls yourself."
+            )
+    else:
+        overlap = sorted(set(asked) & closed)
+        if overlap:
+            raise ValueError(
+                f"cage.sides: {', '.join(overlap)} would stand on the hall "
+                f"wall, which is not a boundary inside the room -- the room "
+                f"already closes it. Leave it out of `cage.sides`"
+            )
+        wanted = [name for name in edge if name in asked]
+        closed |= set(edge) - set(asked)
+    if not wanted and not cage["roof"]:
         raise ValueError(
-            f"cage.clearance: {num(gap)} m puts the cage wall on or outside "
-            f"the hall wall along {'xy'[axis]} -- the cage would be the room "
-            f"rather than a boundary inside it. The rows stand {num(near)} m "
-            f"from one wall and {num(far)} m from the other there, so the "
-            f"clearance has to be under {num(fits)} m"
+            "cage.sides: no wall is left to build. A cage that the room "
+            "closes on every side is the room"
         )
+    # A side the room closes runs TO the room, so every wall that is built
+    # spans the whole of it.
+    if "near" in closed:
+        x0 = room[0][0]
+    if "far" in closed:
+        x1 = room[0][1]
+    if "left" in closed:
+        y0 = room[1][0]
+    if "right" in closed:
+        y1 = room[1][1]
+    plan = {
+        "near": (0, x0, (y0, y1)),
+        "far": (0, x1, (y0, y1)),
+        "left": (1, y0, (x0, x1)),
+        "right": (1, y1, (x0, x1)),
+    }
+    # A CAGE WALL MAY NOT CUT A CABINET. With `cage.pods` the wall stands in
+    # the aisle beside the pods it encloses, and too big a clearance walks it
+    # into the next pod's rows -- which meshes, and models a partition through
+    # the middle of somebody's cabinets.
+    for name in wanted:
+        axis, at, _span = plan[name]
+        for rack in model.racks:
+            if rack.box.lo[axis] + 1e-6 < at < rack.box.hi[axis] - 1e-6:
+                room_for = min(abs(at - rack.box.lo[axis]),
+                               abs(rack.box.hi[axis] - at))
+                raise ValueError(
+                    f"cage.clearance: {num(gap)} m puts the {name} wall at "
+                    f"{num(at)} m, which is inside {rack.id}. Lose at least "
+                    f"{num(room_for)} m of clearance, or put that rack in the "
+                    f"cage with `cage.pods`"
+                )
+
+    kind = "wall" if cage["construction"] == "drywall" else "opening"
+    k = cage_k(spec) if kind == "opening" else None
+    panels = [
+        Panel(f"cage_{name}", kind, axis=plan[name][0], position=plan[name][1],
+              extent=(plan[name][2], (z0, z1)), resistance=k)
+        for name in wanted
+    ]
+    if cage["roof"]:
+        panels.append(Panel("cage_roof", kind, axis=2, position=z1,
+                            extent=((x0, x1), (y0, y1)), resistance=k))
     if z1 > model.ceiling_z + 1e-6:
         raise ValueError(
             f"cage.height: {num(z1 - z0)} m reaches {num(z1)} m, above the "
@@ -1801,6 +1911,10 @@ def _cage_panels(model: "Model", cage: dict, spec: dict) -> list[Panel]:
     # does not say so politely: four ranks died on a floating point exception
     # about nine minutes in, having meshed and decomposed perfectly. Refused
     # here instead, with the two ways a real one is built (ADR-096).
+    #
+    # A cage the room closes on some sides is still closed: what matters is
+    # whether the air has a path, and a hall wall blocks it as well as a
+    # drywall one does.
     if cage["construction"] == "drywall" and (
             cage["roof"] or z1 >= model.ceiling_z - 1e-6):
         raise ValueError(
@@ -1813,24 +1927,38 @@ def _cage_panels(model: "Model", cage: dict, spec: dict) -> list[Panel]:
             "mesh`. A drywall cage with a door or a duct through it is real "
             "and is not modelled yet"
         )
-
-    kind = "wall" if cage["construction"] == "drywall" else "opening"
-    k = cage_k(spec) if kind == "opening" else None
-    panels = [
-        Panel(f"cage_{name}", kind, axis=axis, position=at,
-              extent=(span, (z0, z1)), resistance=k)
-        for name, axis, at, span in (
-            ("near", 0, x0, (y0, y1)),
-            ("far", 0, x1, (y0, y1)),
-            ("left", 1, y0, (x0, x1)),
-            ("right", 1, y1, (x0, x1)),
-        )
-    ]
-    if cage["roof"]:
-        panels.append(Panel("cage_roof", kind, axis=2, position=z1,
-                            extent=((x0, x1), (y0, y1)), resistance=k))
     return panels
 
+
+def _cage_racks(model: "Model", cage: dict) -> list:
+    """The cabinets the cage encloses.
+
+    Every rack unless the case names PODs. A pod is a pair of rows facing one
+    contained hot aisle, counted from 1 along the hall, so pod 2 is rows F3
+    and F4 -- the same numbering the drawing reads in.
+    """
+    pods = cage["pods"]
+    if not pods:
+        return list(model.racks)
+    rows = {row.id: row for row in model.rows}
+    wanted, missing = [], []
+    for pod in pods:
+        for offset in (1, 2):
+            found = [row for row in model.rows
+                     if row.id.split("B")[0] == f"F{2 * (pod - 1) + offset}"]
+            if not found:
+                missing.append(f"F{2 * (pod - 1) + offset}")
+            wanted += found
+    if missing:
+        raise ValueError(
+            f"cage.pods: {pods} names row(s) {', '.join(sorted(set(missing)))}, "
+            f"which this hall has not got -- it has "
+            f"{len(rows)} rows, so pods 1 to {len(rows) // 2}"
+        )
+    racks = [rack for row in wanted for rack in row.racks]
+    if not racks:
+        raise ValueError(f"cage.pods: {pods} encloses no cabinets")
+    return racks
 
 def raised_floor_for(spec: dict) -> dict | None:
     """The raised floor, where a case has one (ADR-076).

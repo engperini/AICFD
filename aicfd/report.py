@@ -1023,6 +1023,23 @@ def _model_limits(export: Export) -> list[str]:
             "obstructs an aisle is not in the geometry. The room is the "
             "cabinets, the aisles, the containment and the plant."
         )
+    # A DIRECT-EXPANSION PLANT IS A LIMITATION OF THE MODEL, not a design
+    # criterion the plant misses -- so it is read here, once, rather than
+    # arriving in the alerts card on every run (ADR-097, ADR-098).
+    kpis = export.payload.get("kpis") or {}
+    if kpis.get("rated_return_c"):
+        limits.append(
+            f"{kpis.get('unit_model')} is a direct-expansion unit. Its "
+            f"capacity follows the refrigerant circuit, the compressors' "
+            f"staging and the outdoor air its condenser rejects into, none of "
+            f"which is modelled here: the coil this software fits is a "
+            f"chilled-water one. So this result is the room at the unit's "
+            f"RATED point — {_num(kpis.get('rated_nscc_kw'), 1)} kW at "
+            f"{_num(kpis.get('rated_return_c'), 1)} °C return — with the "
+            f"supply temperature held there rather than re-solved against the "
+            f"return the room produces, and the capacity quoted in this "
+            f"report is that plate figure."
+        )
     return limits
 
 

@@ -4215,3 +4215,55 @@ and five units correctly spread down two galleries read as three stacked in
 one place and two in another. A reader checking the placement was shown a room
 that does not exist. It now prints a downflow unit as what it is: horizontal,
 with the height it supplies at, the height it returns at, and its footprint.
+
+---
+
+## ADR-098 — A cage goes where the drawing puts it, and the DX note is a limitation
+
+**Two decisions from one review of a real plan.**
+
+**The cage is placeable.** `cage.pods` says which PODs are inside — a
+contiguous run, counted from 1 along the hall — and `cage.sides` says which
+walls to build. Everything else follows:
+
+| | keys | |
+|---|---|---|
+| middle of the hall | *(neither)* | four walls round every rack |
+| over some rows only | `pods: [1, 2]` | four walls; the rest of the hall is outside |
+| against the wall, dividing the hall | `pods: [1, 2]`, `sides: [right]` | one wall spanning the room |
+
+The first version enclosed every rack and refused any clearance that reached
+the hall wall. That is one arrangement of three, and not the common one: the
+Fortaleza plan shows a cage occupying the bottom of the data hall with more
+racks above it, closed by the room on three sides and by one wall of its own.
+
+**A side the room closes is not built, and the rectangle is CLIPPED to the
+room.** The clipping is the half that matters. Without it the wall that IS the
+cage stops at the enclosed racks plus the clearance, so a case asking for a
+partition across a hall gets one with a gap at each end that nothing asked
+for — and the mesh builds it, and the drawing shows it, and it reads as a
+detail rather than a mistake. A dropped side is said in a warning, because a
+wall nobody knows is missing is worse than one refused.
+
+**A cage wall may not cut a cabinet.** With `pods` the wall stands in the aisle
+beside the pods it encloses, and too big a clearance walks it into the next
+pod's rows. That meshes, and models a partition through the middle of
+somebody's cabinets. Refused, naming the cabinet.
+
+**The direct-expansion note moved out of the alerts.** It arrived there twice
+over on every DX run — off the build and again off the coil — as three
+paragraphs in the card headed *design criteria; these warn, they do not block
+a run*. It is not a design criterion, the plant does not fail it, and it does
+not change from run to run: it is a **limitation of the model**, so it is read
+once, in the report's limitations, where every other one is (ADR-089).
+
+What stays in the alerts is the one line that IS about this run: the return the
+room produced against the return the unit was rated at, subtracted. On the
+Fortaleza hall that reads *the room returns 27.5 °C and P3100DA is rated
+100.5 kW at 30.0 °C — 2.5 K below it*, which is a fact about this result and
+not boilerplate. An unfinished unit file still warns every time, because there
+the capacity beside it came from somewhere a reader cannot check.
+
+**Consequence.** `cage.pods` and `cage.sides` are lists, and the page's field
+casters take scalars, so placement is a YAML edit until the cage group grows a
+control for it. The manual says so rather than leaving a reader to find out.

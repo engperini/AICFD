@@ -142,6 +142,19 @@ inside the hall, and the two ways it is built are two different rooms:
 | mesh | `cage.enabled: true`, `cage.construction: mesh` | crosses it, paying K once going in on the cold side and again coming out on the hot one |
 | drywall | `cage.construction: drywall`, `cage.height` below the ceiling | cannot cross it at all, so it goes over the top |
 
+**Where the cage stands** is `cage.pods` and `cage.sides`. Three arrangements,
+all from the same two keys:
+
+| | keys | |
+|---|---|---|
+| in the middle of the hall | *(neither)* | four walls round every rack |
+| over some rows only | `pods: [1, 2]` | four walls round pods 1 and 2; the rest of the hall is outside |
+| against the wall, dividing the hall | `pods: [1, 2]`, `sides: [right]` | one wall, spanning the room, with the hall closing the other three |
+
+A clearance that reaches the hall wall drops that side and says so in a
+warning — a cage in a corner has two walls, not four, and a wall built on the
+hall wall is not a boundary at all.
+
 Measured on a POD with a cage round its row, everything else identical: the
 drywall cage costs 3.5% more fan rise and puts the peak speed up 10.4%
 (ADR-096). A drywall cage closed at the top — full height, or with a roof —
@@ -253,7 +266,9 @@ or three.
 | `containment.enabled` | bool | | §4 |
 | `cage.enabled` | bool | | §4 |
 | `cage.construction` | `mesh` or `drywall` | | §4. The answer, not a detail of the drawing |
-| `cage.clearance` | float | 0.1 to 10 | from the outermost cabinet faces to the cage wall. It has to be less than `aisles.perimeter`, or the cage wall is the hall wall and the build refuses it by name |
+| `cage.clearance` | float | 0.1 to 10 | from the outermost cabinet faces to the cage wall. A side whose plane reaches the hall wall is **not built** — the room closes it — and the rectangle is clipped to the room so the walls that *are* built run wall to wall |
+| `cage.pods` | list of int | | **YAML only.** Which PODs are inside, counted from 1 along the hall and contiguous. Pod 2 is rows F3 and F4. Omitted, the cage encloses every rack |
+| `cage.sides` | list | `near`, `far`, `left`, `right` | **YAML only.** Which walls to build. `near`/`far` close the row ends (normal to x), `left`/`right` run along the rows. Omitted, every side the room does not already close is built |
 | `cage.height` | float | 1 to 20 | top of the cage. Omitted, it runs to the false ceiling |
 | `cage.roof` | bool | | close the top with the same construction |
 | `cage.loss_coefficient` | float | | K for a mesh cage, where the case states its own instead of the component's |

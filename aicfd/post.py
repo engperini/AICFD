@@ -540,7 +540,16 @@ def _coil_alerts(kpis: dict) -> list[str]:
     """
     out = []
     problem = kpis.get("coil_problem")
-    if problem:
+    # THE SAME PARAGRAPH THREE TIMES IS NOT THREE WARNINGS. A DX unit's
+    # limitation used to arrive here, off the build, and again off the coil --
+    # one long block of boilerplate on every run, in the card meant for design
+    # criteria the plant MISSES. It is not a criterion and it does not change
+    # from run to run, so it belongs in the report's limitations, where a
+    # reader meets it once (ADR-098). What stays here is the one line that IS
+    # about this run: how far the room's return is from the rating.
+    if problem and not kpis.get("rated_return_c"):
+        # An unfinished file, not a DX unit: the capacity beside it came from
+        # nowhere a reader can check, and that IS worth saying every time.
         out.append(
             f"Capacity here is the catalogue figure alone, which holds only "
             f"at the return air the unit was selected for: {problem}."

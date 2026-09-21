@@ -41,6 +41,11 @@ BEYOND_THE_FORM = {
     "racks.blanks",
     "fanwall.curve",
     "cage.loss_coefficient",
+    # WHERE the cage stands. Both are lists -- a run of pod numbers and a set
+    # of side names -- and the page's field casters take scalars, so these are
+    # a YAML edit until the group grows a control for them (ADR-098).
+    "cage.pods",
+    "cage.sides",
     "plenum.closed",
     "plenum.mesh_loss_coefficient",
     "components.floor_tile",

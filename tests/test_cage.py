@@ -95,30 +95,117 @@ class GeometryTest(unittest.TestCase):
         self.assertEqual(roof[0].axis, 2)
         self.assertEqual(roof[0].kind, walls[0].kind)
 
-    def test_a_cage_on_the_hall_wall_is_refused_with_a_clearance_that_fits(self):
-        spec = yaml.safe_load(
-            (support.REPO / "cases" / "pod-fanwall.yaml").read_text())
-        hall = spec["hall"]["size"]
+    def test_a_side_the_room_closes_is_not_built(self):
+        """A cage in a CORNER has fewer than four walls, and the missing ones
+        are not missing: the room is the boundary there. A wall built on the
+        hall wall is not one -- `topoSet` would take the boundary faces the
+        room is made of."""
+        # The POD's row stands 2,0 m from the near wall, 1,8 from one side
+        # and 1,2 from the other, so a 2,0 m clearance leaves only the far
+        # end as a wall the room does not already close.
+        built = m.build_model(pod(construction="mesh", clearance=2.0,
+                                  sides=["far"]))
+        walls = [p.name for p in built.panels if p.name.startswith("cage_")]
+        self.assertEqual(walls, ["cage_far"])
+
+    def test_the_sides_it_drops_are_said_out_loud(self):
+        built = m.build_model(pod(construction="mesh", clearance=2.0))
+        notes = [w for w in built.warnings if w.startswith("cage ")]
+        self.assertTrue(notes, "a side dropped in silence is a wall nobody "
+                               "knows is missing")
+        for note in notes:
+            self.assertIn("the room already closes it", note)
+
+    def test_a_wall_the_room_closes_runs_wall_to_wall(self):
+        """The half that matters. Without clipping, the wall that IS the cage
+        stops short of the room at both ends and the case models a partition
+        with a gap nobody asked for."""
+        built = m.build_model(pod(construction="mesh", clearance=2.0,
+                                  sides=["far"]))
+        wall = next(p for p in built.panels if p.name == "cage_far")
+        self.assertAlmostEqual(wall.extent[0][0], built.hall.lo[1], places=6)
+        self.assertAlmostEqual(wall.extent[0][1], built.hall.hi[1], places=6)
+
+    def test_a_cage_the_room_closes_on_every_side_is_refused(self):
         with self.assertRaises(ValueError) as caught:
-            m.build_model(pod(construction="mesh", clearance=hall[1]))
+            m.build_model(pod(construction="mesh", clearance=2.5))
+        self.assertIn("no wall is left to build", str(caught.exception))
+
+    def test_naming_a_side_the_room_closes_is_refused(self):
+        with self.assertRaises(ValueError) as caught:
+            m.build_model(pod(construction="mesh", clearance=2.0,
+                              sides=["left", "far"]))
         said = str(caught.exception)
-        self.assertIn("cage.clearance", said)
-        self.assertIn("hall wall", said)
-        self.assertRegex(said, r"under [\d.,]+ m",
-                         "the refusal has to say what would fit")
-        self.assertRegex(said, r"stand [\d.,]+ m from one wall",
-                         "the rows are rarely centred, so the refusal says "
-                         "both gaps rather than half the leftover")
+        self.assertIn("cage.sides", said)
+        self.assertIn("the room", said)
 
-    def test_the_clearance_it_suggests_actually_builds(self):
+
+class PlacementTest(unittest.TestCase):
+    """A cage goes where the drawing puts it: the middle of a hall, a corner,
+    or across it dividing one customer from the rest (ADR-098)."""
+
+    def hall(self, **cage) -> dict:
         spec = yaml.safe_load(
-            (support.REPO / "cases" / "pod-fanwall.yaml").read_text())
-        with self.assertRaises(ValueError) as caught:
-            m.build_model(pod(construction="mesh", clearance=spec["hall"]["size"][1]))
-        import re
+            (support.REPO / "cases" / "hall-double-gallery.yaml").read_text())
+        spec["pods"] = 4
+        spec["racks"]["blocks"] = 1
+        spec["fanwall"]["count"] = 8
+        if cage:
+            spec["cage"] = {"enabled": True, "construction": "mesh", **cage}
+        return spec
 
-        fits = float(re.search(r"under ([\d.]+) m", str(caught.exception)).group(1))
-        m.build_model(pod(construction="mesh", clearance=round(fits - 0.05, 2)))
+    def walls(self, **cage) -> list[str]:
+        built = m.build_model(self.hall(**cage))
+        return sorted(p.name[len("cage_"):] for p in built.panels
+                      if p.name.startswith("cage_"))
+
+    def test_the_middle_of_a_hall_has_four_walls(self):
+        self.assertEqual(self.walls(clearance=1.2),
+                         ["far", "left", "near", "right"])
+
+    def test_a_cage_over_some_pods_only(self):
+        built = m.build_model(self.hall(clearance=1.2, pods=[1, 2]))
+        wall = next(p for p in built.panels if p.name == "cage_right")
+        inside = [r for row in built.rows if row.id in ("F1", "F2", "F3", "F4")
+                  for r in row.racks]
+        outside = [r for row in built.rows if row.id in ("F5", "F6", "F7", "F8")
+                   for r in row.racks]
+        self.assertTrue(all(r.box.hi[1] <= wall.position + 1e-6 for r in inside),
+                        "a rack the cage encloses is outside its wall")
+        self.assertTrue(all(r.box.lo[1] >= wall.position - 1e-6 for r in outside),
+                        "a rack outside the cage is inside its wall")
+
+    def test_the_dividing_wall_of_an_edge_cage_is_the_only_one(self):
+        """The arrangement the Fortaleza plan shows."""
+        self.assertEqual(self.walls(clearance=0.6, pods=[1, 2],
+                                    sides=["right"]), ["right"])
+
+    def test_pods_have_to_be_neighbours(self):
+        with self.assertRaises(ValueError) as caught:
+            m.build_model(self.hall(clearance=1.2, pods=[1, 3]))
+        self.assertIn("contiguous", str(caught.exception))
+
+    def test_a_pod_the_hall_has_not_got_is_named(self):
+        with self.assertRaises(ValueError) as caught:
+            m.build_model(self.hall(clearance=1.2, pods=[9]))
+        said = str(caught.exception)
+        self.assertIn("cage.pods", said)
+        self.assertIn("pods 1 to 4", said, "the refusal has to say what it has")
+
+    def test_a_wall_may_not_cut_a_cabinet(self):
+        """Too big a clearance walks the dividing wall into the next pod's
+        rows, which meshes and models a partition through the middle of
+        somebody's cabinets."""
+        with self.assertRaises(ValueError) as caught:
+            m.build_model(self.hall(clearance=3.5, pods=[1, 2], sides=["right"]))
+        said = str(caught.exception)
+        self.assertIn("inside", said)
+        self.assertRegex(said, r"F\d", "the refusal has to name the cabinet")
+
+    def test_a_side_is_a_side(self):
+        with self.assertRaises(ValueError) as caught:
+            m.build_model(self.hall(clearance=1.2, sides=["north"]))
+        self.assertIn("cage.sides", str(caught.exception))
 
 
 class ConstructionTest(unittest.TestCase):

@@ -93,19 +93,37 @@ class SaysWhatIsNotAnsweredTest(unittest.TestCase):
                     if equipment.load(n).arrangement == "downflow")
         return unit, m.build_model(raised_floor_case(unit))
 
-    def test_the_build_alerts_before_the_solve(self):
-        unit, built = self.built()
-        said = " ".join(built.alerts)
-        self.assertIn(unit, said)
-        self.assertIn("RATED", said,
-                      "the alert has to say the result is the rated point")
-        self.assertIn("not modelled", said)
-
-    def test_a_chilled_water_case_says_none_of_it(self):
-        spec = yaml.safe_load(
-            (support.REPO / "cases" / "pod-fanwall.yaml").read_text())
-        built = m.build_model(spec)
+    def test_the_build_does_NOT_put_it_in_the_alerts(self):
+        """It is a limitation of the MODEL, not a design criterion the plant
+        misses, and it does not change from run to run. Arriving in the
+        alerts card on every run was three paragraphs of boilerplate in the
+        place meant for what this plant fails to do (ADR-098)."""
+        _unit, built = self.built()
         self.assertNotIn("RATED", " ".join(built.alerts))
+        self.assertNotIn("refrigerant", " ".join(built.alerts))
+
+    def test_the_report_carries_it_once_in_the_limitations(self):
+        from aicfd import report
+
+        class Stub:
+            payload = {
+                "model": {"floor_height": 1.0},
+                "kpis": {"unit_model": "X1", "rated_return_c": 30.0,
+                         "rated_nscc_kw": 100.5},
+            }
+
+        said = " ".join(report._model_limits(Stub()))
+        self.assertIn("X1", said)
+        self.assertIn("direct-expansion", said)
+        self.assertIn("RATED", said)
+
+    def test_a_chilled_water_report_carries_none_of_it(self):
+        from aicfd import report
+
+        class Stub:
+            payload = {"model": {"floor_height": 1.0}, "kpis": {"unit_model": "Y"}}
+
+        self.assertNotIn("direct-expansion", " ".join(report._model_limits(Stub())))
 
     def test_the_limitation_is_one_function_with_one_reader_per_place(self):
         """`dx_limitation` is what the build says; `equipment.coil_problem` is
@@ -140,9 +158,10 @@ class RatingAgainstTheRoomTest(unittest.TestCase):
     def test_a_room_above_the_rating_is_said_the_other_way(self):
         self.assertIn("above", " ".join(self.alerts(34.0)))
 
-    def test_a_room_at_the_rating_says_nothing_extra(self):
-        self.assertEqual(len(self.alerts(30.5)), 1,
-                         "within 2 K of the plate there is nothing to add")
+    def test_a_room_at_the_rating_says_nothing_at_all(self):
+        self.assertEqual(self.alerts(30.5), [],
+                         "within 2 K of the plate there is nothing to add, "
+                         "and the limitation itself is in the report")
 
     def test_a_chilled_water_result_never_gets_this_alert(self):
         self.assertFalse(post._coil_alerts({
@@ -172,7 +191,7 @@ class ShippedProjectUnitTest(unittest.TestCase):
         self.assertNotIn("ZZ-DX-DRAFT", equipment.SHIPPED)
         built = m.build_model(raised_floor_case("ZZ-DX-DRAFT"))
         self.assertEqual(built.equipment.model, "ZZ-DX-DRAFT")
-        self.assertIn("RATED", " ".join(built.alerts))
+        self.assertEqual(built.supply_temp_c, 20.0, "it runs off its own sheet")
 
 
 if __name__ == "__main__":
