@@ -3967,3 +3967,38 @@ moment the value is editable: `model: CA80NPVG6  # the unit, as
 equipment/CA80NPVG6.yaml holds it` became a line naming a file the case no
 longer used. The shipped comments say `its file in equipment/` instead. The
 general lesson holds for any field the page can write.
+
+---
+
+## ADR-093 — A skill that leaves this repository carries what it needs
+
+**Decision.** `.claude/skills/case-authoring/` is the case-authoring manual
+shaped as a skill: `SKILL.md` is the procedure and the triggers,
+`reference/CASE-AUTHORING.md` is a copy of `docs/CASE-AUTHORING.md`, and a
+test holds the copy byte for byte against the original.
+
+**Why a copy rather than a reference.** A skill is uploaded. Once it is, it has
+no repository behind it: a `SKILL.md` that sends the reader to `docs/` sends
+them nowhere, and the failure is silent — the agent writes a case from the
+procedure alone, without the key reference, the ranges or the traps. So the
+skill ships the manual.
+
+**Why the copy is tested rather than trusted.** `docs/CASE-AUTHORING.md` is
+held to the code (ADR-090); the copy inside the skill is not, and cannot be —
+it is read by something that has never seen this repository. The only thing
+that can keep it honest is being the same file, so that is what is checked, and
+the failure message gives the one command that fixes it.
+
+**Why `SKILL.md` is not just the manual again.** A skill is a procedure with
+triggers; a manual is a reference. `SKILL.md` carries what changes the shape of
+the work — the order to extract in, the derived-geometry trap that sends an
+author to the wrong rack count, and the questions a drawing cannot answer that
+have to be ASKED rather than assumed — and points into the reference for
+everything else. Restating the manual there would be a third copy to keep.
+
+**What this found.** `datacenter-cfd`'s frontmatter did not parse: `Trigger on:
+"CFD do datacenter", ...` is a YAML mapping where a string was meant, so a
+strict loader rejects the whole block and the skill never triggers. Nothing in
+this repository reads a skill, so nothing failed — the symptom was a skill that
+quietly did not exist. The guard now parses every frontmatter, checks each name
+against its folder and each description against the length a loader takes.

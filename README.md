@@ -366,8 +366,10 @@ tests/         the unit tests, no OpenFOAM required
   schedule — turned into one case file. Written for an agent doing that work,
   and held to the code by a test, because a stale manual is worse than none
   when the reader cannot tell (ADR-090).
-- **`.claude/skills/aicfd/SKILL.md`** is the same knowledge shaped for an AI
-  agent driving the tool.
+- **`.claude/skills/`** is the same knowledge shaped for an AI agent: `aicfd`
+  drives the tool, `case-authoring` turns a real project into a case file
+  (it carries its own copy of the manual, so it works uploaded on its own),
+  and `datacenter-cfd` holds the physics.
 
 ## 8. Limits
 

@@ -1,6 +1,6 @@
 ---
 name: datacenter-cfd
-description: Use this skill whenever the user wants to build, run, or troubleshoot a CFD (computational fluid dynamics) simulation of a data center, server room, or any rack/CRAC/CRAH airflow-cooling problem using open-source tools (OpenFOAM). Covers geometry simplification from BIM/IFC/Revit models into CFD-ready abstractions, porous-media modeling of racks and floor tiles, fan/CRAC boundary conditions, mesh generation (blockMesh/snappyHexMesh), buoyant solvers, convergence, and post-processing. Trigger on: "CFD do datacenter", "simulação de resfriamento", "hot aisle/cold aisle simulation", "rack thermal simulation", "CRAC/CRAH airflow", "OpenFOAM datacenter", or requests to import a federated Revit/BIM model into a CFD workflow.
+description: Use this skill whenever the user wants to build, run, or troubleshoot a CFD (computational fluid dynamics) simulation of a data center, server room, or any rack/CRAC/CRAH airflow-cooling problem using open-source tools (OpenFOAM). Covers geometry simplification from BIM/IFC/Revit models into CFD-ready abstractions, porous-media modeling of racks and floor tiles, fan/CRAC boundary conditions, mesh generation (blockMesh/snappyHexMesh), buoyant solvers, convergence, and post-processing. Triggers on "CFD do datacenter", "simulação de resfriamento", "hot aisle/cold aisle simulation", "rack thermal simulation", "CRAC/CRAH airflow", "OpenFOAM datacenter", or requests to import a federated Revit/BIM model into a CFD workflow.
 ---
 
 # CFD de Data Center com OpenFOAM (open-source, validado)
