@@ -2755,6 +2755,10 @@ def to_dict(model: Model, spec: dict) -> dict:
         ],
         "fans": [p.name for p in model.fans],
         "fan_sides": [p.sign for p in model.fans],
+        # How the units decide their duty: to their own return, or as one
+        # networked plant to the worst return any of them sees (ADR-064). The
+        # report has to say which produced the per-unit capacity it shows.
+        "fan_control": model.fan_control,
         # Drawn, never meshed. The solver sees a zero-thickness baffle pair,
         # because a fan wall is a boundary condition and not a volume -- but a
         # drawing that leaves a 1,5 m deep machine as a line gives a reader

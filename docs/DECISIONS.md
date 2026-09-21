@@ -3749,3 +3749,62 @@ the guard only accepted a space or a tab after it -- so a caller that split the
 file with `splitlines(True)` got a newline there and was told the key was
 absent. The server splits on `"\\n"` and never hit it, so this was latent
 rather than live; it is fixed because the next caller would have.
+
+## ADR-089 — The report describes this run, and is emitted for every result
+
+**Decision.** What the report says about the model is computed from the model,
+not written down once. The mesh verdict, the limitations, the perforated
+surfaces, the control mode and the rack distribution all follow the case. And
+a report is produced for every result that exists, including one exported by
+an earlier version of the tool.
+
+**Because a sentence written once goes stale in place, and a report is read as
+a measurement.** Three of them had:
+
+* **"One load per rack. Unloaded positions and a real per-rack load map are
+  not represented."** ADR-054 shipped the load map, ADR-054 the zero-load
+  cabinet and ADR-074 the blanking panel. The report told an engineer their
+  layout was not represented while the solver was using it. Gone, and the
+  modelling section now says what a blanking panel and a zero-load cabinet
+  each are, because those are two different things and the case says which
+  each position is.
+* **"One rack per cell in plan … 1 to 2 K of uncertainty."** Printed for every
+  mesh. A hall run at 0,10 × 0,20 m has **six cells across a 0,6 m cabinet and
+  six through its depth**, and the sentence told its reader the opposite. The
+  cells per cabinet are counted now and the verdict follows them.
+* **"No comparison against measurement … it cannot promise the built room
+  behaves this way."** True of every CFD study ever written, which makes it a
+  property of the method and not a finding of this one. Deleted.
+
+**A limitation is asked of the code.** The PDU losses and the containment
+leakage are printed while `components` says the solver does not read them, and
+would go when it does -- which is checked against the library rather than
+against a memory.
+
+**Three things the report was silent about and an engineer has to have.** The
+perforated surfaces it modelled, with the K that decides each; how the units
+are controlled, because a networked plant and eight independent ones give
+different per-unit capacity from the same room (ADR-064); and the rack
+distribution -- how many positions, how many carry nothing, how many are
+plates, what widths -- beside the plant it is cooled by.
+
+**The physics is stated, not named.** Each surface in the boundary-condition
+table now carries the relation it imposes: the Darcy-Forchheimer sink with the
+whole of a cabinet's drop in the inertial term, and the cyclic pair's
+`Δp = ½·K·ρ·u_n²` applied face by face -- which is why a surface the air
+reaches unevenly costs more than its rated face velocity says.
+
+**Figures A, B and C are the room, dimensioned**, and a detail of C names every
+cabinet and its load. Each distinct part is dimensioned once where it first
+occurs, because a hall repeats (ADR-086). They sit in the basis of design,
+where a reader checks the study against a layout drawing.
+
+**Two stored halls could not produce a report at all.** Their coil payload
+predates `design_return_c` and the section indexed it rather than asking for
+it. A result is written once and read for years; a generator that raises on a
+field an older export lacks cannot produce the document for a study somebody
+is holding, which is the one thing it must never do. A test now walks every
+tracked result and builds it. That costs about eighty seconds of the suite,
+and it is the guarantee the deliverable needs: whatever the case used -- a
+raised floor, a supply plenum, a mesh leaf, networked units, a typical row
+with blanks -- the document comes out.

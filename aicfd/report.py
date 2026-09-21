@@ -27,7 +27,8 @@ from datetime import date
 from pathlib import Path
 
 from aicfd.figures import (
-    Export, ashrae, capacity, convergence, plan, rack_map, section, units,
+    Export, ashrae, capacity, convergence, geometry, plan, rack_map, section,
+    units,
 )
 
 ACCENT = "2F6F6A"
@@ -210,7 +211,7 @@ def build(results_dir: str | Path, out_path: str | Path,
     doc.add_page_break()
     _introduction(doc)
     doc.add_page_break()
-    _summary(doc, export)
+    _summary(doc, export, drawn)
     doc.add_page_break()
     _methodology(doc, export, drawn)
     doc.add_page_break()
@@ -224,6 +225,31 @@ def build(results_dir: str | Path, out_path: str | Path,
     return out
 
 
+def _zoom_span(export: Export) -> tuple[float, float, float, float]:
+    """One pod of one block: five metres of row, and the pod it belongs to.
+
+    Enough cabinets to read the pattern -- a wide one, a blanked position, a
+    zero -- and few enough that the names fit. Cut on both axes, because five
+    metres of row across the full width of a hall is a strip nobody can read
+    a name off.
+    """
+    model = export.model
+    blocks = model.get("blocks") or []
+    lo_h, hi_h = blocks[0] if blocks else (0.0, export.size[0])
+    hi_h = min(hi_h, lo_h + 5.0)
+    rows = model.get("rows") or []
+    # DISTINCT bands. A hall of two blocks has two rows on the same band, so
+    # taking the first two rows gave the same band twice and the detail showed
+    # one row where it meant to show a pod.
+    distinct = sorted({tuple(r["band"]) for r in rows})
+    if len(distinct) >= 2:
+        bands = distinct[:2]
+        lo_v, hi_v = bands[0][0], bands[1][1]
+        margin = (hi_v - lo_v) * 0.08
+        return (lo_h, hi_h, max(0.0, lo_v - margin), hi_v + margin)
+    return (lo_h, hi_h, 0.0, export.size[1])
+
+
 def _draw(export: Export, figures: Path) -> dict:
     """Render every figure the document embeds."""
     model = export.model
@@ -234,6 +260,16 @@ def _draw(export: Export, figures: Path) -> dict:
     cold = model["cold_aisles"][len(model["cold_aisles"]) // 2]
     block = blocks[len(blocks) // 2]
     return {
+        # The room as modelled, dimensioned, before any field is quoted.
+        "geo_a": geometry(export, figures / "geo-a.png", 0,
+                          "A · Transverse section — through a pod"),
+        "geo_b": geometry(export, figures / "geo-b.png", 1,
+                          "B · Longitudinal section — through the hot aisle"),
+        "geo_c": geometry(export, figures / "geo-c.png", 2,
+                          "C · Plan — at rack height"),
+        "geo_zoom": geometry(export, figures / "geo-zoom.png", 2,
+                             "C (detail) — every cabinet, its name and its load",
+                             zoom=_zoom_span(export)),
         "plan_mid": plan(export, figures / "plan-rack-mid.png", rack_top / 2,
                          f"Temperature at z = {rack_top / 2:.2f} m — rack mid-height"),
         "plan_top": plan(export, figures / "plan-rack-top.png", rack_top - 0.2,
@@ -471,7 +507,7 @@ def _introduction(doc) -> None:
 # --- 2 summary ----------------------------------------------------------------
 
 
-def _summary(doc, export: Export) -> None:
+def _summary(doc, export: Export, drawn: dict) -> None:
     kpis = export.kpis
     model = export.model
     fan = model.get("operating") or {}
@@ -549,6 +585,8 @@ def _summary(doc, export: Export) -> None:
         note="The solve runs at the site's operating pressure, so the airflow and "
              "the mass flow agree with the unit's selection at that elevation."
              )
+
+    _layout_section(doc, export, drawn)
 
     _heading(doc, "Results summary", 2)
     rows = [
@@ -717,17 +755,17 @@ def _methodology(doc, export: Export, drawn: dict) -> None:
           f"the containment panels, the false ceiling, the row ends and tops, the "
           f"return grilles and the fan walls. The room's air loop closes inside "
           f"the box, so none of those surfaces is a domain boundary.")
+    across, through, tall = _cells_per_rack(export)
     _para(doc,
-          "The cell sizes differ by axis on purpose. In plan the cell is one rack "
-          "wide, which is the resolution a conceptual study needs and no more. In "
-          "the vertical it is fine enough that the false ceiling, the fan wall top "
-          "and the rack tops land on cell faces — a plane that falls mid-cell "
-          "produces a ragged surface that leaks silently.")
-    _para(doc,
-          "This resolution supports the ranking of racks, the aisle-to-aisle "
-          "temperatures and the hall-scale pressure field. A single rack's "
-          "intake carries 1 to 2 K of uncertainty at this cell size.",
-          bold=True)
+          "The cell sizes differ by axis on purpose. In plan the mesh is sized "
+          f"on the cabinet: {_cells(across)} across a rack's face and "
+          f"{_num(through, 0)} through its depth, which is what decides how well "
+          "the porous zone reproduces its own pressure curve. In the vertical it "
+          "is fine enough that the false ceiling, the fan wall top and the rack "
+          f"tops land on cell faces ({_cells(tall)} up a cabinet) — a "
+          "plane that falls mid-cell produces a ragged surface that leaks "
+          "silently.")
+    _para(doc, _resolution_verdict(across, through), bold=True)
     if model.get("warnings"):
         _para(doc, "Dimensions the mesh snapped to its nearest cell face:",
               size=9, colour=SECOND, space_after=2)
@@ -740,12 +778,41 @@ def _methodology(doc, export: Export, drawn: dict) -> None:
                      "through the supply. Both are set by MASS flow, not volume — "
                      "the air leaving is warmer and thinner than the air arriving, "
                      "and in a closed loop a 1 % mismatch has nowhere to go."),
-        ("Rack", "Darcy–Forchheimer porous block with a volumetric enthalpy "
-                 "source. The rack has no fan: what passes through it is an "
+        ("Rack", "A Darcy–Forchheimer cell zone with a volumetric enthalpy "
+                 "source. The momentum sink along the airflow axis is "
+                 "S = −(µ·d·u + ½·ρ·f·|u|·u); d is set to a nominal value and "
+                 "the whole of the cabinet's rated drop is carried by the "
+                 "inertial term, f = 2·Δp / (ρ·u_rated²·L), so the resistance "
+                 "scales as the square of the velocity as a perforated door "
+                 "does. Across the other two axes the coefficients are raised "
+                 "by orders of magnitude, which is the cabinet's side panels "
+                 "and top. The rack has no fan: what passes through it is an "
                  "outcome of the room's pressure field, so the temperature rise "
                  "across a rack is a result and not an input."),
-        ("Return grille", "Cyclic pair carrying the datasheet's loss coefficient "
-                          "as a pressure jump, then checked against the field."),
+        ("Blanking panel", "A solid, adiabatic wall on the cabinets' own face, "
+                           "closing the position across the full height of the "
+                           "row. No air crosses it. The volume behind it is left "
+                           "open to the contained aisle, which is what the space "
+                           "behind a blanking plate is; the sealed-envelope "
+                           "check confirms it carries zero flow."),
+        ("Cabinet at zero load", "NOT a blanking panel. It is the same porous "
+                                 "zone with the same resistance as its "
+                                 "neighbours and no heat source: an empty "
+                                 "cabinet still breathes and still costs the fan "
+                                 "what the row costs. The two are different "
+                                 "things and the case says which each position "
+                                 "is."),
+        ("Perforated surface", "Every grille, mesh and plate is a cyclic pair on "
+                               "the same internal faces, carrying a pressure "
+                               "jump Δp = ½·K·ρ·u_n², where u_n is the velocity "
+                               "normal to the face and K comes from the "
+                               "component's datasheet — or, where the datasheet "
+                               "gives none, from its free area by Idelchik's "
+                               "thin-plate relation. The jump is imposed face by "
+                               "face, so a surface the air reaches unevenly "
+                               "costs more than its rated face velocity says, "
+                               "and section 4.1 measures that against the K it "
+                               "was given."),
         ("Supply plenum", "Where the case has one: the wall into the hall is "
                           "doubled, the units stay in the outer leaf, and the "
                           "cavity between the leaves is pressurised. The inner "
@@ -771,6 +838,8 @@ def _methodology(doc, export: Export, drawn: dict) -> None:
                        "(buoyantSimpleFoam, OpenFOAM v1912)."),
     ], widths=[4.6, 11.4])
 
+    _surfaces_section(doc, export)
+    _control_section(doc, export)
     _unit_section(doc, export, drawn)
 
     _heading(doc, "How the airflow per unit is obtained", 2)
@@ -788,6 +857,220 @@ def _methodology(doc, export: Export, drawn: dict) -> None:
         note="Every unit is given the same duty. Section 6 covers a plant "
              "whose units sit on a pressure boundary and share the flow "
              "unevenly.")
+
+
+def _layout_section(doc, export: Export, drawn: dict) -> None:
+    """What is in the room and where, before any result is quoted.
+
+    The plant is only half a basis of design. A reader checking this study
+    against a layout drawing needs the room dimensioned and the cabinets named
+    -- which position carries what -- because that is what decides where the
+    heat is and how evenly the units load (ADR-054).
+    """
+    model = export.payload["model"]
+    racks = export.racks
+    blanks = [p for p in model.get("panels", []) if p["name"].startswith("blank")]
+    loads = sorted({round(r.get("load_w", 0) / 1000, 2) for r in racks})
+    zero = sum(1 for r in racks if not r.get("load_w"))
+    widths = sorted({round(r["hi"][0] - r["lo"][0], 2) for r in racks})
+    rows = model.get("rows") or []
+    per_row = len(rows[0]["racks"]) if rows else 0
+
+    _heading(doc, "Basis of design — rack distribution", 2)
+    _para(doc,
+          f"{len(racks)} cabinet positions stand in {len(rows)} rows of "
+          f"{per_row}"
+          + (f", in {len(model.get('blocks') or [])} blocks along the row"
+             if len(model.get("blocks") or []) > 1 else "")
+          + f". Each row is built from one typical row, so every row of the "
+          f"hall carries the same pattern of widths and loads; a position that "
+          f"disagrees with it says so on its own.",
+          size=9.5, colour=SECOND)
+    _table(doc, ["What stands in the row", "How many", "Detail"], [
+        ("Cabinets carrying load", f"{len(racks) - zero}",
+         "loads of " + ", ".join(f"{v:g} kW" for v in loads if v) + " installed"
+         if any(loads) else "—"),
+        ("Cabinets at zero load", f"{zero}",
+         "in the model as cabinets: the same resistance as their neighbours, "
+         "no heat source. An empty cabinet still breathes and still costs the "
+         "fan what the row costs."),
+        ("Blanking panels", f"{len(blanks)}",
+         "solid plates across the row. No air crosses them, which the "
+         "sealed-envelope check confirms."
+         if blanks else "none in this layout"),
+        ("Cabinet widths", f"{len(widths)}",
+         ", ".join(f"{w:g} m" for w in widths)),
+    ], widths=[5.0, 2.4, 8.6])
+
+    for key, caption in (
+        ("geo_a", "Figure A — transverse section. The gallery, the units, the "
+                  "aisles and the contained volume, dimensioned."),
+        ("geo_b", "Figure B — longitudinal section through the hot aisle, "
+                  "dimensioned."),
+        ("geo_c", "Figure C — plan at rack height. Each distinct part is "
+                  "dimensioned once, where it first occurs; the hall repeats."),
+        ("geo_zoom", "Figure C (detail) — one pod of one block, every cabinet "
+                     "with its name and the load it carries."),
+    ):
+        if drawn.get(key):
+            _figure(doc, drawn[key], caption)
+
+
+def _surfaces_section(doc, export: Export) -> None:
+    """Every perforated surface this case uses, with the number that decides it.
+
+    One table, because K is the whole of the physics: the jump each of these
+    imposes is ½·K·ρ·u², and a reader checking the plant against a catalogue
+    needs to see which component each surface is and what it costs -- not be
+    told that grilles exist.
+    """
+    roles = export.payload["model"].get("components") or []
+    surfaces = [r for r in roles if r.get("kind") != "load" and r.get("applied")]
+    if not surfaces:
+        return
+    _heading(doc, "Perforated surfaces in the model", 2)
+    _table(doc, ["Where", "Component", "Free area", "K", "Face velocity"], [
+        (role.get("label", role.get("role", "")),
+         next((o["name"] for o in role.get("options", [])
+               if o["id"] == role.get("chosen")), role.get("chosen", "—")),
+         f"{_num((role.get('free_area') or 0) * 100, 0)} %",
+         _num(role.get("k"), 2),
+         _face_velocity(export, role.get("role")))
+        for role in surfaces
+    ], widths=[4.0, 5.0, 2.2, 2.0, 2.8],
+        note="K refers to the velocity through the GROSS face, which is how the "
+             "model applies it and how section 4.1 measures it. A component "
+             "whose datasheet gives a loss coefficient uses it; otherwise K "
+             "follows from the free area.")
+
+
+#: Which measured face velocity belongs to which role, where the result has one.
+_ROLE_VELOCITY = {
+    "supply_grille": "supply_face_velocity_ms",
+    "floor_tile": "floor_face_velocity_ms",
+}
+
+
+def _face_velocity(export: Export, role: str | None) -> str:
+    key = _ROLE_VELOCITY.get(role or "")
+    value = export.kpis.get(key) if key else None
+    return f"{_num(value, 2)} m/s" if value is not None else "—"
+
+
+def _control_section(doc, export: Export) -> None:
+    """How the units decide what to deliver, and what that means for the result.
+
+    A plant of eight units is not one unit eight times. Whether they run to
+    their own return or to the worst return any of them sees changes which unit
+    saturates first, and a report that shows per-unit capacity has to say which
+    of the two produced it (ADR-064).
+    """
+    model = export.payload["model"]
+    units = len(model.get("fans") or [])
+    if units < 2:
+        return
+    team = str(model.get("fan_control") or "independent").strip().lower() == "team"
+    _heading(doc, "How the units are controlled", 2)
+    _para(doc,
+          (f"The {units} units are NETWORKED: they run as one plant. Each pass "
+           "of the coupled loop finds the warmest return any unit sees and "
+           "controls every unit to it, so they deliver the same supply "
+           "temperature and the plant is judged by the unit that has the "
+           "hardest job. This is what a real BMS does with a fan-wall array, "
+           "and it is what `fanwall.control: team` in the case asks for."
+           if team else
+           f"The {units} units run INDEPENDENTLY: each controls to the return "
+           "air reaching its own intake, so a unit fed warmer air works harder "
+           "and they do not deliver the same supply temperature. Set "
+           "`fanwall.control: team` to run them as one networked plant "
+           "instead."))
+    _para(doc,
+          "Either way every unit is given the same MASS flow. What the control "
+          "changes is the water side — how much each coil is asked to transfer "
+          "— not the air each unit moves.",
+          size=9, colour=SECOND)
+
+
+def _model_limits(export: Export) -> list[str]:
+    """The ways THIS run's model departs from the room, asked of the model.
+
+    Each entry is conditional on what the case actually uses, so a limitation
+    is printed when it applies and is absent when it does not -- which is the
+    only way a list like this stays true as the tool grows (ADR-089).
+    """
+    from aicfd import components as library
+
+    limits = []
+    for component_id, sentence in (
+        ("pdu-distribution-loss",
+         "Heat released outside the racks — PDU and other ancillary losses, "
+         "typically about 2 % of the IT load — is not included."),
+        ("containment-panel",
+         "Containment is modelled as perfect: the panels are solid walls in the "
+         "mesh and their leakage figure is not read. Real containment leaks, "
+         "and the leak is what decides the top-of-rack temperature in a "
+         "marginal design."),
+    ):
+        try:
+            if not library.load(component_id).applied:
+                limits.append(sentence)
+        except Exception:  # noqa: BLE001 -- a library a case does not use
+            continue
+    model = export.payload["model"]
+    if not model.get("floor_height"):
+        limits.append(
+            "Cable management, containment framing and anything else that "
+            "obstructs an aisle is not in the geometry. The room is the "
+            "cabinets, the aisles, the containment and the plant."
+        )
+    return limits
+
+
+def _cells(n: float) -> str:
+    """`1 cell`, `6 cells`. A report that says "1 cells" has been generated
+    rather than written, and a reader can tell."""
+    return f"{_num(n, 0)} cell" + ("" if round(n) == 1 else "s")
+
+
+def _cells_per_rack(export: Export) -> tuple[float, float, float]:
+    """How many cells a cabinet is, per axis: across its face, through its
+    depth, and up it.
+
+    Computed rather than asserted. The report used to say "in plan the cell is
+    one rack wide" and quote a fixed 1 to 2 K of uncertainty, which was written
+    for one mesh and printed for every other: a hall run at 0,10 x 0,20 m has
+    SIX cells across a 0,6 m cabinet and six through its depth, and the
+    sentence was telling its reader the opposite (ADR-089).
+    """
+    cell = export.payload["model"]["cell_size"]
+    racks = export.racks
+    if not racks:
+        return (0.0, 0.0, 0.0)
+    lo, hi = racks[0]["lo"], racks[0]["hi"]
+    return tuple((hi[a] - lo[a]) / cell[a] for a in range(3))  # type: ignore[return-value]
+
+
+#: What a plan resolution is good for. The bands are the ones the worked
+#: comparisons in `docs/experiments` support: a coarse-against-fine run on the
+#: POD agreed within 0,2 K and 3% at three cells across a cabinet, and the
+#: hall-scale fields agree well below that while a single intake does not.
+def _resolution_verdict(across: float, through: float) -> str:
+    plan = min(across, through)
+    if plan < 2:
+        return ("At this resolution a cabinet is a single cell in plan. The "
+                "ranking of racks and the hall-scale pressure field are "
+                "supported; a single rack's intake is not, to better than "
+                "1 to 2 K.")
+    if plan < 4:
+        return ("At this resolution the flow around a cabinet is resolved well "
+                "enough for the ranking of racks, the aisle-to-aisle "
+                "temperatures and the hall-scale pressure field. A single "
+                "rack's intake carries roughly 1 K of uncertainty.")
+    return ("At this resolution the cabinet and the aisle around it are "
+            "resolved, so a single rack's intake is supported as well as the "
+            "ranking and the hall-scale fields. What remains is the modelling, "
+            "not the mesh: the limitations in section 6 are what bound this "
+            "result.")
 
 
 def _unit_section(doc, export: Export, drawn: dict) -> None:
@@ -886,10 +1169,19 @@ def _coil_section(doc, export: Export) -> None:
           "section 1.4 sets out, and that coil gives this unit's capacity at "
           "every condition this hall produced. Its properties follow.",
           size=9.5)
+    # `.get`, not `[...]`. An export written by an earlier version of the
+    # tool carries an earlier coil payload, and a report that raises on a
+    # field it does not find cannot be emitted for a result somebody already
+    # has -- which is the one thing a report generator must never do. A
+    # missing figure says "not in this export", visibly (ADR-089).
+    split = coil.get("air_split_pct")
     rows = [
-        ("Design return air", f"{_num(coil['design_return_c'], 1)} °C"),
+        ("Design return air",
+         f"{_num(coil['design_return_c'], 1)} °C"
+         if coil.get("design_return_c") is not None else "not in this export"),
         ("Resistance on the air side",
-         f"{coil['air_split_pct']} % (water side {100 - coil['air_split_pct']} %)"),
+         f"{split} % (water side {100 - split} %)"
+         if split is not None else "not in this export"),
         ("Air flow in this hall, against the design selection",
          f"{share} %" if share else "—"),
     ]
@@ -1223,21 +1515,23 @@ def _limits(doc, export: Export) -> None:
             "design selection for the unit gives its coil, and with it the "
             "capacity at the return air this room produces."
         )
-    limits += [
-        "One load per rack. Unloaded positions and a real per-rack load map are "
-        "not represented, and where the empty positions sit changes how evenly "
-        "the units load.",
-        "Heat released outside the racks — PDU and other ancillary losses, "
-        "typically about 2 % of the IT load — is not included.",
-        "Containment is modelled as perfect. Real containment leaks, and the "
-        "leak is what decides the top-of-rack temperature in a marginal design.",
-        "A conceptual-design mesh. One rack per cell in plan: trust the ranking "
-        "of racks and the hall-scale fields, not a single rack's intake to "
-        "better than 1 to 2 K.",
-        "No comparison against measurement. Every validation in section 4.1 is "
-        "an identity the physics must satisfy. That class of check catches wrong "
-        "models; it cannot promise the built room behaves this way.",
-    ]
+    # WHAT IS STILL TRUE OF THIS RUN, not what was true when the list was
+    # written. "One load per rack" stayed on it for as long as the per-position
+    # load map, the blanking panel and the zero-load cabinet had been shipping,
+    # so the report told an engineer their layout was not represented while the
+    # solver was using it. A limitation that describes the code has to be asked
+    # of the code (ADR-089).
+    limits += _model_limits(export)
+    across, through, _tall = _cells_per_rack(export)
+    plan_cells = min(across, through)
+    if plan_cells < 4:
+        limits.append(
+            f"A conceptual-design mesh: {_cells(plan_cells)} across a cabinet "
+            "in plan. "
+            "Trust the ranking of racks and the hall-scale fields, not a single "
+            "rack's intake to better than "
+            + ("1 to 2 K." if plan_cells < 2 else "about 1 K.")
+        )
     _bullets(doc, limits)
     _para(doc,
           "The case specification, the generated OpenFOAM case, the solver log "

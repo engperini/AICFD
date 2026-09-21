@@ -714,3 +714,181 @@ def capacity(export: Export, out: Path) -> Path | None:
     fig.savefig(out, dpi=DPI, bbox_inches="tight")
     plt.close(fig)
     return out
+
+
+# --- the geometry drawings ----------------------------------------------------
+#
+# The temperature maps show a RESULT. These show the ROOM: what was modelled,
+# dimensioned, before any field is quoted. A reader checking a study against a
+# layout drawing has to be able to measure the model, and a reader checking
+# which cabinet is which has to be able to read its name off the plan.
+
+#: Each distinct part is dimensioned ONCE, where it first occurs. A hall
+#: repeats -- four pods, sixteen rows, the same aisle between each pair -- and
+#: dimensioning every instance puts seventeen figures down one margin and says
+#: nothing the first four do not (ADR-086).
+def _bands(model: dict, axis: int) -> list[tuple[float, float, str]]:
+    seen, out = set(), []
+
+    def add(lo, hi, label):
+        key = f"{label}|{hi - lo:.2f}"
+        if hi - lo >= 0.05 and key not in seen:
+            seen.add(key)
+            out.append((lo, hi, label))
+
+    if axis == 0:
+        for g in model.get("galleries") or []:
+            add(g["lo"][0], g["hi"][0], "gallery")
+        supply = [p for p in model.get("panels", [])
+                  if p["name"].startswith("supply_mesh")]
+        if supply:
+            wall = (model.get("galleries") or [{}])[0].get("hi", [0])[0]
+            add(min(wall, supply[0]["position"]), max(wall, supply[0]["position"]),
+                "supply plenum")
+        blocks = model.get("blocks") or []
+        for lo, hi in blocks:
+            add(lo, hi, "row")
+        for i in range(1, len(blocks)):
+            add(blocks[i - 1][1], blocks[i][0], "cross aisle")
+    else:
+        for row in model.get("rows") or []:
+            add(row["band"][0], row["band"][1], "row")
+        for lo, hi in model.get("hot_aisles") or []:
+            add(lo, hi, "hot aisle")
+        for lo, hi in model.get("cold_aisles") or []:
+            add(lo, hi, "cold aisle")
+        fan = next((p for p in model.get("panels", []) if p["kind"] == "fan"), None)
+        if fan:
+            add(fan["extent"][0][0], fan["extent"][0][1], "fan wall")
+    return sorted(out, key=lambda b: (b[0], b[1]))
+
+
+def _lanes(bands, stack=False):
+    """Which lane each band goes in: the first it does not collide in.
+
+    Two dimensions that overlap along the axis cannot share a line, and two
+    that do not overlap should, or a chain of five parts becomes five lines.
+    """
+    lanes: list[list[tuple[float, float]]] = []
+    out = []
+    for lo, hi, label in bands:
+        if stack:
+            # ONE LANE EACH. A chain across the room's width dimensions bands
+            # that TILE it -- cold aisle, row, hot aisle, row -- so none of
+            # them overlaps and the packing would put them all on one line.
+            # Their text runs along the band and overhangs it, so a 1,2 m row
+            # prints over both its neighbours (ADR-086).
+            out.append((lo, hi, label, len(lanes)))
+            lanes.append([(lo, hi)])
+            continue
+        for i, taken in enumerate(lanes):
+            if all(hi <= a + 1e-6 or lo >= b - 1e-6 for a, b in taken):
+                taken.append((lo, hi))
+                out.append((lo, hi, label, i))
+                break
+        else:
+            lanes.append([(lo, hi)])
+            out.append((lo, hi, label, len(lanes) - 1))
+    return out, len(lanes)
+
+
+def _chain(ax, placed, origin, pitch, horizontal):
+    """A dimension chain outside the geometry, growing away from it."""
+    for lo, hi, label, lane in placed:
+        at = origin - pitch * lane
+        mid = (lo + hi) / 2
+        line = dict(color=MUTED, linewidth=0.6, clip_on=False)
+        tick = pitch * 0.14
+        if horizontal:
+            ax.plot([lo, hi], [at, at], **line)
+            for x in (lo, hi):
+                ax.plot([x, x], [at - tick, at + tick], **line)
+            ax.text(mid, at + tick * 1.4, f"{hi - lo:.2f}", ha="center",
+                    va="bottom", fontsize=5.5, color=MUTED, clip_on=False)
+            ax.text(mid, at - tick * 1.4, label, ha="center", va="top",
+                    fontsize=5, color=MUTED, clip_on=False)
+        else:
+            ax.plot([at, at], [lo, hi], **line)
+            for y in (lo, hi):
+                ax.plot([at - tick, at + tick], [y, y], **line)
+            # Value and name on ONE rotated line: a 1,2 m row on a hall's
+            # scale is shorter than the words describing it, so two lines
+            # collide with each other and with the neighbouring lane.
+            # `rotation_mode="anchor"` so the alignment applies in the
+            # ROTATED frame. Without it every lane's text anchored to almost
+            # the same x and the chain printed on top of itself.
+            ax.text(at - tick * 1.6, mid, f"{hi - lo:.2f}  {label}",
+                    ha="center", va="center", rotation=90,
+                    rotation_mode="anchor", fontsize=5.5, color=MUTED,
+                    clip_on=False)
+
+
+def geometry(export: Export, out: Path, axis: int, title: str,
+             zoom: tuple[float, float, float, float] | None = None) -> Path:
+    """The room as modelled, dimensioned. ``axis`` is the view's normal.
+
+    With ``zoom`` -- a window ``(h0, h1, v0, v1)`` in the view's own axes --
+    the same plan is drawn over that window only and every cabinet carries its
+    name and its load. The window is cut on BOTH axes: four metres of row
+    across the full width of a hall is a strip 4 by 31 m, and the names in it
+    come out smaller than the lines of the drawing.
+    """
+    plt = _pyplot()
+    model = export.model
+    h, v = [(1, 2), (0, 2), (0, 1)][axis]
+    lo_h, hi_h, lo_v, hi_v = (zoom or (0.0, export.size[h], 0.0, export.size[v]))
+    rise = hi_v - lo_v
+    span = hi_h - lo_h
+    fig, ax = plt.subplots(figsize=(7.2, max(2.0, min(7.0, 7.2 * rise / span + 0.9))))
+
+    for box, colour in ((model["hall"], INK),
+                        *[(g, MUTED) for g in model.get("galleries") or []]):
+        _outline(ax, box["lo"], box["hi"], h, v, edgecolor=colour, linewidth=0.8)
+    for rack in export.racks:
+        _outline(ax, rack["lo"], rack["hi"], h, v, edgecolor=RACK_EDGE,
+                 linewidth=0.35)
+    for panel in export.panels("containment_wall", "containment_roofwall",
+                               "containment_door", "blank"):
+        ax.plot([panel["lo"][h], panel["hi"][h]], [panel["lo"][v], panel["hi"][v]],
+                color=CONTAINMENT, linewidth=0.9)
+    for panel in export.panels("fan"):
+        _outline(ax, panel["lo"], panel["hi"], h, v, edgecolor=FAN, linewidth=1.2)
+    for panel in export.panels("grille", "supply_mesh", "plenum_opening", "tile_"):
+        # A rectangle, not a line from one corner to the other: a z-normal
+        # grille seen in plan IS a rectangle, and the diagonal it was drawn as
+        # crossed the whole aisle.
+        _outline(ax, panel["lo"], panel["hi"], h, v, edgecolor=FAN,
+                 linewidth=0.6, linestyle=(0, (3, 2)))
+
+    if zoom is not None:
+        for rack in export.racks:
+            x0, x1 = rack["lo"][h], rack["hi"][h]
+            y0, y1 = rack["lo"][v], rack["hi"][v]
+            if x1 <= lo_h or x0 >= hi_h or y1 <= lo_v or y0 >= hi_v:
+                continue
+            ax.text((x0 + x1) / 2, (y0 + y1) / 2,
+                    f"{rack['name']}\n{rack.get('load_w', 0) / 1000:g} kW",
+                    ha="center", va="center", fontsize=5.5, color=INK,
+                    rotation=90 if (y1 - y0) > (x1 - x0) else 0, linespacing=1.5)
+        ax.set_xlim(lo_h, hi_h)
+        ax.set_ylim(lo_v, hi_v)
+    else:
+        pitch = max(rise, span) * 0.05
+        below, n_below = _lanes(_bands(model, h))
+        beside, n_beside = _lanes(_bands(model, v), stack=True)
+        # The vertical chain's lanes need more room than the horizontal
+        # ones: its text is rotated, so a lane's width is a line of type
+        # rather than its height.
+        wide = pitch * 1.8
+        _chain(ax, below, -pitch * 1.2, pitch, True)
+        _chain(ax, beside, -wide * 1.1, wide, False)
+        ax.set_xlim(-wide * (1.1 + n_beside), hi_h + pitch * 0.4)
+        ax.set_ylim(-pitch * (1.9 + n_below), hi_v + pitch * 0.4)
+
+    ax.set_aspect("equal")
+    ax.axis("off")
+    ax.set_title(title, loc="left", fontsize=8, color=INK)
+    fig.tight_layout()
+    fig.savefig(out, dpi=220)
+    plt.close(fig)
+    return out

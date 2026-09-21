@@ -186,12 +186,43 @@ class DocumentTest(unittest.TestCase):
         self.assertIn(warmest["name"], self.text)
 
     def test_the_limits_are_in_the_document_not_only_in_the_readme(self):
-        """A report circulated without its limits is over-read. These are
-        where the model represents the room differently from the room."""
-        for phrase in ("One load per rack", "conceptual-design mesh",
-                       "Containment is modelled as perfect",
-                       "No comparison against measurement"):
-            self.assertIn(phrase, self.text)
+        """A report circulated without its limits is over-read."""
+        limits = self.text[self.text.index("6  Limitations"):]
+        self.assertIn("Containment is modelled as perfect", limits)
+        self.assertIn("PDU", limits)
+
+    def test_a_limitation_is_asked_of_the_code_not_of_a_memory(self):
+        """The list said "One load per rack. Unloaded positions and a real
+        per-rack load map are not represented" for as long as ADR-054 had been
+        shipping the load map, ADR-074 the blanking panel and ADR-054 the
+        zero-load cabinet -- so the report told an engineer their layout was
+        not represented while the solver was using it (ADR-089).
+
+        These two are gone for good: one because it is false, one because
+        "this is a simulation" is not a finding of this study."""
+        limits = self.text[self.text.index("6  Limitations"):]
+        for phrase in ("One load per rack", "No comparison against measurement"):
+            self.assertNotIn(phrase, limits)
+
+    def test_the_containment_limit_is_there_because_the_library_says_so(self):
+        """Not because somebody wrote it down once: it is printed while the
+        panel's leakage is unread by the solver, and would go when it is."""
+        from aicfd import components
+        limits = self.text[self.text.index("6  Limitations"):]
+        self.assertEqual(
+            "Containment is modelled as perfect" in limits,
+            not components.load("containment-panel").applied,
+        )
+
+    def test_the_mesh_limit_follows_the_mesh(self):
+        """A fine mesh must not be called a conceptual-design mesh."""
+        import json
+        payload = json.loads((RESULT / "viewer.json").read_text())
+        cell = payload["model"]["cell_size"]
+        rack = payload["model"]["racks"][0]
+        plan = min((rack["hi"][a] - rack["lo"][a]) / cell[a] for a in (0, 1))
+        limits = self.text[self.text.index("6  Limitations"):]
+        self.assertEqual("conceptual-design mesh" in limits, plan < 4)
 
     def test_the_limits_leave_out_what_is_true_of_every_cfd_study(self):
         """Numerical uncertainty and a single modelled scenario are properties
@@ -502,3 +533,40 @@ class FixedIntroductionTest(unittest.TestCase):
                 self.assertIn(line.strip(), section + "\n" + "\n".join(
                     c.text for t in document.tables for r in t.rows for c in r.cells
                 ))
+
+
+@unittest.skipUnless(HAVE_EXTRAS, "python-docx and matplotlib are not installed")
+class EveryResultProducesAReportTest(unittest.TestCase):
+    """The report generator is emitted for whatever the engineer already has.
+
+    A result is written once and read for years. An export from an earlier
+    version carries an earlier payload, and a report that raises on a field it
+    does not find cannot be produced for a study somebody is holding -- which
+    is the one thing a report generator must never do. Two stored halls did
+    exactly that: their coil payload predates `design_return_c` and the
+    section indexed it rather than asking for it (ADR-089).
+
+    This walks every tracked result there is. It is the consistency check the
+    deliverable needs: whatever combination of inputs a case used -- a raised
+    floor, a supply plenum, a mesh leaf, networked units, a typical row with
+    blanks -- the document comes out.
+    """
+
+    REPO = Path(__file__).resolve().parents[1]
+
+    def results(self):
+        for folder in ("reference", "results"):
+            for path in sorted((self.REPO / folder).glob("*/viewer.json")):
+                yield path.parent
+
+    def test_every_tracked_result_builds_a_document(self):
+        from aicfd.report import build
+
+        found = list(self.results())
+        self.assertTrue(found, "no tracked results to check")
+        with tempfile.TemporaryDirectory() as tmp:
+            for result in found:
+                with self.subTest(result=result.name):
+                    out = build(result, Path(tmp) / f"{result.name}.docx")
+                    self.assertTrue(out.exists())
+                    self.assertGreater(out.stat().st_size, 20_000)
