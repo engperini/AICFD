@@ -1700,6 +1700,36 @@ CAGE_SIDES = {
 }
 
 
+def _cage_boundaries(spec: dict, pods: int) -> list[int]:
+    """The pod boundaries a cage wall stands in, as indices into the chain.
+
+    Boundary k is the cold aisle between pod k+1 and pod k+2. A cage over pods
+    2 and 3 of seven divides the hall twice -- before pod 2 and after pod 3 --
+    and both aisles carry a wall, so both are the ones `cage.aisle` widens.
+
+    Empty unless the case states `cage.aisle`: without it every boundary is
+    `aisles.cold` and the hall is the hall it always was.
+    """
+    cage = spec.get("cage") or {}
+    if not cage.get("enabled") or cage.get("aisle") is None:
+        return []
+    inside = cage.get("pods") or list(range(1, pods + 1))
+    try:
+        first, last = min(int(p) for p in inside), max(int(p) for p in inside)
+    except (TypeError, ValueError):
+        return []  # cage_for refuses it by name; do not fail here as well
+    sides = cage.get("sides")
+    out = []
+    # The boundary BELOW the first enclosed pod, and ABOVE the last. Either is
+    # a wall only where there is a pod on the other side of it: at the end of
+    # the hall the room closes the cage instead.
+    if first > 1 and (sides is None or "left" in sides):
+        out.append(first - 2)
+    if last < pods and (sides is None or "right" in sides):
+        out.append(last - 1)
+    return [k for k in out if 0 <= k < pods - 1]
+
+
 def cage_for(spec: dict) -> dict | None:
     """The customer cage this case has, or None where it has none (ADR-096).
 
@@ -1752,6 +1782,15 @@ def cage_for(spec: dict) -> dict | None:
                 f"cage.pods: {pods} is not contiguous. A cage is one "
                 "rectangle, so the pods inside it have to be neighbours"
             )
+    aisle = raw.get("aisle")
+    if aisle is not None:
+        aisle = float(aisle)
+        if not 0.6 <= aisle <= 10.0:
+            raise ValueError(
+                f"cage.aisle: {num(aisle)} m is outside 0.6-10 m. It is the "
+                "cold aisle the cage wall stands in, which both the row "
+                "inside the cage and the row outside it breathe from"
+            )
     sides = raw.get("sides")
     if sides is not None:
         sides = [str(s).strip().lower() for s in sides]
@@ -1768,6 +1807,7 @@ def cage_for(spec: dict) -> dict | None:
         "roof": bool(raw.get("roof", False)),
         "pods": pods,
         "sides": sides,
+        "aisle": aisle,
     }
 
 
@@ -1888,6 +1928,42 @@ def _cage_panels(model: "Model", cage: dict, spec: dict,
                     f"cage with `cage.pods`"
                 )
 
+    # WHAT THE WALL LEAVES THE ROWS EITHER SIDE OF IT. A cage boundary stands
+    # in a cold aisle that the row inside the cage and the row outside it BOTH
+    # breathe from, so it halves that aisle -- and 0,60 m of cold aisle in
+    # front of a row of cabinets is a different room from 1,20 m. Nothing said
+    # so: the case built, meshed, and the first thing to notice was a drawing
+    # (ADR-099). Said here, with both gaps and the key that widens the aisle.
+    for name in wanted:
+        axis, at, _span = plan[name]
+        if axis != 1:
+            continue
+        near = _rows_beside(model, at)
+        if len(near) < 2:
+            continue
+        (below, gap_below), (above, gap_above) = near
+        # ONLY WHEN IT COSTS A ROW SOMETHING. A wall in an aisle wide enough
+        # to hold it leaves both rows the cold aisle the hall was drawn with,
+        # and there is nothing to report; saying it anyway would be one more
+        # paragraph on every run, which is the fault this repository has
+        # already had to undo once (ADR-098).
+        drawn = float((spec.get("aisles") or {}).get("cold", 0.0))
+        starved = [(row, gap) for row, gap in
+                   ((below, gap_below), (above, gap_above))
+                   if gap < drawn - 1e-6]
+        if not starved:
+            continue
+        notes.append(
+            f"cage {name} wall: it stands in the {num(gap_below + gap_above)} m "
+            f"cold aisle between rows {below} and {above}, leaving "
+            f"{num(gap_below)} m to {below} and {num(gap_above)} m to {above} "
+            f"where `aisles.cold` draws {num(drawn)} m. "
+            + ", ".join(f"{row} breathes through {num(gap)} m"
+                        for row, gap in starved)
+            + ". Widen that aisle with `cage.aisle`, or move the wall with "
+            "`cage.clearance`."
+        )
+
     kind = "wall" if cage["construction"] == "drywall" else "opening"
     k = cage_k(spec) if kind == "opening" else None
     panels = [
@@ -1928,6 +2004,29 @@ def _cage_panels(model: "Model", cage: dict, spec: dict,
             "and is not modelled yet"
         )
     return panels
+
+
+def _rows_beside(model: "Model", at: float) -> list:
+    """The row below a y plane and the row above it, with the gap to each.
+
+    Only the rows that FACE the plane count: a row's back is its hot aisle
+    side and a wall there costs it nothing, while a wall in front of it is
+    the aisle it draws through.
+    """
+    below = above = None
+    for row in model.rows:
+        lo = min(r.box.lo[1] for r in row.racks)
+        hi = max(r.box.hi[1] for r in row.racks)
+        face = hi if row.front_sign < 0 else lo
+        if hi <= at + 1e-6 and face >= hi - 1e-6:
+            if below is None or face > below[1]:
+                below = (row.id, face)
+        if lo >= at - 1e-6 and face <= lo + 1e-6:
+            if above is None or face < above[1]:
+                above = (row.id, face)
+    if below is None or above is None:
+        return []
+    return [(below[0], at - below[1]), (above[0], above[1] - at)]
 
 
 def _cage_racks(model: "Model", cage: dict) -> list:
@@ -2646,7 +2745,16 @@ def _hall_layout(spec: dict, cell, rack_spec: dict | None = None) -> _Layout:
     plenum_depth = plenum["depth"] if plenum else 0.0
     hall_length = perimeter + row_length + perimeter + sides * plenum_depth
     total_x = sides * gallery_depth + hall_length
-    width = 2 * perimeter + pods * (2 * rack_dy + hot) + (pods - 1) * cold
+    # THE AISLE AT EACH POD BOUNDARY. Every one of them is `aisles.cold`,
+    # except the one or two a cage wall stands in: a wall down the middle of a
+    # cold aisle halves it for the rows on BOTH sides, and a 1,20 m aisle
+    # split two ways is 0,60 m of cold aisle in front of a row of cabinets,
+    # which is a different room (ADR-099). `cage.aisle` widens those, and
+    # those only, so the rest of the hall keeps the aisle it was drawn with.
+    boundaries = [cold] * max(0, pods - 1)
+    for k in _cage_boundaries(spec, pods):
+        boundaries[k] = on_grid(float((spec.get("cage") or {})["aisle"]), 1)
+    width = 2 * perimeter + pods * (2 * rack_dy + hot) + sum(boundaries)
     domain = Box((0.0, 0.0, 0.0), (total_x, width, height))
     hall = Box((gallery_depth, 0.0, 0.0), (gallery_depth + hall_length, width, height))
     galleries = [Box((0.0, 0.0, 0.0), (gallery_depth, width, height))]
@@ -2715,8 +2823,8 @@ def _hall_layout(spec: dict, cell, rack_spec: dict | None = None) -> _Layout:
             )
         y = b[1]
         if k < pods - 1:
-            cold_aisles.append((y, y + cold))
-            y += cold
+            cold_aisles.append((y, y + boundaries[k]))
+            y += boundaries[k]
     cold_aisles.append((width - perimeter, width))
 
     fan = spec["fanwall"]

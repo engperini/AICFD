@@ -208,6 +208,116 @@ class PlacementTest(unittest.TestCase):
         self.assertIn("cage.sides", str(caught.exception))
 
 
+class BoundaryAisleTest(unittest.TestCase):
+    """A cage wall stands in a cold aisle that BOTH sides breathe from.
+
+    The row inside the cage and the row outside it face the same aisle, so a
+    wall down the middle of it halves the aisle for each. At the hall's own
+    1,20 m that is 0,60 m of cold aisle in front of a row of cabinets, which
+    is a different room -- and nothing said so: the case built, meshed, and
+    the first thing to notice was somebody looking at the drawing (ADR-099).
+
+    `cage.aisle` widens the aisles a cage wall stands in, and only those:
+    `aisles.cold` still draws every other one. `cage.clearance` then says
+    where in that aisle the wall sits.
+    """
+
+    def hall(self, **cage) -> dict:
+        spec = yaml.safe_load(
+            (support.REPO / "cases" / "hall-double-gallery.yaml").read_text())
+        spec["pods"] = 4
+        spec["racks"]["blocks"] = 1
+        spec["fanwall"]["count"] = 8
+        spec["cage"] = {"enabled": True, "construction": "mesh",
+                        "pods": [1, 2], "sides": ["right"], **cage}
+        return spec
+
+    def gaps(self, **cage) -> tuple:
+        built = m.build_model(self.hall(**cage))
+        wall = next(p for p in built.panels if p.name == "cage_right")
+        rows = {row.id: row for row in built.rows}
+        inside = max(r.box.hi[1] for r in rows["F4"].racks)
+        outside = min(r.box.lo[1] for r in rows["F5"].racks)
+        return round(wall.position - inside, 6), round(outside - wall.position, 6)
+
+    def test_without_it_the_wall_halves_the_hall_s_own_aisle(self):
+        cold = yaml.safe_load(
+            (support.REPO / "cases" / "hall-double-gallery.yaml").read_text()
+        )["aisles"]["cold"]
+        inside, outside = self.gaps(clearance=cold / 2)
+        self.assertAlmostEqual(inside + outside, cold, places=6)
+
+    def test_it_widens_only_the_aisle_the_wall_stands_in(self):
+        narrow = m.build_model(self.hall(clearance=1.2))
+        wide = m.build_model(self.hall(clearance=1.2, aisle=4.2))
+        grew = wide.domain.hi[1] - narrow.domain.hi[1]
+        cold = narrow.cold_aisles
+        self.assertGreater(grew, 0, "a wider boundary aisle makes a wider hall")
+        # Exactly ONE aisle changed, so the hall grew by exactly its increase.
+        self.assertAlmostEqual(
+            grew, 4.2 - float(self.hall()["aisles"]["cold"]), places=6,
+            msg="every other cold aisle has to stay as `aisles.cold` drew it")
+        self.assertEqual(len(wide.cold_aisles), len(cold))
+
+    def test_the_clearance_positions_the_wall_inside_it(self):
+        centred = self.gaps(aisle=4.2, clearance=2.1)
+        self.assertAlmostEqual(centred[0], 2.1, places=6)
+        self.assertAlmostEqual(centred[1], 2.1, places=6)
+        offset = self.gaps(aisle=4.2, clearance=3.0)
+        self.assertAlmostEqual(offset[0], 3.0, places=6)
+        self.assertAlmostEqual(offset[1], 1.2, places=6)
+
+    def test_a_cage_in_the_middle_of_the_hall_widens_both_boundaries(self):
+        spec = self.hall(aisle=4.2)
+        spec["cage"]["pods"] = [2, 3]
+        spec["cage"].pop("sides")
+        narrow = dict(spec, cage=dict(spec["cage"]))
+        narrow["cage"].pop("aisle")
+        grew = (m.build_model(spec).domain.hi[1]
+                - m.build_model(narrow).domain.hi[1])
+        step = 4.2 - float(spec["aisles"]["cold"])
+        self.assertAlmostEqual(grew, 2 * step, places=6,
+                               msg="a cage between two pods divides the hall "
+                                   "twice, so two aisles carry a wall")
+
+    def test_an_aisle_outside_the_range_is_refused_by_name(self):
+        with self.assertRaises(ValueError) as caught:
+            m.build_model(self.hall(aisle=0.2))
+        self.assertIn("cage.aisle", str(caught.exception))
+
+
+class TheWallSaysWhatItCostsTest(unittest.TestCase):
+    """Said only when it costs a row something.
+
+    A wall in an aisle wide enough to hold it leaves both rows the cold aisle
+    the hall was drawn with, and there is nothing to report. Saying it anyway
+    would be one more paragraph on every run, which is a fault this repository
+    has already had to undo once (ADR-098).
+    """
+
+    def notes(self, **cage) -> list[str]:
+        spec = BoundaryAisleTest().hall(**cage)
+        return [w for w in m.build_model(spec).warnings if w.startswith("cage ")]
+
+    def test_a_halved_aisle_is_reported_with_both_gaps(self):
+        said = self.notes(clearance=1.2)
+        self.assertTrue(said, "a wall that halves a cold aisle said nothing")
+        self.assertIn("F4", said[0])
+        self.assertIn("F5", said[0])
+        self.assertIn("cage.aisle", said[0], "the note has to name the fix")
+
+    def test_an_aisle_that_holds_it_is_not_reported(self):
+        cold = float(BoundaryAisleTest().hall()["aisles"]["cold"])
+        self.assertEqual(self.notes(aisle=2 * cold, clearance=cold), [])
+
+    def test_only_the_starved_row_is_named_when_the_wall_is_off_centre(self):
+        cold = float(BoundaryAisleTest().hall()["aisles"]["cold"])
+        said = self.notes(aisle=3 * cold, clearance=6.9)
+        self.assertTrue(said)
+        self.assertIn("F5 breathes through", said[0])
+        self.assertNotIn("F4 breathes through", said[0])
+
+
 class ConstructionTest(unittest.TestCase):
     """Mesh is a resistance, drywall is a wall, and neither is both."""
 

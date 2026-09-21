@@ -287,8 +287,16 @@ class DerivationTest(unittest.TestCase):
                 hall_length = (2 * perimeter + row_length
                                + sides * (plenum["depth"] if plenum else 0.0))
                 total_x = sides * float(spec["gallery"]["depth"]) + hall_length
+                # Each pod boundary is `aisles.cold`, except the one or two
+                # a cage wall stands in, which `cage.aisle` widens so the rows
+                # either side keep an aisle to breathe from (ADR-099).
+                boundaries = [cold] * max(0, pods - 1)
+                cage = spec.get("cage") or {}
+                if cage.get("enabled") and cage.get("aisle") is not None:
+                    for k in model_module._cage_boundaries(spec, pods):
+                        boundaries[k] = on_grid(float(cage["aisle"]), 1)
                 total_y = (2 * perimeter + pods * (2 * rack_dy + hot)
-                           + (pods - 1) * cold)
+                           + sum(boundaries))
 
                 self.assertAlmostEqual(
                     total_x, built.domain.hi[0], places=6,

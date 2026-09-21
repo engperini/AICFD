@@ -149,13 +149,21 @@ cage:
                               # out. `drywall` is a solid partition -- switch
                               # this one word and run it again to see what the
                               # construction costs.
-  clearance: 0.6              # HALF the 1,20 m cold aisle between pod 2 and
-                              # pod 3, so the dividing wall stands down the
-                              # middle of it and neither side loses its aisle.
-                              # On the three sides the room closes, the
-                              # clearance does not apply: the rectangle is
-                              # clipped to the hall so the wall that IS built
-                              # runs wall to wall.
+  aisle: 2.4                  # THE COLD AISLE THE CAGE WALL STANDS IN. A wall
+                              # in an aisle halves it, and the row inside the
+                              # cage and the row outside BOTH breathe from it
+                              # -- so at the hall's own 1,20 m each of them
+                              # would be left 0,60 m of cold aisle, which is a
+                              # different room (ADR-099). 2,40 m here, so both
+                              # keep a full 1,20 m. Only this aisle changes;
+                              # the other six stay as `aisles.cold` drew them.
+  clearance: 1.2              # WHERE the wall sits in that aisle, measured
+                              # from the enclosed rows' faces. 1,20 m of 2,40
+                              # centres it; raise it to give the cage more and
+                              # the hall less.
+                              # On the three sides the room closes, neither
+                              # applies: the rectangle is clipped to the hall
+                              # so the wall that IS built runs wall to wall.
                               # A free-standing cage in the middle of a room
                               # uses the clearance on all four sides instead:
                               # leave `cage.sides` out and set it to the gap
