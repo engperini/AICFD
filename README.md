@@ -361,6 +361,11 @@ tests/         the unit tests, no OpenFOAM required
   wall that let air blow backwards, the rack row that delivered a fifth of its
   rated resistance because three of its faces were open, the 10 MW hall whose
   first rack in every row is starved by the aisle mouth.
+- **`docs/CASE-AUTHORING.md`** is the procedure for the other direction: a real
+  project — drawings, a mechanical specification, a fan wall selection, a rack
+  schedule — turned into one case file. Written for an agent doing that work,
+  and held to the code by a test, because a stale manual is worse than none
+  when the reader cannot tell (ADR-090).
 - **`.claude/skills/aicfd/SKILL.md`** is the same knowledge shaped for an AI
   agent driving the tool.
 

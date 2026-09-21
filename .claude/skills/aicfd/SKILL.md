@@ -11,6 +11,16 @@ states a number the tool did not produce.
 
 Start by reading `README.md` if you have not: it is the method in one page.
 
+**Filling a case from a real project — drawings, a PDF specification, a fan
+wall selection, a rack schedule — has its own manual: `docs/CASE-AUTHORING.md`.
+Read it before writing a case file from project documents.** It carries what
+the code cannot tell you: which numbers are derived rather than stated (a
+hall's length and width are, and `hall.size` on a hall is silently ignored),
+where each value comes from in the source documents, how to reconcile a derived
+geometry against a measured building, and what each FAIL says about the inputs
+rather than about the solver. It is held to the code by a test, so it is
+current (ADR-090).
+
 ## The loop
 
 ```

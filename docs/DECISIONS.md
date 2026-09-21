@@ -3808,3 +3808,59 @@ tracked result and builds it. That costs about eighty seconds of the suite,
 and it is the guarantee the deliverable needs: whatever the case used -- a
 raised floor, a supply plenum, a mesh leaf, networked units, a typical row
 with blanks -- the document comes out.
+
+---
+
+## ADR-090 — A case is authored from documents, and the manual for it is tested
+
+**Decision.** `docs/CASE-AUTHORING.md` is the procedure for turning a real
+project — drawings, a mechanical specification, a fan wall selection, a rack
+schedule — into one `cases/<name>.yaml`. It is written for an agent doing that
+work, and `tests/test_case_authoring.py` holds it to the code: every key it
+documents is one the software reads, every key the software offers is
+documented, the ranges match, the check names match, its YAML fragments parse
+and are accepted by the readers they demonstrate, and every library file it
+names exists.
+
+**Why the manual.** The schema is small and the translation is not. A case
+whose numbers are all plausible, all in range and all from the wrong document
+builds a clean mesh, solves, passes twelve checks and answers a question about
+a building that does not exist. Nothing downstream can catch that, because
+every stage after the spec is faithful to the spec. The only place it can be
+caught is where the number is read off the document, so that is where the
+guidance has to be — and it has to say which document, not just which key.
+
+Three things the manual carries that no amount of reading the code supplies:
+
+- **what is derived rather than stated.** A hall's length and width are a chain
+  of clearances, rack widths and pod counts; `hall.size` on a case with `pods:`
+  is silently ignored. An author who does not know that types a size, sees a
+  hall of another size, and has no way to connect the two. The manual gives the
+  arithmetic in both directions, because reading it backwards is how a measured
+  building becomes inputs.
+- **the three kinds of number.** Measured, selected, or assumed — and the
+  comment says which. This is the repository's existing practice, visible in
+  every shipped case, and it was nowhere written down.
+- **what a FAIL says about the inputs.** The checks test the model, so a red
+  `rack_resistance` is usually a surface that was never built rather than a bad
+  solve. An author who reads it as a solver problem tunes the solver.
+
+**Why it is tested rather than maintained by hand.** A human reading a stale
+manual notices: the key is not in the file they are editing, the range does not
+match the error they just got, and they go and look. An agent has nothing to
+check it against. It writes what the manual said, the build refuses the case,
+and the repository has instructed it to do the wrong thing. That is worse than
+shipping no manual, and it is the failure mode of every agent-facing document
+that is not executable.
+
+So the manual's reference tables are machine-readable — a row is a backticked
+dotted path, a type, a range and a source — and the test parses them. A key
+added to `EDITABLE` fails the suite until it is documented; a key retired from
+the software fails it until the row goes. The prose is not parsed, so the test
+is about facts and never about wording.
+
+**Consequence.** The list of keys the page does not offer — rack types, the
+per-position overrides, the fan curve, the coupling controls — lives in the
+test as `BEYOND_THE_FORM`, and that list can rot like any other (ADR-056,
+ADR-084). A further check reads `aicfd/` and fails when a name on it is no
+longer read anywhere, so the escape hatch cannot quietly become the stale part.
