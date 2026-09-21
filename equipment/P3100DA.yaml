@@ -1,14 +1,20 @@
 # Emerson (Vertiv) Liebert P3100DA + ACV16106 -- DOWNFLOW DX CRAC.
 #
-# NOT DECLARED IN `equipment.SHIPPED`, and the reason is one field: the data
-# sheet states no EXTERNAL STATIC PRESSURE. Every unit this repository
-# guarantees has to state what a report will quote, and the ESP is one of
-# those (ADR-071) -- four sheets have been turned away on checks like it and
-# sent back to their vendor instead. So this unit is carried as a PROJECT
-# unit: usable in a case today, and declarable the moment Emerson supplies
-# the ESP at 27.500 m3/h.
+# NOT DECLARED IN `equipment.SHIPPED`, and the reason is still ONE field.
+# Neither the manufacturer's data sheet nor the project's AS-BUILT equipment
+# schedule states an EXTERNAL STATIC PRESSURE -- and the as-built is the more
+# complete of the two, carrying the filter, the refrigerant and the fan
+# options this sheet leaves out. Every unit this repository guarantees has to
+# state what a report will quote, and the ESP is one of those (ADR-071); four
+# sheets have been turned away on checks like it and sent back to their vendor
+# instead. So this stays a PROJECT unit: usable in a case today, and
+# declarable the moment the ESP at 27.500 m3/h is in hand.
 #
-# NOT CHILLED WATER. Direct expansion, two scroll compressors on R407-C and a
+# For a DOWNFLOW unit that is not a formality. Its external static is what it
+# has left to push air the length of an under-floor plenum, and it is what
+# decides whether the plates furthest from the machine deliver anything.
+#
+# NOT CHILLED WATER. Direct expansion, two scroll compressors on R410A and a
 # remote air-cooled condenser, so its capacity follows the refrigerant
 # circuit, the compressors' staging and the outdoor air the condenser rejects
 # into. The coil this software fits is a chilled-water one and there is no
@@ -21,11 +27,26 @@
 # inter-floor plenum, so a case naming it needs `floor.enabled: true`
 # (`arrangement: downflow`, ADR-072, ADR-076).
 #
-# SOURCE: the manufacturer's unit data sheet, Emerson Network Power do Brasil,
-# April 2017, held with the project this unit was entered for -- every number
-# below is off it. The arrangement (self-contained, down flow into an
-# inter-floor plenum, ceiling return) is from that project's mechanical
-# descriptive memorial.
+# SOURCES, both held with the project this unit was entered for:
+#
+#   the manufacturer's unit data sheet, Emerson Network Power do Brasil,
+#   April 2017 -- the capacity, the flow, the dimensions and the selection
+#   conditions;
+#
+#   the project's AS-BUILT equipment schedule (mechanical as-built, June
+#   2020) -- the refrigerant, the filter, the fan power options and the
+#   installed quantity. Where the two differ the as-built wins, because it
+#   says what was fitted rather than what was offered.
+#
+# THE REFRIGERANT WAS WRONG HERE AND THE AS-BUILT CORRECTED IT. This file
+# first said R407-C, which is what the project's descriptive SPECIFICATION
+# asks for in general terms; the as-built schedule says R410A, which is what
+# is in the machine. A number from the plausible document rather than the
+# right one is the failure this repository's case-authoring manual is mostly
+# about, and it happened here.
+#
+# The arrangement (self-contained, down flow into an inter-floor plenum,
+# ceiling return) is from the project's mechanical descriptive memorial.
 #
 # The site, the client and the proposal number are deliberately not here. The
 # sheet is the manufacturer's confidential document; what this file needs is
@@ -39,6 +60,12 @@
 # Note which power nets the capacity: the EC FANS' 7,5 kW, not the 27,8 kW of
 # compressors. The compressor heat leaves the room through the refrigerant
 # and is rejected outdoors, so it never reaches this air (ADR-073).
+#
+# THE FANS HAVE TWO OPTIONS, and the as-built lists both: 7,50 kW standard
+# and 19,50 kW premium. This file is the STANDARD one, which is the fan the
+# 100,5 kW was selected with. A unit fitted with the premium fans puts 12 kW
+# more into the air it is cooling, so its NET sensible is lower at the same
+# gross -- enter it as a second unit rather than editing this one.
 model: P3100DA
 family: Emerson Liebert Self Contained Precision
 arrangement: downflow
@@ -53,7 +80,8 @@ weight_kg: 950
 fans:
   count: 3
   type: EC fan
-  # 7,5 kW in all, as 3 x 2,5 kW.
+  # 7,5 kW in all, as 3 x 2,5 kW -- the STANDARD option. The as-built also
+  # lists a 19,50 kW premium fan set for the same unit.
 
 selection:
   elevation_m: 25             # the sheet's stated altitude
@@ -66,6 +94,11 @@ selection:
   # that needs one states `fanwall.static_pressure_pa` itself meanwhile.
   test_method: ASHRAE 127-2007
   capacity_tolerance_pct: 5
+  refrigerant: R410A          # from the AS-BUILT schedule. The project's
+                              # descriptive specification asks for R407-C in
+                              # general terms; what was fitted is R410A.
+  filter: M5                  # as-built
+  power_supply: 460V/3ph/60Hz
 
 design:
   return_c: 30.0              # air the unit RECEIVES, dry bulb, at 30% RH
