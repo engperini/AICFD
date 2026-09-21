@@ -4267,3 +4267,49 @@ the capacity beside it came from somewhere a reader cannot check.
 **Consequence.** `cage.pods` and `cage.sides` are lists, and the page's field
 casters take scalars, so placement is a YAML edit until the cage group grows a
 control for it. The manual says so rather than leaving a reader to find out.
+
+---
+
+## ADR-100 — A cold aisle is closed with a lid, not a chimney
+
+**Decision.** `containment.aisle` is `hot` (the default, and what this tool has
+always built) or `cold`. They are different rooms and different geometry:
+
+| | what is built | the return grille | needs |
+|---|---|---|---|
+| `hot` | walls from the rack tops to the false ceiling, doors at each end — a chimney | at the top of the chimney | nothing |
+| `cold` | a lid over the cold aisle at rack height, doors up to it | over the **hot** aisle, now open to the room | a raised floor |
+
+**Why not the same shape.** Building the cold one as a chimney would join the
+cold aisle to the return plenum, which is the opposite of containing it. A
+cold aisle is capped: the cold air stays in it, the racks discharge into the
+room, and the ROOM is the hot volume — so the ceiling return grille belongs
+over the hot aisle, which is where this generator already put it. The one key
+carries the whole arrangement.
+
+**Why `cold` needs a raised floor.** A contained cold aisle is sealed by the
+rack rows, a lid and two doors. Its only way in is the floor. A supply blown
+into the room outside it cannot reach it, and the racks would draw from a
+closed box — so `cold` without `floor.enabled` is refused, naming both the
+reason and the two ways out.
+
+**THE LID WAS BUILT AND NOT MESHED, and that is the fourth time.** It was in
+the model, on the drawing, in the summary, and absent from `WALL_GROUPS`, so
+`createBaffles` never made it. Measured on the first run: the rows delivered
+**4%** of their rated resistance and the warmest rack inlet read **47.0 °C,
+outside every ASHRAE allowable envelope**. With the lid meshed, the same case
+gives 98% and 20.6 °C, inside the recommended envelope. The same fault took
+3.83 m³/s out of one blanking panel two months ago (ADR-081).
+
+Every time, the model was right and the generator's list of prefixes had not
+been told. A list is what goes stale, so the fifth name is not the fix:
+`tests/test_case_files.py` now checks the two against each other. Every panel
+the model builds must end up in a wall zone, in `porous()`, as a hole in a
+wall, or as a fan — over every shipped case, in both containment
+arrangements. Shown to fail on the lid with `WALL_GROUPS` as it was.
+
+**Consequence.** The summary row said "Hot aisle chimney" whatever the case
+closed, and quoted the ceiling height for a lid that stops at the racks. It
+follows the arrangement now, and `chimney_area` with it — for a lid the
+number is the thing's own footprint, because the air does not rise through a
+lid, it leaves sideways through the racks.

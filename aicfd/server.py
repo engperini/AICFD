@@ -115,6 +115,11 @@ EDITABLE = {
     "grille_free_area": (("grilles", "free_area"), float, (0.05, 1.0)),
     "grille_k": (("grilles", "loss_coefficient"), float, (0.0, 100.0)),
     "containment": (("containment", "enabled"), bool, None),
+    # WHICH aisle is closed. `hot` is the chimney to the ceiling this tool has
+    # always built; `cold` is a lid at rack height, the racks discharging into
+    # a hot room whose ceiling grille is over the hot aisle (ADR-100).
+    "containment_aisle": (("containment", "aisle"), "choice",
+                          model_module.CONTAINED_AISLES),
     # --- customer cage -------------------------------------------------------
     # A security boundary inside the hall, round one customer's rows. Which
     # way it is built is the answer, not a detail: drywall is a partition the

@@ -173,7 +173,14 @@ const SECTIONS = [
       { key: 'grille_size', label: 'Grille size', unit: 'm', step: 0.05 },
       { key: 'grille_count', label: 'Grilles', unit: '', step: 1 },
       { key: 'grille_coverage', label: 'Ceiling covered over each hot aisle', unit: '0-1', step: 0.05 },
-      { key: 'containment', label: 'Contain the hot aisle', check: true, optional: true },
+      { key: 'containment', label: 'Contain an aisle', check: true, optional: true },
+      // Two arrangements, not a degree of one. A hot aisle is walled from the
+      // rack tops to the ceiling with the return grille on top; a cold aisle
+      // is capped at rack height and the room around it is the hot one
+      // (ADR-100).
+      { key: 'containment_aisle', label: 'Which aisle', default: 'hot',
+        choices: [{ value: 'hot', label: 'Hot \u2014 a chimney up to the ceiling' },
+                  { value: 'cold', label: 'Cold \u2014 a lid at rack height, needs a raised floor' }] },
     ],
   },
   {

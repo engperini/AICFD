@@ -128,10 +128,22 @@ ends, it is `sides: 2`.
 so: they are two ways of getting the same air from the same units into the same
 aisles, and a case asking for both has not chosen.
 
-**Whether the hot aisle is contained.** `containment.enabled: true` builds the
-chimney from the rack tops to the false ceiling and the doors at each end. If
-the drawing shows a roof and doors over the hot aisle, it is true. An
-uncontained hot aisle is a different room thermally, not a small correction.
+**Which aisle is contained.** `containment.enabled: true` closes an aisle, and
+`containment.aisle` says which — they are two different rooms, not two names
+for one:
+
+| | what is built | where the return grille is | needs |
+|---|---|---|---|
+| **hot** (the default) | walls from the rack tops to the false ceiling, doors at each end: a chimney | at the top of the chimney | nothing |
+| **cold** | a lid over the cold aisle at rack height, doors up to it | over the **hot** aisle, which is now open to the room | a raised floor |
+
+With a cold aisle contained, the room itself is the hot volume. A sealed cold
+aisle's only way in is the floor, so `cold` without `floor.enabled` is refused:
+a supply blown into the room outside the aisle cannot reach it, and the racks
+would draw from a closed box.
+
+An uncontained aisle is a different room thermally again, not a small
+correction.
 
 **Whether a customer cage encloses the rows.** A cage is a security boundary
 inside the hall, and the two ways it is built are two different rooms:
@@ -264,6 +276,7 @@ or three.
 | `components.floor_tile` | str | | role `floor_tile` |
 | `components.gallery_mesh` | str | | role `gallery_mesh`: the mesh over the plenum opening, which every cubic metre passes through once (ADR-048) |
 | `containment.enabled` | bool | | §4 |
+| `containment.aisle` | `hot` or `cold` | | which aisle is closed. `hot` is a chimney from the rack tops to the false ceiling with the return grille on top; `cold` is a lid at rack height, the racks discharging into a hot room. Cold needs a raised floor — a sealed cold aisle's only way in is the floor (ADR-100) |
 | `cage.enabled` | bool | | §4 |
 | `cage.construction` | `mesh` or `drywall` | | §4. The answer, not a detail of the drawing |
 | `cage.clearance` | float | 0.1 to 10 | from the outermost cabinet faces to the cage wall. A side whose plane reaches the hall wall is **not built** — the room closes it — and the rectangle is clipped to the room so the walls that *are* built run wall to wall |

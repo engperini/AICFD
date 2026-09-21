@@ -222,6 +222,14 @@ WALL_GROUPS = (
     # cabinets passed, and the row delivered 54% of the resistance its curve
     # asks for (ADR-081).
     ("blank", "blank"),
+    # A COLD AISLE IS CLOSED BY A LID, normal to z, so it is a zone of its own
+    # -- a zone shares a normal. It was built in the model and absent from
+    # this tuple, so `createBaffles` never made it and the solver saw an open
+    # cold aisle: the rows delivered 4% of their rated resistance and the
+    # warmest intake read 47 degC. The FOURTH time a new panel was modelled
+    # and not meshed (ADR-081, ADR-100), and the last: `wall_plan` is now
+    # checked against every wall the model builds.
+    ("containment_lid", "containment_lid"),
     ("containment_wall", "containment_roofwall"),
     ("containment_wall", "containment_wall"),
     ("containment_door", "containment_door"),

@@ -467,3 +467,106 @@ class LibraryTest(unittest.TestCase):
 
 if __name__ == "__main__":
     unittest.main()
+
+
+class ColdAisleContainmentTest(unittest.TestCase):
+    """A contained COLD aisle is a lid, not a chimney.
+
+    Hot-aisle containment walls the aisle from the rack tops to the false
+    ceiling and puts the return grille at the top: everything the fan moves
+    rises through it and the room around is cold. Cold-aisle containment caps
+    the aisle at rack height instead. The racks discharge into the room, the
+    ROOM is hot, and the ceiling grille belongs over the hot aisle -- which is
+    where this generator already put it (ADR-100).
+
+    Building the cold one as a chimney would join the cold aisle to the return
+    plenum, which is the opposite of containing it.
+    """
+
+    def hall(self, aisle: str) -> dict:
+        spec = yaml.safe_load(
+            (support.REPO / "cases" / "hall-cage-1mw.yaml").read_text())
+        spec["containment"] = dict(spec.get("containment") or {},
+                                   enabled=True, aisle=aisle)
+        return spec
+
+    def panels(self, aisle: str, prefix: str) -> list:
+        built = m.build_model(self.hall(aisle))
+        return [p for p in built.panels if p.name.startswith(prefix)]
+
+    def test_a_hot_aisle_is_a_chimney_to_the_ceiling(self):
+        built = m.build_model(self.hall("hot"))
+        walls = [p for p in built.panels
+                 if p.name.startswith("containment_wall")]
+        self.assertTrue(walls)
+        for wall in walls:
+            with self.subTest(panel=wall.name):
+                self.assertEqual(wall.axis, 1, "a chimney wall is vertical")
+                self.assertAlmostEqual(wall.extent[1][1], built.ceiling_z)
+
+    def test_a_cold_aisle_is_a_lid_at_rack_height(self):
+        built = m.build_model(self.hall("cold"))
+        lids = [p for p in built.panels if p.name.startswith("containment_lid")]
+        self.assertTrue(lids, "a contained cold aisle has no lid")
+        for lid in lids:
+            with self.subTest(panel=lid.name):
+                self.assertEqual(lid.axis, 2, "a lid is horizontal")
+                self.assertAlmostEqual(lid.position, built.rack_height)
+                self.assertLess(lid.position, built.ceiling_z,
+                                "a lid to the ceiling is a chimney")
+        self.assertFalse([p for p in built.panels
+                          if p.name.startswith("containment_wall")],
+                         "a cold aisle's long sides are the rack rows")
+
+    def test_there_is_one_lid_over_every_cold_aisle(self):
+        built = m.build_model(self.hall("cold"))
+        lids = [p for p in built.panels if p.name.startswith("containment_lid")]
+        self.assertEqual(len(lids), len(built.cold_aisles))
+        covered = sorted(tuple(round(v, 6) for v in lid.extent[1]) for lid in lids)
+        drawn = sorted(tuple(round(v, 6) for v in band)
+                       for band in built.cold_aisles)
+        self.assertEqual(covered, drawn)
+
+    def test_the_ceiling_grilles_stay_over_the_hot_aisle(self):
+        """Which is what makes the arrangement work: the room is hot, so the
+        return is taken from the hot aisle whether it is contained or not."""
+        for aisle in ("hot", "cold"):
+            built = m.build_model(self.hall(aisle))
+            grilles = [p for p in built.panels if p.name.startswith("grille")]
+            with self.subTest(containment=aisle):
+                self.assertTrue(grilles)
+                for grille in grilles:
+                    self.assertIn(
+                        tuple(round(v, 6) for v in grille.extent[1]),
+                        {tuple(round(v, 6) for v in b) for b in built.hot_aisles})
+
+    def test_a_cold_aisle_with_no_way_in_is_refused(self):
+        """Sealed by the rack rows, a lid and two doors, the only way in is
+        the floor. A supply blown into the room outside it cannot reach it."""
+        spec = yaml.safe_load(
+            (support.REPO / "cases" / "hall-double-gallery.yaml").read_text())
+        spec["containment"] = {"enabled": True, "aisle": "cold"}
+        with self.assertRaises(ValueError) as caught:
+            m.build_model(spec)
+        said = str(caught.exception)
+        self.assertIn("containment.aisle", said)
+        self.assertIn("raised floor", said)
+
+    def test_an_aisle_that_is_neither_is_refused_by_name(self):
+        with self.assertRaises(ValueError) as caught:
+            m.build_model(self.hall("warm"))
+        self.assertIn("containment.aisle", str(caught.exception))
+
+    def test_the_summary_says_which_one_it_built(self):
+        rows = {r[0] for r in m.summary_rows(m.build_model(self.hall("cold")))}
+        self.assertTrue(any(r.startswith("Cold aisle lid") for r in rows), rows)
+        rows = {r[0] for r in m.summary_rows(m.build_model(self.hall("hot")))}
+        self.assertTrue(any(r.startswith("Hot aisle chimney") for r in rows), rows)
+
+    def test_containment_off_builds_neither(self):
+        spec = self.hall("cold")
+        spec["containment"]["enabled"] = False
+        built = m.build_model(spec)
+        self.assertIsNone(built.contained)
+        self.assertFalse([p for p in built.panels
+                          if p.name.startswith("containment")])

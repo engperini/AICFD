@@ -334,6 +334,14 @@ class Model:
     above it is unchanged and the building is taller by this (ADR-076)."""
     floor_tile_k: float | None = None
     """Loss coefficient of one perforated plate, on its gross face."""
+    contained: str | None = None
+    """Which aisle this case closes: `hot`, `cold`, or None for neither.
+
+    A HOT aisle is closed with a chimney from the rack tops to the false
+    ceiling and the return grille at the top of it; a COLD aisle with a lid at
+    rack height, the racks discharging into a hot room whose ceiling grille is
+    over the hot aisle. They are different rooms and the summary says which
+    (ADR-100)."""
     cage: str | None = None
     """How the customer cage round the rows is built -- `mesh` or `drywall`
     -- or None where the hall has no cage. The two are different rooms: a
@@ -603,17 +611,38 @@ class Model:
         return flow / panel.area
 
     @property
-    def chimney_area(self) -> float:
-        """Cross-section of the contained hot aisles together, normal to the rise.
+    def contained_aisles(self) -> list[tuple[float, float]]:
+        """The aisle bands this case closes -- hot or cold, whichever it is."""
+        if self.contained == "cold":
+            return list(self.cold_aisles)
+        return list(self.hot_aisles)
 
-        One chimney per hot aisle *per block*: a row cut by a transverse
-        divider has a separate contained volume either side of it, and the
-        gap between the blocks is not a chimney.
+    @property
+    def contained_aisle(self) -> tuple[float, float]:
+        bands = self.contained_aisles
+        return bands[0] if bands else (0.0, 0.0)
+
+    @property
+    def rack_height(self) -> float:
+        return max((r.box.hi[2] for r in self.racks), default=0.0)
+
+    @property
+    def chimney_area(self) -> float:
+        """Cross-section of the contained aisles together, normal to the flow.
+
+        One per contained aisle *per block*: a row cut by a transverse divider
+        has a separate contained volume either side of it, and the gap between
+        the blocks is not part of it.
+
+        For a HOT aisle that is the chimney the air rises through. For a COLD
+        one it is the lid's own footprint -- the air does not rise through a
+        lid, it leaves sideways through the racks, so the number means the
+        area of the thing rather than a flow path (ADR-100).
         """
         return sum(
             (bx1 - bx0) * (hi - lo)
             for bx0, bx1 in self.rack_blocks
-            for lo, hi in self.hot_aisles
+            for lo, hi in self.contained_aisles
         )
 
     @property
@@ -1338,6 +1367,7 @@ def build_model(spec: dict) -> Model:
     # After the floor, because a cage stands ON the finished floor and its
     # walls run from the deck up; before the snap, because its planes land on
     # cell faces like every other (ADR-096).
+    model.contained = contained_aisle(spec)
     cage = cage_for(spec)
     cage_notes: list[str] = []
     if cage:
@@ -1698,6 +1728,42 @@ CAGE_SIDES = {
     "left": "along the rows at low y",
     "right": "along the rows at high y",
 }
+
+
+CONTAINED_AISLES = ("hot", "cold")
+
+
+def contained_aisle(spec: dict) -> str | None:
+    """Which aisle this case closes, or None where it closes neither.
+
+    `hot` is the chimney this tool has always built: walls from the rack tops
+    to the false ceiling, the return grille at the top, and the room around it
+    cold. `cold` is the other arrangement and it is a LID, not a chimney: the
+    cold aisle is roofed at rack height, the racks discharge into the room,
+    the room is hot, and the ceiling return grille is over the hot aisle
+    (ADR-100).
+    """
+    raw = spec.get("containment") or {}
+    if not raw.get("enabled", True):
+        return None
+    which = str(raw.get("aisle", "hot")).strip().lower()
+    if which not in CONTAINED_AISLES:
+        raise ValueError(
+            f"containment.aisle: {which!r} is not one of "
+            + ", ".join(CONTAINED_AISLES)
+            + ". `hot` is a chimney from the rack tops to the ceiling; `cold` "
+            "is a lid over the cold aisle at rack height"
+        )
+    if which == "cold" and not raised_floor_for(spec):
+        raise ValueError(
+            "containment.aisle: a contained COLD aisle is sealed by the rack "
+            "rows, a lid and two doors, so the only way in is through the "
+            "floor. This case has no raised floor, and a supply blown into "
+            "the room outside the aisle cannot reach it -- the racks would "
+            "draw from a closed box. Add `floor.enabled: true` with plates in "
+            "the cold aisle, or contain the HOT aisle instead"
+        )
+    return which
 
 
 def _cage_boundaries(spec: dict, pods: int) -> list[int]:
@@ -2412,12 +2478,44 @@ def _row_walls(row: Row, span: tuple[float, float], rack_dz: float, suffix: str 
 
 
 def _containment(hot: tuple[float, float], span: tuple[float, float], rack_dz: float,
-                 ceiling: float, sides: tuple[float, ...], suffix: str = "") -> list[Panel]:
-    """Hot aisle containment: a chimney from the racks up to the ceiling.
+                 ceiling: float, sides: tuple[float, ...], suffix: str = "",
+                 aisle: str = "hot") -> list[Panel]:
+    """Close an aisle, the way that aisle is closed.
+
+    THE TWO ARE NOT THE SAME SHAPE, which is the whole of this function.
+
+    A HOT aisle is closed with a CHIMNEY: walls from the rack tops up to the
+    false ceiling, and the return grille at the top of it. Everything the fan
+    moves goes up that chimney, and the room around it is cold.
+
+    A COLD aisle is closed with a LID: a roof at rack height and doors up to
+    it. The cold air stays in the aisle, the racks discharge into the room,
+    and the room is hot -- so the ceiling return grille belongs over the HOT
+    aisle, which is where this generator already puts it (ADR-100).
+
+    Building the cold one as a chimney would join the cold aisle to the return
+    plenum, which is the opposite of containing it.
 
     ``sides`` are the y positions that need a wall above the racks -- a POD's
-    hot aisle has the room wall on one side, a hall's has racks on both.
+    hot aisle has the room wall on one side, a hall's has racks on both. A
+    lid has no such walls: the rack rows are its sides already.
     """
+    if aisle == "cold":
+        panels = [
+            Panel(f"containment_lid{suffix}", "wall", axis=2, position=rack_dz,
+                  extent=((span[0], span[1]), hot))
+        ]
+        for edge in span:
+            panels.append(
+                Panel(
+                    f"containment_door{suffix}_{edge:g}".replace(".", "_"),
+                    "wall",
+                    axis=0,
+                    position=edge,
+                    extent=((hot[0], hot[1]), (0.0, rack_dz)),
+                )
+            )
+        return panels
     panels = []
     for i, y in enumerate(sides):
         name = "containment_roofwall" if not suffix and len(sides) == 1 else f"containment_wall{suffix}_{'ab'[i]}"
@@ -2642,8 +2740,14 @@ def _pod_layout(spec: dict, cell, rack_spec: dict | None = None) -> _Layout:
     ]
 
     walls = _row_walls(row, span, rack_dz) + blank_panels
-    if spec.get("containment", {}).get("enabled", True):
+    closes = contained_aisle(spec)
+    if closes == "hot":
         walls += _containment(hot_aisle, span, rack_dz, ceiling, (band[1],))
+    elif closes == "cold":
+        # The POD's cold aisle is the band in front of the row, which is
+        # everything from the wall to the rack face.
+        walls += _containment((0.0, band[0]), span, rack_dz, ceiling, (),
+                              aisle="cold")
 
     cold_aisles = [(0.0, cold)]
     supplies: list[Panel] = []
@@ -2782,6 +2886,8 @@ def _hall_layout(spec: dict, cell, rack_spec: dict | None = None) -> _Layout:
         half = coverage * (span[1] - span[0]) / 2
         return (mid - half, mid + half)
 
+    closes = contained_aisle(spec)
+    built_spans = list(spans)
     y = perimeter
     for k in range(pods):
         a = (y, y + rack_dy)
@@ -2809,8 +2915,10 @@ def _hall_layout(spec: dict, cell, rack_spec: dict | None = None) -> _Layout:
             for row in pair:
                 walls += _row_walls(row, span, rack_dz, suffix=f"_{row.id}")
             suffix = f"_{k + 1}" if n_blocks == 1 else f"_{k + 1}b{j + 1}"
-            walls += _containment(hot_aisle, span, rack_dz, ceiling,
-                                  (a[1], b[0]), suffix=suffix)
+            if closes == "hot":
+                walls += _containment(hot_aisle, span, rack_dz, ceiling,
+                                      (a[1], b[0]), suffix=suffix)
+            built_spans[j] = span
             grilles.append(
                 Panel(
                     f"grille{len(grilles) + 1}",
@@ -2826,6 +2934,18 @@ def _hall_layout(spec: dict, cell, rack_spec: dict | None = None) -> _Layout:
             cold_aisles.append((y, y + boundaries[k]))
             y += boundaries[k]
     cold_aisles.append((width - perimeter, width))
+
+    # A CONTAINED COLD AISLE IS A LID, and there is one over every cold aisle
+    # the rows face -- the two at the perimeter included, because the outer
+    # row of the hall breathes from one of those like any other. Built after
+    # the pod loop rather than inside it: a cold aisle is BETWEEN pods, so it
+    # is not a thing one pass of that loop owns (ADR-100).
+    if closes == "cold":
+        for i, band in enumerate(cold_aisles):
+            for j, span in enumerate(built_spans):
+                suffix = f"_c{i + 1}" if n_blocks == 1 else f"_c{i + 1}b{j + 1}"
+                walls += _containment(band, span, rack_dz, ceiling, (),
+                                      suffix=suffix, aisle="cold")
 
     fan = spec["fanwall"]
     fan_width = float(fan["width"])
@@ -3210,10 +3330,16 @@ def summary_rows(model: Model) -> list[tuple[str, str, str]]:
             ),
         ),
         (
-            "Hot aisle chimney"
-            + (f" ({len(model.hot_aisles)})" if len(model.hot_aisles) > 1 else ""),
+            # A LID IS NOT A CHIMNEY. Labelled "Hot aisle chimney" whatever the
+            # case closed, this row said the wrong thing about a cold-aisle
+            # hall AND quoted a height the lid does not have (ADR-100).
+            ("Cold aisle lid" if model.contained == "cold" else "Hot aisle chimney")
+            + (f" ({len(model.contained_aisles)})"
+               if len(model.contained_aisles) > 1 else ""),
             f"{num(row[1] - row[0])} x "
-            f"{num(model.hot_aisle[1] - model.hot_aisle[0])} x {num(model.ceiling_z)} m",
+            f"{num(model.contained_aisle[1] - model.contained_aisle[0])} x "
+            + (f"{num(model.rack_height)} m"
+               if model.contained == "cold" else f"{num(model.ceiling_z)} m"),
             through(model.chimney_area),
         ),
         (
