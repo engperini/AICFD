@@ -39,6 +39,29 @@ let planDraft = null;    // the typical row, null until it is touched
 
 const fmt = (v, digits = 2) =>
   v === null || v === undefined || !Number.isFinite(+v) ? '—' : (+v).toFixed(digits);
+
+/**
+ * A number out of a form field, written with either separator.
+ *
+ * The fields were `type="number"`, and a browser set to a comma locale reads
+ * `0,8` in one as the empty string — so the figure an engineer typed was
+ * dropped on the keystroke and the field fought back. They are text fields
+ * with a decimal keypad now, and this is the one place that turns what was
+ * typed into a number. Tolerant coming in, a dot going out (ADR-083).
+ *
+ * Returns null for "nothing here", which is not the same as zero: an empty
+ * position follows the typical row, a zero is a cabinet with nothing in it.
+ */
+const num = (text) => {
+  const clean = String(text ?? '').trim().replace(',', '.');
+  if (clean === '' || !Number.isFinite(Number(clean))) return null;
+  return Number(clean);
+};
+
+/** What goes back into a field: never a comma, never a trailing zero. */
+const dec = (v) =>
+  v === null || v === undefined || v === '' || !Number.isFinite(+v)
+    ? '' : String(+v);
 const whole = (v) => (Number.isFinite(+v) ? (+v).toLocaleString('en-US') : '—');
 
 async function load() {
@@ -79,18 +102,18 @@ function standardCard() {
       <div class="role">
         <div class="field">
           <label for="standard">Load per rack, kW</label>
-          <input id="standard" type="number" step="0.01" min="0.1" max="200"
-                 value="${s.load_kw}" />
+          <input id="standard" type="text" inputmode="decimal"
+                 value="${dec(s.load_kw)}" />
         </div>
         <div class="field trio">
           <label>Rack size (w × d × h), m</label>
           <div class="three">
-            <input id="size-w" type="number" step="0.01" min="0.1" max="3"
-                   value="${s.size[0]}" />
-            <input id="size-d" type="number" step="0.01" min="0.1" max="3"
-                   value="${s.size[1]}" />
-            <input id="size-h" type="number" step="0.01" min="0.1" max="3"
-                   value="${s.size[2]}" />
+            <input id="size-w" type="text" inputmode="decimal"
+                   value="${dec(s.size[0])}" />
+            <input id="size-d" type="text" inputmode="decimal"
+                   value="${dec(s.size[1])}" />
+            <input id="size-h" type="text" inputmode="decimal"
+                   value="${dec(s.size[2])}" />
           </div>
         </div>
         <div class="field">
@@ -125,7 +148,7 @@ function typicalRowCard() {
   const plan = rowDraft();
   const standard = state.standard;
   const total = plan.reduce(
-    (sum, e) => sum + Number(e.width ?? standard.size[0]), 0);
+    (sum, e) => sum + (num(e.width) ?? standard.size[0]), 0);
   return `
     <section class="card">
       <div class="card-head">
@@ -170,12 +193,12 @@ function planRow(entry, i) {
           <option value="" ${blank ? '' : 'selected'}>Cabinet</option>
           <option value="1" ${blank ? 'selected' : ''}>Blank panel</option>
         </select></td>
-    <td><input type="number" step="0.01" min="0.1" max="3" data-plan="${i}"
-               data-field="width" value="${entry.width ?? ''}"
+    <td><input type="text" inputmode="decimal" data-plan="${i}"
+               data-field="width" value="${dec(entry.width)}"
                placeholder="${s.size[0]}" /></td>
     <td>${blank ? '<span class="card-sub">—</span>'
-        : `<input type="number" step="0.01" min="0" max="200" data-plan="${i}"
-                  data-field="load_kw" value="${entry.load_kw ?? ''}"
+        : `<input type="text" inputmode="decimal" data-plan="${i}"
+                  data-field="load_kw" value="${dec(entry.load_kw)}"
                   placeholder="${s.load_kw}" />`}</td>
     <td><button type="button" class="ghost-button" data-plan-drop="${i}">–</button></td>
   </tr>`;
@@ -266,7 +289,7 @@ function aside(t) {
 function drawRows() {
   const needle = byId('filter').value.trim().toUpperCase();
   const onlyStated = byId('only-stated').checked;
-  const standard = Number(byId('standard').value);
+  const standard = num(byId('standard').value) ?? 0;
   const shown = state.racks.filter((r) => {
     const value = current(r);
     if (onlyStated && value === standard) return false;
@@ -285,11 +308,11 @@ function drawRows() {
             <option value="" ${blank ? '' : 'selected'}>Cabinet</option>
             <option value="1" ${blank ? 'selected' : ''}>Blank panel</option>
           </select></td>
-      <td><input type="number" step="0.01" min="0.1" max="3" data-width="${r.id}"
-                 value="${widthOf(r)}" placeholder="${state.standard.size[0]}" /></td>
+      <td><input type="text" inputmode="decimal" data-width="${r.id}"
+                 value="${dec(widthOf(r))}" placeholder="${state.standard.size[0]}" /></td>
       <td>${blank ? '<span class="card-sub">—</span>'
-          : `<input type="number" step="0.01" min="0" max="200" data-rack="${r.id}"
-                    value="${value}" />`}</td>
+          : `<input type="text" inputmode="decimal" data-rack="${r.id}"
+                    value="${dec(value)}" />`}</td>
       <td>${blank ? '<span class="card-sub">0</span>'
           : whole(Math.round(value * (state.standard.cfm_per_kw || 0) * 1.69901))}</td>
     </tr>`;
@@ -319,25 +342,63 @@ function drawRows() {
   byId('shown-count')?.replaceChildren(String(shown.length));
 }
 
-/** What this position carries right now: the draft, else what the case says. */
+/**
+ * What the typical row puts at this position.
+ *
+ * The table below the pattern has to answer with the pattern, because that is
+ * what the case will build. It used to fall back to the standard cabinet the
+ * moment a position stopped stating its own figure -- so `Make every row
+ * exactly this` dropped the exceptions and then showed every position at the
+ * standard, and the typical row only appeared after a save and a reload. Edit
+ * the pattern and the positions follow it now, live (ADR-083).
+ */
+function fromPlan(rack) {
+  return rowDraft()[(rack.position || 0) - 1] || {};
+}
+
+/** What this position carries right now: its own figure, else the pattern's. */
 function current(rack) {
   const edited = draft[rack.id];
-  if (edited !== undefined && edited !== '') return Number(edited);
-  if (edited === '') return Number(byId('standard').value);
-  return rack.load_kw;
+  if (edited !== undefined && edited !== '') return num(edited) ?? 0;
+  if (edited === undefined && rack.stated) return rack.load_kw;
+  const planned = num(fromPlan(rack).load_kw);
+  return planned === null ? (num(byId('standard').value) ?? 0) : planned;
 }
 
 /** Whether this position is a plate rather than a cabinet. */
 function isBlank(rack) {
   const edited = blankDraft[rack.id];
-  return edited === undefined ? !!rack.blank : edited;
+  if (edited !== undefined && edited !== null) return edited;
+  if (edited === undefined && rack.blank_stated) return !!rack.blank;
+  return !!fromPlan(rack).blank;
 }
 
-/** How wide it is: the draft, else what the case says. */
+/** How wide it is: its own figure, else the pattern's, else the standard. */
 function widthOf(rack) {
   const edited = sizeDraft[rack.id];
-  if (edited !== undefined) return edited;
-  return rack.width_m;
+  if (edited !== undefined && edited !== '') return num(edited);
+  if (edited === undefined && rack.sized) return rack.width_m;
+  const planned = num(fromPlan(rack).width);
+  return planned === null ? num(byId('size-w').value) : planned;
+}
+
+/**
+ * Redraw what a figure changes, and nothing that holds a caret.
+ *
+ * The typical row's own inputs keep their value, their focus and the page its
+ * scroll; what follows from them -- the metres of row, the positions table and
+ * the totals in the aside -- is rewritten (ADR-083).
+ */
+function refresh() {
+  const plan = rowDraft();
+  const width = plan.reduce(
+    (sum, e) => sum + (num(e.width) ?? state.standard.size[0]), 0);
+  const tally = document.querySelector('#plan-rows')
+    ?.closest('.card')?.querySelector('.rack-filter .card-sub');
+  if (tally) {
+    tally.textContent = `${plan.length} positions · ${fmt(width, 2)} m of row`;
+  }
+  drawRows();
 }
 
 function markChanged() {
@@ -368,6 +429,14 @@ function wire() {
   });
 
   // --- the typical row ------------------------------------------------------
+  //
+  // A NUMBER DOES NOT REDRAW THE PAGE. It used to: every keystroke called
+  // render(), which rewrites the whole layout, so the field being typed into
+  // was destroyed and rebuilt under the caret and the page jumped back to the
+  // top. Typing "13.2" meant four fights with the scrollbar. Only a change of
+  // KIND changes which cells exist -- a plate has no load cell -- so only that
+  // redraws; a figure updates the draft and the read-outs that depend on it
+  // (ADR-083).
   for (const input of document.querySelectorAll('[data-plan]')) {
     const apply = () => {
       const entry = rowDraft()[Number(input.dataset.plan)];
@@ -375,12 +444,14 @@ function wire() {
       if (field === 'blank') {
         if (input.value) { entry.blank = true; delete entry.load_kw; }
         else delete entry.blank;
-      } else if (input.value === '') {
+        render();
+      } else if (num(input.value) === null) {
         delete entry[field];
+        refresh();
       } else {
-        entry[field] = Number(input.value);
+        entry[field] = num(input.value);
+        refresh();
       }
-      render();          // the card redraws: a plate has no load cell
       markChanged();
     };
     input.addEventListener(input.tagName === 'SELECT' ? 'change' : 'input', apply);
@@ -404,13 +475,15 @@ function wire() {
   });
   byId('apply-row')?.addEventListener('click', () => {
     // Every row exactly the typical one: the exceptions go, and the pattern
-    // is the only thing left saying what a position is.
+    // is the only thing left saying what a position is. The table below shows
+    // it immediately, because `current`, `widthOf` and `isBlank` fall back to
+    // the pattern rather than to the standard cabinet -- it used to take a
+    // save and a reload to see what the button had done (ADR-083).
     for (const rack of state.racks) {
       draft[rack.id] = '';
       sizeDraft[rack.id] = '';
-      delete blankDraft[rack.id];
+      blankDraft[rack.id] = null;
     }
-    for (const rack of state.racks) blankDraft[rack.id] = null;
     render();
     byId('status').textContent = 'every row will follow the typical one — not saved';
   });
@@ -431,23 +504,33 @@ async function save() {
   const widths = {};
   const blanks = [];
   for (const rack of state.racks) {
+    // An UNTOUCHED position is sent as null -- "whatever the typical row says"
+    // -- unless the case stated it as an exception in the first place. Sending
+    // the figure the server last computed froze the OLD pattern into every
+    // position as an explicit exception, so editing the typical row changed
+    // nothing for any position that was not already at the standard, and the
+    // page had no way to say so (ADR-083).
     const value = draft[rack.id];
-    loads[rack.id] = value === undefined ? rack.load_kw : (value === '' ? null : value);
+    loads[rack.id] = value !== undefined
+      ? (value === '' ? null : value)
+      : (rack.stated ? rack.load_kw : null);
     const width = sizeDraft[rack.id];
-    widths[rack.id] = width === undefined ? rack.width_m : (width === '' ? null : width);
+    widths[rack.id] = width !== undefined
+      ? (width === '' ? null : width)
+      : (rack.sized ? rack.width_m : null);
     // `null` in the draft is "back to whatever the typical row says", which is
     // how `Make every row exactly this` clears an exception.
     const kind = blankDraft[rack.id];
-    if (kind === true || (kind === undefined && rack.blank)) blanks.push(rack.id);
+    if (kind === true || (kind === undefined && rack.blank_stated)) blanks.push(rack.id);
   }
   try {
     const res = await fetch('/api/racks', {
       method: 'POST',
       headers: { 'Content-Type': 'application/json' },
       body: JSON.stringify({
-        load_kw: Number(byId('standard').value),
-        size: [Number(byId('size-w').value), Number(byId('size-d').value),
-               Number(byId('size-h').value)],
+        load_kw: num(byId('standard').value),
+        size: [num(byId('size-w').value), num(byId('size-d').value),
+               num(byId('size-h').value)],
         row: rowDraft(),
         loads,
         widths,

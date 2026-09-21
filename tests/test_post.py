@@ -909,3 +909,65 @@ class FloorResistanceTest(unittest.TestCase):
         source = inspect.getsource(post)
         self.assertIn('"Room unit" if k.get("floor_height") else "Fan wall"',
                       source)
+
+
+class FlowSpreadTest(unittest.TestCase):
+    """What a quadratic resistance costs depends on how evenly it is fed."""
+
+    def setUp(self):
+        self.case = Path(tempfile.mkdtemp())
+        self.step = self.case / "100"
+        self.step.mkdir()
+
+    def write(self, fluxes):
+        field(self.step / "phi", "phi", "0", {
+            "supply1_below": list(fluxes),
+            "supply1_above": [-f for f in fluxes],
+        })
+
+    def test_an_evenly_fed_surface_spreads_by_one(self):
+        self.write([0.2] * 16)
+        self.assertAlmostEqual(post.flow_spread(self.step, "supply"), 1.0, places=3)
+
+    def test_the_spread_is_mean_of_the_square_over_the_square_of_the_mean(self):
+        """Half the faces at twice the flux: mean 0.75, mean of squares 0.625,
+        so the surface costs 1,11 times what its mean face velocity asks."""
+        self.write([0.5] * 8 + [1.0] * 8)
+        self.assertAlmostEqual(
+            post.flow_spread(self.step, "supply"), 0.625 / 0.75**2, places=3
+        )
+
+    def test_a_surface_no_flow_reaches_is_not_divided_by_zero(self):
+        self.write([0.0] * 16)
+        self.assertEqual(post.flow_spread(self.step, "supply"), 1.0)
+
+    def test_the_direction_of_the_flux_does_not_change_the_spread(self):
+        """A mesh fed from the other side is fed just as evenly."""
+        self.write([-0.2] * 16)
+        self.assertAlmostEqual(post.flow_spread(self.step, "supply"), 1.0, places=3)
+
+
+class ResistanceVerdictTest(unittest.TestCase):
+    """The closed form for THIS field, not for the drawing board (ADR-082)."""
+
+    def test_an_evenly_fed_surface_is_judged_against_its_rated_drop(self):
+        passed, why = post._resistance_verdict(2.4, 2.2)
+        self.assertTrue(passed)
+        self.assertEqual(why, "")
+
+    def test_a_badly_fed_surface_is_judged_against_what_its_k_asks_here(self):
+        """0,87 Pa where the rating says 0,31 is 283% and looks like an
+        instrument fault. Fed 2,06 times less evenly, its own K asks 0,63 Pa
+        of this field -- which 0,87 is 38% above, and that is the finding."""
+        passed, why = post._resistance_verdict(0.63, 0.308, 2.06)
+        self.assertTrue(passed)
+        self.assertIn("less evenly", why)
+        self.assertIn("0.63 Pa", why)
+
+    def test_a_surface_that_is_not_delivering_its_k_still_fails(self):
+        """The correction is for the flow, not for the resistance: half the
+        drop under the same distribution is still half the drop."""
+        self.assertFalse(post._resistance_verdict(0.30, 0.308, 2.06)[0])
+
+    def test_an_even_surface_says_nothing_about_spreading(self):
+        self.assertEqual(post._resistance_verdict(2.2, 2.2, 1.01)[1], "")

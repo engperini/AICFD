@@ -3463,3 +3463,63 @@ straight through.
 **A test asserts every wall panel the model builds is in a face zone**, by
 name, so the next surface added to the model cannot be drawn without being
 meshed.
+
+## ADR-082 — A resistance is judged against the flow it actually gets
+
+**Decision.** `flow_spread` measures `mean(u^2) / mean(u)^2` across a family of
+perforated surfaces, and `_resistance_verdict` judges the field drop against
+`asked * spread`. The rated figure stays in the sentence; the verdict is taken
+against the closed form for this field.
+
+**Because a quadratic resistance costs what the LOCAL velocity says.** A grille
+costs `K rho u^2 / 2` face by face, so what it really costs is proportional to
+`mean(u^2)`, which is never below `mean(u)^2`. The spec sizes it on the second,
+because at the drawing board the air is assumed spread. Both numbers are right;
+dividing one by the other measures the distribution, not the resistance.
+
+**It read 283% and looked like an instrument fault.** A 1,2 m supply plenum fed
+by three discrete fan walls delivers 2,9 times the mean flux opposite a unit and
+a fraction of it in between; `mean(u^2)/mean(u)^2` came to 2,06 and the mesh
+cost twice its rated face velocity. The mesh was doing exactly what its K says.
+The PLENUM was not spreading the air, which is a finding about the plant --
+deepen it, or give it a diffuser -- and it now appears in that sentence instead
+of as a percentage that reads like a bug.
+
+**It cannot excuse a surface that is not delivering.** The correction is for
+the flow, not for the resistance: half the drop under the same distribution is
+still half the drop, and a test asserts it fails.
+
+## ADR-083 — The rack page does not fight the engineer
+
+**Three faults, all in the way the page handled being typed into.**
+
+**A number no longer redraws the page.** Every keystroke in the typical row
+called `render()`, which rewrites the whole layout -- so the field being typed
+into was destroyed and rebuilt under the caret and the page jumped to the top.
+Typing "13,2" was four fights with the scrollbar. Only a change of KIND changes
+which cells exist (a plate has no load cell), so only that redraws; a figure
+updates the draft and the read-outs that follow from it.
+
+**The positions table answers with the pattern.** `current`, `widthOf` and
+`isBlank` fell back to the standard cabinet the moment a position stopped
+stating its own figure. So `Make every row exactly this` dropped the
+exceptions and then showed every position at the standard, and what the button
+had actually done only appeared after a save and a reload. They fall back to
+the typical row now, so the table follows the pattern live.
+
+**And the save no longer freezes the old pattern.** Every position was sent
+with the figure the server last computed, which for anything the pattern had
+set was not the standard -- so it was written back as an explicit exception,
+and editing the typical row changed nothing for those positions. An untouched
+position is sent as null now, "whatever the typical row says", unless the case
+stated it as an exception in the first place. `blank_stated` joins the payload
+for the same reason: a panel the pattern places is not a panel the position
+asked for.
+
+**Both separators are accepted, a dot is written.** The fields were
+`type="number"`, and a browser set to a comma locale reads `0,8` in one as the
+empty string -- so the figure an engineer typed was dropped on the keystroke.
+They are text fields with a decimal keypad now, and one helper turns what was
+typed into a number. Tolerant coming in, a dot going out. That helper is the
+single place the rest of the forms will change when the decimal separator is
+settled across the tool.

@@ -288,6 +288,9 @@ def _analyse(model: Model, case_dir: str | Path, time: str | None = None) -> Pod
     kpis["grille_drop_asked_pa"] = round(model.grille_pressure_drop_pa, 3)
     kpis["mesh_drop_pa"] = grille_pressure_drop(step, "plenum_opening")
     kpis["supply_drop_pa"] = grille_pressure_drop(step, "supply")
+    kpis["grille_spread"] = flow_spread(step, "grille")
+    kpis["supply_spread"] = flow_spread(step, "supply")
+    kpis["floor_spread"] = flow_spread(step, "tile_")
     kpis["supply_drop_asked_pa"] = (
         round(model.plenum_pressure_drop_pa, 3)
         if model.plenum_pressure_drop_pa is not None else None
@@ -588,6 +591,37 @@ def grille_pressure_drop(step: str | Path, prefix: str = "grille") -> float | No
         total_flow += abs(net)
         weighted += abs(net) * drop
     return round(weighted / total_flow, 3) if total_flow else None
+
+
+def flow_spread(step: str | Path, prefix: str = "grille") -> float:
+    """How much more a quadratic resistance costs than its mean face velocity
+    says, because the flow through it is not spread evenly. Dimensionless.
+
+    A perforated surface costs ``K rho u^2 / 2`` FACE BY FACE, so what it
+    really costs is ``K rho mean(u^2) / 2`` -- and ``mean(u^2)`` is never below
+    ``mean(u)^2``. The spec sizes a mesh on the second, because at the drawing
+    board the flow is assumed spread; the field delivers the first. The ratio
+    between them is this number, and it is 1,0 exactly when the flow is even.
+
+    It exists because a check read 283% and looked like an instrument fault.
+    It was not: a 1,2 m supply plenum fed by three discrete fan walls delivers
+    2,9 times the mean flux opposite a unit and a fraction of it between, and
+    the mesh then costs twice what its rated face velocity asks. The surface is
+    doing exactly what its K says; the PLENUM is not spreading the air, which
+    is a finding about the plant and belongs in the sentence (ADR-082).
+    """
+    phi_path = Path(step) / "phi"
+    names = [n for n in patch_names(phi_path)
+             if n.endswith("_below") and n.startswith(prefix)]
+    total, weighted = 0.0, 0.0
+    for below in names:
+        flux = np.abs(read_patch_field(phi_path, below))
+        if flux.size < 2 or not flux.mean():
+            continue
+        mass = float(flux.sum())
+        total += mass
+        weighted += mass * float((flux**2).mean() / flux.mean() ** 2)
+    return round(weighted / total, 3) if total else 1.0
 
 
 def fan_flows(step: str | Path, flows: dict[str, float] | None = None,
@@ -921,18 +955,32 @@ def rack_temperatures(model: Model, grid: dict) -> list[dict]:
 # --- the checks ---------------------------------------------------------------
 
 
-def _resistance_verdict(delivered: float, asked: float) -> tuple[bool, str]:
+def _resistance_verdict(delivered: float, asked: float,
+                        spread: float = 1.0) -> tuple[bool, str]:
     """Whether a surface's field drop agrees with its closed form, and why.
 
     Two regimes, one rule: a ratio while the pressures are worth dividing, an
     absolute difference once both are too small to tell apart.
+
+    ``spread`` is what the surface costs under the flow it actually gets,
+    over what it would cost with that flow spread evenly (`flow_spread`). The
+    verdict is taken against ``asked * spread``, because that is the closed
+    form for THIS field; ``asked`` alone is the design figure and stays in the
+    sentence, where an engineer can see how far the plant is from it (ADR-082).
     """
-    if abs(delivered - asked) <= NEGLIGIBLE_PRESSURE_PA and asked <= NEGLIGIBLE_PRESSURE_PA:
+    expected = asked * spread
+    if abs(delivered - expected) <= NEGLIGIBLE_PRESSURE_PA and expected <= NEGLIGIBLE_PRESSURE_PA:
         return True, (
             f" -- both under {NEGLIGIBLE_PRESSURE_PA:g} Pa, so this surface is "
             f"too open for the ratio to mean anything"
         )
-    return abs(delivered / asked - 1.0) <= RESISTANCE_TOLERANCE, ""
+    passed = abs(delivered / expected - 1.0) <= RESISTANCE_TOLERANCE
+    why = "" if spread < 1.05 else (
+        f"; the air reaches it {spread:.1f} times less evenly than the rated "
+        f"face velocity assumes, so its own K asks {expected:.2f} Pa of this "
+        f"field"
+    )
+    return passed, why
 
 
 def return_path_check(kpis: dict) -> "Check | None":
@@ -1088,7 +1136,8 @@ def _checks(model: Model, step: Path, kpis: dict, grid: dict) -> list[Check]:
     grille_drop, grille_asked = kpis.get("grille_drop_pa"), kpis.get("grille_drop_asked_pa")
     if grille_drop is not None and grille_asked:
         ratio = grille_drop / grille_asked
-        passed, why = _resistance_verdict(grille_drop, grille_asked)
+        passed, why = _resistance_verdict(
+            grille_drop, grille_asked, kpis.get("grille_spread", 1.0))
         checks.append(
             Check(
                 "grille_resistance",
@@ -1104,7 +1153,8 @@ def _checks(model: Model, step: Path, kpis: dict, grid: dict) -> list[Check]:
     if supply_drop is not None and supply_asked:
         ratio = supply_drop / supply_asked
         velocity = kpis.get("supply_face_velocity_ms")
-        passed, why = _resistance_verdict(supply_drop, supply_asked)
+        passed, why = _resistance_verdict(
+            supply_drop, supply_asked, kpis.get("supply_spread", 1.0))
         checks.append(
             Check(
                 "plenum_resistance",
@@ -1126,7 +1176,8 @@ def _checks(model: Model, step: Path, kpis: dict, grid: dict) -> list[Check]:
     if floor_drop is not None and floor_asked:
         ratio = floor_drop / floor_asked
         velocity = kpis.get("floor_face_velocity_ms")
-        passed, why = _resistance_verdict(floor_drop, floor_asked)
+        passed, why = _resistance_verdict(
+            floor_drop, floor_asked, kpis.get("floor_spread", 1.0))
         checks.append(
             Check(
                 "floor_resistance",

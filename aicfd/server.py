@@ -563,6 +563,11 @@ def read_racks(name: str) -> dict:
                 "width_m": place["width"],
                 "stated": place["id"] in stated,
                 "sized": place["id"] in widths,
+                # Whether the PANEL is an exception to the typical row, rather
+                # than the row's own doing. The page needs the difference: an
+                # exception survives "make every row exactly this", the
+                # pattern's own blank is what that button restores (ADR-083).
+                "blank_stated": place["id"] in blanks,
                 "airflow_m3h": 0 if rack is None else round(rack.rated_airflow_m3h),
             })
     loaded = [r for r in rows if r["load_kw"] > 0 and not r["blank"]]
