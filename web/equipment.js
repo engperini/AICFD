@@ -13,6 +13,7 @@
  * selections, and then left alone; what this page is for on a normal day is
  * *looking* at the curve that is deciding the answer.
  */
+import { num, dec } from './decimal.js';
 
 const NS = 'http://www.w3.org/2000/svg';
 const params = new URLSearchParams(location.search);
@@ -192,7 +193,7 @@ function render() {
   for (const input of document.querySelectorAll('[data-row]')) {
     input.addEventListener('input', () => {
       const row = draft.capacity[Number(input.dataset.row)];
-      row[input.dataset.key] = Number(input.value);
+      row[input.dataset.key] = num(input.value);
       drawChart();
     });
   }
@@ -220,7 +221,7 @@ function tableHtml() {
     .map(
       (row, i) => `<tr>${COLUMNS.map(
         ([key]) =>
-          `<td><input type="number" step="any" value="${row[key]}"
+          `<td><input type="text" inputmode="decimal" value="${dec(row[key])}"
              data-row="${i}" data-key="${key}" /></td>`,
       ).join('')}<td><button data-drop="${i}" type="button"
           >−</button></td></tr>`,
@@ -303,8 +304,8 @@ function fieldRow(field) {
         <input data-field="${field.path}" type="text" value="${shown}" /></label></td></tr>`;
   }
   return `<tr><td>${field.label}</td><td><div class="field">
-      <input data-field="${field.path}" type="number"
-        step="${field.step ?? 'any'}" value="${shown}" />
+      <input data-field="${field.path}" type="text" inputmode="decimal"
+        data-number="1" value="${shown}" />
       ${field.suffix ? `<span class="suffix">${field.suffix}</span>` : ''}
     </div></td></tr>`;
 }
@@ -315,7 +316,7 @@ function wireFields() {
       const raw = input.value.trim();
       // An emptied number means "the file does not say", not zero: a weight
       // nobody filled in should stay absent rather than become 0 kg.
-      const value = input.type === 'number' ? (raw === '' ? null : Number(raw)) : raw;
+      const value = input.dataset.number ? num(raw) : raw;
       plant(draft, input.dataset.field, value);
       if (input.dataset.field === 'family') {
         document.getElementById('unit-name').textContent =
@@ -354,10 +355,10 @@ function curveHtml() {
         ${points
           .map(
             ([q, pa], i) => `<tr>
-              <td><div class="field"><input type="number" step="any" value="${q}"
-                data-point="${i}" data-axis="0" /></div></td>
-              <td><div class="field"><input type="number" step="any" value="${pa}"
-                data-point="${i}" data-axis="1" /></div></td>
+              <td><div class="field"><input type="text" inputmode="decimal"
+                value="${dec(q)}" data-point="${i}" data-axis="0" /></div></td>
+              <td><div class="field"><input type="text" inputmode="decimal"
+                value="${dec(pa)}" data-point="${i}" data-axis="1" /></div></td>
               <td><button data-point-drop="${i}" type="button"
                 ${points.length <= 2 ? 'disabled' : ''}>−</button></td></tr>`,
           )
@@ -388,7 +389,7 @@ function wireCurve() {
   for (const input of document.querySelectorAll('[data-point]')) {
     input.addEventListener('input', () => {
       draft.curve.points[Number(input.dataset.point)][Number(input.dataset.axis)] =
-        Number(input.value);
+        num(input.value);
     });
   }
   for (const button of document.querySelectorAll('[data-point-drop]')) {

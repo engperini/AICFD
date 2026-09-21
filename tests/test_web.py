@@ -244,3 +244,48 @@ class RacksPageTest(unittest.TestCase):
         text = (server.CASES_DIR / "pod-fanwall.yaml").read_text()
         self.assertIn("sizes its resistance", text)
         self.assertIn("from the gallery wall", text)
+
+
+class DecimalSeparatorTest(unittest.TestCase):
+    """One decimal separator, one place that decides it (ADR-083)."""
+
+    FORMS = ("racks.js", "equipment.js", "components.js", "app.js")
+
+    def test_no_form_uses_a_number_input(self):
+        """`type="number"` in a comma-locale browser reads `0,8` as the empty
+        string, so the figure an engineer typed is dropped on the keystroke --
+        silently, which is the worst way for a form to fail."""
+        for name in self.FORMS:
+            with self.subTest(page=name):
+                self.assertNotIn(
+                    'type="number"', (WEB / name).read_text().replace(
+                        "`type=\"number\"`", ""),
+                    f"{name} has a field a comma keyboard cannot fill",
+                )
+
+    def test_a_decimal_field_asks_for_a_decimal_keypad(self):
+        """Text alone would give a phone the full alphabet."""
+        for name in self.FORMS:
+            source = (WEB / name).read_text()
+            with self.subTest(page=name):
+                self.assertEqual(
+                    source.count('inputmode="decimal"'),
+                    source.count('type="text" inputmode="decimal"'),
+                    f"{name} has a decimal field that is not a text field",
+                )
+
+    def test_every_form_parses_through_the_one_helper(self):
+        """The point of the module: when the separator is settled across the
+        tool it changes in one file, not in eleven page scripts."""
+        for name in ("racks.js", "equipment.js", "components.js"):
+            with self.subTest(page=name):
+                self.assertRegex(
+                    (WEB / name).read_text(),
+                    r"import \{[^}]*\bnum\b[^}]*\} from '\./decimal\.js'",
+                )
+
+    def test_the_helper_takes_both_separators_and_writes_a_dot(self):
+        source = (WEB / "decimal.js").read_text()
+        self.assertIn("replace(',', '.')", source)
+        self.assertIn("export const num", source)
+        self.assertIn("export const dec", source)

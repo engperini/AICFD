@@ -19,12 +19,14 @@
  * so it is shown and never edited.
  */
 
+import { num } from './decimal.js';
+
 const byId = document.getElementById.bind(document);
 let state = null;
 
 /** Free area is typed as a percentage; the library holds the ratio. */
 const toPercent = (v) => (v === null || v === undefined ? '' : +(v * 100).toFixed(1));
-const fromPercent = (v) => (v === '' ? null : Number(v) / 100);
+const fromPercent = (v) => (num(v) === null ? null : num(v) / 100);
 const fmt = (v, digits = 2) =>
   v === null || v === undefined || !Number.isFinite(+v) ? '—' : (+v).toFixed(digits);
 
@@ -88,9 +90,9 @@ function component(c) {
       </div>
       ${c.kind === 'load'
         ? box('share', 'Share of the IT load %', toPercent(c.share),
-              'type="number" step="0.1" min="0" max="50"')
+              'type="text" inputmode="decimal"')
         : box('free_area', 'Free area %', toPercent(c.free_area),
-              'type="number" step="0.1" min="0.1" max="100"')}
+              'type="text" inputmode="decimal"')}
       ${c.kind === 'surface' ? `<div class="field">
         <label>Loss coefficient K, on the face velocity</label>
         <input value="${fmt(c.k, 2)}" readonly
@@ -98,7 +100,7 @@ function component(c) {
       </div>` : ''}
       ${c.loss_coefficient !== null && c.loss_coefficient !== undefined
         ? box('loss_coefficient', 'K from the datasheet, which wins',
-              c.loss_coefficient, 'type="number" step="0.01" min="0"')
+              c.loss_coefficient, 'type="text" inputmode="decimal"')
         : ''}
       ${c.size ? `<div class="field"><label>Face of one piece</label>
         <input value="${c.size[0]} × ${c.size[1]} m" readonly style="opacity:.8" /></div>` : ''}
@@ -253,7 +255,7 @@ function wire(c) {
     if (!box) return; // a load has no face for air to cross
     const free = fromPercent(box.value);
     const stated = byId(`${c.id}-loss_coefficient`);
-    const shown = stated && stated.value !== '' ? Number(stated.value)
+    const shown = stated && num(stated.value) !== null ? num(stated.value)
       : free ? k(free) : null;
     byId(`${c.id}-k`).value = fmt(shown, 2);
   };
@@ -267,7 +269,7 @@ function wire(c) {
       body[input.dataset.key] = ['free_area', 'share'].includes(input.dataset.key)
         ? fromPercent(value)
         : input.dataset.key === 'loss_coefficient'
-          ? (value === '' ? null : Number(value))
+          ? num(value)
           : value;
     }
     status.textContent = 'saving…';

@@ -29,6 +29,7 @@
  * from. Edit it and every row changes together; edit a position in the table
  * below and only that one disagrees. Same division the load has always had.
  */
+import { num, dec } from './decimal.js';
 
 const byId = document.getElementById.bind(document);
 let state = null;
@@ -40,28 +41,6 @@ let planDraft = null;    // the typical row, null until it is touched
 const fmt = (v, digits = 2) =>
   v === null || v === undefined || !Number.isFinite(+v) ? '—' : (+v).toFixed(digits);
 
-/**
- * A number out of a form field, written with either separator.
- *
- * The fields were `type="number"`, and a browser set to a comma locale reads
- * `0,8` in one as the empty string — so the figure an engineer typed was
- * dropped on the keystroke and the field fought back. They are text fields
- * with a decimal keypad now, and this is the one place that turns what was
- * typed into a number. Tolerant coming in, a dot going out (ADR-083).
- *
- * Returns null for "nothing here", which is not the same as zero: an empty
- * position follows the typical row, a zero is a cabinet with nothing in it.
- */
-const num = (text) => {
-  const clean = String(text ?? '').trim().replace(',', '.');
-  if (clean === '' || !Number.isFinite(Number(clean))) return null;
-  return Number(clean);
-};
-
-/** What goes back into a field: never a comma, never a trailing zero. */
-const dec = (v) =>
-  v === null || v === undefined || v === '' || !Number.isFinite(+v)
-    ? '' : String(+v);
 const whole = (v) => (Number.isFinite(+v) ? (+v).toLocaleString('en-US') : '—');
 
 async function load() {

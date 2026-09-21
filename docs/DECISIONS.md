@@ -3519,7 +3519,14 @@ asked for.
 **Both separators are accepted, a dot is written.** The fields were
 `type="number"`, and a browser set to a comma locale reads `0,8` in one as the
 empty string -- so the figure an engineer typed was dropped on the keystroke.
-They are text fields with a decimal keypad now, and one helper turns what was
-typed into a number. Tolerant coming in, a dot going out. That helper is the
-single place the rest of the forms will change when the decimal separator is
-settled across the tool.
+They are text fields with a decimal keypad now, and `web/decimal.js` turns what
+was typed into a number. Tolerant coming in, a dot going out.
+
+**Every form goes through it.** The same trap was in `equipment.js` -- the
+design-selection fields and the P-Q curve, where an engineer copies a
+datasheet -- and in `components.js`, where a free area typed as `62,5` left
+the K read-out at "--" because `Number("62,5")` is NaN. Leaving one page
+tolerant and another silently swallowing the number would have been worse than
+either. Three tests hold it: no form carries a `type="number"`, every decimal
+field asks for a decimal keypad, and every form imports the one helper. When
+the separator is settled across the tool it changes in one file.
