@@ -133,6 +133,21 @@ chimney from the rack tops to the false ceiling and the doors at each end. If
 the drawing shows a roof and doors over the hot aisle, it is true. An
 uncontained hot aisle is a different room thermally, not a small correction.
 
+**Whether a customer cage encloses the rows.** A cage is a security boundary
+inside the hall, and the two ways it is built are two different rooms:
+
+| | keys | what the air does |
+|---|---|---|
+| no cage | *(nothing)* | the hall is one volume |
+| mesh | `cage.enabled: true`, `cage.construction: mesh` | crosses it, paying K once going in on the cold side and again coming out on the hot one |
+| drywall | `cage.construction: drywall`, `cage.height` below the ceiling | cannot cross it at all, so it goes over the top |
+
+Measured on a POD with a cage round its row, everything else identical: the
+drywall cage costs 3.5% more fan rise and puts the peak speed up 10.4%
+(ADR-096). A drywall cage closed at the top — full height, or with a roof —
+is **refused**: the supply is outside it and the ceiling grilles over its own
+hot aisles still let air out, so the racks have an exit and no entry.
+
 **Whether the units run independently or as a team.** `fanwall.control: team`
 makes the units sharing a gallery all run to the worst return any of them sees,
 which is what a networked control system does (ADR-064). Default is
@@ -236,6 +251,13 @@ or three.
 | `components.floor_tile` | str | | role `floor_tile` |
 | `components.gallery_mesh` | str | | role `gallery_mesh`: the mesh over the plenum opening, which every cubic metre passes through once (ADR-048) |
 | `containment.enabled` | bool | | §4 |
+| `cage.enabled` | bool | | §4 |
+| `cage.construction` | `mesh` or `drywall` | | §4. The answer, not a detail of the drawing |
+| `cage.clearance` | float | 0.1 to 10 | from the outermost cabinet faces to the cage wall. It has to be less than `aisles.perimeter`, or the cage wall is the hall wall and the build refuses it by name |
+| `cage.height` | float | 1 to 20 | top of the cage. Omitted, it runs to the false ceiling |
+| `cage.roof` | bool | | close the top with the same construction |
+| `cage.loss_coefficient` | float | | K for a mesh cage, where the case states its own instead of the component's |
+| `components.cage` | str | | role `cage`: which mesh, when the construction is `mesh` |
 
 ### Mesh and solver
 
@@ -368,7 +390,7 @@ A number retyped into a case is a number that will disagree with the next case.
 |---|---|---|---|
 | fan wall units | `equipment/` | `fanwall.model` | the manufacturer's selections as a **table**, because a chilled-water coil's capacity is not a constant: one unit gives 504.9 kW at 35 °C return and 734.3 kW at 41 °C (ADR-036) |
 | cabinets | `racks/` | `racks.type`, `racks.row[i].type` | width, depth, height and a default load, as the project's documents state them (ADR-075) |
-| perforated surfaces | `components/` | `components.<role>` | free area and loss coefficient. Roles: `ceiling_return`, `supply_grille`, `floor_tile`, `gallery_mesh`, `containment`, `distribution_loss` |
+| perforated surfaces | `components/` | `components.<role>` | free area and loss coefficient. Roles: `ceiling_return`, `supply_grille`, `floor_tile`, `gallery_mesh`, `cage`, `containment`, `distribution_loss` |
 
 **Changing the unit takes the old unit's numbers with it.** Picking another
 machine on the page replaces the airflow, capacity, power, supply temperature,
@@ -528,6 +550,8 @@ HELYX 4.5.1. Read it beside this manual. What each project fact became:
 - Do not combine `floor` and `plenum`. The build refuses it (§4).
 - Do not adjust a clearance to make the derived hall match a drawing (§10).
 - Do not leave a snapping warning unread (§7).
+- Do not assume a cage's construction. Mesh and drywall are different rooms,
+  and a plan shows the same rectangle for both (§4).
 - Do not write a number without a comment (§1).
 
 ---

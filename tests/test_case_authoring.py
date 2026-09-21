@@ -40,6 +40,7 @@ BEYOND_THE_FORM = {
     "racks.widths",
     "racks.blanks",
     "fanwall.curve",
+    "cage.loss_coefficient",
     "plenum.closed",
     "plenum.mesh_loss_coefficient",
     "components.floor_tile",
@@ -182,7 +183,7 @@ class NamesTest(unittest.TestCase):
         from aicfd.components import ROLES
 
         roles = self.cited(r"`(ceiling_return|supply_grille|floor_tile|"
-                           r"gallery_mesh|containment|distribution_loss)`")
+                           r"gallery_mesh|cage|containment|distribution_loss)`")
         self.assertTrue(roles, "the manual lists no component roles any more")
         self.assertFalse(
             roles - set(ROLES),

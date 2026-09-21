@@ -716,9 +716,18 @@ class PlenumCardTest(unittest.TestCase):
 
     def test_a_checkbox_shows_whether_or_not_the_case_mentions_it(self):
         """Filtering on what the case states dropped the two switches and
-        left the plenum as four number boxes with no way to turn it on."""
+        left the plenum as four number boxes with no way to turn it on.
+
+        Matched loosely: the condition has grown a term since (a `choices`
+        field always has an answer too), and a test that pins the whole line
+        fails on every addition to it while saying nothing about the rule it
+        is there to hold.
+        """
         js = (server.REPO_ROOT / "web" / "app.js").read_text()
-        self.assertIn("p.optional || p.check || specValue(p.key) !== ''", js)
+        self.assertRegex(
+            js, r"p\.optional \|\| p\.check \|\|[^\n]*specValue\(p\.key\) !== ''",
+            "a checkbox has to show whether or not the case mentions it",
+        )
 
     def test_both_arrangements_are_switches_and_both_are_editable(self):
         for key in ("plenum", "plenum_as_mesh"):

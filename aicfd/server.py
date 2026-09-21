@@ -115,6 +115,18 @@ EDITABLE = {
     "grille_free_area": (("grilles", "free_area"), float, (0.05, 1.0)),
     "grille_k": (("grilles", "loss_coefficient"), float, (0.0, 100.0)),
     "containment": (("containment", "enabled"), bool, None),
+    # --- customer cage -------------------------------------------------------
+    # A security boundary inside the hall, round one customer's rows. Which
+    # way it is built is the answer, not a detail: drywall is a partition the
+    # air cannot cross and mesh is a resistance it pays twice, once in and
+    # once out (ADR-096).
+    "cage": (("cage", "enabled"), bool, None),
+    "cage_construction": (("cage", "construction"), "choice",
+                          model_module.CAGE_CONSTRUCTIONS),
+    "cage_clearance": (("cage", "clearance"), float, (0.1, 10.0)),
+    "cage_height": (("cage", "height"), float, (1.0, 20.0)),
+    "cage_roof": (("cage", "roof"), bool, None),
+    "cage_mesh": (("components", "cage"), "component", "cage"),
     # --- mesh and solver ----------------------------------------------------
     "cell_size": (("mesh", "cell_size"), "cell_size", (0.02, 1.0)),
     "max_iterations": (("solver", "max_iterations"), int, (10, 20_000)),
@@ -432,6 +444,18 @@ def apply_changes(spec: dict, changes: dict) -> tuple[dict, list[str]]:
             # A checkbox, stored as the word the spec uses, so a case reads
             # `control: team` rather than `control: true`.
             _place(spec, path, "team" if raw else "independent")
+            continue
+        if caster == "choice":
+            # One of a named set of words, as the spec writes them. A range
+            # cannot say "mesh or drywall", and a bool cannot say it either
+            # -- there is no false construction.
+            choice = str(raw or "").strip().lower()
+            if choice not in limits:
+                rejected.append(
+                    f"{key}: {choice!r} is not one of " + ", ".join(limits)
+                )
+                continue
+            _place(spec, path, choice)
             continue
         if caster == "component":
             from aicfd import components as library

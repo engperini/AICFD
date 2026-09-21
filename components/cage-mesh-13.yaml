@@ -1,0 +1,23 @@
+id: cage-mesh-13
+name: Cage mesh, 13 mm aperture
+role: cage
+
+# A customer cage inside a data hall is a security boundary around their
+# racks, and the air crosses it twice: in on the cold side, out on the hot
+# one. Built in woven mesh it is a pressure drop the plant pays for; built in
+# drywall it is a wall and there is no component to choose (ADR-096).
+#
+# Same weave as `gallery-mesh-13`, and a separate file because a role is the
+# surface and not the product: the mesh closing a plenum opening is the
+# building, and a cage is a choice the customer's specification makes. One
+# hall can have a 13 mm mesh at the plenum and another aperture round a cage.
+aperture: 13 x 13 mm openings, 3 mm wire, woven stainless
+pattern: woven
+free_area: 0.65               # a 13/3 weave gives 66% and a 12.7/3 weave
+                              # 65.4%, so 65% is the conservative round
+                              # number of the pair.
+note: >
+  Encloses a customer's rows inside the hall. Every cubic metre those racks
+  draw crosses it on the way in and again on the way out, so it is counted
+  twice in the fan duty -- which is the difference between a mesh cage and a
+  drywall one, and the reason the choice is worth making in the model.

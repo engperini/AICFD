@@ -334,6 +334,11 @@ class Model:
     above it is unchanged and the building is taller by this (ADR-076)."""
     floor_tile_k: float | None = None
     """Loss coefficient of one perforated plate, on its gross face."""
+    cage: str | None = None
+    """How the customer cage round the rows is built -- `mesh` or `drywall`
+    -- or None where the hall has no cage. The two are different rooms: a
+    drywall cage is a partition the air cannot cross, a mesh one is a
+    resistance the air pays twice, once in and once out (ADR-096)."""
     warnings: list[str] = field(default_factory=list)
     alerts: list[str] = field(default_factory=list)
     """Design criteria the HVAC does not meet. Alerts, never blockers: a
@@ -942,6 +947,7 @@ class _Layout:
 #: fan duty nobody could reproduce (ADR-048).
 DEFAULT_COMPONENTS = {
     "gallery_mesh": "gallery-mesh-13",
+    "cage": "cage-mesh-13",
     "supply_grille": "supply-grille-2000",
     "ceiling_return": "ceiling-return-600",
     "floor_tile": "floor-tile-600",
@@ -1298,6 +1304,13 @@ def build_model(spec: dict) -> Model:
     floor = raised_floor_for(spec)
     if floor:
         _raise_onto_floor(model, floor, spec, cell)
+    # After the floor, because a cage stands ON the finished floor and its
+    # walls run from the deck up; before the snap, because its planes land on
+    # cell faces like every other (ADR-096).
+    cage = cage_for(spec)
+    if cage:
+        model.panels.extend(_cage_panels(model, cage, spec))
+        model.cage = cage["construction"]
     # The row's own notes first: a cabinet width the mesh moved is said by
     # position, which is what a reader can act on, where the general alignment
     # check can only say a face fell between grid lines (ADR-074).
@@ -1629,6 +1642,158 @@ def _downflow_units(model: "Model", units: list[Panel], spec: dict,
             return_z=lift + height,
         ))
     return out
+
+
+CAGE_CONSTRUCTIONS = ("mesh", "drywall")
+
+
+def cage_for(spec: dict) -> dict | None:
+    """The customer cage this case has, or None where it has none (ADR-096).
+
+    A cage is a security boundary inside the data hall, around one customer's
+    rows. It is built one of two ways and the two are different rooms:
+
+    * ``drywall`` -- a solid partition. The air cannot cross it at all, so
+      everything inside is fed and returned through whatever openings the
+      cage has, and the hall outside is a different volume.
+    * ``mesh`` -- woven wire, 13 mm here. The air crosses it freely except
+      for the pressure it costs, and it costs that TWICE: once going in on
+      the cold side and once coming out on the hot one.
+
+    Which one is not a detail of the drawing. A drywall cage with no designed
+    opening is a room the plant does not reach; a mesh cage is a room the
+    plant reaches and pays about 2 x 1/2 K rho v^2 to reach. Modelling one as
+    the other is the whole answer, which is why it is a field and not an
+    assumption.
+    """
+    raw = spec.get("cage") or {}
+    if not raw.get("enabled"):
+        return None
+    how = str(raw.get("construction", "mesh")).strip().lower()
+    if how not in CAGE_CONSTRUCTIONS:
+        raise ValueError(
+            f"cage.construction: {how!r} is not one of "
+            + ", ".join(CAGE_CONSTRUCTIONS)
+        )
+    clearance = float(raw.get("clearance", 1.2))
+    if not 0.1 <= clearance <= 10.0:
+        raise ValueError(
+            f"cage.clearance: {num(clearance)} m is outside 0.1-10 m. It is "
+            "the gap from the outermost cabinet faces to the cage wall"
+        )
+    height = raw.get("height")
+    return {
+        "construction": how,
+        "clearance": clearance,
+        "height": None if height is None else float(height),
+        "roof": bool(raw.get("roof", False)),
+    }
+
+
+def cage_k(spec: dict) -> float | None:
+    """What the air pays to cross a mesh cage, per crossing.
+
+    None for drywall, which is a wall: there is nothing to cross.
+    """
+    if (cage_for(spec) or {}).get("construction") != "mesh":
+        return None
+    stated = (spec.get("cage") or {}).get("loss_coefficient")
+    if stated is not None:
+        return float(stated)
+    mesh = component_for(spec, "cage")
+    return mesh.k if mesh else None
+
+
+def _cage_panels(model: "Model", cage: dict, spec: dict) -> list[Panel]:
+    """The four walls of the cage, and its roof where it has one.
+
+    The rectangle is the cabinets it encloses, grown by the clearance: a cage
+    is built around the rows, and the drawing dimensions it from them. The
+    floor is the room's floor -- the deck, on a raised-floor hall -- and the
+    top is `cage.height`, or the false ceiling where the case states none.
+    """
+    if not model.racks:
+        raise ValueError("cage.enabled: this case has no racks to enclose")
+    gap = cage["clearance"]
+    x0 = min(r.box.lo[0] for r in model.racks) - gap
+    x1 = max(r.box.hi[0] for r in model.racks) + gap
+    y0 = min(r.box.lo[1] for r in model.racks) - gap
+    y1 = max(r.box.hi[1] for r in model.racks) + gap
+    z0 = model.hall.lo[2]
+    z1 = z0 + cage["height"] if cage["height"] else model.ceiling_z
+
+    # A cage wall ON the hall wall is not a cage: `topoSet` would take the
+    # boundary faces the room is already made of, and `createBaffles` would
+    # split the room's own wall in two. Refused by name, with the clearance
+    # that would fit, rather than built into something nobody can read.
+    # BOTH AXES, and the tighter one decides. Reporting the first that fails
+    # gives a clearance the other still refuses, which is a refusal that sends
+    # the reader round again.
+    room = ((model.hall.lo[0], model.hall.hi[0]), (model.hall.lo[1], model.hall.hi[1]))
+    tight = None
+    for axis, (lo, hi), (wall_lo, wall_hi) in ((0, (x0, x1), room[0]),
+                                               (1, (y0, y1), room[1])):
+        rack_lo = min(r.box.lo[axis] for r in model.racks)
+        rack_hi = max(r.box.hi[axis] for r in model.racks)
+        # The SMALLER of the two gaps, not half the leftover: the rows are
+        # rarely centred in the room -- a POD's hot aisle is contained against
+        # one wall -- so a clearance that fits on average still lands on the
+        # near side.
+        fits = min(rack_lo - wall_lo, wall_hi - rack_hi)
+        touches = lo <= wall_lo + 1e-6 or hi >= wall_hi - 1e-6
+        if touches and (tight is None or fits < tight[0]):
+            tight = (fits, axis, rack_lo - wall_lo, wall_hi - rack_hi)
+    if tight:
+        fits, axis, near, far = tight
+        raise ValueError(
+            f"cage.clearance: {num(gap)} m puts the cage wall on or outside "
+            f"the hall wall along {'xy'[axis]} -- the cage would be the room "
+            f"rather than a boundary inside it. The rows stand {num(near)} m "
+            f"from one wall and {num(far)} m from the other there, so the "
+            f"clearance has to be under {num(fits)} m"
+        )
+    if z1 > model.ceiling_z + 1e-6:
+        raise ValueError(
+            f"cage.height: {num(z1 - z0)} m reaches {num(z1)} m, above the "
+            f"{num(model.ceiling_z)} m false ceiling. A cage stops at the "
+            "ceiling; above it is the return plenum"
+        )
+    # A DRYWALL CAGE NEEDS A WAY IN. Solid walls to the ceiling, or solid
+    # walls and a roof, leave a volume the supply cannot reach -- while the
+    # ceiling grilles over its hot aisles still let air OUT, into the plenum.
+    # A room with an exit and no entry has no steady solution, and the solver
+    # does not say so politely: four ranks died on a floating point exception
+    # about nine minutes in, having meshed and decomposed perfectly. Refused
+    # here instead, with the two ways a real one is built (ADR-096).
+    if cage["construction"] == "drywall" and (
+            cage["roof"] or z1 >= model.ceiling_z - 1e-6):
+        raise ValueError(
+            "a drywall cage closed at the top has no way in: the supply is "
+            "outside it and the ceiling grilles over its own hot aisles let "
+            "air out, so nothing can reach the racks. Either give it "
+            "`cage.height` below the "
+            f"{num(model.ceiling_z)} m ceiling with `cage.roof` off, so the "
+            "air passes over the top, or model it as `cage.construction: "
+            "mesh`. A drywall cage with a door or a duct through it is real "
+            "and is not modelled yet"
+        )
+
+    kind = "wall" if cage["construction"] == "drywall" else "opening"
+    k = cage_k(spec) if kind == "opening" else None
+    panels = [
+        Panel(f"cage_{name}", kind, axis=axis, position=at,
+              extent=(span, (z0, z1)), resistance=k)
+        for name, axis, at, span in (
+            ("near", 0, x0, (y0, y1)),
+            ("far", 0, x1, (y0, y1)),
+            ("left", 1, y0, (x0, x1)),
+            ("right", 1, y1, (x0, x1)),
+        )
+    ]
+    if cage["roof"]:
+        panels.append(Panel("cage_roof", kind, axis=2, position=z1,
+                            extent=((x0, x1), (y0, y1)), resistance=k))
+    return panels
 
 
 def raised_floor_for(spec: dict) -> dict | None:
@@ -2940,6 +3105,10 @@ def to_dict(model: Model, spec: dict) -> dict:
         # and link to its datasheet, and offer no way to choose another
         # (ADR-092).
         "equipment": equipment_in_use(spec),
+        # How the customer cage is built, where there is one. The drawing
+        # shows a rectangle either way; the answer is not the same (ADR-096).
+        "cage": model.cage,
+        "cage_k": cage_k(spec),
         "racks": [
             {
                 "id": r.id,

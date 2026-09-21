@@ -138,6 +138,28 @@ const SECTIONS = [
     ],
   },
   {
+    title: 'Customer cage',
+    note: 'a boundary inside the hall, round one customer\u2019s rows',
+    // Drywall is a partition the air cannot cross; mesh is a resistance it
+    // pays TWICE, once entering the cage on the cold side and once leaving
+    // it on the hot one. The drawing shows the same rectangle either way,
+    // and the two are different rooms (ADR-096).
+    componentsLink: true,
+    params: [
+      { key: 'cage', label: 'Enclose the rows in a cage', check: true,
+        default: false },
+      { key: 'cage_construction', label: 'Built as', default: 'mesh',
+        choices: [{ value: 'mesh', label: 'Woven mesh \u2014 the air crosses it, at a cost' },
+                  { value: 'drywall', label: 'Drywall \u2014 solid, the air cannot cross' }] },
+      { key: 'cage_clearance', label: 'Cabinet faces to the cage wall',
+        unit: 'm', step: 0.1, optional: true },
+      { key: 'cage_height', label: 'Cage height', unit: 'm', step: 0.1,
+        optional: true },
+      { key: 'cage_roof', label: 'Close the top as well', check: true,
+        default: false },
+    ],
+  },
+  {
     title: 'Return air and containment',
     note: 'how much face there is, and what it is made of',
     // What each surface is made of -- its free area, and what that costs --
@@ -175,8 +197,11 @@ function activeSections() {
       // or not the case mentions it. Dropping the ones a case said nothing
       // about is how the supply plenum ended up as four number boxes with no
       // way to turn the thing on (ADR-059).
+      // A checkbox always has an answer -- on or off -- and so does a
+      // `choices` field: there is no empty construction. Both show whether
+      // or not the case mentions them.
       (p) => model.editable?.[p.key]
-        && (p.optional || p.check || specValue(p.key) !== ''),
+        && (p.optional || p.check || p.choices || specValue(p.key) !== ''),
     ),
   })).filter((section) => section.params.length);
 }
@@ -753,6 +778,18 @@ function inputHtml(p) {
       <input type="checkbox" id="p-${p.key}" ${on ? 'checked' : ''} />
     </div>`;
   }
+  if (p.choices) {
+    // One of a named set of words, as the spec writes them. Not a checkbox:
+    // there is no false construction -- a cage is drywall or it is mesh, and
+    // the two are different rooms (ADR-096).
+    const on = value === undefined || value === null ? p.default : value;
+    return `<div class="param">
+      <label for="p-${p.key}">${p.label}</label>
+      <select id="p-${p.key}">${p.choices.map((c) =>
+        `<option value="${c.value}"${c.value === on ? ' selected' : ''}>${
+          c.label}</option>`).join('')}</select>
+    </div>`;
+  }
   const field = `<input type="${p.text ? 'text' : 'number'}" id="p-${p.key}"
            step="${p.step ?? 'any'}" value="${formatValue(value)}" />`;
   if (p.key !== 'cell_size') {
@@ -1033,7 +1070,10 @@ async function applyChanges() {
       if (p.check) {
         changes[p.key] = input.checked;
       } else if (input.value !== '') {
-        changes[p.key] = p.text ? input.value : Number(input.value);
+        // A `choices` field is a <select> whose value is a WORD. Casting it
+        // like a number box sends NaN, and the server rejects the field the
+        // reader just chose.
+        changes[p.key] = (p.text || p.choices) ? input.value : Number(input.value);
       }
     }
   }

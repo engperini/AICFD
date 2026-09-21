@@ -280,9 +280,25 @@ def wall_plan(model: Model) -> list[tuple[str, list[Panel], list[Panel]]]:
                  or (p.kind == "fan" and abs(p.position - deck.position) < 1e-6)]
         plan.append(("piso", [deck], holes))
 
+    # A DRYWALL CAGE IS FOUR WALLS WITH TWO NORMALS -- two across the rows and
+    # two along them -- so it cannot be one zone: a zone shares a normal, and
+    # `_face_selection` asserts it. One zone per wall, named after the panel,
+    # the way each fan wall gets its own. A MESH cage is not here at all: it
+    # resists the air, so `porous()` claims it and it becomes a cyclic pair
+    # with the jump on it (ADR-096).
+    for wall in [p for p in model.panels
+                 if p.name.startswith("cage_") and p.resistance is None]:
+        plan.append((wall.name, [wall], []))
+
     for zone in dict.fromkeys(group for group, _prefix in WALL_GROUPS):
         prefixes = tuple(prefix for group, prefix in WALL_GROUPS if group == zone)
-        members = [p for p in model.panels if p.name.startswith(prefixes)]
+        # A panel that RESISTS the air is not a member of a wall zone: it is
+        # its own zone, claimed by `porous()`, and a face in two zones is
+        # what `createBaffles` refuses. The cage is the surface that made
+        # this explicit -- drywall is a wall and mesh is a resistance, under
+        # the same name prefix (ADR-096).
+        members = [p for p in model.panels
+                   if p.name.startswith(prefixes) and p.resistance is None]
         if members:
             plan.append((zone, members, []))
     return plan
@@ -439,7 +455,7 @@ def porous(model: Model) -> list[Panel]:
     return [p for p in model.panels
             if p.resistance is not None
             and p.name.startswith(("grille", "plenum_opening", "supply",
-                                   "floor_opening", "tile_"))]
+                                   "floor_opening", "tile_", "cage_"))]
 
 
 def _porous_baffle(grille: Panel, p0: float) -> str:

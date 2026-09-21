@@ -34,10 +34,10 @@ LIBRARY = Path(__file__).resolve().parent.parent / "components"
 #: standard committed here is this project's to guarantee, and a component an
 #: engineer adds to the folder is theirs (ADR-077).
 SHIPPED = (
+    "cage-mesh-13",
     "ceiling-return-600",
     "ceiling-return-600-eggcrate",
     "ceiling-return-600-open",
-    "ceiling-return-600-perforated",
     "containment-panel",
     "floor-tile-600",
     "gallery-mesh-13",
@@ -51,6 +51,7 @@ SHIPPED = (
 #: whoever supplies it.
 ROLES = {
     "gallery_mesh": "Plenum to mechanical gallery",
+    "cage": "Customer cage",
     "ceiling_return": "Ceiling return grilles",
     "supply_grille": "Plenum supply grilles",
     "floor_tile": "Raised floor plates",

@@ -124,7 +124,24 @@ PLAUSIBLE_SPEED_MARGIN = 5.0
 #: perforated plates, and the mesh below its deck (ADR-076). Leaving one out
 #: makes the check fail on a hall that is sealed, which is how this list came
 #: to be a named constant instead of a literal buried in the check.
+#:
 PASSES_FLOW = ("grille", "plenum_opening", "supply", "floor_opening", "tile_")
+
+#: A CAGE IS BOTH, under one name. Built in mesh it is a porous surface and
+#: the air is meant to cross it; built in drywall it is a wall, and flow
+#: through it is exactly the leak this check exists to find. The two are told
+#: apart by how `createBaffles` names their patches -- a porous pair ends
+#: `_below`/`_above`, a wall pair `_master`/`_slave` -- so the prefix list
+#: above cannot express it and this one does (ADR-096).
+PASSES_FLOW_PAIRS = (("cage_", ("_below", "_above")),)
+
+
+def _passes_flow(name: str) -> bool:
+    """Is this patch one the air is MEANT to cross?"""
+    if name.startswith(PASSES_FLOW):
+        return True
+    return any(name.startswith(head) and name.endswith(tails)
+               for head, tails in PASSES_FLOW_PAIRS)
 
 #: How far apart the two ends of the return path may read before something is
 #: wrong, in kelvin. Both are mixing-cup means over the whole stream, so this
@@ -1097,7 +1114,7 @@ def _checks(model: Model, step: Path, kpis: dict, grid: dict) -> list[Check]:
         name: flow
         for name, flow in flows.items()
         if not _is_fan_patch(name)
-        and not name.startswith(PASSES_FLOW)
+        and not _passes_flow(name)
         and abs(flow) > MASS_TOLERANCE * supply
     }
     checks.append(

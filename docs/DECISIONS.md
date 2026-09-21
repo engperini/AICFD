@@ -4108,3 +4108,58 @@ it uses `replace`. `replace` carried `return_z` across faithfully, and
 unsnapped. So the guard is no longer the two planes somebody remembered: every
 coordinate a panel carries is checked against the grid, by name, on every
 shipped case.
+
+---
+
+## ADR-096 — A customer cage is mesh or drywall, and the two are different rooms
+
+**Decision.** `cage:` encloses the rows in a boundary inside the hall, built
+one of two ways. `mesh` is a porous surface carrying the woven mesh's loss
+coefficient; `drywall` is a wall. A drywall cage closed at the top is refused.
+
+**Why it is a field and not a drawing note.** A plan shows the same rectangle
+whichever way the cage is built, and the answer is not the same. The air
+crossing a mesh cage pays K twice — once entering on the cold side, once
+leaving on the hot one. The air meeting a drywall cage does not cross it at
+all and goes over the top instead. Measured on the shipped POD with a cage
+round its row, 400 iterations, everything else identical:
+
+| | mesh | drywall, 2,6 m, open above |
+|---|---|---|
+| fan rise | 31,9 Pa | 33,0 Pa (+3,5%) |
+| peak speed | 1,79 m/s | 1,98 m/s (+10,4%) |
+
+Both pass all eleven checks. Neither is a rounding, and nothing about the
+drawing tells them apart.
+
+**Why a drywall cage closed at the top is refused.** Its walls are solid and
+the supply is outside them, while the ceiling return grilles over its own hot
+aisles still let air OUT into the plenum. That is a volume with an exit and no
+entry: there is no steady solution, and the solver does not say so politely —
+four ranks died on a floating point exception about nine minutes in, having
+meshed and decomposed perfectly. The refusal names the two ways a real one is
+built: below the ceiling with the top open, so the air passes over, or as
+mesh. A drywall cage with a door or a duct through it is real and is not
+modelled yet, and the message says that too.
+
+**One name, two kinds of surface.** A cage panel is `cage_*` either way, and
+that made two older lessons bite at once:
+
+- `wall_plan` grouped every panel matching a prefix, so a mesh cage went into
+  a wall zone AND into `porous()` — the same face in two zones, which is
+  exactly what `createBaffles` refuses (ADR-095). The group now excludes
+  anything that resists the air, which is the invariant rather than a
+  special case.
+- a zone shares a normal, and a cage has two — two walls across the rows and
+  two along them. One zone for all four failed an assertion deep in the
+  generator. Each drywall wall is its own zone now, the way each fan wall is.
+- `sealed_envelope` tells them apart by the patch pair `createBaffles` makes:
+  a porous surface is `_below`/`_above` and a wall is `_master`/`_slave`.
+  Excusing the `cage_` prefix would have excused a drywall leak, which is the
+  one thing that check exists to find.
+
+**Consequence.** `cage.clearance` has to be less than `aisles.perimeter`, or
+the cage wall lands on the hall wall and the cage is the room rather than a
+boundary in it. That is refused with the gap on each side and the clearance
+that would fit — the smaller of the two gaps, not half the leftover, because
+rows are rarely centred in a room.
