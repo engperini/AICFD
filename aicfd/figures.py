@@ -181,11 +181,11 @@ class Export:
 # --- field maps ---------------------------------------------------------------
 
 
-def _temperature_mesh(plt, ax, x_edges, y_edges, values):
+def _temperature_mesh(plt, ax, x_edges, y_edges, values, ramp=None):
     """Paint a temperature field in contour bands on the fixed scale."""
     from matplotlib.colors import BoundaryNorm, ListedColormap
 
-    scale = palette.temperature_scale()
+    scale = palette.temperature_scale(ramp)
     # Air outside the fixed band saturates at the end of the ramp rather than
     # dropping out of the picture; the bar's arrowheads say so.
     cmap = ListedColormap(scale["colours"]).with_extremes(
@@ -209,14 +209,14 @@ def _map_figure(plt, width_in: float, height_in: float):
 
 
 def _temperature_bar(plt, fig, mesh, cax, label="Air temperature (°C)",
-                     scale=None, note=None):
+                     scale=None, note=None, ramp=None):
     """The colourbar, with the ASHRAE limits drawn on it.
 
     The limits go on the bar rather than in the caption because that is where
     the judgement happens: the reader is asking "is this air acceptable", and
     the answer is a position on this bar.
     """
-    scale = scale or palette.temperature_scale()
+    scale = scale or palette.temperature_scale(ramp)
     bar = fig.colorbar(mesh, cax=cax, orientation="horizontal", extend="both")
     every = 2 if len(scale["edges"]) > 10 else 1
     bar.set_ticks(scale["edges"][::every])
@@ -266,7 +266,8 @@ def _fan_body(ax, x0, y0, dx, dy):
                            linewidth=0.7, linestyle=(0, (3, 2))))
 
 
-def plan(export: Export, out: Path, z: float, title: str) -> Path:
+def plan(export: Export, out: Path, z: float, title: str,
+         ramp: str | None = None) -> Path:
     """Temperature in plan at height ``z``, with the room drawn over it.
 
     The plan turns when the room is longer across than along, for the same
@@ -286,7 +287,8 @@ def plan(export: Export, out: Path, z: float, title: str) -> Path:
     span, rise = export.size[h], export.size[v]
 
     fig, ax, cax = _map_figure(plt, 7.2, min(8.4, 7.2 * rise / span))
-    mesh = _temperature_mesh(plt, ax, export.edges(h), export.edges(v), values)
+    mesh = _temperature_mesh(plt, ax, export.edges(h), export.edges(v), values,
+                             ramp)
 
     for rack in export.racks:
         _outline(ax, rack["lo"], rack["hi"], h, v,
@@ -341,21 +343,22 @@ def plan(export: Export, out: Path, z: float, title: str) -> Path:
     ax.set_xlabel(labels[h])
     ax.set_ylabel(labels[v])
     ax.set_title(title, loc="left")
-    _temperature_bar(plt, fig, mesh, cax)
+    _temperature_bar(plt, fig, mesh, cax, ramp=ramp)
     fig.savefig(out, dpi=DPI, bbox_inches="tight")
     plt.close(fig)
     return out
 
 
 def section(export: Export, out: Path, normal: int, at: float, title: str,
-            xlabel: str) -> Path:
+            xlabel: str, ramp: str | None = None) -> Path:
     """A vertical section: normal 0 looks along the hall, normal 1 across it."""
     plt = _pyplot()
     h = 1 if normal == 0 else 0
     values = export.slice("T", normal, at)  # [z, h]
     span, height = export.size[h], export.size[2]
     fig, ax, cax = _map_figure(plt, 7.2, max(1.3, 7.2 * height / span))
-    mesh = _temperature_mesh(plt, ax, export.edges(h), export.edges(2), values)
+    mesh = _temperature_mesh(plt, ax, export.edges(h), export.edges(2), values,
+                             ramp)
 
     for rack in export.racks:
         if rack["lo"][normal] - 1e-6 <= at <= rack["hi"][normal] + 1e-6:
@@ -424,7 +427,7 @@ def section(export: Export, out: Path, normal: int, at: float, title: str,
     ax.set_xlabel(xlabel)
     ax.set_ylabel("z — height (m)")
     ax.set_title(title, loc="left")
-    _temperature_bar(plt, fig, mesh, cax)
+    _temperature_bar(plt, fig, mesh, cax, ramp=ramp)
     fig.savefig(out, dpi=DPI, bbox_inches="tight")
     plt.close(fig)
     return out
@@ -433,7 +436,8 @@ def section(export: Export, out: Path, normal: int, at: float, title: str,
 # --- per-rack and per-unit ----------------------------------------------------
 
 
-def rack_map(export: Export, out: Path, metric: str = "inlet_top_c") -> Path:
+def rack_map(export: Export, out: Path, metric: str = "inlet_top_c",
+             ramp: str | None = None) -> Path:
     """Every rack in plan, coloured by the air it breathes.
 
     The number the room is judged on, one value per rack, on the same fixed
@@ -446,8 +450,9 @@ def rack_map(export: Export, out: Path, metric: str = "inlet_top_c") -> Path:
     # Fitted, not the fixed band: every rack in a healthy hall falls inside
     # one 2,5 K band of the field scale, and painting them against it would
     # say only that they are all fine. This figure exists to rank them.
-    scale = palette.fitted_scale([z.get(metric) for z in export.kpis["zones"]])
-    colours = palette.lut("sequential")
+    scale = palette.fitted_scale([z.get(metric) for z in export.kpis["zones"]],
+                                 ramp=ramp)
+    colours = palette.lut(ramp or "sequential")
     width, depth = export.size[0], export.size[1]
     turned = depth > 1.25 * width
     h, v = (1, 0) if turned else (0, 1)

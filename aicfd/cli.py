@@ -25,6 +25,10 @@ import sys
 import webbrowser
 from pathlib import Path
 
+# The one list of ramps a reader may ask for, shared with the server and the
+# page, so `--colours` cannot offer a name the rest of the tool does not know.
+from aicfd.palette import OPTIONAL_RAMPS
+
 REPO_ROOT = Path(__file__).resolve().parents[1]
 RUNS_DIR = REPO_ROOT / "runs"
 RESULTS_DIR = REPO_ROOT / "results"
@@ -95,6 +99,11 @@ def main(argv: list[str] | None = None) -> int:
         "--title", help="the room's name on the cover (default: the case name)"
     )
     report_parser.add_argument("--author", help="who ran it, on the cover")
+    report_parser.add_argument(
+        "--colours", choices=OPTIONAL_RAMPS, default=None,
+        help="repaint the field figures in this ramp (default: the ramp each "
+             "field asks for)",
+    )
 
     view_parser = sub.add_parser("view", help="serve the page")
     view_parser.add_argument("--port", type=int, default=8000)
@@ -449,7 +458,7 @@ def _report(args) -> int:
     out = (Path(args.out) if args.out
            else REPORTS_DIR / args.name / f"{args.name}-cfd-report.docx")
     written = build(source, out, client=args.client, author=args.author,
-                    title=args.title)
+                    title=args.title, ramp=args.colours)
     print(f"Wrote {written}")
     print(f"Figures in {written.parent / 'figures'}")
     return 0

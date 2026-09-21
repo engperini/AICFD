@@ -22,7 +22,8 @@
  */
 
 import { viewsFor, drawView, sheetScale, viewTransform } from './drawing.js';
-import { Scale, buildLut, niceStep } from './colormaps.js';
+import { Scale, buildLut, niceStep, rememberedRamp, RAMP_EVENT }
+  from './colormaps.js';
 import { renderScaleBar } from './maps.js';
 
 const METRICS = {
@@ -54,6 +55,9 @@ export class RackInlets {
     this.view = viewsFor(model).find((v) => v.id === 'plan');
     this.#build();
     window.addEventListener('resize', debounce(() => this.render(), 150));
+    // The ramp is picked on the field maps, one card up. This map is
+    // judged against those, so it follows the choice (ADR-101).
+    window.addEventListener(RAMP_EVENT, () => this.render());
   }
 
   #build() {
@@ -111,7 +115,7 @@ export class RackInlets {
   render() {
     if (!this.racks.length) return;
     const mode = this.currentMode();
-    const lut = buildLut('sequential', mode);
+    const lut = buildLut(rememberedRamp() || 'sequential', mode);
     const scale = this.scale;
     const metric = METRICS[this.metric];
     this.host.querySelector('#rack-caption').textContent =

@@ -13,6 +13,9 @@ import { RackInlets } from './rack-inlets.js';
 // Keeps the case on the way back, so `back` returns to the model page this came from
 // rather than to the one the server was started with (ADR-091).
 import { withCase } from './case.js';
+// The ramp the maps are being shown in: the document follows the screen it
+// was asked for from (ADR-101).
+import { rememberedRamp } from './colormaps.js';
 
 main();
 
@@ -420,7 +423,10 @@ async function downloadReport(caseName) {
       {
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify(cover),
+        // The cover is what the reader typed and is remembered as such; the
+        // ramp is a view setting that belongs to the maps, so it rides along
+        // with the request without being stored as part of the cover.
+        body: JSON.stringify({ ...cover, ramp: rememberedRamp() }),
       },
     );
     const type = response.headers.get('Content-Type') || '';

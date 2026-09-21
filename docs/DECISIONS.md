@@ -4270,6 +4270,37 @@ control for it. The manual says so rather than leaving a reader to find out.
 
 ---
 
+## ADR-099 — A cage wall stands in an aisle, and that aisle gets a width of its own
+
+**Decision.** A cage boundary that runs along the hall stands in a cold aisle,
+and that aisle is set by `cage.aisle`, not by `aisles.cold`. `cage.clearance`
+says where in it the wall sits, measured from the enclosed rows' faces. Only
+the one or two pod boundaries a cage wall occupies take `cage.aisle`; every
+other boundary keeps the aisle the hall was drawn with.
+
+**Why.** The wall was put on the boundary and the aisle was left as drawn, so
+it halved it. Measured on `hall-cage-1mw` as it first built: **0,60 m from the
+wall to F4 and 0,60 m to F5**, inside a 1,20 m aisle. Both rows breathe from
+that aisle — the one inside the cage and the one outside — and 0,60 m in front
+of a row of cabinets is a different room from 1,20 m. Nothing said so: the case
+built, meshed and solved, and the first thing to notice was somebody looking at
+the drawing. The hall grows by the extra width instead, which is what a real
+project does.
+
+**Two keys, because they answer different questions.** `cage.aisle` is how much
+room there is; `cage.clearance` is who gets it. 2,40 m of aisle with 1,20 m of
+clearance centres the wall and leaves both rows their full 1,20 m; raising the
+clearance gives the cage more and the hall less, without changing the total.
+
+**What the run says.** Where the wall leaves a row less cold aisle than
+`aisles.cold` draws, the summary names the aisle, both gaps, both rows and the
+two keys that fix it — and says nothing at all when the aisle is wide enough to
+hold the wall, because a paragraph on every run is the fault this repository
+has already had to undo once (ADR-098). A clearance that puts the wall inside a
+cabinet is refused outright, naming the rack and how much clearance to lose.
+
+---
+
 ## ADR-100 — A cold aisle is closed with a lid, not a chimney
 
 **Decision.** `containment.aisle` is `hot` (the default, and what this tool has
@@ -4313,3 +4344,46 @@ closed, and quoted the ceiling height for a lid that stops at the racks. It
 follows the arrangement now, and `chimney_area` with it — for a lid the
 number is the thing's own footprint, because the air does not rise through a
 lid, it leaves sideways through the racks.
+
+---
+
+## ADR-101 — The spectrum is offered, and it is not the default
+
+**Decision.** Every field map, the per-rack map and the report figures can be
+painted in a blue–cyan–green–yellow–orange–red spectrum. It is a picker on the
+results page (`Colours`), `--colours spectrum` on `aicfd report`, and a `ramp`
+sent with the report request so the document matches the screen it was asked
+for from. The ramp each field asks for stays the default: diverging for
+temperature and pressure, sequential for speed (ADR-009).
+
+**Why offer it at all.** That sequence is what every commercial post-processor
+prints, so it is what a client sets this study beside. A result nobody can
+compare with the consultant's report is worth less than one they can, and the
+comparison happens in whatever colours the other document is in. This is the
+reader's decision, not the tool's.
+
+**What it costs, plainly.** The hue sequence is not perceptually even: the
+cyan/green edge reads as a step the data does not have, and a smooth wash of it
+invents structure. For a red–green colour-blind reader — roughly one man in
+twelve — the middle of the ramp collapses. Both are real, and both are why it
+is not the default.
+
+**Why the cost is bearable here.** Every scale in this tool is banded
+(ADR-024), and a contour scale is read off the bar rather than judged by eye: a
+colour is looked up, not estimated. The bands, the 10–40 °C domain, the pinned
+centre and the ASHRAE marks are the field's whatever ramp is painted over them.
+
+**The invariant.** Picking a ramp changes WHICH COLOURS, never what they
+encode. `temperature_scale(ramp)` and `fitted_scale(..., ramp=...)` change only
+the `colours` list; `min`, `max`, `step`, `center`, `edges` and `marks` come
+out identical, and `tests/test_palette.py` asserts exactly that. So two readers
+holding the same plot in different colours are holding the same numbers.
+
+**One choice, everywhere.** The key lives in `web/colormaps.js` and a `window`
+event carries a change to the other cards, because the field maps in the
+spectrum beside a per-rack map still in blue is worse than either alone — and
+the results page sends it with the report cover, so the Word document does not
+disagree with the screen.
+
+**Not repainted.** The categorical series colours (`palette.SERIES`) and the
+convergence chart: those name things, and identity is not a magnitude.

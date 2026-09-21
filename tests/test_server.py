@@ -291,6 +291,67 @@ class ReportEndpointTest(unittest.TestCase):
             server.write_report("no-such-case-anywhere", {})
 
 
+class ReportRampTest(unittest.TestCase):
+    """The document comes out in the colours the page was showing (ADR-101).
+
+    The picker is on the results page and the report is built on the server,
+    so the choice has to travel with the request -- otherwise a reader sends a
+    spectrum plot to a client and gets a blue one back, with nothing to say
+    which is the study.
+    """
+
+    def ramp_passed_for(self, body: dict):
+        """What `build` is asked to paint in, for this request body."""
+        from unittest.mock import patch
+
+        from aicfd import report, server
+
+        seen = {}
+
+        def fake_build(results_dir, out, **kwargs):
+            seen.update(kwargs)
+            Path(out).parent.mkdir(parents=True, exist_ok=True)
+            Path(out).write_bytes(b"")
+            return Path(out)
+
+        with patch.object(report, "build", fake_build):
+            server.write_report("pod-fanwall", body)
+        return seen["ramp"]
+
+    def setUp(self):
+        import tempfile
+
+        from aicfd import server
+
+        if not (server.REFERENCE_DIR / "pod-fanwall" / "viewer.json").is_file():
+            self.skipTest("the worked result is not in this clone")
+        self.tmp = tempfile.TemporaryDirectory()
+        self.saved = server.REPORTS_DIR
+        server.REPORTS_DIR = Path(self.tmp.name)
+
+    def tearDown(self):
+        from aicfd import server
+
+        server.REPORTS_DIR = self.saved
+        self.tmp.cleanup()
+
+    def test_the_chosen_ramp_reaches_the_figures(self):
+        from aicfd.palette import OPTIONAL_RAMPS
+
+        for name in OPTIONAL_RAMPS:
+            with self.subTest(ramp=name):
+                self.assertEqual(self.ramp_passed_for({"ramp": name}), name)
+
+    def test_asking_for_nothing_leaves_each_field_its_own_ramp(self):
+        self.assertIsNone(self.ramp_passed_for({}))
+        self.assertIsNone(self.ramp_passed_for({"ramp": ""}))
+
+    def test_a_ramp_nobody_has_is_dropped_rather_than_refused(self):
+        """It can only come from a browser holding a stale name, and a report
+        in the default colours is still the right report."""
+        self.assertIsNone(self.ramp_passed_for({"ramp": "chartreuse"}))
+
+
 class RereadTest(unittest.TestCase):
     def test_a_case_that_was_never_solved_here_says_so(self):
         from aicfd.server import reread_run

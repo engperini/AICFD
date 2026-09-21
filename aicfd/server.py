@@ -1188,16 +1188,23 @@ def write_report(name: str, body: dict) -> Path:
     result -- and, once the worked results moved to `reference/`, modify a
     file the repository tracks (ADR-032).
     """
+    from aicfd.palette import OPTIONAL_RAMPS
     from aicfd.report import build, title_of
 
     out = REPORTS_DIR / name / f"{name}-cfd-report.docx"
     out.parent.mkdir(parents=True, exist_ok=True)
+    # The ramp the page is showing, so the document matches the screen it was
+    # asked for from. An unknown name is dropped rather than refused: it can
+    # only come from a stale browser, and a report in the default colours is
+    # still the right report (ADR-101).
+    ramp = (body.get("ramp") or "").strip()
     return build(
         results_dir_for(name),
         out,
         client=(body.get("client") or "").strip() or None,
         author=(body.get("author") or "").strip() or None,
         title=(body.get("title") or "").strip() or title_of(name),
+        ramp=ramp if ramp in OPTIONAL_RAMPS else None,
     )
 
 

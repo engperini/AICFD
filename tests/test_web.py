@@ -566,3 +566,70 @@ class BlockKeyWithAListTest(unittest.TestCase):
             lines = text.splitlines(True) if keep else text.split("\n")
             with self.subTest(keepends=keep):
                 self.assertIsNotNone(self.Y.find(lines, ["racks", "row"]))
+
+
+class ColourRampChoiceTest(unittest.TestCase):
+    """The reader may ask for the spectrum, and everything must follow (ADR-101).
+
+    The picker is on the field maps, and three other things read the same
+    choice: the per-rack map one card down, the colourbar, and the Word report
+    downloaded from the button beside them. A page where one card is a rainbow
+    and the next is still blue -- or a document that disagrees with the screen
+    it was asked for from -- is worse than not offering the choice at all.
+
+    What the picker must NOT do is change what a colour means. The domain, the
+    bands and the pinned centre belong to the field either way.
+    """
+
+    def maps(self) -> str:
+        return (WEB / "maps.js").read_text()
+
+    def test_the_maps_offer_the_picker(self):
+        source = self.maps()
+        self.assertIn("id=\"map-ramp\"", source,
+                      "there is no colour picker on the field maps")
+
+    def test_every_ramp_it_offers_is_one_the_rest_of_the_tool_knows(self):
+        """A name the page offers and `palette.lut` does not answer to would
+        fall through to the sequential ramp: the reader picks the spectrum,
+        the picture does not change, and nothing says why."""
+        from aicfd.palette import OPTIONAL_RAMPS
+
+        source = self.maps()
+        block = source[source.index("id=\"map-ramp\""):]
+        block = block[:block.index("</select>")]
+        offered = set(re.findall(r"<option value=\"([^\"]*)\"", block))
+        self.assertIn("", offered, "the picker cannot be set back to the default")
+        self.assertEqual(offered - {""}, set(OPTIONAL_RAMPS))
+
+    def test_it_picks_the_colours_and_not_the_scale(self):
+        source = self.maps()
+        self.assertIn("buildLut(this.ramp || spec.kind", source,
+                      "the chosen ramp never reaches the lookup table")
+        self.assertIn("this.scale = spec.scaleFor(this.results);", source,
+                      "the scale is built from the ramp choice: a colour "
+                      "would then mean a different number depending on which "
+                      "colours the reader picked")
+
+    def test_the_per_rack_map_follows_the_same_choice(self):
+        source = (WEB / "rack-inlets.js").read_text()
+        self.assertIn("rememberedRamp()", source,
+                      "the per-rack map paints in its own colours whatever "
+                      "the reader picked on the maps above it")
+        self.assertIn("RAMP_EVENT", source,
+                      "nothing repaints it when the choice changes")
+
+    def test_the_report_is_asked_for_in_the_colours_on_the_screen(self):
+        source = (WEB / "results.js").read_text()
+        self.assertIn("rememberedRamp()", source,
+                      "the report request does not carry the ramp, so the "
+                      "document comes out in different colours from the page "
+                      "it was downloaded from")
+
+    def test_one_place_stores_the_choice(self):
+        """Two copies of the storage key is one copy too many: the maps would
+        remember a choice the report sheet never sees."""
+        for name in ("maps.js", "rack-inlets.js", "results.js"):
+            self.assertNotIn("aicfd.ramp", (WEB / name).read_text(),
+                             f"{name} reads the key for itself")
+        self.assertIn("'aicfd.ramp'", (WEB / "colormaps.js").read_text())

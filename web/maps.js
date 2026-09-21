@@ -18,7 +18,8 @@
  */
 
 import { viewsFor, drawView, defaultCut, sheetScale, viewTransform } from './drawing.js';
-import { Scale, buildLut, niceStep } from './colormaps.js';
+import { Scale, buildLut, niceStep, rememberedRamp, rememberRamp }
+  from './colormaps.js';
 
 /**
  * The band every air temperature is coloured against, whatever the run, and
@@ -148,6 +149,13 @@ export class FieldMaps {
             .map(([k, f]) => `<option value="${k}">${f.label}</option>`)
             .join('')}</select>
         </div>
+        <div class="control">
+          <label for="map-ramp">Colours</label>
+          <select id="map-ramp">
+            <option value="">As the field asks</option>
+            <option value="spectrum">Spectrum (blue to red)</option>
+          </select>
+        </div>
         <span class="card-sub" id="map-caption"></span>
       </div>
       <div class="views maps" id="map-views"></div>
@@ -167,6 +175,19 @@ export class FieldMaps {
       this.fieldKey = e.target.value;
       this.render();
     });
+
+    // WHICH COLOURS, not which encoding. The scale, its domain and its bands
+    // are the field's; this picks the ramp painted over them, so two readers
+    // looking at the same plot in different colours are looking at the same
+    // numbers (ADR-101).
+    const ramp = this.host.querySelector('#map-ramp');
+    ramp.value = rememberedRamp();
+    ramp.addEventListener('change', (e) => {
+      this.ramp = e.target.value;
+      rememberRamp(this.ramp);
+      this.render();
+    });
+    this.ramp = ramp.value;
 
     const viewsHost = this.host.querySelector('#map-views');
     for (const view of this.views) {
@@ -244,7 +265,7 @@ export class FieldMaps {
     const mode = this.currentMode();
     const spec = FIELDS[this.fieldKey];
     this.scale = spec.scaleFor(this.results);
-    this.lut = buildLut(spec.kind, mode);
+    this.lut = buildLut(this.ramp || spec.kind, mode);
     this.host.querySelector('#map-caption').textContent = spec.caption;
     this.#renderColorbar(spec);
 

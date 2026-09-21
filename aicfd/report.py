@@ -178,8 +178,15 @@ def title_of(case: str) -> str:
 
 def build(results_dir: str | Path, out_path: str | Path,
           client: str | None = None, author: str | None = None,
-          title: str | None = None) -> Path:
-    """Write the Word report for one exported result."""
+          title: str | None = None, ramp: str | None = None) -> Path:
+    """Write the Word report for one exported result.
+
+    ``ramp`` names one of `palette.OPTIONAL_RAMPS` and repaints the field
+    figures in it. The page offers the same choice and sends it with the
+    cover, so a document downloaded off a page showing the spectrum comes out
+    in the spectrum -- the alternative is a reader holding a screen and a
+    document that disagree about what warm looks like (ADR-101).
+    """
     docx = _docx()
     from docx.enum.text import WD_ALIGN_PARAGRAPH
     from docx.shared import Cm, Pt
@@ -192,7 +199,7 @@ def build(results_dir: str | Path, out_path: str | Path,
     out = Path(out_path)
     figures = out.parent / "figures"
     figures.mkdir(parents=True, exist_ok=True)
-    drawn = _draw(export, figures)
+    drawn = _draw(export, figures, ramp)
 
     doc = docx.Document()
     style = doc.styles["Normal"]
@@ -250,7 +257,7 @@ def _zoom_span(export: Export) -> tuple[float, float, float, float]:
     return (lo_h, hi_h, 0.0, export.size[1])
 
 
-def _draw(export: Export, figures: Path) -> dict:
+def _draw(export: Export, figures: Path, ramp: str | None = None) -> dict:
     """Render every figure the document embeds."""
     model = export.model
     racks = export.racks
@@ -271,28 +278,30 @@ def _draw(export: Export, figures: Path) -> dict:
                              "C (detail) — every cabinet, its name and its load",
                              zoom=_zoom_span(export)),
         "plan_mid": plan(export, figures / "plan-rack-mid.png", rack_top / 2,
-                         f"Temperature at z = {rack_top / 2:.2f} m — rack mid-height"),
+                         f"Temperature at z = {rack_top / 2:.2f} m — rack mid-height",
+                         ramp),
         "plan_top": plan(export, figures / "plan-rack-top.png", rack_top - 0.2,
-                         f"Temperature at z = {rack_top - 0.2:.2f} m — top of the racks"),
+                         f"Temperature at z = {rack_top - 0.2:.2f} m — top of the racks",
+                         ramp),
         "plan_plenum": plan(export, figures / "plan-plenum.png",
                             (model["ceiling_z"] + export.size[2]) / 2,
-                            "Temperature inside the return plenum"),
+                            "Temperature inside the return plenum", ramp),
         "cross": section(export, figures / "section-across.png", 0,
                          (block[0] + block[1]) / 2,
                          f"Section across the hall at x = {(block[0] + block[1]) / 2:.2f} m",
-                         "y — across the hall (m)"),
+                         "y — across the hall (m)", ramp),
         "long_cold": section(export, figures / "section-along-cold.png", 1,
                              (cold[0] + cold[1]) / 2,
                              f"Section along the hall at y = "
                              f"{(cold[0] + cold[1]) / 2:.2f} m — through a cold aisle",
-                             "x — along the hall (m)"),
+                             "x — along the hall (m)", ramp),
         "long_hot": section(export, figures / "section-along-hot.png", 1,
                             (hot[0] + hot[1]) / 2,
                             f"Section along the hall at y = "
                             f"{(hot[0] + hot[1]) / 2:.2f} m — through a contained "
                             "hot aisle",
-                            "x — along the hall (m)"),
-        "racks": rack_map(export, figures / "rack-intake.png"),
+                            "x — along the hall (m)", ramp),
+        "racks": rack_map(export, figures / "rack-intake.png", ramp=ramp),
         "units": units(export, figures / "units.png"),
         "ashrae": ashrae(export, figures / "ashrae.png"),
         "convergence": convergence(export, figures / "convergence.png"),

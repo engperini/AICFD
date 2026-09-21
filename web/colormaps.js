@@ -68,6 +68,64 @@ function oklch(L, C, hDeg) {
 // midpoint always has to be the step closest to the surface, or it stops
 // reading as "nothing".
 
+// THE SPECTRUM, offered because a client reads it, not because it is better.
+//
+// Blue through cyan, green, yellow and orange to red is what every commercial
+// post-processor prints, so it is what a reader compares a report against --
+// and a study nobody can set beside the consultant's is worth less than one
+// they can. What it costs is real and worth knowing: the hue sequence is not
+// perceptually even, so the cyan/green edge reads as a step the data does not
+// have, and the whole thing collapses for a red-green colour-blind reader
+// (ADR-101).
+//
+// Banded, which is how it is always presented, both faults shrink: a contour
+// scale is read off the bar rather than judged by eye. So `spectrum` is an
+// option, the diverging and sequential ramps stay the defaults, and the two
+// never differ in what they are ENCODING -- only in the colours over it.
+const SPECTRUM = [
+  [0.00, '#4b2fd6'], [0.12, '#3b6fe6'], [0.25, '#2aa3e0'],
+  [0.37, '#22c9cf'], [0.47, '#21d3a0'], [0.57, '#4bd85f'],
+  [0.67, '#94e04a'], [0.75, '#d2e23c'], [0.82, '#f0d92f'],
+  [0.88, '#f7b41b'], [0.93, '#f89320'], [0.97, '#f56a37'],
+  [1.00, '#ef4444'],
+].map(([at, hex]) => [at, hexToOklab(hex)]);
+
+/**
+ * The ramp the reader has asked for, over the one the field itself would pick
+ * -- '' when they have not asked.
+ *
+ * Kept here rather than in the map card because two things read it: the maps,
+ * and the report sheet, which sends it with the cover so the Word document
+ * comes out in the colours the page was showing. Two copies of the key is one
+ * copy too many (ADR-101).
+ */
+const RAMP_KEY = 'aicfd.ramp';
+
+/**
+ * Fired on `window` when the choice changes, so every card that paints with a
+ * ramp repaints -- the field maps and the per-rack map are two cards on one
+ * page, and one of them in the spectrum while the other stays blue is worse
+ * than either alone.
+ */
+export const RAMP_EVENT = 'aicfd:ramp';
+
+export function rememberedRamp() {
+  try {
+    return localStorage.getItem(RAMP_KEY) || '';
+  } catch {
+    return ''; // a private window, or site data blocked: the default ramp
+  }
+}
+
+export function rememberRamp(name) {
+  try {
+    localStorage.setItem(RAMP_KEY, name);
+  } catch {
+    // The choice still applies to this page; it just is not remembered.
+  }
+  window.dispatchEvent(new CustomEvent(RAMP_EVENT, { detail: name }));
+}
+
 const RAMPS = {
   light: {
     coldPole: oklch(0.338, 0.103, 257),
@@ -94,7 +152,7 @@ const clamp01 = (t) => (t < 0 ? 0 : t > 1 ? 1 : t);
 /**
  * Build a lookup table of `steps` RGB triples for a ramp.
  *
- * @param {'diverging'|'sequential'} kind
+ * @param {'diverging'|'sequential'|'spectrum'} kind
  * @param {'light'|'dark'} mode
  * @returns {Uint8ClampedArray} packed RGB, 3 bytes per step
  */
@@ -110,6 +168,14 @@ export function buildLut(kind, mode, steps = 256) {
         t < 0.5
           ? mix(ramp.coldPole, ramp.neutral, t * 2)
           : mix(ramp.neutral, ramp.warmPole, (t - 0.5) * 2);
+    } else if (kind === 'spectrum') {
+      // The same anchors in both modes: a spectrum is not anchored on the
+      // surface the way a diverging ramp's neutral midpoint has to be.
+      let j = 1;
+      while (j < SPECTRUM.length - 1 && SPECTRUM[j][0] < t) j += 1;
+      const [at0, c0] = SPECTRUM[j - 1];
+      const [at1, c1] = SPECTRUM[j];
+      lab = mix(c0, c1, at1 === at0 ? 0 : (t - at0) / (at1 - at0));
     } else {
       lab = mix(ramp.seqLow, ramp.seqHigh, t);
     }
@@ -129,7 +195,7 @@ export function buildLut(kind, mode, steps = 256) {
 export class Scale {
   /**
    * @param {object} options
-   * @param {'diverging'|'sequential'} options.kind
+   * @param {'diverging'|'sequential'|'spectrum'} options.kind
    * @param {number} options.min domain minimum
    * @param {number} options.max domain maximum
    * @param {number} [options.center] value pinned to the ramp midpoint (diverging only)

@@ -110,3 +110,67 @@ class TestCountTest(unittest.TestCase):
 
 if __name__ == "__main__":
     unittest.main()
+
+
+class DecisionRecordTest(unittest.TestCase):
+    """An ADR number cited in the code has to be a record somebody can read.
+
+    The citations are the whole point of the file: a comment that says
+    `(ADR-099)` is telling the next reader "the reason is written down, go and
+    read it". It was not. ADR-099 was cited in a case file, twice in
+    `aicfd/model.py` and twice in the tests, and the record was never written
+    -- so five comments pointed at nothing, and the only way to find that out
+    was to go looking.
+
+    Nothing executes prose, so this is the one thing that can notice.
+    """
+
+    CITED = re.compile(r"ADR-(\d{3})")
+    HEADING = re.compile(r"^## ADR-(\d{3}) — .+$", re.M)
+    LOOK_IN = ("*.py", "*.js", "*.md", "*.yaml", "*.yml", "*.html")
+    SKIP = {".git", "__pycache__", "runs", "results", "reports", "node_modules"}
+
+    def recorded(self) -> set[str]:
+        return set(self.HEADING.findall((REPO / "docs" / "DECISIONS.md").read_text()))
+
+    def citations(self) -> dict[str, set[str]]:
+        """Every ADR number cited, and the files that cite it."""
+        where: dict[str, set[str]] = {}
+        for pattern in self.LOOK_IN:
+            for path in REPO.rglob(pattern):
+                if self.SKIP & set(path.relative_to(REPO).parts):
+                    continue
+                if path.name == "DECISIONS.md":
+                    continue
+                for number in self.CITED.findall(path.read_text(errors="ignore")):
+                    where.setdefault(number, set()).add(
+                        str(path.relative_to(REPO)))
+        return where
+
+    def test_every_adr_the_repository_cites_is_written_down(self):
+        recorded = self.recorded()
+        missing = {n: sorted(f) for n, f in self.citations().items()
+                   if n not in recorded}
+        self.assertFalse(
+            missing,
+            "cited and never recorded, so the comment points at nothing: "
+            + "; ".join(f"ADR-{n} (from {', '.join(f)})"
+                        for n, f in sorted(missing.items())),
+        )
+
+    def test_the_records_are_numbered_without_a_gap(self):
+        """A missing number is how a record goes missing unnoticed: the file
+        is long enough that nobody counts it by eye."""
+        numbers = sorted(int(n) for n in self.recorded())
+        self.assertEqual(
+            numbers, list(range(1, len(numbers) + 1)),
+            "the ADR numbers skip: "
+            + ", ".join(f"ADR-{n:03d}" for n in
+                        set(range(1, (max(numbers) if numbers else 0) + 1))
+                        - set(numbers)),
+        )
+
+    def test_each_number_is_recorded_once(self):
+        headings = self.HEADING.findall((REPO / "docs" / "DECISIONS.md").read_text())
+        twice = sorted({n for n in headings if headings.count(n) > 1})
+        self.assertFalse(twice, f"recorded twice: {twice}")

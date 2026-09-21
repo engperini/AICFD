@@ -68,6 +68,37 @@ RAMP = {
 }
 
 
+#: THE SPECTRUM, offered because a client reads it, not because it is better.
+#:
+#: Blue through cyan, green, yellow and orange to red is what every commercial
+#: post-processor prints, so it is what a reader sets a study beside -- and a
+#: study nobody can compare with the consultant's is worth less than one they
+#: can. The cost is real: the hue sequence is not perceptually even, so the
+#: cyan/green edge reads as a step the data does not have, and the whole thing
+#: collapses for a red-green colour-blind reader. Banded, which is how it is
+#: always presented, both faults shrink -- a contour scale is read off the bar
+#: rather than judged by eye (ADR-101).
+#:
+#: The same anchors as `web/colormaps.js`, and `tests/test_palette.py` holds
+#: the two to each other step by step.
+SPECTRUM = tuple(
+    (at, hex_to_oklab(value))
+    for at, value in (
+        (0.00, "#4b2fd6"), (0.12, "#3b6fe6"), (0.25, "#2aa3e0"),
+        (0.37, "#22c9cf"), (0.47, "#21d3a0"), (0.57, "#4bd85f"),
+        (0.67, "#94e04a"), (0.75, "#d2e23c"), (0.82, "#f0d92f"),
+        (0.88, "#f7b41b"), (0.93, "#f89320"), (0.97, "#f56a37"),
+        (1.00, "#ef4444"),
+    )
+)
+
+#: The ramps a reader may ask for by name, over the one the field itself would
+#: have chosen. Asking changes WHICH COLOURS, never what they encode: the
+#: domain, the centre and the bands are the field's either way, so the same
+#: plot in two ramps is the same numbers (ADR-101).
+OPTIONAL_RAMPS = ("spectrum",)
+
+
 def _mix(a, b, t):
     return tuple(x + (y - x) * t for x, y in zip(a, b))
 
@@ -77,7 +108,7 @@ def lut(kind: str, steps: int = 256) -> list[tuple[int, int, int]]:
 
     ``diverging`` gives each arm the same number of steps, so the neutral
     midpoint lands exactly halfway; ``sequential`` runs light to dark in one
-    hue.
+    hue; ``spectrum`` walks the anchors above.
     """
     table = []
     for i in range(steps):
@@ -88,6 +119,13 @@ def lut(kind: str, steps: int = 256) -> list[tuple[int, int, int]]:
                 if t < 0.5
                 else _mix(RAMP["neutral"], RAMP["warm_pole"], (t - 0.5) * 2)
             )
+        elif kind == "spectrum":
+            j = 1
+            while j < len(SPECTRUM) - 1 and SPECTRUM[j][0] < t:
+                j += 1
+            at0, c0 = SPECTRUM[j - 1]
+            at1, c1 = SPECTRUM[j]
+            lab = _mix(c0, c1, 0.0 if at1 == at0 else (t - at0) / (at1 - at0))
         else:
             lab = _mix(RAMP["seq_low"], RAMP["seq_high"], t)
         table.append(oklab_to_rgb(lab))
@@ -187,7 +225,7 @@ def nice_step(span: float, target: int = 16) -> float:
     return raw
 
 
-def fitted_scale(values, target: int = 8) -> dict:
+def fitted_scale(values, target: int = 8, ramp: str | None = None) -> dict:
     """A sequential scale fitted to ``values``, in round bands.
 
     Used where the question is "which of these is worst", not "is this air
@@ -198,7 +236,7 @@ def fitted_scale(values, target: int = 8) -> dict:
     """
     values = [v for v in values if v is not None]
     if not values:
-        return temperature_scale()
+        return temperature_scale(ramp)
     low, high = min(values), max(max(values), min(values) + 0.5)
     step = nice_step(high - low, target)
     lo = math.floor(low / step) * step
@@ -209,13 +247,20 @@ def fitted_scale(values, target: int = 8) -> dict:
         "step": step,
         "center": None,
         "edges": bands(lo, hi, step),
-        "colours": band_colours(lo, hi, step, "sequential"),
+        "colours": band_colours(lo, hi, step, ramp or "sequential"),
         "marks": tuple(m for m in ASHRAE_MARKS if lo < m < hi),
     }
 
 
-def temperature_scale() -> dict:
-    """The fixed temperature scale the page and the report share."""
+def temperature_scale(ramp: str | None = None) -> dict:
+    """The fixed temperature scale the page and the report share.
+
+    ``ramp`` names one of ``OPTIONAL_RAMPS`` and changes the colours only.
+    Everything that decides what a colour MEANS -- the 10-40 degC domain, the
+    2,5 K bands, the centre the ramp is pinned on and the ASHRAE marks -- is
+    the same either way, so a reader given the spectrum and a reader given the
+    diverging ramp are reading the same numbers off the same bar (ADR-101).
+    """
     lo, hi, step = (TEMPERATURE_BAND[k] for k in ("min", "max", "step"))
     return {
         "min": lo,
@@ -223,6 +268,6 @@ def temperature_scale() -> dict:
         "step": step,
         "center": (lo + hi) / 2,
         "edges": bands(lo, hi, step),
-        "colours": band_colours(lo, hi, step, "diverging", (lo + hi) / 2),
+        "colours": band_colours(lo, hi, step, ramp or "diverging", (lo + hi) / 2),
         "marks": ASHRAE_MARKS,
     }
