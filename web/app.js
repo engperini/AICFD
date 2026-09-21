@@ -113,8 +113,9 @@ const SECTIONS = [
     note: 'per unit, as the datasheet gives them',
     // The unit's own characterisation -- its capacity against the air it
     // receives -- lives on its own page. The everyday numbers stay here
-    // (ADR-036).
+    // (ADR-036), and WHICH unit is a row above them (ADR-092).
     equipment: true,
+    unitPicker: true,
     params: [
       { key: 'fan_count', label: 'Units', unit: '', step: 1 },
       { key: 'airflow_m3h', label: 'Airflow per unit', unit: 'm³/h', step: 100 },
@@ -512,12 +513,14 @@ function renderParams() {
         }${section.racksLink ? racksLink() : ''}${
           section.note ? `<span class="group-note">${section.note}</span>` : ''
         }</div>
+        ${section.unitPicker ? unitRow() : ''}
         ${section.components ? componentRows() : ''}
         ${section.params.map(inputHtml).join('')}
       </div>`,
     )
     .join('');
   wireMeshPreset();
+  wireUnitPicker();
   wireComponentPickers();
   wireExclusiveChecks();
 }
@@ -556,6 +559,83 @@ function componentRows() {
       <span class="component-cost">${cost}</span>${tag}
     </div>`;
   }).join('')}</div>`;
+}
+
+/**
+ * Which machine cools this room, as a choice rather than a fact.
+ *
+ * The group showed the unit's name and linked to its datasheet, and that was
+ * all: `fanwall.model` was not a field, so the only way to put another unit
+ * in the case was to edit the YAML. A reader who opened the equipment page,
+ * found their CRAH and selected it there changed the LIBRARY page they were
+ * looking at and nothing about their case -- the model page came back with
+ * the same unit and no way to change it (ADR-092).
+ *
+ * Every unit in the library is offered, including the ones that do not suit
+ * this room, each saying why. Hiding them answers nothing: somebody looking
+ * for their CRAH learns only that the software has never heard of it. They
+ * are not disabled either, because ticking `floor.enabled` and choosing a
+ * downflow unit is one edit made of two fields, and the Apply judges the
+ * pair -- the generator has the final word and says it in a sentence
+ * (ADR-055).
+ */
+function unitRow() {
+  const lib = model.equipment;
+  if (!lib || !lib.options.length) return '';
+  const short = (o) => {
+    if (o.suits) return '';
+    if (o.cooling !== 'chilled_water') return ` — ${o.cooling}, no coil model`;
+    // What the OPTION needs, not what the room has: a downflow unit needs a
+    // raised floor wherever it is offered. Reading `lib.wants` here said the
+    // opposite of the refusal the Apply would give.
+    return ` — ${o.arrangement}, needs ${
+      o.arrangement === 'downflow' ? 'a raised floor' : 'no raised floor'}`;
+  };
+  const chosen = lib.options.find((o) => o.model === lib.chosen);
+  const options = [`<option value=""${lib.chosen ? '' : ' selected'}>—  none, the numbers below describe it</option>`]
+    .concat(lib.options.map((o) => `<option value="${o.model}"${
+      o.model === lib.chosen ? ' selected' : ''}>${o.model} · ${o.family}${
+      short(o)}</option>`));
+  const note = chosen
+    ? (chosen.suits
+        ? `${chosen.family} · ${chosen.arrangement}`
+        : chosen.why)
+    : 'no unit named: the capacity and the coil are whatever is typed below';
+  return `<div class="components">
+    <div class="component-row">
+      <span class="component-role">Unit</span>
+      <select id="fan-model" aria-label="Fan wall unit">${options.join('')}</select>
+      <span class="component-cost" id="fan-model-note"${
+        chosen && !chosen.suits ? ' data-tone="bad"' : ''}>${note}</span>
+    </div>
+  </div>`;
+}
+
+/**
+ * The note under the picker follows the select at once, for the same reason
+ * the component cost does: what the choice means is the reason for making
+ * it, and seeing it only after Apply makes the select feel like it did
+ * nothing. The spec is still only written by Apply.
+ */
+function wireUnitPicker() {
+  const select = document.getElementById('fan-model');
+  const note = document.getElementById('fan-model-note');
+  if (!select || !note) return;
+  select.addEventListener('change', () => {
+    const option = (model.equipment?.options || [])
+      .find((o) => o.model === select.value);
+    if (!option) {
+      note.textContent =
+        'no unit named: the capacity and the coil are whatever is typed below';
+      note.removeAttribute('data-tone');
+      return;
+    }
+    note.textContent = option.suits
+      ? `${option.family} · ${option.arrangement}`
+      : option.why;
+    if (option.suits) note.removeAttribute('data-tone');
+    else note.setAttribute('data-tone', 'bad');
+  });
 }
 
 /**
@@ -917,6 +997,10 @@ async function applyChanges() {
       }
     }
   }
+  // Which unit the case names travels with the rest, so choosing it and
+  // ticking the raised floor it needs land in the same Apply (ADR-092).
+  const unit = document.getElementById('fan-model');
+  if (unit) changes.fan_model = unit.value;
   // Which component fills a role travels with the rest: the server names the
   // field after the role, and validates it against the library (ADR-051).
   for (const select of document.querySelectorAll('[data-component-role]')) {

@@ -1482,3 +1482,118 @@ class ShippedListsAreHonestTest(unittest.TestCase):
         self.addCleanup(lambda: draft.exists() and draft.unlink())
         self.assertIn("ZZ-USER-DRAFT", equipment.available())
         self.assertNotIn("ZZ-USER-DRAFT", equipment.SHIPPED)
+
+
+class UnitPickerTest(unittest.TestCase):
+    """Which unit a case uses is a choice on the page, and the page's verdict
+    on each option is the generator's.
+
+    The group showed the unit's name and linked to its datasheet, and that was
+    everything: `fanwall.model` was not an editable field, so a reader who
+    opened the equipment page, found their CRAH and selected it there changed
+    the library page in front of them and nothing about their case. The model
+    page came back with the same unit and no way to change it (ADR-092).
+
+    The risk in fixing it is a second opinion. The picker says beside each
+    option whether it suits this room; the generator refuses the ones that do
+    not. Two statements of one rule drift, and the drift a reader meets is a
+    picker offering a machine the Apply then rejects -- or, worse, one it
+    marks unusable that would have worked. So the rule is
+    `model.equipment_mismatch`, both read it, and this test holds the pair
+    together against every unit in the library and every shipped case.
+    """
+
+    def specs(self):
+        from tests import support
+
+        for name in support.SHIPPED_CASES:
+            yield name, yaml.safe_load(
+                (support.REPO / "cases" / f"{name}.yaml").read_text())
+
+    def test_the_picker_offers_every_unit_in_the_library(self):
+        from aicfd.model import equipment_in_use
+
+        for name, spec in self.specs():
+            with self.subTest(case=name):
+                offered = {o["model"] for o in equipment_in_use(spec)["options"]}
+                self.assertEqual(
+                    offered, set(equipment.available()),
+                    "the picker hides a unit. Somebody looking for their CRAH "
+                    "learns only that the software has never heard of it",
+                )
+
+    def test_the_picker_and_the_generator_agree_on_every_unit(self):
+        from aicfd.model import equipment_in_use
+
+        for name, spec in self.specs():
+            for option in equipment_in_use(spec)["options"]:
+                with self.subTest(case=name, unit=option["model"]):
+                    trial = copy.deepcopy(spec)
+                    trial.setdefault("fanwall", {})["model"] = option["model"]
+                    try:
+                        equipment_for(trial)
+                    except ValueError as refused:
+                        accepted, why = False, str(refused)
+                    else:
+                        accepted, why = True, None
+                    self.assertEqual(
+                        option["suits"], accepted,
+                        f"the picker says suits={option['suits']} and the "
+                        f"generator says {accepted}: {option['why'] or why}",
+                    )
+                    if not accepted:
+                        self.assertEqual(
+                            option["why"], why,
+                            "the picker gives a different reason than the "
+                            "refusal the reader will get from Apply",
+                        )
+
+    def test_the_case_its_own_unit_names_is_one_that_suits_it(self):
+        from aicfd.model import equipment_in_use
+
+        for name, spec in self.specs():
+            chosen = (spec.get("fanwall") or {}).get("model")
+            if not chosen:
+                continue
+            with self.subTest(case=name):
+                option = next(o for o in equipment_in_use(spec)["options"]
+                              if o["model"] == chosen)
+                self.assertTrue(
+                    option["suits"],
+                    f"cases/{name}.yaml names {chosen}, which the picker "
+                    f"marks as unusable here: {option['why']}",
+                )
+
+    def test_the_field_accepts_a_unit_in_the_library_and_refuses_one_that_is_not(self):
+        spec = dict(yaml.safe_load(
+            (Path(__file__).resolve().parents[1]
+             / "cases" / "hall-double-gallery.yaml").read_text()))
+        other = next(m for m in equipment.available()
+                     if m != spec["fanwall"]["model"]
+                     and equipment.load(m).arrangement == "fanwall"
+                     and equipment.load(m).cooling == "chilled_water")
+
+        changed, rejected = server.apply_changes(copy.deepcopy(spec),
+                                                 {"fan_model": other})
+        self.assertEqual(rejected, [])
+        self.assertEqual(changed["fanwall"]["model"], other)
+
+        changed, rejected = server.apply_changes(copy.deepcopy(spec),
+                                                 {"fan_model": "no-such-unit"})
+        self.assertTrue(rejected, "a unit that is not in the library was taken")
+        self.assertIn("no-such-unit", rejected[0])
+        self.assertEqual(changed["fanwall"]["model"], spec["fanwall"]["model"],
+                         "a refused name must leave the case's unit alone")
+
+    def test_naming_no_unit_is_a_real_answer(self):
+        """A case describes its plant by the numbers typed into it until it
+        names a unit, which is how a case starts. The empty option has to get
+        back to that rather than be ignored."""
+        spec = yaml.safe_load(
+            (Path(__file__).resolve().parents[1]
+             / "cases" / "hall-double-gallery.yaml").read_text())
+        changed, rejected = server.apply_changes(copy.deepcopy(spec),
+                                                 {"fan_model": ""})
+        self.assertEqual(rejected, [])
+        self.assertIsNone(changed["fanwall"]["model"])
+        self.assertIsNone(equipment_for(changed))

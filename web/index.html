@@ -127,6 +127,9 @@
   .component-tag{grid-column:2;justify-self:end;font-size:10px;
     color:var(--text-muted);text-transform:uppercase;letter-spacing:.04em}
   .component-tag.pending{color:var(--warning)}
+  /* A unit that does not suit this room is offered and says why, rather than
+     being hidden from the reader who came looking for it (ADR-092). */
+  .component-cost[data-tone="bad"]{color:var(--warning)}
   .notes.alerts .mark{color:var(--critical, #d03b3b)}
 
   .legend{display:flex;gap:14px;flex-wrap:wrap;padding:8px 16px 12px;

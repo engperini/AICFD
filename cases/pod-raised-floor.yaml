@@ -40,7 +40,11 @@ racks:
 
 fanwall:
   model: HDCV5300F-HT         # a downflow room unit, which is what a raised
-                              # floor is fed by; a fan wall is refused here
+                              # floor is fed by; a fan wall is refused here.
+                              # The page offers every unit in equipment/ and
+                              # says beside each one whether it suits this
+                              # room, so this is a choice rather than a line
+                              # only an editor can change (ADR-092).
   airflow_m3h: 5000
   supply_temp_c: 20.0
   width: 1.8

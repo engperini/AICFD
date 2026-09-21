@@ -355,6 +355,58 @@ class CaseTravelsTest(unittest.TestCase):
                     )
 
 
+class UnitPickerOnThePageTest(unittest.TestCase):
+    """The unit the case uses is a field, so the page has to offer it and send it.
+
+    `fanwall.model` became editable when the picker was added (ADR-092). A
+    server field nothing on the page reads or writes is a field that does not
+    exist as far as a reader is concerned -- which is exactly the state this
+    fixed, from the other side.
+    """
+
+    def app(self) -> str:
+        return (WEB / "app.js").read_text()
+
+    def test_the_fan_wall_group_carries_the_picker(self):
+        source = self.app()
+        head = source[source.index("title: 'Fan walls'"):]
+        head = head[:head.index("params: [")]
+        self.assertIn(
+            "unitPicker: true", head,
+            "the Fan walls group does not ask for the unit picker, so the "
+            "case's unit is shown and cannot be changed",
+        )
+
+    def test_the_chosen_unit_is_sent_with_the_rest_of_the_changes(self):
+        source = self.app()
+        self.assertIn(
+            "changes.fan_model", source,
+            "the page never sends fan_model, so choosing a unit does nothing "
+            "on Apply",
+        )
+        self.assertIn(
+            "getElementById('fan-model')", source,
+            "nothing reads the picker's value",
+        )
+
+    def test_the_picker_uses_the_reason_the_server_computed(self):
+        """The page must not restate the rule.
+
+        `equipment_mismatch` decides whether a unit suits a room and says why
+        in a sentence. A page that worked it out again from `arrangement`
+        would be a second opinion, and the first version of this picker got
+        it backwards -- it told the reader a downflow CRAH `needs no raised
+        floor`, the opposite of the refusal Apply gives.
+        """
+        source = self.app()
+        picker = source[source.index("function unitRow()"):]
+        picker = picker[:picker.index("function wireComponentPickers")]
+        self.assertIn("o.suits", picker,
+                      "the picker decides for itself whether a unit suits")
+        self.assertIn(".why", picker,
+                      "the picker does not show the server's own reason")
+
+
 class DecimalSeparatorTest(unittest.TestCase):
     """One decimal separator, one place that decides it (ADR-083)."""
 

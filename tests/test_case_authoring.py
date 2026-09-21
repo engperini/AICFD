@@ -39,7 +39,6 @@ BEYOND_THE_FORM = {
     "racks.loads",
     "racks.widths",
     "racks.blanks",
-    "fanwall.model",
     "fanwall.curve",
     "plenum.closed",
     "plenum.mesh_loss_coefficient",
@@ -92,6 +91,20 @@ class KeysTest(unittest.TestCase):
             invented,
             f"{invented} is documented in the manual and read nowhere in the "
             "software. An agent will write it and the case will ignore it",
+        )
+
+    def test_nothing_outside_the_form_is_also_in_it(self):
+        """`BEYOND_THE_FORM` is the escape hatch, not a second copy.
+
+        A key that becomes editable on the page and stays on this list reads
+        as still being YAML-only, which is the opposite of what happened.
+        `fanwall.model` moved across when the unit picker was added (ADR-092).
+        """
+        both = sorted(BEYOND_THE_FORM & set(editable()))
+        self.assertFalse(
+            both,
+            f"{both} is offered by the page and still listed as beyond the "
+            "form; take it off the list",
         )
 
     def test_every_key_outside_the_form_is_really_read(self):

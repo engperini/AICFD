@@ -64,6 +64,13 @@ EDITABLE = {
     "rack_offset_x": (("racks", "offset_x"), float, (0.0, 50.0)),
     "rack_cfm_per_kw": (("racks", "airflow_cfm_per_kw"), float, (20.0, 400.0)),
     # --- fan walls ----------------------------------------------------------
+    # WHICH MACHINE. Validated against `equipment/` rather than a range, the
+    # way a component is: a name the library has not got is a case pointing
+    # at nothing, not a number out of bounds. Whether it also SUITS this room
+    # -- a downflow unit needs a raised floor -- is the generator's to judge
+    # after every field of this Apply has landed, because ticking the floor
+    # and choosing the unit is one edit made of two fields (ADR-092).
+    "fan_model": (("fanwall", "model"), "equipment", None),
     "fan_count": (("fanwall", "count"), int, (1, 200)),
     "airflow_m3h": (("fanwall", "airflow_m3h"), float, (100.0, 500_000.0)),
     "fan_capacity_kw": (("fanwall", "capacity_kw"), float, (0.1, 5_000.0)),
@@ -386,6 +393,20 @@ def apply_changes(spec: dict, changes: dict) -> tuple[dict, list[str]]:
                     f"{key}: the library has no {limits} component called {choice!r}"
                 )
                 continue
+            _place(spec, path, choice or None)
+            continue
+        if caster == "equipment":
+            from aicfd import equipment as library
+
+            choice = str(raw or "").strip()
+            if choice and choice not in library.available():
+                rejected.append(
+                    f"{key}: the library has no unit called {choice!r}. Add it "
+                    f"as equipment/{choice}.yaml"
+                )
+                continue
+            # Empty is a real answer: a case that names no unit is described
+            # by the numbers typed into it, which is how a case starts.
             _place(spec, path, choice or None)
             continue
         if caster in ("cell_size", "vector3"):

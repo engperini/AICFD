@@ -194,7 +194,7 @@ or three.
 
 | key | type | range | where the number comes from |
 |---|---|---|---|
-| `fanwall.model` | str | | a file in `equipment/`. Naming it does not override anything you type — it lets the result be judged against the capacity the coil **has** at the return air this hall produces, instead of the one catalogue figure (ADR-036) |
+| `fanwall.model` | str | | a file in `equipment/`, also a picker on the model page. Naming it does not override anything you type — it lets the result be judged against the capacity the coil **has** at the return air this hall produces, instead of the one catalogue figure (ADR-036). The unit must suit the room: a `downflow` unit needs `floor.enabled`, a `fanwall` one needs no raised floor, and the build refuses the mismatch by name (ADR-092) |
 | `fanwall.count` | int | 1 to 200 | units installed. With two galleries the split is automatic and an odd count gives the extra to the first |
 | `fanwall.airflow_m3h` | float | 100 to 500000 | **per unit**, as a datasheet gives it. If the plant is N+2, the installed units share the flow the N units would deliver — state the shared figure and say so |
 | `fanwall.capacity_kw` | float | 0.1 to 5000 | net sensible per unit (NSCC), gross less the fan power returned to the air |
@@ -369,6 +369,15 @@ A number retyped into a case is a number that will disagree with the next case.
 | fan wall units | `equipment/` | `fanwall.model` | the manufacturer's selections as a **table**, because a chilled-water coil's capacity is not a constant: one unit gives 504.9 kW at 35 °C return and 734.3 kW at 41 °C (ADR-036) |
 | cabinets | `racks/` | `racks.type`, `racks.row[i].type` | width, depth, height and a default load, as the project's documents state them (ADR-075) |
 | perforated surfaces | `components/` | `components.<role>` | free area and loss coefficient. Roles: `ceiling_return`, `supply_grille`, `floor_tile`, `gallery_mesh`, `containment`, `distribution_loss` |
+
+**Which unit suits which room.** A unit's file states its `arrangement`. A
+`fanwall` unit is a wall of fans in a mechanical gallery and needs no raised
+floor; a `downflow` unit stands in the room and discharges through the deck, so
+it needs `floor.enabled: true`. Choosing one for the wrong room is refused at
+build time with a sentence naming both halves, and the model page's picker
+offers every unit with the same sentence beside the ones that do not fit — so
+a CRAH is visible on a hall without a raised floor, and says what it would
+take (ADR-092). Only chilled-water units have a coil model.
 
 **When you add a file**, it carries its source in its own words: which document,
 which revision, who issued it, when. The existing files are the pattern —

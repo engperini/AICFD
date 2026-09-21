@@ -62,7 +62,7 @@ racks:
   airflow_cfm_per_kw: 158     # design reference: what a rack draws per kW
 
 fanwall:
-  model: CA80NPVG6            # the unit, as equipment/CA80NPVG6.yaml holds it.
+  model: CA80NPVG6            # the unit, as its file in equipment/ holds it.
                               # Naming it does not change an input -- every
                               # value typed below still wins -- but it lets the
                               # result be judged against the capacity the coil

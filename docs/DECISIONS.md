@@ -3913,3 +3913,57 @@ rather than listing them: a route that starts using `self._case()` is covered
 the day it does. Three checks — every page imports `case.js`, no page replaces
 its query string without the case, every case-scoped fetch names one — and each
 was shown to fail on the code as it was.
+
+---
+
+## ADR-092 — Which machine cools the room is a choice on the page
+
+**Decision.** `fanwall.model` is an editable field, offered as a picker in the
+Fan walls group, listing every unit in `equipment/` — including the ones that
+do not suit this room, each saying why. One function, `equipment_mismatch`,
+decides whether a unit fits; the generator refuses on it and the picker quotes
+it.
+
+**What was wrong.** The group showed the unit's name and linked to its
+datasheet, and that was all. `fanwall.model` was not in `EDITABLE`, so it could
+not be set from the page and a hand-made request for it was rejected as an
+unknown field. The only way to put another machine in a case was to edit the
+YAML.
+
+The path a reader actually takes makes it worse than a missing field. The
+equipment page has a model picker, so somebody who wants a CRAH goes there,
+finds `39CRA150`, selects it — and that picker changes which unit's DATASHEET
+is on screen, not which unit the case uses. They go back to the model page and
+find the same fan wall, unchanged and unchangeable. Everything worked; nothing
+they wanted happened.
+
+**Why the unusable units are listed rather than hidden.** Somebody looking for
+their CRAH on a hall with no raised floor learns, from a picker it is missing
+from, only that the software has never heard of it. Listed with the reason,
+they learn that the model exists, that it is a downflow machine, and that the
+room needs a raised floor to take it — which is the answer to the question they
+were really asking.
+
+**Why they are not disabled either.** Ticking `floor.enabled` and choosing a
+downflow unit is one edit made of two fields. The Apply carries both, and the
+generator judges the pair after every field has landed (ADR-055) — so the
+combined edit is accepted, and it is the only way the change can be made at
+all. A picker that greys out the CRAH until the floor is saved would force two
+Applies, the first of which is a hall with a raised floor and a fan wall in it.
+
+**Why one rule with two readers.** The picker states a verdict and the
+generator enforces one. Two copies drift, and the drift a reader meets is a
+picker offering a machine the Apply then refuses — or, worse, marking one
+unusable that would have worked. The first version of the picker worked the
+reason out for itself from `arrangement` and got it backwards, telling the
+reader a downflow CRAH "needs no raised floor". So `equipment_mismatch` is the
+rule, `equipment_for` raises what it returns, and the page shows the same
+string. A test puts every unit in the library against every shipped case — 90
+pairs, 51 suitable and 39 refused — and fails when the two disagree about any
+of them, or give different reasons.
+
+**Consequence.** A comment that restates the value beside it goes stale the
+moment the value is editable: `model: CA80NPVG6  # the unit, as
+equipment/CA80NPVG6.yaml holds it` became a line naming a file the case no
+longer used. The shipped comments say `its file in equipment/` instead. The
+general lesson holds for any field the page can write.

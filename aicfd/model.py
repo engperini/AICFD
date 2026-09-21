@@ -1017,6 +1017,95 @@ def fan_depth(spec: dict) -> float | None:
     return float(stated) if stated else None
 
 
+def wanted_arrangement(spec: dict) -> str:
+    """Which kind of machine THIS ROOM is fed by.
+
+    A raised floor is fed by units that stand in the room and discharge
+    downward through the deck; a gallery wall is fed by a wall of fans. Each
+    is the wrong machine in the other's room, and the coil being right is
+    what makes that wrong answer look like a right one (ADR-072, ADR-076).
+    """
+    return "downflow" if raised_floor_for(spec) else "fanwall"
+
+
+def equipment_mismatch(unit, spec: dict) -> str | None:
+    """Why this unit cannot cool this room, or None where it can.
+
+    One rule with two readers: `equipment_for` refuses on it, and the model
+    page's unit picker says beside each option what it would say. Two copies
+    of it would drift, and the drift a reader meets is a picker offering a
+    machine the Apply then refuses -- or, worse, greying out one that would
+    have worked (ADR-092).
+    """
+    if unit.cooling != "chilled_water":
+        return (
+            f"{unit.model} is a {unit.cooling} unit and this model's coil is "
+            f"a chilled-water one. Its selection is in the library and "
+            f"checked; the model that would answer for a refrigerant circuit "
+            f"is not built. Name a chilled-water unit instead"
+        )
+    wanted = wanted_arrangement(spec)
+    if unit.arrangement != wanted:
+        how = ("stands in the room and discharges downward"
+               if unit.arrangement == "downflow"
+               else "is a wall of fans in a mechanical gallery")
+        needs = ("a raised floor, which this case has not got"
+                 if unit.arrangement == "downflow"
+                 else "no raised floor, and this case has one")
+        return (
+            f"{unit.model} {how}, which needs {needs}. Its coil is in the "
+            f"library and correct; it is the room that does not match. Name "
+            f"a {wanted} unit, or "
+            + ("add `floor.enabled: true`" if wanted == "fanwall"
+               else "remove `floor.enabled`")
+        )
+    return None
+
+
+def equipment_in_use(spec: dict) -> dict | None:
+    """Which unit this case names, and what else the library holds.
+
+    The same shape as `components_in_use`, for the same reason: the choice
+    belongs on the page that describes the room, and the numbers behind it on
+    the page that owns the machine (ADR-048, ADR-051). Until this existed the
+    unit could be changed only by editing the YAML -- the page showed its
+    name, linked to its datasheet, and gave no way to pick another (ADR-092).
+
+    A unit that does not suit this room is LISTED, with the reason. Hiding it
+    answers nothing: the reader went looking for their CRAH and a picker it
+    is missing from says only that the software has never heard of it. It is
+    also not disabled, because ticking `floor.enabled` and choosing a
+    downflow unit is one edit made of two fields, and the Apply judges the
+    pair (ADR-055).
+    """
+    from aicfd import equipment as library
+
+    names = library.available()
+    if not names:
+        return None
+    chosen = (spec.get("fanwall") or {}).get("model")
+    options = []
+    for name in names:
+        try:
+            unit = library.load(name)
+        except Exception:  # noqa: BLE001 -- a half-written unit is still one
+            continue
+        why = equipment_mismatch(unit, spec)
+        options.append({
+            "model": unit.model,
+            "family": unit.family,
+            "arrangement": unit.arrangement,
+            "cooling": unit.cooling,
+            "suits": why is None,
+            "why": why,
+        })
+    return {
+        "chosen": chosen if any(o["model"] == chosen for o in options) else None,
+        "wants": wanted_arrangement(spec),
+        "options": options,
+    }
+
+
 def equipment_for(spec: dict):
     """Fill the fan wall block from the library when the spec names a unit.
 
@@ -1041,32 +1130,9 @@ def equipment_for(spec: dict):
     from aicfd import equipment as library
 
     unit = library.load(name)
-    if unit.cooling != "chilled_water":
-        raise ValueError(
-            f"{name} is a {unit.cooling} unit and this model's coil is a "
-            f"chilled-water one. Its selection is in the library and checked; "
-            f"the model that would answer for a refrigerant circuit is not "
-            f"built. Name a chilled-water unit instead"
-        )
-    # WHICH ARRANGEMENT THE CASE IS. A raised floor is fed by units that blow
-    # downward through it; a gallery wall is fed by a wall of fans. Each is
-    # the wrong machine in the other's room, and the coil being right is what
-    # makes that wrong answer look like a right one (ADR-072, ADR-076).
-    wanted = "downflow" if raised_floor_for(spec) else "fanwall"
-    if unit.arrangement != wanted:
-        how = ("stands in the room and discharges downward"
-               if unit.arrangement == "downflow"
-               else "is a wall of fans in a mechanical gallery")
-        needs = ("a raised floor, which this case has not got"
-                 if unit.arrangement == "downflow"
-                 else "no raised floor, and this case has one")
-        raise ValueError(
-            f"{name} {how}, which needs {needs}. Its coil is in the library "
-            f"and correct; it is the room that does not match. Name a "
-            f"{wanted} unit, or "
-            + ("add `floor.enabled: true`" if wanted == "fanwall"
-               else "remove `floor.enabled`")
-        )
+    refusal = equipment_mismatch(unit, spec)
+    if refusal:
+        raise ValueError(refusal)
     # The one condition a plant changes without changing the machine, and the
     # one the supply air temperature follows almost one for one once the
     # valve is open. A study at another chilled water temperature is an
@@ -2782,6 +2848,11 @@ def to_dict(model: Model, spec: dict) -> dict:
         # Which perforated surface each role uses here, and what else the
         # library offers. The model page picks; the components page edits.
         "components": components_in_use(spec),
+        # The same, for the machine: which unit this case names and what else
+        # is in `equipment/`. Without it the page could show the unit's name
+        # and link to its datasheet, and offer no way to choose another
+        # (ADR-092).
+        "equipment": equipment_in_use(spec),
         "racks": [
             {
                 "id": r.id,
