@@ -3485,9 +3485,27 @@ The PLENUM was not spreading the air, which is a finding about the plant --
 deepen it, or give it a diffuser -- and it now appears in that sentence instead
 of as a percentage that reads like a bug.
 
+**The denominator is the NET, not the mean of magnitudes.** Those are the same
+number only while nothing crosses backwards, and the surface this was written
+for is crossed backwards: **9,7% of the mass that passes the supply mesh passes
+it INTO the plenum**, because a 1,2 m cavity fed by three discrete fan walls
+jets through opposite each unit and draws back in between them. Dividing by the
+mean magnitude quietly credited the surface for its own return flow and left
+38% of the measured drop unexplained -- 0,88 Pa against 0,64. With the net, the
+mesh's own K asks 0,90 Pa of that field and the measurement is 2% under it.
+
+**Two faults, reported apart.** `flow_spread` says the air does not arrive
+evenly and `reverse_fraction` says some of it is going round in circles, and
+they want different remedies -- a deeper plenum or a diffuser for the first,
+the units aimed or spaced differently for the second. The drop alone was never
+going to say which, which is why it read 284% of a rating and looked like an
+instrument fault.
+
 **It cannot excuse a surface that is not delivering.** The correction is for
 the flow, not for the resistance: half the drop under the same distribution is
-still half the drop, and a test asserts it fails.
+still half the drop, and a test asserts it fails. Nor does it loosen a surface
+that is fed properly -- on the same hall the ceiling grilles and the plenum
+opening measure 1,06 and 1,02 either way.
 
 ## ADR-083 — The rack page does not fight the engineer
 

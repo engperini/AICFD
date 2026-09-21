@@ -956,13 +956,13 @@ class ResistanceVerdictTest(unittest.TestCase):
         self.assertEqual(why, "")
 
     def test_a_badly_fed_surface_is_judged_against_what_its_k_asks_here(self):
-        """0,87 Pa where the rating says 0,31 is 283% and looks like an
-        instrument fault. Fed 2,06 times less evenly, its own K asks 0,63 Pa
-        of this field -- which 0,87 is 38% above, and that is the finding."""
-        passed, why = post._resistance_verdict(0.63, 0.308, 2.06)
+        """0,88 Pa where the rating says 0,31 is 284% and looks like an
+        instrument fault. Reached 2,9 times harder than the rating assumes,
+        its own K asks 0,90 Pa of this field -- and 0,88 is 2% under it."""
+        passed, why = post._resistance_verdict(0.88, 0.308, 2.925)
         self.assertTrue(passed)
-        self.assertIn("less evenly", why)
-        self.assertIn("0.63 Pa", why)
+        self.assertIn("times harder", why)
+        self.assertIn("0.90 Pa", why)
 
     def test_a_surface_that_is_not_delivering_its_k_still_fails(self):
         """The correction is for the flow, not for the resistance: half the
@@ -971,3 +971,62 @@ class ResistanceVerdictTest(unittest.TestCase):
 
     def test_an_even_surface_says_nothing_about_spreading(self):
         self.assertEqual(post._resistance_verdict(2.2, 2.2, 1.01)[1], "")
+
+
+class ReverseFlowTest(unittest.TestCase):
+    """Air crossing a surface backwards is not free (ADR-082)."""
+
+    def setUp(self):
+        self.case = Path(tempfile.mkdtemp())
+        self.step = self.case / "100"
+        self.step.mkdir()
+
+    def write(self, fluxes):
+        field(self.step / "phi", "phi", "0", {
+            "supply1_below": list(fluxes),
+            "supply1_above": [-f for f in fluxes],
+        })
+
+    def test_a_surface_crossed_one_way_reverses_nothing(self):
+        self.write([0.2] * 16)
+        self.assertEqual(post.reverse_fraction(self.step, "supply"), 0.0)
+
+    def test_what_goes_back_is_measured_against_the_net(self):
+        """Twelve faces out at 0,2 and four back at 0,1: the net is 2,0 and
+        0,4 of it returns."""
+        self.write([0.2] * 12 + [-0.1] * 4)
+        self.assertAlmostEqual(
+            post.reverse_fraction(self.step, "supply"), 0.4 / 2.0, places=4
+        )
+
+    def test_the_spread_divides_by_the_NET_face_velocity(self):
+        """The fault that left 38% of a measured drop unexplained. Dividing by
+        the mean magnitude credits the surface for its own return flow: here
+        the mean magnitude is 0,175 and the net per face 0,125, and a
+        resistance follows the second."""
+        self.write([0.2] * 12 + [-0.1] * 4)
+        mean_square = (12 * 0.2**2 + 4 * 0.1**2) / 16
+        self.assertAlmostEqual(
+            post.flow_spread(self.step, "supply"),
+            mean_square / (2.0 / 16) ** 2, places=3,
+        )
+        # and it is emphatically not the mean-magnitude answer
+        self.assertNotAlmostEqual(
+            post.flow_spread(self.step, "supply"),
+            mean_square / 0.175**2, places=2,
+        )
+
+    def test_a_surface_that_only_churns_has_no_rated_velocity(self):
+        """Equal flow each way: the net is nothing, so there is no face
+        velocity to be measured against and no ratio to report."""
+        self.write([0.2] * 8 + [-0.2] * 8)
+        self.assertEqual(post.flow_spread(self.step, "supply"), 1.0)
+
+    def test_the_verdict_says_both_faults_apart(self):
+        """Uneven flow wants a deeper plenum; air going round in circles wants
+        the units aimed differently. One number, two remedies."""
+        _passed, why = post._resistance_verdict(0.88, 0.308, 2.9, 0.097)
+        self.assertIn("2.9 times harder", why)
+        self.assertIn("10% of the mass", why)
+        self.assertNotIn("going back the other way",
+                         post._resistance_verdict(2.46, 2.20, 1.06, 0.0)[1])
