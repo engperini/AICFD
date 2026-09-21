@@ -32,6 +32,26 @@ REPO = Path(__file__).resolve().parents[1]
 #: to ask whether what is shipped still builds.
 CASES = REPO / "cases"
 
+#: The cases THIS REPOSITORY ships, by name.
+#:
+#: `cases/` is the engineer's working folder (ADR-056): the page writes to it,
+#: and a case someone drops in to look at a room of their own is the software
+#: doing its job. A guard that walks the folder holds THEIR file to a promise
+#: this repository made about ITS files -- which has broken `docker build`
+#: three times now (ADR-056, ADR-061, ADR-077). So a guard names what it
+#: guards, and this is the list.
+SHIPPED_CASES = (
+    "hall-10mw",
+    "hall-double-gallery",
+    "hall-hotrow-independent",
+    "hall-hotrow-team",
+    "pod-fanwall",
+    "pod-mesh",
+    "pod-plenum",
+    "pod-raised-floor",
+    "pod-uneven-row",
+)
+
 #: Cases the tests own: what every other test reads, and what a sandbox is
 #: seeded from. Not `cases/`, because those belong to whoever is using the
 #: software and a test that reads them fails when they use it (ADR-056).

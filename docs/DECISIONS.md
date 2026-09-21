@@ -3460,9 +3460,18 @@ there is no pressure driving anything through it: the lateral flow through the
 neighbouring cabinets measures 0,06 m3/s, against the 3,83 that used to come
 straight through.
 
-**A test asserts every wall panel the model builds is in a face zone**, by
-name, so the next surface added to the model cannot be drawn without being
-meshed.
+**A test asserts every wall panel the model builds is in a face zone**, so the
+next surface added to the model cannot be drawn without being meshed.
+
+**And it walks a declared list, not the folder.** The first version globbed
+`cases/*.yaml` -- which is the engineer's working folder, where they keep the
+rooms they are actually studying. That is the FOURTH time a guard written to
+protect this repository's own data was pointed at a directory the user also
+writes to (ADR-056, ADR-061, ADR-077, this). It was caught here before it
+shipped, by noticing a stray case in `git status`; the previous three were
+caught by a broken `docker build`. `support.SHIPPED_CASES` names the nine
+cases this repository ships, a test asserts each has a file, and a stranger's
+case sitting in `cases/` is now none of the suite's business.
 
 ## ADR-082 — A resistance is judged against the flow it actually gets
 

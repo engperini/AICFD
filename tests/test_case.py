@@ -463,12 +463,21 @@ class EveryWallIsMeshedTest(unittest.TestCase):
     one, because either is a decision; being in neither is an oversight.
     """
 
-    CASES = sorted(Path(__file__).resolve().parent.parent.glob("cases/*.yaml"))
+    def test_every_declared_case_has_a_file(self):
+        """The half of ADR-077 that can be checked automatically. The other
+        half -- adding the name when adding the case -- is one line in the
+        same commit."""
+        for name in support.SHIPPED_CASES:
+            with self.subTest(case=name):
+                self.assertTrue((support.CASES / f"{name}.yaml").is_file())
 
     def test_every_case_ships_a_mesh_for_every_wall_it_draws(self):
-        self.assertTrue(self.CASES, "no cases to check")
-        for path in self.CASES:
-            with self.subTest(case=path.name):
+        """Walks the DECLARED cases, not the folder: `cases/` is where an
+        engineer keeps their own rooms, and a guard pointed at it holds their
+        file to a promise this repository made about its own (ADR-056)."""
+        for name in support.SHIPPED_CASES:
+            path = support.CASES / f"{name}.yaml"
+            with self.subTest(case=name):
                 model = m.build_model(yaml.safe_load(path.read_text()))
                 plan = case.wall_plan(model)
                 built = {p.name for _n, panels, _h in plan for p in panels}
