@@ -546,14 +546,25 @@ def _coil_alerts(kpis: dict) -> list[str]:
 def grille_pressure_drop(step: str | Path, prefix: str = "grille") -> float | None:
     """The jump the field shows across one kind of perforated surface, in Pa.
 
-    Each is a cyclic pair; the drop is the mean p_rgh on its lower face minus
-    the mean on its upper face, flow-weighted across the surfaces of that kind.
+    Each is a cyclic pair; the drop is the mean p_rgh on the upstream face
+    minus the mean on the downstream one, flow-weighted across the surfaces of
+    that kind.
+
+    UPSTREAM, not `_below`. `createBaffles` hands the master patch to the face's
+    owner cell, which for an x-normal face is the cell at lower x -- so on a
+    hall with a gallery at each end the two supply meshes face opposite ways:
+    air leaves the first gallery towards higher x and the second towards lower
+    x. Taking `_below` as upstream on both made one drop come out negative,
+    and the flow-weighted mean of +0,4 and -0,4 Pa is nothing at all. The check
+    then reported -133% of what the mesh asks on a hall whose meshes were both
+    working (ADR-080). The sign comes from phi, which knows which way the air
+    is going.
 
     ``prefix`` matters. Every cyclic pair in the case ends `_below`, so taking
     them all mixed the ceiling return grilles with the woven mesh closing the
-    plenum into the gallery -- two surfaces with different open areas -- into
-    one weighted mean, which then matched neither one's K. Each is measured
-    against its own (ADR-048).
+    plenum into a mechanical gallery -- two surfaces with different open areas
+    -- into one weighted mean, which then matched neither one's K. Each is
+    measured against its own (ADR-048).
     """
     phi_path = Path(step) / "phi"
     names = [n for n in patch_names(phi_path)
@@ -563,13 +574,19 @@ def grille_pressure_drop(step: str | Path, prefix: str = "grille") -> float | No
     total_flow, weighted = 0.0, 0.0
     for below in names:
         above = below[: -len("_below")] + "_above"
-        flow = abs(float(np.sum(read_patch_field(phi_path, below))))
+        net = float(np.sum(read_patch_field(phi_path, below)))
         drop = float(
             np.mean(read_patch_field(Path(step) / "p_rgh", below))
             - np.mean(read_patch_field(Path(step) / "p_rgh", above))
         )
-        total_flow += flow
-        weighted += flow * drop
+        # phi is positive out of the owner cell, which is the `_below` side.
+        # Positive net flow means the air runs below -> above and `_below` is
+        # upstream; negative means the surface is being crossed the other way
+        # and the same physical drop reads with the opposite sign.
+        if net < 0:
+            drop = -drop
+        total_flow += abs(net)
+        weighted += abs(net) * drop
     return round(weighted / total_flow, 3) if total_flow else None
 
 

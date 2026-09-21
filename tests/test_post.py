@@ -586,6 +586,45 @@ class GrilleAndFanBudgetTest(unittest.TestCase):
         # (0.9*2 + 2.7*4) / 3.6 = 3.5
         self.assertAlmostEqual(post.grille_pressure_drop(step), 3.5, places=3)
 
+    def test_a_surface_crossed_the_other_way_still_reads_a_positive_drop(self):
+        """Two galleries, one at each end, so their supply meshes face opposite
+        ways: the air leaves the first towards higher x and the second towards
+        lower x. createBaffles gives the master to the owner cell -- lower x --
+        so `_below` is upstream on one and downstream on the other. Reading
+        both the same way made one drop negative, and the weighted mean of
+        +0,4 and -0,4 Pa is nothing (ADR-080)."""
+        step = self.case / "100"
+        step.mkdir()
+        field(step / "phi", "phi", "0", {
+            # first gallery: air runs below -> above
+            "supply1_below": [0.2] * 9, "supply1_above": [-0.2] * 9,
+            # second gallery: the same surface, crossed the other way
+            "supply2_below": [-0.2] * 9, "supply2_above": [0.2] * 9,
+        })
+        field(step / "p_rgh", "p_rgh", "101325", {
+            "supply1_below": [101329.0] * 9, "supply1_above": [101325.0] * 9,
+            "supply2_below": [101325.0] * 9, "supply2_above": [101329.0] * 9,
+        })
+        self.assertAlmostEqual(
+            post.grille_pressure_drop(step, "supply"), 4.0, places=3
+        )
+
+    def test_a_surface_the_air_is_leaking_back_through_reads_negative(self):
+        """The sign follows the AIR, not the patch name -- but a pair whose
+        pressure rises in the direction the air travels is still reported as
+        the negative drop it is, because that is a finding."""
+        step = self.case / "100"
+        step.mkdir()
+        field(step / "phi", "phi", "0", {
+            "supply1_below": [0.2] * 9, "supply1_above": [-0.2] * 9,
+        })
+        field(step / "p_rgh", "p_rgh", "101325", {
+            "supply1_below": [101321.0] * 9, "supply1_above": [101325.0] * 9,
+        })
+        self.assertAlmostEqual(
+            post.grille_pressure_drop(step, "supply"), -4.0, places=3
+        )
+
     def test_no_grille_pairs_means_no_measurement(self):
         step = self.case / "100"
         step.mkdir()

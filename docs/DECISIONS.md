@@ -3400,3 +3400,66 @@ probes in a recirculating room -- the same field that drifted 0,19 K on the
 probes drifts 0,01 K on the stations. `STEADY_TOLERANCE` is unchanged at
 0,25 K, which is therefore now conservative rather than tight. Re-calibrating
 it means re-running the worked cases and is not done here.
+
+## ADR-080 — A pressure jump has the sign the air gives it
+
+**Decision.** `grille_pressure_drop` takes the direction of flow from `phi` and
+reports the drop from the upstream face to the downstream one. It no longer
+assumes the `_below` patch of a cyclic pair is upstream.
+
+**Because on a hall with a gallery at each end, half the surfaces face the
+other way.** `createBaffles` hands the master patch to the face's owner cell,
+which for an x-normal face is the cell at lower x. The first gallery discharges
+towards higher x and the second towards lower x, so `_below` is upstream on one
+supply mesh and downstream on the other. Read the same way, one drop came out
+positive and the other negative, and the flow-weighted mean of +0,4 and -0,4 Pa
+is nothing at all.
+
+**It reported -133% on a hall whose meshes were both working.** `-0.41 Pa across
+the supply grilles where their K asks for 0.31 Pa` is not a plant fault and not
+a field that has not filled; it is two correct measurements added with the wrong
+sign. A single-gallery POD never showed it, because there is only one of each
+surface and it always faces the same way.
+
+**Negative is still reported where it is real.** The sign now follows the air,
+not the patch name, so a surface the air crosses against its own pressure rise
+-- which is a finding -- still reads negative. What is no longer possible is a
+surface reading negative because of which side of it OpenFOAM called the owner.
+
+## ADR-081 — A blanking panel is a wall in the mesh, not only on the drawing
+
+**Decision.** `blank` joins `WALL_GROUPS`, so `createBaffles` builds a blanking
+panel as the two-sided internal wall the model always said it was.
+
+**Because it was in the model, on the drawing and in the summary, and it was
+not in the mesh.** ADR-074 introduced the blanking panel as "a solid plate that
+passes no air". `model.panels` carried it, `drawing.js` drew it, the row
+summary counted it -- and `wall_plan` never listed it, so `topoSet` built no
+face zone and `createBaffles` built no baffle. The solver saw an open hole
+exactly where the plate is.
+
+**Measured, on the user's hall.** One blank in every fifteen positions, sixteen
+rows. At the blank's own column the field ran **3,83 m3/s out into the hot aisle
+at 2,84 m/s** -- 28% of what the whole row of fourteen cabinets passed, through
+one position of fifteen. The row then delivered **11,4 Pa where its curve asks
+21,1 (54%)**, because an open path in parallel with the cabinets halves the
+row's resistance. Take the blanks out of the same hall and the same check reads
+105%. The user found it by doing exactly that.
+
+**What a failing check is for.** `rack_resistance` did its job: it said the row
+was not delivering the resistance it was given, and it said any fan pressure
+taken from that field is wrong. It was believed to be a measurement artefact
+for one session, on the strength of the row being half empty, and it was not --
+it was the geometry. A resistance check that disagrees with the curve by half
+is not a sampling question until the mesh has been looked at.
+
+**The space behind the plate belongs to the hot aisle.** The panel is one wall
+on the cabinets' own face, so the volume behind it is a dead pocket open to the
+contained aisle -- which is what it is in a real row. With the cold side sealed
+there is no pressure driving anything through it: the lateral flow through the
+neighbouring cabinets measures 0,06 m3/s, against the 3,83 that used to come
+straight through.
+
+**A test asserts every wall panel the model builds is in a face zone**, by
+name, so the next surface added to the model cannot be drawn without being
+meshed.

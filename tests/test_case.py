@@ -446,3 +446,57 @@ class DownflowCaseTest(unittest.TestCase):
         self.assertNotIn("fanSupplyBack", text)
         self.assertNotIn("floor_opening", case.topo_set_dict(flat))
         self.assertEqual([p.name for p in flat.fans], ["fan"])
+
+
+class EveryWallIsMeshedTest(unittest.TestCase):
+    """A surface the model draws has to be a surface the solver has.
+
+    The blanking panel was in `model.panels`, on the section drawing and in the
+    row summary, and it was in no face zone -- so `createBaffles` never built
+    one and the solver saw an open hole where the plate is. On the hall it was
+    found in, 3,83 m3/s came out of one blanked position at 2,8 m/s, 28% of
+    what the whole row passed, and the row delivered 54% of the resistance its
+    curve asks for (ADR-081).
+
+    This is the guard. It walks every shipped case and asserts that each wall
+    panel the model carries is either built as a wall or punched as a hole in
+    one, because either is a decision; being in neither is an oversight.
+    """
+
+    CASES = sorted(Path(__file__).resolve().parent.parent.glob("cases/*.yaml"))
+
+    def test_every_case_ships_a_mesh_for_every_wall_it_draws(self):
+        self.assertTrue(self.CASES, "no cases to check")
+        for path in self.CASES:
+            with self.subTest(case=path.name):
+                model = m.build_model(yaml.safe_load(path.read_text()))
+                plan = case.wall_plan(model)
+                built = {p.name for _n, panels, _h in plan for p in panels}
+                holes = {p.name for _n, _p, hs in plan for p in hs}
+                missing = sorted(
+                    p.name for p in model.panels
+                    if p.kind == "wall" and p.name not in built | holes
+                )
+                self.assertEqual(missing, [], f"drawn but never meshed: {missing}")
+
+    def test_a_blanked_position_is_one_of_them(self):
+        """The case that caught it, stated as a case rather than a sweep."""
+        spec = copy.deepcopy(SPEC)
+        spec["racks"]["row"] = [{}, {"blank": True}, {}]
+        model = m.build_model(spec)
+        blanks = [p for p in model.panels if p.name.startswith("blank")]
+        self.assertTrue(blanks, "the spec asked for a blanking panel")
+        zoned = {p.name for _n, panels, _h in case.wall_plan(model) for p in panels}
+        for panel in blanks:
+            self.assertIn(panel.name, zoned)
+
+    def test_the_plate_stands_on_the_cabinets_own_face(self):
+        """Not across the whole position: the space behind a blanking plate is
+        part of the contained aisle, as it is in a real row."""
+        spec = copy.deepcopy(SPEC)
+        spec["racks"]["row"] = [{}, {"blank": True}, {}]
+        model = m.build_model(spec)
+        row = model.rows[0]
+        for panel in [p for p in model.panels if p.name.startswith("blank")]:
+            self.assertEqual(panel.axis, 1)
+            self.assertAlmostEqual(panel.position, row.front_y)

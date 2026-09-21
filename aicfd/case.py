@@ -214,6 +214,14 @@ mergePatchPairs ();
 WALL_GROUPS = (
     ("rack_top", "rack_top"),
     ("rack_end", "rack_end"),
+    # A BLANKING PANEL IS A WALL. It was in the model, on the drawing and in
+    # the summary, and it was not in this tuple -- so `createBaffles` never
+    # built one and the solver saw an open hole where the plate is. Measured
+    # on a hall with one blank in every fifteen positions: 3,83 m3/s came out
+    # of that one position at 2,8 m/s, 28% of what the whole row of fourteen
+    # cabinets passed, and the row delivered 54% of the resistance its curve
+    # asks for (ADR-081).
+    ("blank", "blank"),
     ("containment_wall", "containment_roofwall"),
     ("containment_wall", "containment_wall"),
     ("containment_door", "containment_door"),
