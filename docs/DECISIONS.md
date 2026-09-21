@@ -4000,5 +4000,14 @@ everything else. Restating the manual there would be a third copy to keep.
 "CFD do datacenter", ...` is a YAML mapping where a string was meant, so a
 strict loader rejects the whole block and the skill never triggers. Nothing in
 this repository reads a skill, so nothing failed — the symptom was a skill that
-quietly did not exist. The guard now parses every frontmatter, checks each name
-against its folder and each description against the length a loader takes.
+quietly did not exist.
+
+**And what the upload found that the guard had not.** `case-authoring`'s first
+description said it would write `cases/<name>.yaml`, and the upload was refused
+outright: *SKILL.md description cannot contain XML tags*. The placeholder
+convention every shell uses is markup to a validator that is looking for
+markup. A guard only catches what it checks, which is the whole argument for
+adding to it every time something gets past it: the description is now held to
+carrying no angle brackets at all, rather than to a list of the ones that are
+allowed, because they have no other job in a sentence. The file uses `NAME`
+throughout, as the `aicfd` skill beside it already did.

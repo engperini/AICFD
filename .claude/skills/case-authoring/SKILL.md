@@ -1,12 +1,12 @@
 ---
 name: case-authoring
-description: Turn a REAL data hall project into an AICFD case file - read the drawings, the mechanical specification PDF, the fan wall selection sheet, the rack schedule or the RFP, and write cases/<name>.yaml with every number traced to the document it came from. Use whenever someone hands over project documents and wants a CFD case built from them, asks which AICFD key a measurement goes in, asks why a derived hall does not match a drawing, or asks what a failing check says about the inputs. Triggers on "monta o caso a partir desse projeto", "tenho as plantas do data hall", "transformar esse PDF em simulacao", "preencher o YAML", "qual chave usar para", "a planta diz 54 m e o modelo deu 51", "build a case from this layout", "rack schedule", "fan wall selection", "memorial descritivo", "RFP". For driving the toolchain once a case exists - run, view, report - use the aicfd skill instead. For the physics and the OpenFOAM modelling choices, use datacenter-cfd.
+description: Turn a REAL data hall project into an AICFD case file - read the drawings, the mechanical specification PDF, the fan wall selection sheet, the rack schedule or the RFP, and write the case YAML with every number traced to the document it came from. Use whenever someone hands over project documents and wants a CFD case built from them, asks which AICFD key a measurement goes in, asks why a derived hall does not match a drawing, or asks what a failing check says about the inputs. Triggers on "monta o caso a partir desse projeto", "tenho as plantas do data hall", "transformar esse PDF em simulacao", "preencher o YAML", "qual chave usar para", "a planta diz 54 m e o modelo deu 51", "build a case from this layout", "rack schedule", "fan wall selection", "memorial descritivo", "RFP". For driving the toolchain once a case exists - run, view, report - use the aicfd skill instead. For the physics and the OpenFOAM modelling choices, use datacenter-cfd.
 ---
 
 # Authoring an AICFD case from a real project
 
 You have been given a project and have to produce **one file**:
-`cases/<name>.yaml`. The schema is small. The translation is not, and the
+`cases/NAME.yaml`. The schema is small. The translation is not, and the
 translation is where a case goes quietly wrong: numbers that are all
 plausible, all in range and all from the wrong document build a clean mesh,
 solve, pass twelve checks and answer a question about a building that does not
@@ -96,9 +96,9 @@ in the comment and carry on:
 In this repository, prove it:
 
 ```bash
-python3 -m aicfd build cases/<name>.yaml --out /tmp/check   # geometry + warnings
-python3 -m aicfd run cases/<name>.yaml                      # the solve
-python3 -m aicfd report <name>                              # the Word report
+python3 -m aicfd build cases/NAME.yaml --out /tmp/check   # geometry + warnings
+python3 -m aicfd run cases/NAME.yaml                      # the solve
+python3 -m aicfd report NAME                              # the Word report
 ```
 
 Outside it, hand over the YAML and say which commands run it.

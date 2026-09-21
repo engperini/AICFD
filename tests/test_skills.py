@@ -37,6 +37,11 @@ FRONTMATTER = re.compile(r"\A---\n(.*?)\n---\n", re.S)
 #: What a skill's description has to fit in to be loaded.
 DESCRIPTION_LIMIT = 1024
 
+#: Anything the uploader will read as a tag. A description is not markup, and
+#: `cases/<name>.yaml` in one is enough: the upload is refused outright with
+#: "SKILL.md description cannot contain XML tags" (ADR-093).
+LOOKS_LIKE_A_TAG = re.compile(r"<[^>]*>")
+
 
 def skills():
     return sorted(SKILLS.glob("*/SKILL.md"))
@@ -96,6 +101,24 @@ class FrontmatterTest(unittest.TestCase):
                     data["name"], path.parent.name,
                     "a skill is addressed by its name; this one disagrees with "
                     "its directory, so nobody can call it",
+                )
+
+    def test_no_description_reads_as_markup(self):
+        """The uploader refuses a description with a tag in it.
+
+        A placeholder written the way a shell would -- `cases/<name>.yaml` --
+        is a tag as far as it is concerned, and the whole skill is rejected.
+        The angle brackets have no other job in a sentence, so none are
+        allowed rather than a list of the ones that are.
+        """
+        for path, data in self.loaded().items():
+            with self.subTest(skill=path.parent.name):
+                found = LOOKS_LIKE_A_TAG.findall(data["description"])
+                self.assertFalse(
+                    found,
+                    f"{path}: the description contains {found}, which the "
+                    "uploader reads as an XML tag and refuses. Write the "
+                    "placeholder without angle brackets -- cases/NAME.yaml",
                 )
 
     def test_no_description_is_longer_than_a_loader_will_take(self):
