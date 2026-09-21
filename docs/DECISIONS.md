@@ -1008,7 +1008,7 @@ conclude the tool is broken rather than that one apt package is missing.
 **Consequence.** On macOS, where OpenFOAM v1912 has no native build, Docker is
 the only path and the README says so first rather than last. `openfoam` v1912
 is published for arm64, so Apple Silicon runs the container natively. What does
-*not* need OpenFOAM — the 208 tests, the page over the tracked results, and the
+*not* need OpenFOAM — the unit tests, the page over the tracked results, and the
 Word report — is listed separately, because it is what a reader can run in the
 first minute after a clone.
 
