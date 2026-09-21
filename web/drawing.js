@@ -470,9 +470,14 @@ export function drawView(model, view, scale, options = {}) {
   const labelled = [];
   for (const rack of racks) {
     const cut = straddles(rack.lo, rack.hi, view.normal, at);
+    // No caption from `paint` on the plan: the block below writes the name AND
+    // the load in the cabinet, and `paint`'s own centred id printed straight
+    // through it -- one small horizontal label lying across two big rotated
+    // ones, in every cabinet wide enough to earn it.
+    const plan = view.id === 'plan';
     const box = paint(rack.lo, rack.hi, cut ? 'dw-rack' : 'dw-rack dw-behind',
-      rack.id);
-    if (cut && view.id === 'plan') labelled.push([rack, box]);
+      plan ? '' : rack.id);
+    if (cut && plan) labelled.push([rack, box]);
   }
 
   // 5b — what each cabinet is, written in it. Only on the plan: a section

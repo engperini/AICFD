@@ -69,9 +69,17 @@ def find(lines: list[str], path: list[str]) -> int | None:
         found = None
         for i in range(start, len(lines)):
             line = lines[i]
-            if line.startswith(prefix) and (
-                len(line) == len(prefix) or line[len(prefix)] in " \t"
-            ):
+            # A KEY MAY HAVE NOTHING AFTER IT. `  row:` opens a block, and
+            # what follows the colon is the line ending -- which this guard
+            # did not accept, so `find` said the key was absent. Every caller
+            # then took its "the file never had this" path and ADDED the key a
+            # second time, leaving the first one and its items behind. The
+            # rack page could not save a case with a typical row at all: the
+            # old list stayed where it was, a new `row:` went in after it, and
+            # the orphaned items read as a list where a key was expected
+            # (ADR-088).
+            rest = line[len(prefix):]
+            if line.startswith(prefix) and (rest == "" or rest[0] in " \t\r\n"):
                 found = i
                 break
             stripped = line.strip()
@@ -191,8 +199,31 @@ def replace_list(lines: list[str], path: list[str], rows: list[str]) -> None:
         while end < len(lines) and lines[end].lstrip().startswith("#"):
             first = end = end + 1
     else:
-        end = first
-        while end < len(lines) and lines[end].lstrip().startswith("- "):
+        # AN ITEM IS NOT A LINE. `- {width: 0.6}` is, but a mapping written
+        # block style is not:
+        #
+        #     row:
+        #     - width: 0.6
+        #     - width: 0.6
+        #       load_kw: 0        <- this line belongs to the item above it
+        #
+        # Advancing only over lines that start with `- ` stopped at that
+        # continuation, so the replacement cut the list in half and left the
+        # rest of it orphaned under `racks:` -- which YAML then read as a list
+        # item where a key was expected, and the case could not be saved at
+        # all. A `safe_dump` writes that style, so any case that had been
+        # round-tripped through one hit it (ADR-088).
+        marker = len(lines[first]) - len(lines[first].lstrip())
+        end = first + 1
+        while end < len(lines):
+            line = lines[end]
+            if not line.strip():
+                break                      # a blank line ends the block
+            indent = len(line) - len(line.lstrip())
+            if indent < marker:
+                break                      # back out to the parent mapping
+            if indent == marker and not line.lstrip().startswith("- "):
+                break                      # a sibling key at the list's level
             end += 1
     lines[first:end] = rows
 
@@ -214,12 +245,31 @@ def set_map(lines: list[str], path: list[str], values: dict) -> None:
     level = len(parent)
     index = find(lines, path)
     if index is not None:
+        # WHAT BELONGS TO A KEY IS NOT ONLY WHAT IS INDENTED UNDER IT. YAML
+        # lets a list sit at its key's own indent, and that is what a
+        # `safe_dump` writes:
+        #
+        #     racks:
+        #       row:
+        #       - width: 0.6      <- same indent as `row:`, still its value
+        #
+        # Removing the block by "indented deeper than the key" therefore took
+        # the key and left the list, and the orphaned items read as a list
+        # where a key was expected. The rack page could not save a case with a
+        # typical row at all -- it rewrites that block by removing it and
+        # writing it again, so the removal was half of every save (ADR-088).
+        own = level * len(INDENT)
         end = index + 1
-        while end < len(lines) and (
-            not lines[end].strip()
-            or len(lines[end]) - len(lines[end].lstrip()) > level * len(INDENT)
-        ):
-            end += 1
+        while end < len(lines):
+            line = lines[end]
+            if not line.strip():
+                end += 1
+                continue
+            indent = len(line) - len(line.lstrip())
+            if indent > own or (indent == own and line.lstrip().startswith("- ")):
+                end += 1
+                continue
+            break
         # A trailing blank line belongs to whatever comes next, not to this
         # block, so removing the block must not take the separator with it.
         while end - 1 > index and not lines[end - 1].strip():

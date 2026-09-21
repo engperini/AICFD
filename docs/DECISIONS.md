@@ -3684,3 +3684,68 @@ An engineer who wants to read them zooms, which is what they asked for.
 **The chains found the geometry faults of ADR-085.** The engineer saw two
 different rows on the two sides of one hall, on the plan, and asked. A drawing
 that dimensions what it draws is a test that runs every time somebody looks.
+
+## ADR-087 — The page says which case it is looking at
+
+**Decision.** Every call the page makes carries `?case=`, taken from its own
+address, and every route prefers it over the case the server was started with.
+The top bar carries a case menu: open one, start one from the starter or from
+a copy, paste one in, copy this one out. Switching reloads.
+
+**Because `aicfd view --case X` said which case the page OPENS on, and the
+server then answered every request with X whatever the page asked.** So
+`?case=other` changed the address bar and nothing else, and the only way to
+look at a second room was to stop the server and start it again. Opening,
+starting and importing a case were terminal-only -- `aicfd new`, or a query
+typed by hand -- and the page is the interface (ADR-005).
+
+**Switching reloads, deliberately.** Every card's state comes from the server
+already, so rebuilding it in place would be a second way of doing what a
+reload does correctly, and a second way is a second thing to keep right.
+
+**A pasted case is built before it is written (ADR-055).** Saving first and
+validating afterwards is how the page once lost itself: a spec the generator
+refuses is a spec every reload fails on, so the form that could have undone it
+never loaded again. A paste that cannot be drawn is refused in the menu, and
+the message says that nothing was saved -- because the engineer's next
+question is whether they now have a file to go and delete.
+
+**The name is checked, not trusted.** It reaches the filesystem, so it is
+letters, digits, `-` and `_`, and nothing that could walk out of `cases/`.
+
+## ADR-088 — A key's value may be a list at the key's own indent
+
+**Decision.** `set_map` and `replace_list` treat a list sitting at its key's
+own indentation as part of that key's block, and an item that continues onto
+further lines as one item.
+
+**Because YAML allows it and `yaml.safe_dump` writes it:**
+
+    racks:
+      row:
+      - width: 0.6
+      - width: 0.6
+        load_kw: 0
+
+The editor took "the block under a key" to mean "the lines indented deeper
+than the key", which those items are not. Removing the block therefore took
+the key and **left the list**, and the orphans read as a list item where a key
+was expected. `_write_row_block` rewrites the typical row by removing it and
+writing it again, so the removal was half of every save -- and **no case with
+a typical row could be saved at all**. The rack page answered
+
+    ParserError: ... line 17: per_row: 15 ^ expected <block end>,
+    but found '-' ... line 202: - width: 0.6
+
+**Nothing was corrupted, and that is not luck.** `_save_case_racks` parses the
+text it built before it writes it and refuses when the rack block did not
+survive the edit (ADR-048). The save failed loudly and the file on disk stayed
+exactly as it was. A save path that can corrupt a file corrupts it before
+anything reads it back, which is why that guard exists; this is the second
+time it has earned its place.
+
+**`find` was made to accept a bare key too.** `  row:` ends at the colon, and
+the guard only accepted a space or a tab after it -- so a caller that split the
+file with `splitlines(True)` got a newline there and was told the key was
+absent. The server splits on `"\\n"` and never hit it, so this was latent
+rather than live; it is fixed because the next caller would have.

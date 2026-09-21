@@ -207,6 +207,117 @@ def load_spec(name: str) -> dict:
     return yaml.safe_load(path.read_text())
 
 
+#: What a case may be called. A name reaches the filesystem, so it is checked
+#: rather than trusted: no separators, no dots, nothing that could walk out of
+#: `cases/` and write somewhere else.
+CASE_NAME = re.compile(r"^[A-Za-z0-9][A-Za-z0-9_-]{0,63}$")
+
+
+def _case_name(raw: str | None) -> str:
+    name = (raw or "").strip()
+    if not CASE_NAME.match(name):
+        raise ValueError(
+            f"'{name}' is not a case name. Letters, digits, - and _ only, "
+            "starting with a letter or digit, up to 64 characters."
+        )
+    return name
+
+
+def list_cases(current: str | None = None) -> dict:
+    """Every case in the folder, newest first, and which one is open.
+
+    `cases/` is the engineer's own folder (ADR-056), so this lists whatever is
+    in it rather than the nine this repository ships. That is the point: the
+    page exists to open the room they are studying.
+    """
+    rows = []
+    for path in CASES_DIR.glob("*.yaml"):
+        try:
+            name = yaml.safe_load(path.read_text()).get("name")
+        except Exception:  # noqa: BLE001 -- a broken file is still a file
+            name = None
+        rows.append({
+            "case": path.stem,
+            "name": name or path.stem,
+            "modified": path.stat().st_mtime,
+            "current": path.stem == current,
+        })
+    rows.sort(key=lambda r: -r["modified"])
+    return {"cases": rows, "current": current}
+
+
+def read_case_text(name: str) -> dict:
+    """The case file as it is written, comments and all -- what a person
+    copies out to send somebody, and what `import` takes back."""
+    path = CASES_DIR / f"{_case_name(name)}.yaml"
+    if not path.exists():
+        raise FileNotFoundError(f"no case spec at {path}")
+    return {"case": path.stem, "yaml": path.read_text()}
+
+
+def _admit(name: str, text: str) -> dict:
+    """Write a case only once the generator has built it (ADR-055).
+
+    Saving first and validating afterwards is how the page lost itself: a spec
+    the generator refuses is a spec every reload fails on, so the form that
+    could have undone it never loaded again. Build it in memory, and only a
+    case that can be drawn reaches the folder.
+    """
+    from aicfd.model import build_model
+
+    path = CASES_DIR / f"{name}.yaml"
+    if path.exists():
+        raise ValueError(
+            f"'{name}' already exists. Pick another name, or open that case "
+            f"and edit it."
+        )
+    try:
+        spec = yaml.safe_load(text)
+    except yaml.YAMLError as broken:
+        raise ValueError(f"that is not YAML: {broken}") from None
+    if not isinstance(spec, dict):
+        raise ValueError("a case is a mapping of sections, not a bare value")
+    # The name in the file follows the name on disk, so the two cannot drift.
+    text = re.sub(r"^name:.*$", f"name: {name}", text, count=1, flags=re.M)
+    if not re.search(r"^name:", text, flags=re.M):
+        text = f"name: {name}\n{text}"
+    try:
+        build_model(yaml.safe_load(text))  # refuses here, before anything is written
+    except Exception as refused:           # noqa: BLE001 -- any refusal is a refusal
+        # A KeyError from the generator reads as `'aisles'` and tells an
+        # engineer nothing. Say which section is missing, in a sentence.
+        why = (f"no `{refused.args[0]}` section" if isinstance(refused, KeyError)
+               else str(refused))
+        raise ValueError(f"that case cannot be built: {why}") from None
+    path.write_text(text)
+    return {"case": name}
+
+
+def new_case(name: str, template: str | None = None) -> dict:
+    """A case from the starter, or copied from one that already exists.
+
+    A copy keeps every comment and datasheet reference, exactly as
+    `aicfd new --from` does: the note beside a figure is half of why the
+    figure is what it is (ADR-061).
+    """
+    from aicfd.cli import STARTER_SPEC
+
+    name = _case_name(name)
+    if template:
+        source = CASES_DIR / f"{_case_name(template)}.yaml"
+        if not source.exists():
+            raise ValueError(f"no case named '{template}' to copy")
+        return _admit(name, source.read_text())
+    return _admit(name, STARTER_SPEC.format(name=name))
+
+
+def import_case(name: str, text: str) -> dict:
+    """A case pasted in whole. Same admission as a new one."""
+    if not (text or "").strip():
+        raise ValueError("nothing pasted")
+    return _admit(_case_name(name), text)
+
+
 def case_path(name: str) -> str:
     """Where this case lives, said the shortest way a person can act on.
 
@@ -1126,6 +1237,16 @@ class Handler(SimpleHTTPRequestHandler):
 
         return (parse_qs(urlparse(self.path).query).get(key) or [None])[0]
 
+    def _case(self) -> str:
+        """The case THIS REQUEST is about.
+
+        `aicfd view --case X` says which case the page opens on; it does not
+        say which case the page may look at. Preferring the request's own
+        `?case=` is what lets the case menu open a second room without
+        restarting the server (ADR-087).
+        """
+        return self._query("case") or self.case_name
+
     def __init__(self, *args, **kwargs):
         super().__init__(*args, directory=str(REPO_ROOT), **kwargs)
 
@@ -1136,31 +1257,35 @@ class Handler(SimpleHTTPRequestHandler):
 
     def do_GET(self):  # noqa: N802
         if self.path.startswith("/api/model"):
-            payload = self._safely(build_payload, self.case_name)
+            payload = self._safely(build_payload, self._case())
             if "error" in payload:
                 # A case on disk the generator refuses leaves the page with no
                 # form to fix it in, so the error has to say where the file is
                 # and what to edit. The page can no longer put a case into
                 # this state; one edited by hand still can (ADR-055).
-                payload["case"] = self.case_name
-                payload["file"] = case_path(self.case_name)
+                payload["case"] = self._case()
+                payload["file"] = case_path(self._case())
             return self._json(payload)
         if self.path.startswith("/api/racks"):
-            return self._json(self._safely(read_racks, self._query("case") or self.case_name))
+            return self._json(self._safely(read_racks, self._case()))
         if self.path.startswith("/api/components"):
             return self._json(self._safely(read_component, self._query("id")))
         if self.path.startswith("/api/equipment"):
             return self._json(self._safely(read_equipment, self._query("model")))
+        if self.path.startswith("/api/cases/export"):
+            return self._json(self._safely(
+                read_case_text, self._case()))
+        if self.path.startswith("/api/cases"):
+            return self._json(self._safely(list_cases, self._case()))
         if self.path.startswith("/api/commands"):
-            return self._json(self._safely(commands_for, self._query("case")
-                                           or self.case_name))
+            return self._json(self._safely(commands_for, self._case()))
 
         if self.path.startswith("/api/progress"):
             return self._json(
                 {
                     "run": STATE.snapshot(),
-                    "residuals": read_progress(self.case_name),
-                    "sensors": self._safely(read_sensors, self.case_name),
+                    "residuals": read_progress(self._case()),
+                    "sensors": self._safely(read_sensors, self._case()),
                 }
             )
         return super().do_GET()
@@ -1171,7 +1296,7 @@ class Handler(SimpleHTTPRequestHandler):
 
         if self.path.startswith("/api/model"):
             def update():
-                spec, rejected = apply_changes(load_spec(self.case_name), body)
+                spec, rejected = apply_changes(load_spec(self._case()), body)
                 # Built before it is saved. A value can be inside its range
                 # and still describe a room that cannot exist -- seven 4 m fan
                 # walls along a 26 m wall -- and the generator refuses it.
@@ -1180,20 +1305,28 @@ class Handler(SimpleHTTPRequestHandler):
                 # could undo it never loaded again, and the page was gone for
                 # good (ADR-055).
                 try:
-                    payload = payload_for(self.case_name, spec)
+                    payload = payload_for(self._case(), spec)
                 except ValueError as refused:
-                    payload = build_payload(self.case_name)
+                    payload = build_payload(self._case())
                     payload["rejected"] = rejected + [str(refused)]
                     return payload
-                save_spec(self.case_name, spec)
+                save_spec(self._case(), spec)
                 payload["rejected"] = rejected
                 return payload
 
             return self._json(self._safely(update))
 
+        if self.path.startswith("/api/cases/import"):
+            return self._json(
+                self._safely(import_case, body.get("name"), body.get("yaml"))
+            )
+        if self.path.startswith("/api/cases"):
+            return self._json(
+                self._safely(new_case, body.get("name"), body.get("from"))
+            )
         if self.path.startswith("/api/racks"):
             return self._json(
-                self._safely(write_racks, self._query("case") or self.case_name, body)
+                self._safely(write_racks, self._case(), body)
             )
         if self.path.startswith("/api/components"):
             return self._json(
@@ -1205,20 +1338,19 @@ class Handler(SimpleHTTPRequestHandler):
             )
 
         if self.path.startswith("/api/post"):
-            return self._json(self._safely(reread_run, self._query("case")
-                                           or self.case_name))
+            return self._json(self._safely(reread_run, self._case()))
 
         if self.path.startswith("/api/report"):
-            return self._report(self._query("case") or self.case_name, body)
+            return self._report(self._case(), body)
 
         if self.path.startswith("/api/stop"):
-            return self._json(self._safely(stop_run, self.case_name))
+            return self._json(self._safely(stop_run, self._case()))
 
         if self.path.startswith("/api/run"):
             blocked = solver_available()
             if blocked:
                 return self._json({"run": STATE.snapshot(), "blocked": blocked})
-            start_run(self.case_name)
+            start_run(self._case())
             return self._json({"run": STATE.snapshot()})
 
         self.send_error(404)

@@ -50,6 +50,33 @@
     padding:14px 20px;border-bottom:1px solid var(--border);background:var(--surface)}
   .brand{font-weight:650;letter-spacing:-.01em}
   .topbar .case{color:var(--text-secondary)}
+  /* The case menu: a disclosure rather than a modal, so it cannot trap a
+     reader and needs no overlay, no focus trap and no escape key. */
+  .casemenu{position:relative}
+  .casemenu>summary{cursor:pointer;list-style:none;padding:2px 8px;border-radius:6px;
+    border:1px solid var(--border);background:var(--surface)}
+  .casemenu>summary::-webkit-details-marker{display:none}
+  .casemenu>summary::after{content:" ▾";color:var(--text-muted)}
+  .casemenu>summary:hover{border-color:var(--text-muted)}
+  .casemenu-panel{position:absolute;z-index:40;top:calc(100% + 6px);left:0;width:440px;
+    max-width:92vw;background:var(--surface);border:1px solid var(--border);
+    border-radius:10px;padding:12px;box-shadow:0 12px 32px rgba(0,0,0,.28)}
+  .casemenu-head{font-size:10px;text-transform:uppercase;letter-spacing:.08em;
+    color:var(--text-muted);margin:10px 0 4px}
+  .casemenu-head:first-child{margin-top:0}
+  .casemenu-list{max-height:210px;overflow:auto;display:flex;flex-direction:column;gap:2px}
+  .casemenu-list a{display:flex;gap:8px;align-items:baseline;padding:4px 6px;
+    border-radius:5px;text-decoration:none;color:var(--text-primary);font-size:13px}
+  .casemenu-list a:hover{background:var(--surface-2,rgba(128,128,128,.12))}
+  .casemenu-list a[data-current="1"]{font-weight:600}
+  .casemenu-list .when{margin-left:auto;color:var(--text-muted);font-size:11px}
+  .casemenu-row{display:flex;gap:6px;align-items:center;margin-bottom:6px}
+  .casemenu-row input[type=text]{flex:1;min-width:0}
+  .casemenu-panel textarea{width:100%;font-family:var(--mono,ui-monospace,monospace);
+    font-size:11px;resize:vertical}
+  .casemenu-note{font-size:11px;color:var(--text-muted);margin:8px 0 0}
+  .casemenu-note[data-tone="bad"]{color:var(--bad,#c0392b)}
+  .casemenu-note[data-tone="good"]{color:var(--good,#1e8449)}
   .spacer{flex:1}
   .badge{display:inline-flex;align-items:center;gap:6px;padding:3px 10px;
     border-radius:999px;font-size:12px;font-weight:600;border:1px solid var(--border)}
@@ -201,7 +228,31 @@
 <body>
 <header class="topbar">
   <span class="brand">AICFD</span>
-  <span class="case" id="case-name">carregando…</span>
+  <details class="casemenu" id="case-menu">
+    <summary><span class="case" id="case-name">loading…</span></summary>
+    <div class="casemenu-panel">
+      <div class="casemenu-head">Open a case</div>
+      <div id="case-list" class="casemenu-list"></div>
+      <div class="casemenu-head">Start one</div>
+      <div class="casemenu-row">
+        <input id="case-new-name" type="text" placeholder="name, e.g. hall-sp07" />
+        <select id="case-new-from"><option value="">from the starter</option></select>
+        <button id="case-new" type="button">Create</button>
+      </div>
+      <div class="casemenu-head">Paste one in</div>
+      <div class="casemenu-row">
+        <input id="case-import-name" type="text" placeholder="name for it" />
+        <button id="case-import" type="button">Import</button>
+        <span class="spacer"></span>
+        <button id="case-copy" type="button">Copy this case</button>
+      </div>
+      <textarea id="case-import-yaml" rows="6"
+        placeholder="paste the case YAML here"></textarea>
+      <p class="casemenu-note" id="case-status">A case is written only once the
+        generator has built it, so a paste that cannot be drawn is refused here
+        rather than saved and discovered on the next reload.</p>
+    </div>
+  </details>
   <span class="badge" id="stage" data-stage="idle">—</span>
   <span class="spacer"></span>
   <button id="theme-toggle" type="button">Dark</button>

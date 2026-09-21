@@ -9,6 +9,23 @@
 import { viewsFor, drawView, sheetScale } from './drawing.js';
 
 /**
+ * Which case this page is looking at, from its own address.
+ *
+ * The server was launched with one case and answered `/api/model` with it
+ * whatever the page asked -- so opening `?case=other` changed the address bar
+ * and nothing else, and the only way to look at a second room was to stop
+ * `aicfd view` and start it again. Every call carries the case now, and the
+ * server prefers it over the one it was started with (ADR-087).
+ */
+const CASE = new URLSearchParams(location.search).get('case');
+
+const withCase = (url) => {
+  if (!CASE || url.includes('case=')) return url;
+  return `${url}${url.includes('?') ? '&' : '?'}case=${encodeURIComponent(CASE)}`;
+};
+
+
+/**
  * The input template: every field of the case spec, grouped the way an
  * engineer thinks about a data hall.
  *
@@ -170,6 +187,7 @@ main();
 
 async function main() {
   setupTheme();
+  wireCaseMenu();
   try {
     model = await fetchJson('/api/model');
   } catch (error) {
@@ -1144,7 +1162,7 @@ function text(x, y, content, cls, anchor) {
 }
 
 async function fetchJson(url, { method = 'GET', body } = {}) {
-  const response = await fetch(url, {
+  const response = await fetch(withCase(url), {
     method,
     headers: body ? { 'Content-Type': 'application/json' } : undefined,
     body: body ? JSON.stringify(body) : undefined,
@@ -1175,4 +1193,107 @@ function setupTheme() {
     apply();
   });
   apply();
+}
+
+/* --- the case menu ----------------------------------------------------------
+ *
+ * Opening, starting and importing a case were terminal-only: `aicfd new`, or
+ * a `?case=` typed into the address bar. The page is the interface (ADR-005),
+ * and a person who has to leave it to begin is not being served by it.
+ *
+ * Switching RELOADS. Every card's state comes from the server anyway, so
+ * rebuilding it in place would be a second way of doing what a reload already
+ * does correctly -- and a second way is a second thing to keep right.
+ */
+
+const menu = {
+  panel: () => document.getElementById('case-menu'),
+  say(message, tone = '') {
+    const note = document.getElementById('case-status');
+    if (!note) return;
+    // The server answers `TypeError: ...`; the class name is for a log, not
+    // for somebody who just pasted a case in.
+    note.textContent = String(message).replace(/^[A-Za-z]*(Error|Exception):\s*/, '');
+    if (tone) note.dataset.tone = tone; else delete note.dataset.tone;
+  },
+};
+
+const ago = (seconds) => {
+  const m = Math.round((Date.now() / 1000 - seconds) / 60);
+  if (m < 1) return 'just now';
+  if (m < 60) return `${m} min ago`;
+  const h = Math.round(m / 60);
+  return h < 48 ? `${h} h ago` : `${Math.round(h / 24)} d ago`;
+};
+
+async function loadCaseMenu() {
+  const list = document.getElementById('case-list');
+  const from = document.getElementById('case-new-from');
+  if (!list) return;
+  try {
+    const payload = await (await fetch('/api/cases')).json();
+    if (payload.error) throw new Error(payload.error);
+    list.innerHTML = payload.cases
+      .map((c) => `<a href="?case=${encodeURIComponent(c.case)}"
+           data-current="${c.current ? 1 : 0}"><span>${c.case}</span>
+           <span class="when">${ago(c.modified)}</span></a>`)
+      .join('') || '<p class="casemenu-note">nothing in cases/ yet</p>';
+    from.innerHTML = '<option value="">from the starter</option>'
+      + payload.cases.map((c) => `<option value="${c.case}">copy ${c.case}</option>`)
+        .join('');
+  } catch (e) {
+    list.innerHTML = `<p class="casemenu-note" data-tone="bad">${e.message}</p>`;
+  }
+}
+
+async function postCase(url, body, verb) {
+  menu.say(`${verb}…`);
+  try {
+    const res = await fetch(url, {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify(body),
+    });
+    const payload = await res.json();
+    // The server builds the case before it writes it (ADR-055), so a refusal
+    // here means nothing was saved -- which is worth saying, because the
+    // engineer's next question is whether they have to go and delete a file.
+    if (payload.error) { menu.say(`${payload.error} Nothing was saved.`, 'bad'); return; }
+    menu.say(`${payload.case} created — opening…`, 'good');
+    location.search = `?case=${encodeURIComponent(payload.case)}`;
+  } catch (e) {
+    menu.say(`${e.message} Nothing was saved.`, 'bad');
+  }
+}
+
+function wireCaseMenu() {
+  const el = (id) => document.getElementById(id);
+  el('case-menu')?.addEventListener('toggle', (event) => {
+    if (event.target.open) loadCaseMenu();
+  });
+  el('case-new')?.addEventListener('click', () => postCase('/api/cases', {
+    name: el('case-new-name').value, from: el('case-new-from').value || null,
+  }, 'creating'));
+  el('case-import')?.addEventListener('click', () => postCase('/api/cases/import', {
+    name: el('case-import-name').value, yaml: el('case-import-yaml').value,
+  }, 'importing'));
+  el('case-copy')?.addEventListener('click', async () => {
+    try {
+      const payload = await (await fetch(withCase('/api/cases/export'))).json();
+      if (payload.error) throw new Error(payload.error);
+      await navigator.clipboard.writeText(payload.yaml);
+      menu.say(`${payload.case}.yaml copied — comments and all.`, 'good');
+    } catch (e) {
+      // Clipboard access is refused outside a secure context, so the text goes
+      // in the box instead: a paste target beats an error nobody can act on.
+      const box = el('case-import-yaml');
+      if (box) {
+        const payload = await (await fetch(withCase('/api/cases/export'))).json();
+        box.value = payload.yaml || '';
+        menu.say('Clipboard refused, so it is in the box below — select and copy.');
+      } else {
+        menu.say(e.message, 'bad');
+      }
+    }
+  });
 }

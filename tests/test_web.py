@@ -289,3 +289,77 @@ class DecimalSeparatorTest(unittest.TestCase):
         self.assertIn("replace(',', '.')", source)
         self.assertIn("export const num", source)
         self.assertIn("export const dec", source)
+
+
+class BlockKeyWithAListTest(unittest.TestCase):
+    """A key's value may be a list at the key's own indent (ADR-088).
+
+    YAML allows it and `yaml.safe_dump` writes it, so any case that has been
+    round-tripped through one looks like this:
+
+        racks:
+          row:
+          - width: 0.6
+          - width: 0.6
+            load_kw: 0
+
+    The editor treated "the block under a key" as "the lines indented deeper
+    than the key", which those items are not. Removing the block took the key
+    and left the list; the orphans then read as a list where a key was
+    expected. The rack page rewrites that block by removing it and writing it
+    again, so the removal was half of every save -- and no case with a typical
+    row could be saved at all.
+    """
+
+    from aicfd import yamledit as Y
+
+    SAME_INDENT = (
+        "racks:\n"
+        "  per_row: 15\n"
+        "  row:\n"
+        "  - width: 0.6\n"
+        "  - width: 0.6\n"
+        "    load_kw: 0\n"
+        "  airflow_cfm_per_kw: 158\n"
+    ).split("\n")
+
+    DEEPER = (
+        "racks:\n"
+        "  per_row: 15\n"
+        "  row:\n"
+        "    - {width: 0.6}\n"
+        "    - {width: 0.8, load_kw: 32}\n"
+        "  airflow_cfm_per_kw: 158\n"
+    ).split("\n")
+
+    def parsed(self, lines):
+        import yaml as Y
+        return Y.safe_load("\n".join(lines))
+
+    def test_removing_a_key_takes_its_list_with_it(self):
+        for style, lines in (("same indent", self.SAME_INDENT), ("deeper", self.DEEPER)):
+            with self.subTest(style=style):
+                work = list(lines)
+                self.Y.set_map(work, ["racks", "row"], {})
+                spec = self.parsed(work)          # raises if the list is orphaned
+                self.assertNotIn("row", spec["racks"])
+                self.assertEqual(spec["racks"]["per_row"], 15)
+                self.assertEqual(spec["racks"]["airflow_cfm_per_kw"], 158)
+
+    def test_replacing_a_list_takes_the_whole_item(self):
+        """An item is not a line: `- width: 0.6` followed by `  load_kw: 0` is
+        one position, and stopping at the continuation cut the list in half."""
+        work = list(self.SAME_INDENT)
+        self.Y.replace_list(work, ["racks", "row"], ["    - {width: 0.8}"])
+        spec = self.parsed(work)
+        self.assertEqual(spec["racks"]["row"], [{"width": 0.8}])
+        self.assertEqual(spec["racks"]["airflow_cfm_per_kw"], 158)
+
+    def test_a_key_with_nothing_after_the_colon_is_found(self):
+        """`  row:` ends at the colon. Whether the caller split the file with
+        `split("\\n")` or `splitlines(True)` must not decide that."""
+        for keep in (False, True):
+            text = "racks:\n  per_row: 15\n  row:\n  - width: 0.6\n"
+            lines = text.splitlines(True) if keep else text.split("\n")
+            with self.subTest(keepends=keep):
+                self.assertIsNotNone(self.Y.find(lines, ["racks", "row"]))
