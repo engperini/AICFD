@@ -21,6 +21,11 @@ import { viewsFor, drawView, sheetScale } from './drawing.js';
  */
 import { CASE, withCase } from './case.js';
 
+// One decimal separator for the whole tool: a dot going out, either coming
+// in (ADR-083). The datasheet numbers this page writes into the fields go
+// through it like every other value a form field carries.
+import { dec } from './decimal.js';
+
 
 /**
  * The input template: every field of the case spec, grouped the way an
@@ -635,7 +640,42 @@ function wireUnitPicker() {
       : option.why;
     if (option.suits) note.removeAttribute('data-tone');
     else note.setAttribute('data-tone', 'bad');
+    fillFromDatasheet(option);
   });
+}
+
+/**
+ * Put the chosen machine's numbers in the fields, now.
+ *
+ * The group above the picker is the unit's datasheet -- airflow, capacity,
+ * power, supply temperature, the three dimensions, the static pressure. Those
+ * fields held the PREVIOUS unit's figures, and the server fills only what a
+ * case leaves blank (ADR-036), so picking another machine changed the name
+ * over the old numbers and nothing else. A hall came back naming a 145 kW
+ * CRAH and carrying 432.6 kW, 121,545 m3/h and a 3.96 m unit, and every
+ * check passed on it (ADR-094).
+ *
+ * The fields are found through `model.editable`, which is the server's own
+ * table of field to spec path -- so this cannot name a field the form has
+ * not got, and cannot drift from where each number lives.
+ *
+ * Nothing is saved: these are the same boxes the reader can now type over,
+ * and Apply is still what writes. What changes is that what they see under
+ * the unit's name is the unit.
+ */
+function fillFromDatasheet(option) {
+  const paths = model.editable || {};
+  const fieldFor = (key) => Object.keys(paths).find(
+    (field) => paths[field].length === 2
+      && paths[field][0] === 'fanwall' && paths[field][1] === key);
+  for (const [key, value] of Object.entries(option.defaults || {})) {
+    const field = fieldFor(key);
+    const input = field && document.getElementById(`p-${field}`);
+    // `curve` has no field: it is the unit's P-Q curve, which the page never
+    // showed. The server replaces it with the new unit's on Apply.
+    if (!input) continue;
+    input.value = dec(value);
+  }
 }
 
 /**

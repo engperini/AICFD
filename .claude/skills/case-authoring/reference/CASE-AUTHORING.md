@@ -220,7 +220,7 @@ or three.
 | `plenum.as_mesh` | bool | | §4 |
 | `floor.enabled` | bool | | §4 |
 | `floor.height` | float | 0.2 to 3 | the access floor's depth. The building grows by it; the room above is unchanged |
-| `floor.tiles_per_rack` | int | 0 to 10 | perforated plates in the cold aisle per cabinet |
+| `floor.tiles_per_rack` | int | 0 to 10 | perforated plates in the cold aisle per cabinet, laid outward from the cabinet face. **Two rows face the same cold aisle**, so an aisle of width W holds W/0.6 rows of plate between them — not that many for each. Asking for more is refused by name (ADR-095) |
 
 ### Perforated surfaces
 
@@ -369,6 +369,15 @@ A number retyped into a case is a number that will disagree with the next case.
 | fan wall units | `equipment/` | `fanwall.model` | the manufacturer's selections as a **table**, because a chilled-water coil's capacity is not a constant: one unit gives 504.9 kW at 35 °C return and 734.3 kW at 41 °C (ADR-036) |
 | cabinets | `racks/` | `racks.type`, `racks.row[i].type` | width, depth, height and a default load, as the project's documents state them (ADR-075) |
 | perforated surfaces | `components/` | `components.<role>` | free area and loss coefficient. Roles: `ceiling_return`, `supply_grille`, `floor_tile`, `gallery_mesh`, `containment`, `distribution_loss` |
+
+**Changing the unit takes the old unit's numbers with it.** Picking another
+machine on the page replaces the airflow, capacity, power, supply temperature,
+the three dimensions, the static pressure and the P-Q curve with the new one's
+datasheet (ADR-094). Anything you type after that still wins, and stays in the
+file where a reader can see it was a decision. In a hand-edited case the rule
+is the older one: the library fills only what the case leaves blank, so
+changing `fanwall.model` by hand and leaving the numbers gives you the right
+name over the wrong machine — delete them and let the build fill them.
 
 **Which unit suits which room.** A unit's file states its `arrangement`. A
 `fanwall` unit is a wall of fans in a mechanical gallery and needs no raised

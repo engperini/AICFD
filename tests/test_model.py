@@ -10,6 +10,7 @@ from __future__ import annotations
 
 import copy
 import inspect
+import re
 import unittest
 from pathlib import Path
 
@@ -1000,3 +1001,147 @@ class PlenumArrangementTest(unittest.TestCase):
         self.assertEqual(js.count("exclusive: 'plenum'"), 2)
         self.assertIn("Include Plenum with grilles", js)
         self.assertIn("No Plenum, only Mesh", js)
+
+
+class EveryPlaneOnTheGridTest(unittest.TestCase):
+    """A plane that misses the grid selects no faces, and says nothing.
+
+    `topoSet` takes the faces inside a box a quarter of a cell thick around
+    each plane. A plane between two cell faces catches none of them, the patch
+    is built with `nFaces 0`, and `createBaffles` is perfectly happy: the
+    failure surfaces later, somewhere else, as something else.
+
+    It did. `snap_to_mesh` moved every panel's `position` and `extent` and
+    left `return_z` -- the second plane a downflow unit has, its top face a
+    storey above its bottom one -- exactly where the spec put it. A 2,87 m
+    CRAH on a 1,0 m raised floor returns at 3,87 m, which is not on a 0,25 m
+    grid, so all four units' intake patches came out empty and the orientation
+    check read a face one past the end of the mesh: `IndexError: no face
+    433534`. Had that check not existed, the solve would have run a plant that
+    returns nothing (ADR-095).
+
+    So every plane a panel carries is checked, by name, rather than the two
+    that were remembered.
+    """
+
+    #: Panel fields that are a coordinate on the panel's own normal axis, and
+    #: the axis each is measured on. `position` follows the panel; `return_z`
+    #: is always vertical.
+    PLANES = (("position", None), ("return_z", 2))
+
+    def on_grid(self, value: float, cell: float) -> bool:
+        return abs(value / cell - round(value / cell)) < 1e-6
+
+    def specs(self):
+        for name in support.SHIPPED_CASES:
+            yield name, yaml.safe_load(
+                (support.REPO / "cases" / f"{name}.yaml").read_text())
+
+    def test_every_panel_plane_of_every_shipped_case_lands_on_a_cell_face(self):
+        for name, spec in self.specs():
+            model = m.build_model(spec)
+            for panel in model.panels:
+                for field, axis in self.PLANES:
+                    value = getattr(panel, field, None)
+                    if value is None:
+                        continue
+                    cell = model.cell(panel.axis if axis is None else axis)
+                    with self.subTest(case=name, panel=panel.name, plane=field):
+                        self.assertTrue(
+                            self.on_grid(value, cell),
+                            f"{panel.name}.{field} = {value} is not a multiple "
+                            f"of the {cell} m cell, so topoSet selects no faces "
+                            "for it and the patch comes out empty",
+                        )
+
+    def test_a_downflow_unit_whose_height_misses_the_grid_is_snapped(self):
+        """The case that found it, reduced to its cause.
+
+        A unit height and a floor depth that do not add up to a multiple of
+        the z cell. Before the fix the return plane stayed at 3.87 m.
+        """
+        spec = yaml.safe_load(
+            (support.REPO / "cases" / "pod-raised-floor.yaml").read_text())
+        spec["fanwall"]["height"] = 2.87          # the CRAH, off the grid
+        spec["floor"] = dict(spec.get("floor") or {}, enabled=True, height=1.0)
+        spec["mesh"]["cell_size"] = [0.6, 0.3, 0.25]
+        model = m.build_model(spec)
+        fans = [p for p in model.panels if p.kind == "fan"]
+        self.assertTrue(fans, "the raised-floor case has no units")
+        for fan in fans:
+            with self.subTest(fan=fan.name):
+                self.assertIsNotNone(fan.return_z, "a downflow unit returns")
+                self.assertTrue(
+                    self.on_grid(fan.return_z, model.cell(2)),
+                    f"{fan.name}.return_z = {fan.return_z} is off the "
+                    f"{model.cell(2)} m grid",
+                )
+
+
+class FloorPlatesThatWouldOverlapTest(unittest.TestCase):
+    """Two rows facing one cold aisle cannot each floor the whole of it.
+
+    `floor.tiles_per_rack` lays N plates outward from each cabinet's face.
+    Two rows face the same aisle from opposite sides, so an aisle of width W
+    holds W/depth rows of plate BETWEEN them -- not that many for each.
+
+    Asked for more, the generator built them anyway and the same floor was
+    claimed twice. Nothing said so until OpenFOAM, four steps later:
+    `createBaffles exited 1 ... Face 39400 already in faceZone 55`, a mesh
+    face index and a zone number, about a hall somebody had just spent an
+    hour describing. On the 5 MW hall that found it, 90 of 240 plates
+    (ADR-095).
+    """
+
+    def hall(self, cold: float, tiles: int) -> dict:
+        spec = yaml.safe_load(
+            (support.REPO / "cases" / "hall-double-gallery.yaml").read_text())
+        spec["aisles"]["cold"] = cold
+        spec["fanwall"] = {"model": "39CRA150", "count": 4}
+        spec["floor"] = {"enabled": True, "height": 1.0, "tiles_per_rack": tiles}
+        spec.pop("plenum", None)
+        return spec
+
+    def test_plates_that_would_be_laid_twice_are_refused(self):
+        with self.assertRaises(ValueError) as caught:
+            m.build_model(self.hall(cold=1.2, tiles=2))
+        said = str(caught.exception)
+        self.assertIn("floor.tiles_per_rack", said)
+        self.assertIn("laid twice", said)
+        self.assertRegex(said, r"rows F\w+ and F\w+",
+                         "the refusal has to name the two rows that collide")
+        self.assertIn("aisles.cold", said,
+                      "the refusal has to offer the other way out")
+
+    def test_the_count_it_suggests_actually_builds(self):
+        """A refusal that names a fix nobody can take is half a refusal."""
+        with self.assertRaises(ValueError) as caught:
+            m.build_model(self.hall(cold=1.2, tiles=2))
+        suggested = int(re.search(r"tiles_per_rack to (\d+)",
+                                  str(caught.exception)).group(1))
+        model = m.build_model(self.hall(cold=1.2, tiles=suggested))
+        plates = [p for p in model.panels if p.name.startswith("tile_")]
+        self.assertTrue(plates, "the suggestion built no plates at all")
+        seen = {}
+        for plate in plates:
+            seen.setdefault((plate.extent[0], plate.extent[1]), []).append(plate.name)
+        self.assertFalse([v for v in seen.values() if len(v) > 1],
+                         "the count it suggested still overlaps")
+
+    def test_the_wider_aisle_it_suggests_also_builds(self):
+        with self.assertRaises(ValueError) as caught:
+            m.build_model(self.hall(cold=1.2, tiles=2))
+        wider = float(re.search(r"aisles\.cold to ([\d.]+) m",
+                                str(caught.exception)).group(1))
+        m.build_model(self.hall(cold=wider, tiles=2))
+
+    def test_an_aisle_with_room_is_left_alone(self):
+        model = m.build_model(self.hall(cold=2.4, tiles=2))
+        plates = [p for p in model.panels if p.name.startswith("tile_")]
+        self.assertTrue(plates)
+
+    def test_no_shipped_case_trips_it(self):
+        for name in support.SHIPPED_CASES:
+            with self.subTest(case=name):
+                m.build_model(yaml.safe_load(
+                    (support.REPO / "cases" / f"{name}.yaml").read_text()))

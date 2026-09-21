@@ -371,9 +371,58 @@ def save_spec(name: str, spec: dict) -> None:
     path.write_text(yaml.safe_dump(spec, sort_keys=False, allow_unicode=True))
 
 
+#: The `fanwall` keys a named unit supplies, by the page field that carries
+#: each one. Built from `EDITABLE` so it cannot list a field the form has not
+#: got; `curve` has no field and is added by name.
+def _datasheet_fields() -> dict[str, str]:
+    out = {}
+    for key, (path, _c, _l) in EDITABLE.items():
+        if len(path) == 2 and path[0] == "fanwall":
+            out[path[1]] = key
+    return out
+
+
+def _forget_the_previous_unit(spec: dict, changes: dict) -> None:
+    """A change of unit takes the old unit's numbers with it (ADR-094).
+
+    `equipment_for` fills only the keys a case leaves blank -- the library is
+    a default, not a lock, and a value typed over it is a decision that stays
+    visible (ADR-036). That is right for a case somebody wrote, and wrong the
+    moment the unit can be CHANGED: every key is already filled with the
+    previous machine's figures, so naming another one changed the name and
+    nothing else.
+
+    What that looked like: a hall with `model: 39CRA150` carrying the fan
+    wall's 432.6 kW, 121,545 m3/h and 3.96 m against the CRAH's real 145 kW,
+    33,700 m3/h and 2.73 m -- four machines rated at three times what they
+    are, under the right name, with every check green.
+
+    So the datasheet keys are dropped here and the build refills them from
+    the new unit. A key the REQUEST states is kept: the page sends the new
+    unit's numbers because it has already shown them, and somebody who types
+    over one in the same Apply means it.
+    """
+    from aicfd import equipment as library
+    from aicfd.model import equipment_defaults
+
+    asked = str(changes.get("fan_model") or "").strip()
+    if not asked or asked not in library.available():
+        return
+    fan = spec.get("fanwall") or {}
+    if fan.get("model") == asked:
+        return  # the same unit: nothing to forget
+    supplied = set(equipment_defaults(library.load(asked)))
+    stated = {path[1] for key, (path, _c, _l) in EDITABLE.items()
+              if key in changes and len(path) == 2 and path[0] == "fanwall"}
+    for key in supplied - stated:
+        fan.pop(key, None)
+    spec["fanwall"] = fan
+
+
 def apply_changes(spec: dict, changes: dict) -> tuple[dict, list[str]]:
     """Apply edits from the page, rejecting anything outside its declared range."""
     rejected: list[str] = []
+    _forget_the_previous_unit(spec, changes)
     for key, raw in changes.items():
         if key not in EDITABLE:
             rejected.append(f"{key}: not an editable parameter")

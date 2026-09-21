@@ -1062,6 +1062,29 @@ def equipment_mismatch(unit, spec: dict) -> str | None:
     return None
 
 
+def equipment_defaults(unit, design_return_c=None) -> dict:
+    """What naming this unit fills the `fanwall` block with.
+
+    One statement of it, because it has three readers now: `equipment_for`,
+    which fills a case that states nothing; the page, which shows the numbers
+    the moment a unit is picked; and the change that CLEARS the previous
+    unit's numbers when the unit changes (ADR-094). Three copies of this
+    mapping would put three different machines in front of a reader.
+    """
+    point = unit.design_point(design_return_c)
+    return {
+        "airflow_m3h": point["airflow_m3h"],
+        "capacity_kw": point["nscc_kw"],
+        "power_kw": point["power_kw"],
+        "supply_temp_c": point["supply_c"],
+        "width": unit.size[0],
+        "depth": unit.size[1],
+        "height": unit.size[2],
+        "static_pressure_pa": unit.selection.get("esp_pa"),
+        "curve": (unit.curve or {}).get("points"),
+    }
+
+
 def equipment_in_use(spec: dict) -> dict | None:
     """Which unit this case names, and what else the library holds.
 
@@ -1098,6 +1121,11 @@ def equipment_in_use(spec: dict) -> dict | None:
             "cooling": unit.cooling,
             "suits": why is None,
             "why": why,
+            # What picking this one puts in the fields. The page writes them
+            # in at once, so a reader sees the machine they chose rather than
+            # the last one's numbers under its name (ADR-094).
+            "defaults": {k: v for k, v in
+                         equipment_defaults(unit).items() if v is not None},
         })
     return {
         "chosen": chosen if any(o["model"] == chosen for o in options) else None,
@@ -1149,18 +1177,7 @@ def equipment_for(spec: dict):
             unit = dataclasses.replace(
                 unit, _coil=dataclasses.replace(fitted, water_c=float(water))
             )
-    point = unit.design_point(fan.get("design_return_c"))
-    defaults = {
-        "airflow_m3h": point["airflow_m3h"],
-        "capacity_kw": point["nscc_kw"],
-        "power_kw": point["power_kw"],
-        "supply_temp_c": point["supply_c"],
-        "width": unit.size[0],
-        "depth": unit.size[1],
-        "height": unit.size[2],
-        "static_pressure_pa": unit.selection.get("esp_pa"),
-        "curve": (unit.curve or {}).get("points"),
-    }
+    defaults = equipment_defaults(unit, fan.get("design_return_c"))
     for key, value in defaults.items():
         if value is not None and fan.get(key) is None:
             fan[key] = value
@@ -1303,6 +1320,11 @@ def build_model(spec: dict) -> Model:
     # by a cell -- small, and exactly the kind of quiet disagreement the
     # snapping comment above exists to prevent.
     model = snap_to_mesh(model)
+    # After snapping, because it is the SNAPPED plates the mesher lays: on the
+    # hall that found this, 60 footprints collided before the snap and 90
+    # after it, so a check run on the unsnapped geometry would have passed
+    # thirty of them straight through to OpenFOAM (ADR-095).
+    _plates_must_fit(model)
     model.alerts = model.hvac_alerts()
     return model
 
@@ -1522,6 +1544,59 @@ def _floor_tiles(model: "Model", spec: dict, floor: dict, lift: float,
                 ))
     return out
 
+
+def _plates_must_fit(model: "Model") -> None:
+    """Two rows facing one aisle cannot each floor the whole of it.
+
+    A plate is laid in front of a cabinet, outward from its face. Two rows
+    face the SAME cold aisle from opposite sides, so an aisle of width W holds
+    W/depth rows of plate between them -- not that many for each of them.
+
+    Ask for more and the same floor is claimed twice. Nothing in the geometry
+    says so: the plates are built, the summary counts them, the drawing shows
+    them, and the failure arrives four steps later out of OpenFOAM, as
+    `createBaffles exited 1 ... Face 39400 already in faceZone 55` -- a mesh
+    face index and a zone number, about a hall the reader has just spent an
+    hour describing. Measured on a 5 MW hall with 1,2 m cold aisles and two
+    plates a rack: 90 of its 240 plates were laid twice (ADR-095).
+
+    So it is refused here, where the two rows and the width of the aisle they
+    share are still in hand.
+    """
+    plates = [p for p in model.panels if p.name.startswith("tile_")]
+    if not plates:
+        return
+    where: dict[tuple, list[Panel]] = {}
+    for plate in plates:
+        where.setdefault((plate.extent[0], plate.extent[1]), []).append(plate)
+    clashes = [group for group in where.values() if len(group) > 1]
+    if not clashes:
+        return
+
+    def row_of(plate: Panel):
+        stem = plate.name[len("tile_"):].rsplit("_", 1)[0]
+        return next((row for row in model.rows
+                     if any(stem == rack.id.replace("-", "_").replace(".", "_")
+                            for rack in row.racks)), None)
+
+    first = clashes[0]
+    pair = [row_of(plate) for plate in first[:2]]
+    names = " and ".join(sorted(row.id for row in pair if row)) or "two rows"
+    depth = min(hi - lo for _x, (lo, hi) in
+                ((p.extent[0], p.extent[1]) for p in plates))
+    asked = max(len(group) for group in clashes)
+    aisle = (abs(pair[0].front_y - pair[1].front_y)
+             if all(pair) else asked * depth)
+    raise ValueError(
+        f"floor.tiles_per_rack: rows {names} face the same {num(aisle)} m "
+        f"cold aisle from opposite sides, and each asks for {asked} plates of "
+        f"{num(depth)} m in front of every cabinet -- {len(clashes)} plates "
+        f"would be laid twice over the same floor. That aisle holds "
+        f"{num(aisle / depth, 0)} rows of plate between the two cabinet "
+        f"faces, so set floor.tiles_per_rack to "
+        f"{max(1, int(aisle / 2 / depth + 1e-9))}, or widen aisles.cold to "
+        f"{num(2 * asked * depth)} m"
+    )
 
 def _downflow_units(model: "Model", units: list[Panel], spec: dict,
                     lift: float) -> list[Panel]:
@@ -2439,6 +2514,18 @@ def snap_to_mesh(model: Model) -> Model:
         dataclasses.replace(
             p,
             position=snap(p.position, p.axis),
+            # A DOWNFLOW UNIT HAS A SECOND PLANE. `return_z` is where its top
+            # face sits, a storey above the one `position` names, and it was
+            # the one field here that `replace` carried across unsnapped --
+            # the hazard the comment above is about, arriving in the field it
+            # warns about. A 2,87 m unit on a 1,0 m floor returns at 3,87 m,
+            # which is not on a 0,25 m grid, so `topoSet` selected NO faces
+            # and every `fanNIntake` patch came out empty. `createBaffles`
+            # was happy; the orientation check then read a face one past the
+            # end of the mesh and raised `IndexError: no face 433534`. Had it
+            # not, the solve would have run a plant that returns nothing
+            # (ADR-095).
+            return_z=None if p.return_z is None else snap(p.return_z, 2),
             extent=tuple(  # type: ignore[arg-type]
                 (snap(a0, axis), snap(a1, axis))
                 for axis, (a0, a1) in zip(p.in_plane_axes, p.extent)

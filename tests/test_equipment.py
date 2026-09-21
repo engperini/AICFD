@@ -9,6 +9,7 @@ something it will not do. These defend the table that replaces it (ADR-036).
 from __future__ import annotations
 
 import copy
+import inspect
 import unittest
 from pathlib import Path
 
@@ -1597,3 +1598,107 @@ class UnitPickerTest(unittest.TestCase):
         self.assertEqual(rejected, [])
         self.assertIsNone(changed["fanwall"]["model"])
         self.assertIsNone(equipment_for(changed))
+
+
+class ChangingTheUnitTest(unittest.TestCase):
+    """Naming another machine brings its numbers with it.
+
+    `equipment_for` fills only the keys a case leaves blank: the library is a
+    default, not a lock, and a value typed over it is a decision that stays
+    visible (ADR-036). That is right for a case somebody wrote by hand, and
+    wrong the moment the unit can be CHANGED from the page -- every key is
+    already filled with the previous machine's figures, so picking another one
+    changed the name and nothing else.
+
+    What that produced, in a real hall: `model: 39CRA150` carrying the fan
+    wall's 432.6 kW, 121,545 m3/h, 3.96 m and 21.4 kW against the CRAH's
+    actual 145 kW, 33,700 m3/h, 2.73 m and 6.0 kW. Four machines rated at
+    three times what they are, under the right name, and twelve green checks
+    on the answer (ADR-094).
+    """
+
+    DATASHEET = ("airflow_m3h", "capacity_kw", "power_kw", "supply_temp_c",
+                 "width", "depth", "height", "static_pressure_pa", "curve")
+
+    def hall(self) -> dict:
+        spec = yaml.safe_load(
+            (Path(__file__).resolve().parents[1]
+             / "cases" / "hall-double-gallery.yaml").read_text())
+        spec["floor"] = {"enabled": True, "height": 1.0, "tiles_per_rack": 1}
+        spec.pop("plenum", None)
+        return spec
+
+    def test_the_mapping_has_one_statement(self):
+        """`equipment_defaults` has three readers now: the fill, the page and
+        the forget. Three copies would put three machines in front of one
+        reader."""
+        from aicfd import model as model_module
+
+        source = inspect.getsource(model_module)
+        self.assertEqual(
+            source.count('"capacity_kw": point["nscc_kw"]'), 1,
+            "the unit-to-spec mapping is written more than once",
+        )
+
+    def test_changing_the_unit_replaces_the_previous_one_s_numbers(self):
+        spec = self.hall()
+        was = dict(spec["fanwall"])
+        changed, rejected = server.apply_changes(copy.deepcopy(spec),
+                                                 {"fan_model": "39CRA150"})
+        self.assertEqual(rejected, [])
+        build_model(changed)  # the build is what refills them
+        fresh = equipment.load("39CRA150")
+        from aicfd.model import equipment_defaults
+
+        wanted = equipment_defaults(fresh)
+        for key in self.DATASHEET:
+            with self.subTest(key=key):
+                self.assertEqual(
+                    changed["fanwall"].get(key), wanted[key],
+                    f"{key} is still the previous unit's "
+                    f"({was.get(key)!r}) after naming another machine",
+                )
+
+    def test_the_curve_changes_too(self):
+        """It has no field on the page, so only the server can replace it --
+        and a stale P-Q curve is the previous machine's fan."""
+        spec = self.hall()
+        changed, _ = server.apply_changes(copy.deepcopy(spec),
+                                          {"fan_model": "39CRA150"})
+        build_model(changed)
+        self.assertNotEqual(changed["fanwall"]["curve"], spec["fanwall"]["curve"])
+        self.assertEqual(
+            [list(p) for p in changed["fanwall"]["curve"]],
+            [list(p) for p in equipment.load("39CRA150").curve["points"]],
+        )
+
+    def test_re_applying_the_same_unit_keeps_what_was_typed_over_it(self):
+        """The form sends `fan_model` on EVERY Apply, so clearing on every
+        send would wipe an override the first time anything else was saved."""
+        spec = self.hall()
+        spec["fanwall"]["airflow_m3h"] = 99_000
+        changed, _ = server.apply_changes(
+            copy.deepcopy(spec),
+            {"fan_model": spec["fanwall"]["model"], "fan_count": 6})
+        self.assertEqual(changed["fanwall"]["airflow_m3h"], 99_000)
+        self.assertEqual(changed["fanwall"]["count"], 6)
+
+    def test_a_value_sent_with_the_change_wins_over_the_datasheet(self):
+        """Switching unit and typing a figure in the same Apply is one edit,
+        and the typed one is the statement."""
+        changed, _ = server.apply_changes(
+            self.hall(), {"fan_model": "39CRA150", "airflow_m3h": 28_000})
+        build_model(changed)
+        self.assertEqual(changed["fanwall"]["airflow_m3h"], 28_000)
+        self.assertEqual(changed["fanwall"]["capacity_kw"],
+                         equipment.load("39CRA150").design_point(None)["nscc_kw"])
+
+    def test_every_option_carries_the_numbers_the_page_shows(self):
+        from aicfd.model import equipment_defaults, equipment_in_use
+
+        for option in equipment_in_use(self.hall())["options"]:
+            with self.subTest(unit=option["model"]):
+                wanted = {k: v for k, v in
+                          equipment_defaults(equipment.load(option["model"])).items()
+                          if v is not None}
+                self.assertEqual(option["defaults"], wanted)

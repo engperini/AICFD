@@ -355,6 +355,48 @@ class CaseTravelsTest(unittest.TestCase):
                     )
 
 
+class DatasheetFieldsFollowTheUnitTest(unittest.TestCase):
+    """Picking a unit has to put THAT unit's numbers in the boxes.
+
+    The fields above the picker are the machine's datasheet. They held the
+    previous unit's figures, and the server fills only what a case leaves
+    blank (ADR-036) -- so a hall came back naming a 145 kW CRAH and carrying
+    432.6 kW, and the reader had no way to see it (ADR-094).
+    """
+
+    def picker(self) -> str:
+        source = (WEB / "app.js").read_text()
+        return source[source.index("function wireUnitPicker"):
+                      source.index("function wireComponentPickers")]
+
+    def handler(self) -> str:
+        """`wireUnitPicker` alone -- the change handler, without the helper
+        it calls. Checking the whole block passes when the helper is defined
+        and never called, which is exactly the regression to catch."""
+        source = (WEB / "app.js").read_text()
+        return source[source.index("function wireUnitPicker"):
+                      source.index("function fillFromDatasheet")]
+
+    def test_the_picker_writes_the_datasheet_into_the_fields(self):
+        self.assertIn("fillFromDatasheet(", self.handler(),
+                      "the change handler never calls it, so picking a unit "
+                      "leaves the previous one's numbers in the fields")
+
+    def test_it_uses_the_defaults_the_server_computed(self):
+        """Not a second mapping from a unit to the fields: the server sends
+        `defaults` already keyed by the spec key it belongs to."""
+        picker = self.picker()
+        self.assertIn("option.defaults", picker,
+                      "the page works the datasheet out for itself")
+
+    def test_it_finds_the_fields_through_the_server_s_own_table(self):
+        """`model.editable` maps field to spec path. Anything else here is a
+        second copy of where each number lives."""
+        picker = self.picker()
+        self.assertIn("model.editable", picker)
+        self.assertIn("'fanwall'", picker)
+
+
 class UnitPickerOnThePageTest(unittest.TestCase):
     """The unit the case uses is a field, so the page has to offer it and send it.
 

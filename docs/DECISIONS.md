@@ -4011,3 +4011,100 @@ adding to it every time something gets past it: the description is now held to
 carrying no angle brackets at all, rather than to a list of the ones that are
 allowed, because they have no other job in a sentence. The file uses `NAME`
 throughout, as the `aicfd` skill beside it already did.
+
+---
+
+## ADR-094 — A change of unit brings that unit's numbers with it
+
+**Decision.** Picking a unit on the model page fills the fan wall fields with
+that machine's datasheet at once, and a change of `fanwall.model` drops the
+previous unit's figures so the build refills them from the new one. The
+mapping from a unit to those fields is stated once, in `equipment_defaults`.
+
+**What was wrong.** `equipment_for` fills only the keys a case leaves blank —
+the library is a default, not a lock, and a value typed over it is a decision
+that stays visible (ADR-036). That is right for a case somebody wrote by hand.
+It became wrong the moment the unit could be CHANGED from the page (ADR-092),
+because by then every key is already filled with the previous machine's
+figures: naming another unit changed the name and nothing else.
+
+Measured on a real hall, `FOR-META`, after its author picked the CRAH:
+
+| | the case said | the 39CRA150 is | where it came from |
+|---|---|---|---|
+| airflow | 121,545 m³/h | 33,700 | CA80NPVG6 |
+| capacity | 432.6 kW | 145.0 | CA80NPVG6 |
+| power | 21.4 kW | 6.0 | CA80NPVG6 |
+| width | 3.96 m | 2.73 | CA80NPVG6 |
+| supply | 21.9 °C | 23.2 | CA80NPVG6 |
+| ESP | 100 Pa | 150 | CA80NPVG6 |
+
+Four machines rated at three times what they are, under the right name, and
+the summary reporting 211% of the load covered where the truth is 71%. Every
+check would have passed on it. This is the exact failure the project exists to
+prevent — plausible numbers, in range, from the wrong document — arriving
+through a feature added to help.
+
+**Why both halves.** The page fills the fields so the reader SEES the machine
+they picked before pressing Apply; that is what was asked for, and it means
+the form then sends the right numbers. The server drops the stale keys anyway,
+because the page is not the only client and because `curve` has no field —
+a stale P-Q curve is the previous machine's fan, invisibly.
+
+**What is kept.** A key the request states wins: switching unit and typing a
+figure in the same Apply is one edit and the typed figure is the statement.
+And re-applying the SAME unit keeps everything, which is not a nicety — the
+form sends `fan_model` on every Apply, so clearing on every send would wipe an
+override the first time anything else was saved.
+
+---
+
+## ADR-095 — Two planes that nothing checked: the plate and the return
+
+**Decision.** Floor plates that would be laid twice over the same floor are
+refused, by name, with the two ways out. And `snap_to_mesh` snaps a downflow
+unit's `return_z` like every other plane.
+
+**How they were found.** The same hall would not mesh, twice over.
+
+**The plates.** `floor.tiles_per_rack` lays N plates outward from each
+cabinet's face. Two rows face the same cold aisle from opposite sides, so an
+aisle of width W holds W/depth rows of plate BETWEEN them — not that many for
+each of them. A 1,2 m aisle with two 0,6 m plates a rack is fully floored by
+either row alone, and 90 of the hall's 240 plates were built on top of each
+other. Nothing in the geometry said so: they were built, counted, drawn, and
+the failure arrived four steps later out of OpenFOAM as
+
+```
+createBaffles exited 1 ... Face 39400 already in faceZone 55
+```
+
+a mesh face index and a zone number, about a hall somebody had just spent an
+hour describing. It is refused now where the two rows and the width of the
+aisle they share are still in hand, and the message gives both fixes — a
+plate count that fits, and the aisle width that would take the count asked
+for. A test takes each of those two suggestions and builds it, because a
+refusal naming a fix nobody can take is half a refusal.
+
+**The check runs AFTER snapping**, which is not a detail: 60 footprints
+collided before the snap and 90 after it, so the same check run on the
+unsnapped geometry would have passed thirty of them straight through.
+
+**The return plane.** `snap_to_mesh` moved every panel's `position` and
+`extent` and left `return_z` — the second plane a downflow unit has, its top
+face a storey above its bottom one — exactly where the spec put it. A 2,87 m
+unit on a 1,0 m floor returns at 3,87 m, which is not on a 0,25 m grid.
+`topoSet` takes the faces inside a box a quarter of a cell thick around each
+plane, found none, and every `fanNIntake` patch was built with `nFaces 0`.
+`createBaffles` was happy. The orientation check then read a face one past the
+end of the mesh and raised `IndexError: no face 433534`.
+
+That check is the only reason this was ever seen. Without it the solve would
+have run a plant that returns nothing at all.
+
+The panel-snapping code carries a comment warning about exactly this — that
+rebuilding a Panel field by field loses the fields added later, which is why
+it uses `replace`. `replace` carried `return_z` across faithfully, and
+unsnapped. So the guard is no longer the two planes somebody remembered: every
+coordinate a panel carries is checked against the grid, by name, on every
+shipped case.
