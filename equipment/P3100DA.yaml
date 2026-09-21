@@ -21,12 +21,16 @@
 # inter-floor plenum, so a case naming it needs `floor.enabled: true`
 # (`arrangement: downflow`, ADR-072, ADR-076).
 #
-# SOURCES, both from the client's pack:
-#   Data Sheet, Emerson Network Power do Brasil, proposta BR-16-1908_Rev3,
-#   25/04/2017, "ASCENTY DC FORTALEZA (460V)" -- every number below.
-#   EBM Engenharia, descriptive memorial 126/20 R00, section 7.1 -- the
-#   arrangement, and the quantities: 14 units per hall on Data Halls 03 to
-#   06, 12 operating and 2 reserve (N+2).
+# SOURCE: the manufacturer's unit data sheet, Emerson Network Power do Brasil,
+# April 2017, held with the project this unit was entered for -- every number
+# below is off it. The arrangement (self-contained, down flow into an
+# inter-floor plenum, ceiling return) is from that project's mechanical
+# descriptive memorial.
+#
+# The site, the client and the proposal number are deliberately not here. The
+# sheet is the manufacturer's confidential document; what this file needs is
+# the MACHINE, and whoever holds the sheet can check every figure against it
+# without the project being named in a public repository.
 #
 # THE ONE CHECK THAT APPLIES (ADR-071), computed at the sheet's own altitude:
 #   air   27.500 m3/h from 30,0 to 18,7 degC at 25 m  ->  100,5 kW  (0,0%)

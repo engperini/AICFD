@@ -42,6 +42,7 @@ CASES = REPO / "cases"
 #: guards, and this is the list.
 SHIPPED_CASES = (
     "hall-10mw",
+    "hall-cage-1mw",
     "hall-double-gallery",
     "hall-hotrow-independent",
     "hall-hotrow-team",
