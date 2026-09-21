@@ -562,3 +562,75 @@ class DoubleGalleryTest(unittest.TestCase):
             ["plenum_opening"],
         )
         self.assertTrue(all(fan.sign == 1 for fan in m.fans))
+
+
+class EveryRowIsTheSameRowTest(unittest.TestCase):
+    """A typical row is a pattern, so every block has to lay it out the same.
+
+    It did not. `snap_to_mesh` moves each box face to the nearest cell face,
+    one face at a time, and a row is built by accumulating widths from its
+    block's origin. A block that begins half a cell off the grid therefore has
+    every cumulative face sitting on a rounding tie, and each one falls
+    whichever way the arithmetic takes it -- which REDISTRIBUTES the widths.
+
+    Measured: a hall whose first block began at 12,5 m on a 0,2 m grid laid a
+    typical row of nine 0,60 m cabinets and six 0,80 m ones out as
+    0,80 / 0,40 / 0,60x6 / 0,80x7 -- ten centimetres longer, with a 0,40 m
+    cabinet nobody specified. The second block started at 25,0 m, landed on the
+    grid, and came out exactly right. One hall, two different rows, and the
+    drawing was telling the truth about the mesh (ADR-085).
+    """
+
+    OFF_GRID = dict(mesh={"cell_size": [0.2, 0.3, 0.25]},
+                    aisles={"cold": 2.7, "hot": 2.2,
+                            "perimeter": 2.3, "transverse": 2.3})
+
+    def mixed_width_hall(self, **over):
+        spec = copy.deepcopy(SPEC)
+        spec.update(copy.deepcopy(self.OFF_GRID))
+        spec.update(over)
+        spec["racks"]["blocks"] = 2
+        spec["racks"]["per_row"] = 9
+        spec["racks"]["row"] = ([{"width": 0.6}] * 6) + ([{"width": 0.8}] * 3)
+        return M.build_model(spec)
+
+    def widths(self, model):
+        return {row.id: tuple(round(r.box.hi[0] - r.box.lo[0], 6)
+                              for r in row.racks) for row in model.rows}
+
+    def test_every_block_lays_the_typical_row_out_identically(self):
+        widths = self.widths(self.mixed_width_hall())
+        distinct = set(widths.values())
+        self.assertEqual(
+            len(distinct), 1,
+            f"{len(distinct)} different rows in one hall: "
+            + "; ".join(f"{k}={v}" for k, v in sorted(widths.items())[:4]),
+        )
+
+    def test_no_cabinet_comes_out_a_width_nobody_asked_for(self):
+        for row in self.mixed_width_hall().rows:
+            for rack in row.racks:
+                width = round(rack.box.hi[0] - rack.box.lo[0], 6)
+                with self.subTest(rack=rack.id):
+                    self.assertIn(width, (0.6, 0.8))
+
+    def test_a_row_starts_on_a_cell_face(self):
+        """The fix, stated as the property it gives: snap the origin and every
+        face lands on the grid, because the widths already do (ADR-075)."""
+        model = self.mixed_width_hall()
+        cell = model.cell(0)
+        for row in model.rows:
+            for rack in row.racks:
+                for face in (rack.box.lo[0], rack.box.hi[0]):
+                    with self.subTest(rack=rack.id, face=face):
+                        self.assertAlmostEqual(face / cell, round(face / cell),
+                                               places=6)
+
+    def test_the_rows_are_the_length_their_pattern_says(self):
+        model = self.mixed_width_hall()
+        asked = 6 * 0.6 + 3 * 0.8
+        for row in model.rows:
+            with self.subTest(row=row.id):
+                self.assertAlmostEqual(
+                    row.racks[-1].box.hi[0] - row.racks[0].box.lo[0], asked,
+                    places=6)

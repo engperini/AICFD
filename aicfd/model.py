@@ -1676,9 +1676,24 @@ def rack_positions(row_id: str, plan: list[dict], size, load_kw: float,
 
 def _make_row(row_id: str, band: tuple[float, float], sign: int, x0: float,
               positions: list[dict], size: tuple[float, float, float],
-              load_kw: float, rack_spec: dict | None = None
+              load_kw: float, rack_spec: dict | None = None,
+              cell_x: float | None = None
               ) -> tuple[Row, list[Panel], float]:
     """One row, as its positions describe it: (row, blanking panels, end x).
+
+    THE ROW STARTS ON A CELL FACE. Every width is already a whole number of
+    cells (ADR-075), so a row laid out from a snapped origin puts every face on
+    a cell face by construction, and `snap_to_mesh` has nothing left to move.
+
+    Start half a cell off and it has plenty to move, one face at a time, and
+    the widths come back REDISTRIBUTED. A hall whose first block began at
+    12,5 m on a 0,2 m grid -- exactly a half cell, so every rounding was a coin
+    toss -- laid its typical row of nine 0,60 m cabinets and six 0,80 m ones
+    out as 0,80 / 0,40 / 0,60 x6 / 0,80 x7, ten centimetres longer and with a
+    0,40 m cabinet in it that no specification ever asked for. The block on the
+    other side of the same hall started at 25,0 m, landed on the grid, and came
+    out exactly right. Two identical rows, drawn differently, and the drawing
+    was telling the truth about the mesh (ADR-085).
 
     ``load_kw`` here is the row's STANDARD, which calibrates every cabinet's
     resistance. What a cabinet dissipates is its own; what it resists by is
@@ -1691,6 +1706,8 @@ def _make_row(row_id: str, band: tuple[float, float], sign: int, x0: float,
     different things, so both exist (ADR-074).
     """
     _dx, _dy, dz = size
+    if cell_x:
+        x0 = round(x0 / cell_x) * cell_x
     racks, blanks, x = [], [], x0
     for place in positions:
         left, right = x, x + place["width"]
@@ -2020,7 +2037,7 @@ def _pod_layout(spec: dict, cell, rack_spec: dict | None = None) -> _Layout:
                             rack_loads(spec), rack_widths(spec), rack_blanks(spec),
                             cell_x=cell[0], warnings=row_notes)
     row, blank_panels, end_x = _make_row("F1", band, +1, start_x, places, size,
-                                         load_kw, rack_spec)
+                                         load_kw, rack_spec, cell_x=cell[0])
     # The row is as long as its parts. With every position the standard width
     # that is count x size[0] again, and with a blank or a wider cabinet in it
     # the old arithmetic would have run the containment past the row's end
@@ -2187,7 +2204,8 @@ def _hall_layout(spec: dict, cell, rack_spec: dict | None = None) -> _Layout:
                     loads, widths, blank_of, cell_x=cell[0], warnings=row_notes,
                 )
                 built, blanked, end_x = _make_row(row_id, band, front, span[0],
-                                                  places, size, load_kw, rack_spec)
+                                                  places, size, load_kw, rack_spec,
+                                                  cell_x=cell[0])
                 pair.append(built)
                 walls += blanked
                 span = (span[0], end_x)

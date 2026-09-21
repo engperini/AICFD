@@ -3593,3 +3593,48 @@ guard being satisfied by marking everything applied.
 K 3,35 · NOT IN THE SOLVER`, on a case whose solver was using exactly that
 3,35. The number and the label were arguing in front of the reader, and the
 label was the one that was wrong.
+
+## ADR-085 — A row starts on a cell face, and its widths are then left alone
+
+**Decision.** `_make_row` snaps the row's ORIGIN to the grid before laying the
+cabinets out. Every width is already a whole number of cells (ADR-075), so
+from a snapped origin every face lands on a cell face by construction and
+`snap_to_mesh` has nothing left to move.
+
+**Because snapping face by face redistributes the widths.** `snap_to_mesh`
+moves each box face to the nearest cell face, one face at a time. A row is
+built by accumulating widths from its block's origin, so if that origin sits
+half a cell off the grid, EVERY cumulative face sits on a rounding tie and
+each one falls whichever way the floating-point arithmetic takes it.
+
+**Measured, on a hall an engineer was looking at.** The first block began at
+12,5 m on a 0,2 m grid -- 12,5 / 0,2 = 62,5 exactly, a tie at every step. Its
+typical row of nine 0,60 m cabinets and six 0,80 m ones came out as
+
+    0,80 · 0,40 · 0,60 ×6 · 0,80 ×7     = 10,40 m
+
+with a **0,40 m cabinet no specification ever asked for**, and ten centimetres
+too long. The second block began at 25,0 m, landed on the grid, and came out
+exactly right:
+
+    0,60 ×9 · 0,80 ×6                   = 10,20 m
+
+One hall, one typical row, two different rows on the two sides of it. The
+engineer saw it on the plan and asked whether the mesh had done that. It had,
+and the drawing was telling the truth.
+
+**This is ADR-075 finished.** That decision moved the snapping from the faces
+to the WIDTH, so two identical cabinets could not come out 0,60 and 1,20. It
+did not touch `snap_to_mesh`, which went on snapping every face afterwards and
+undoing the guarantee wherever the row did not start on the grid. Snapping a
+width is only half of it: a row also has to START somewhere the grid agrees
+with.
+
+**The blocks stay consistent with each other.** `_make_row` returns its end,
+and the next block is placed from it, so snapping the origin carries down the
+hall instead of being re-rounded at every block.
+
+**A test builds a hall of mixed widths whose first block is deliberately off
+the grid** and asserts one distinct row across all of them, no cabinet at a
+width nobody asked for, every face on a cell face, and the row the length its
+pattern says. Without the fix it fails seven times.
