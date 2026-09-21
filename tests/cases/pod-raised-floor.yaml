@@ -1,0 +1,67 @@
+# A POD supplied through a raised floor (ADR-076).
+#
+# The same room as cases/pod-fanwall.yaml, on an access floor: same aisles,
+# same racks, same false ceiling and the same return plenum over it. What
+# changes is where the supply comes from. A downflow unit stands where the fan
+# wall stood, draws through its top face and discharges through its bottom one
+# into the plenum under the deck; the air crosses into the hall through a mesh
+# in the dividing wall below the floor, and reaches the cold aisle through
+# perforated plates in front of each cabinet.
+name: pod-raised-floor
+
+site:
+  altitude_m: 0
+
+gallery:
+  depth: 3.0
+
+hall:
+  size: [6.0, 4.2, 8.0]       # length x, width y, floor to slab z ABOVE the
+                              # finished floor; the building is `floor.height`
+                              # taller than this
+  ceiling: 6.5
+
+floor:
+  enabled: true
+  height: 1.0                 # the supply plenum under the deck
+  tiles_per_rack: 2           # plates in the cold aisle in front of a cabinet;
+                              # two fills a 1.2 m aisle, three an 1.8 m one
+
+aisles:
+  cold: 1.8
+  hot: 1.2
+
+racks:
+  count: 3
+  load_kw: 6.0
+  size: [0.6, 1.2, 2.2]
+  offset_x: 2.0
+  airflow_cfm_per_kw: 158
+
+fanwall:
+  model: HDCV5300F-HT         # a downflow room unit, which is what a raised
+                              # floor is fed by; a fan wall is refused here
+  airflow_m3h: 5000
+  supply_temp_c: 20.0
+  width: 1.8
+  height: 4.0
+  static_pressure_pa: 100
+
+grilles:
+  size: 0.60
+  count: 3
+  free_area: 0.80
+  loss_coefficient: 2.4
+
+containment:
+  enabled: true
+
+mesh:
+  cell_size: [0.20, 0.20, 0.10]
+
+solver:
+  max_iterations: 400
+  residual_tolerance: 1.0e-4
+  sensor_interval: 50
+  warm_start: true
+  processors: 1

@@ -96,11 +96,19 @@ class KindsTest(unittest.TestCase):
 
     def test_what_the_solver_does_not_read_yet_says_so(self):
         """A number held but not applied is worse than absent if the page does
-        not say which it is: a run comes back unchanged and looks broken."""
-        for name in ("containment-panel", "floor-tile-600", "pdu-distribution-loss"):
+        not say which it is: a run comes back unchanged and looks broken.
+
+        THIS LIST IS NOT THE GUARD. It was, and it failed: it named
+        `floor-tile-600` as unapplied, and went on asserting that for as long
+        as ADR-076 had been shipping meshed plates -- so the one test that
+        could have caught the page lying was the thing keeping it true
+        (ADR-084). What the solver does is settled against the MODEL, in
+        `AppliedSaysWhatTheSolverDoesTest`. This stays as the cheap check that
+        the surfaces the loop is built from are not marked pending."""
+        for name in ("containment-panel", "pdu-distribution-loss"):
             with self.subTest(component=name):
                 self.assertFalse(C.load(name).applied)
-        for name in ("gallery-mesh-13", "ceiling-return-600"):
+        for name in ("gallery-mesh-13", "ceiling-return-600", "floor-tile-600"):
             with self.subTest(component=name):
                 self.assertTrue(C.load(name).applied)
 
@@ -265,3 +273,47 @@ class NestedBlockTest(unittest.TestCase):
         with self.assertRaises(ValueError):
             lines = "mesh:\n  cell_size: 0.1\n".split("\n")
             yamledit.set_map(lines, ["racks", "loads"], {"R2": 0})
+
+
+class AppliedSaysWhatTheSolverDoesTest(unittest.TestCase):
+    """`applied` is a promise about the SOLVER, so the solver settles it.
+
+    It went stale and nobody noticed: `floor-tile-600` still said "the raised
+    floor itself is not modelled yet" for as long as ADR-076 had been shipping
+    a meshed deck, meshed plates and a `floor_resistance` check measuring them.
+    The page told an engineer their plates were decoration while the solver was
+    using their K (ADR-084).
+
+    These tests ask the model, not the file.
+    """
+
+    def test_the_floor_plate_is_applied_because_its_K_reaches_the_mesh(self):
+        model = m.build_model(support.spec("pod-raised-floor"))
+        plate = C.load("floor-tile-600")
+        tiles = [p for p in model.panels if p.name.startswith("tile_")]
+        self.assertTrue(tiles, "a raised-floor case builds plates")
+        self.assertAlmostEqual(model.floor_tile_k, plate.k, places=6)
+        self.assertAlmostEqual(tiles[0].resistance, plate.k, places=6)
+        self.assertTrue(
+            plate.applied,
+            "the plates carry this component's K into the solver, so the "
+            "library may not tell the engineer they are not modelled",
+        )
+
+    def test_the_containment_panel_is_not_applied_because_the_wall_is_solid(self):
+        """The converse, so the guard cannot be satisfied by marking
+        everything applied: containment is a solid wall in the mesh, and the
+        panel's free area is genuinely unread."""
+        model = m.build_model(support.spec("pod-fanwall"))
+        panels = [p for p in model.panels if p.name.startswith("containment")]
+        self.assertTrue(panels)
+        self.assertEqual({p.kind for p in panels}, {"wall"})
+        self.assertFalse(C.load("containment-panel").applied)
+
+    def test_the_distribution_loss_is_not_applied_because_no_heat_carries_it(self):
+        model = m.build_model(support.spec("pod-fanwall"))
+        self.assertEqual(
+            model.total_load_w, sum(r.load_w for r in model.racks),
+            "nothing but the racks heats the room, so the share is unread",
+        )
+        self.assertFalse(C.load("pdu-distribution-loss").applied)

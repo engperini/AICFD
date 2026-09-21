@@ -8,7 +8,9 @@ role: floor_tile
 size: [0.6, 0.6]              # one tile of the floor grid, metres
 aperture: perforated steel plate on a folded column base, with damper
 pattern: slotted
-applied: false                 # the raised floor itself is not modelled yet
+applied: true                  # ADR-076: the deck, these plates and the mesh
+                              # below it are meshed, and floor_resistance
+                              # measures them against the K below
 free_area: 0.54
 adjustable: [0.35, 0.70]      # what the damper can be set to on site
 note: >

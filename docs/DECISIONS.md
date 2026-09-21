@@ -3557,3 +3557,39 @@ tolerant and another silently swallowing the number would have been worse than
 either. Three tests hold it: no form carries a `type="number"`, every decimal
 field asks for a decimal keypad, and every form imports the one helper. When
 the separator is settled across the tool it changes in one file.
+
+## ADR-084 — `applied` is settled by the solver, not by a list of names
+
+**Decision.** Whether a component's numbers reach the solver is asserted
+against the MODEL: build a case that uses the role, and check that the
+component's own K is the K the panels carry. The list of names in
+`test_what_the_solver_does_not_read_yet_says_so` stays as a cheap sanity check
+and is no longer the guard.
+
+**Because the list went stale and then defended the staleness.**
+`components/floor-tile-600.yaml` said `applied: false # the raised floor
+itself is not modelled yet`, and the page therefore told an engineer looking
+at a raised-floor case that their floor plates were **NOT IN THE SOLVER**.
+They were: ADR-076 shipped the deck, the plates as `tile_*` porous baffles,
+the mesh below the deck and a `floor_resistance` check measuring them. The
+model's `floor_tile_k` is 3,350 and the component's `k` is 3,350 -- the same
+number, because one comes from the other.
+
+**The test that should have caught it was the reason it survived.** It read
+`for name in ("containment-panel", "floor-tile-600", "pdu-distribution-loss"):
+assertFalse(applied)`. A list of names asserts what somebody believed when they
+wrote it. Shipping the feature did not touch that line, so the suite went on
+certifying the old world, and the only symptom was a sentence on a page that
+nobody re-read. **A flag that describes the code must be checked against the
+code.**
+
+**The other two are still true, and the tests say why.** Containment panels
+are `kind="wall"` in the mesh -- solid -- so the panel's free area is genuinely
+unread. Nothing but the racks heats the room, so the distribution loss share is
+unread too. Both are asserted from the model as well, which is what stops the
+guard being satisfied by marking everything applied.
+
+**What the engineer saw.** A card reading `Raised floor plates · 54 % free ·
+K 3,35 · NOT IN THE SOLVER`, on a case whose solver was using exactly that
+3,35. The number and the label were arguing in front of the reader, and the
+label was the one that was wrong.
