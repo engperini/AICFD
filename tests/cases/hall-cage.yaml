@@ -1,0 +1,273 @@
+# THE SUITE'S OWN COPY of the shipped cage hall, frozen here on purpose.
+#
+# Tests read this, never `cases/` (ADR-056): the working folder belongs to
+# whoever is using the software, the page writes to it, and a case edited
+# into something that builds perfectly well breaks a test just as hard as one
+# that does not -- an engineer sets a rack load through the page, which is the
+# page doing its job, and the image stops building.
+#
+# It is a SNAPSHOT. When the shipped case changes, this changes only if a test
+# needs it to.
+name: hall-cage
+
+site:
+  altitude_m: 0.0             # sea level, which is the conservative choice
+                              # for air density: the denser the air, the more
+                              # the plant does. A real site states its own.
+
+gallery:
+  depth: 4.4                  # the service space behind the units at each
+                              # row end: 4,77 and 4,56 m on the layout this
+                              # is drawn from, modelled symmetric at 4,4 m so
+                              # it lands on the 0,40 m x cell.
+  sides: 2                    # service space at both row ends
+
+hall:
+  height: 5.6                 # floor to slab. The raised floor below is ADDED
+                              # to this, so the building is 6,6 m tall.
+  ceiling: 4.0                # false ceiling, with the return plenum above
+                              # it. Both of these move every velocity in the
+                              # result, so on a real study they come off the
+                              # section rather than off a case like this one.
+
+pods: 7                       # 7 x (row + contained hot aisle + row). Every
+                              # aisle here is 1,20 m, so the pod pitch is
+                              # 4,80 m and seven of them make a 38,8 m room --
+                              # the depth of the layout this is drawn from.
+                              # The cage is pods 1 and 2, rows F1 to F4.
+
+aisles:
+  cold: 1.2                   # measured: B to C, 6,58 -> 7,78 m
+  hot: 1.2                    # measured: the hatched HAC bands, 1,199 m
+  perimeter: 3.2              # rack face to HALL wall, which is the cage
+                              # clearance PLUS the hall outside the cage:
+                              # measured 1,18 m of cold aisle inside the cage
+                              # and 1,80 m of room outside it on the row-A
+                              # side, so 2,98 m measured against the 3,2 m
+                              # used here -- 3,2 puts the row start and every
+                              # band on a cell face, and nothing in this model
+                              # is snapped as a result.
+                              # Modelled symmetric; on the row-D side
+                              # the real hall runs 25 m further, to the nine
+                              # row positions that are not in this model.
+                              # It has to exceed `cage.clearance`, or the
+                              # cage wall IS the hall wall and the build
+                              # refuses it by name.
+
+racks:
+  per_row: 13                 # 13 x 800 mm = 10,4 m of row. The cage's rows
+                              # are 13 positions on the customer's schedule:
+                              # ten fitted and three held for future cabinets.
+                              # Every row of the hall is the same length.
+  load_kw: 3.77               # OUTSIDE THE CAGE, spread evenly: 130 positions
+                              # in pods 3 to 7. 130 x 3,77 = 490,1 kW, which
+                              # with the cage's 509,96 makes 1.000,1 kW -- the
+                              # room's 1 MW, and the 60 W is what rounding a
+                              # per-cabinet figure to two decimals costs. A
+                              # real study states the distribution it has.
+  size: [0.8, 1.2, 2.2]       # 800 mm wide, 1,20 m deep, 2,2 m tall.
+  airflow_cfm_per_kw: 158     # the design reference (ADR-023). A rack
+                              # datasheet beats it where there is one.
+
+  # THE CAGE, POSITION BY POSITION, from the customer's rack schedule. Rows A,
+  # B, C and D on that drawing are F1 to F4 here -- pod 1 is A and B facing
+  # across their hot aisle, pod 2 is C and D.
+  #
+  #   410,00 kW  the cabinets the schedule marks and colours, 20 kW and 10 kW
+  #     99,96 kW  twelve future positions (11, 12, 13 of each row) at 8,33 kW
+  #   ---------
+  #   509,96 kW  which is the 510 kW the cage is let at, to four hundredths
+  #
+  # The ODF positions carry NO load: an optical distribution frame is a
+  # cabinet full of fibre. It is still in the model as a cabinet, because it
+  # still stands in the row and the air still has to get round it.
+  loads:
+    # A on the schedule: A01 at 20 kW, A02-A08 at 10, A09 at 20, A10 an ODF.
+    F1-01: 20
+    F1-02: 10
+    F1-03: 10
+    F1-04: 10
+    F1-05: 10
+    F1-06: 10
+    F1-07: 10
+    F1-08: 10
+    F1-09: 20
+    F1-10: 0  # ODF: a cabinet that breathes and makes no heat
+    F1-11: 8.33
+    F1-12: 8.33
+    F1-13: 8.33
+
+    # B: B01 at 20, B02-B07 at 10, B08 at 20, B09 and B10 ODFs.
+    F2-01: 20
+    F2-02: 10
+    F2-03: 10
+    F2-04: 10
+    F2-05: 10
+    F2-06: 10
+    F2-07: 10
+    F2-08: 20
+    F2-09: 0  # ODF: a cabinet that breathes and makes no heat
+    F2-10: 0  # ODF: a cabinet that breathes and makes no heat
+    F2-11: 8.33
+    F2-12: 8.33
+    F2-13: 8.33
+
+    # C: C01 at 20, C02-C08 at 10, C09 and C10 ODFs.
+    F3-01: 20
+    F3-02: 10
+    F3-03: 10
+    F3-04: 10
+    F3-05: 10
+    F3-06: 10
+    F3-07: 10
+    F3-08: 10
+    F3-09: 0  # ODF: a cabinet that breathes and makes no heat
+    F3-10: 0  # ODF: a cabinet that breathes and makes no heat
+    F3-11: 8.33
+    F3-12: 8.33
+    F3-13: 8.33
+
+    # D: D01-D09 at 10, D10 at 20.
+    F4-01: 10
+    F4-02: 10
+    F4-03: 10
+    F4-04: 10
+    F4-05: 10
+    F4-06: 10
+    F4-07: 10
+    F4-08: 10
+    F4-09: 10
+    F4-10: 20
+    F4-11: 8.33
+    F4-12: 8.33
+    F4-13: 8.33
+
+cage:
+  # AT THE EDGE OF THE HALL, which is what the plan shows: the cage occupies
+  # the bottom of the data hall and the room closes it on three sides. Only
+  # ONE wall is really a cage wall -- the one dividing it from the rest of the
+  # DH -- and it spans the full width of the room (ADR-098).
+  enabled: true
+  pods: [1, 2]                # rows F1 to F4: the two pods the cage holds
+  sides: [right]              # the dividing wall only; the hall closes the
+                              # other three. Leave `sides` out and every side
+                              # the room does not already close is built,
+                              # which is a cage standing in the middle.
+  construction: mesh          # the question this case exists to answer. `mesh`
+                              # is the 13 x 13 mm woven cage: the air crosses
+                              # it and pays K once going in and once coming
+                              # out. `drywall` is a solid partition -- switch
+                              # this one word and run it again to see what the
+                              # construction costs.
+  aisle: 2.4                  # THE COLD AISLE THE CAGE WALL STANDS IN. A wall
+                              # in an aisle halves it, and the row inside the
+                              # cage and the row outside BOTH breathe from it
+                              # -- so at the hall's own 1,20 m each of them
+                              # would be left 0,60 m of cold aisle, which is a
+                              # different room (ADR-099). 2,40 m here, so both
+                              # keep a full 1,20 m. Only this aisle changes;
+                              # the other six stay as `aisles.cold` drew them.
+  clearance: 1.2              # WHERE the wall sits in that aisle, measured
+                              # from the enclosed rows' faces. 1,20 m of 2,40
+                              # centres it; raise it to give the cage more and
+                              # the hall less.
+                              # On the three sides the room closes, neither
+                              # applies: the rectangle is clipped to the hall
+                              # so the wall that IS built runs wall to wall.
+                              # A free-standing cage in the middle of a room
+                              # uses the clearance on all four sides instead:
+                              # leave `cage.sides` out and set it to the gap
+                              # the drawing dimensions.
+  # height: omitted, so the cage runs to the false ceiling. A 2,4 m cage with
+  # an open top is a different room and a legitimate thing to ask for instead
+  # -- and the only way to build a DRYWALL one, which closed at the top would
+  # leave the racks with an exit and no entry (ADR-096).
+
+floor:
+  # SUPPLY THROUGH THE FLOOR. The units stand in the room and discharge DOWN
+  # through the deck; the air reaches the cold aisles through perforated
+  # plates in the floor and returns through the ceiling grilles over the
+  # contained hot aisles. That is the arrangement a downflow unit needs, and
+  # naming one without it is refused by name (ADR-072, ADR-076).
+  enabled: true
+  height: 1.0                 # ASSUMED: neither document gives the plenum
+                              # depth. 1,0 m is a common figure and it lands
+                              # on the 0,20 m z cell. It sets the underfloor
+                              # velocity, which is what decides whether the
+                              # far plates deliver -- so on a real study it is
+                              # a number to ask for, not to inherit.
+  tiles_per_rack: 1           # One plate in front of each cabinet, which is
+                              # what a 1,20 m cold aisle holds between two
+                              # facing rows: each row lays its plates outward
+                              # from its own face, so the aisle holds
+                              # 1,20/0,60 = 2 rows of plate BETWEEN them, not
+                              # two for each. Asking for two is refused, by
+                              # name (ADR-095). Widen the aisle to model more.
+
+components:
+  cage: cage-mesh-13          # 13 x 13 mm, 3 mm wire, 65% free area
+  ceiling_return: ceiling-return-600
+
+fanwall:
+  # THE EMERSON CRACs THAT ARE INSTALLED. Everything below comes from
+  # `equipment/P3100DA.yaml`, which carries the manufacturer's selection in
+  # full -- 27.500 m3/h, 100,5 kW NET sensible at 30,0 degC return, supplying
+  # 18,8 degC, at 37,6 degC of outdoor air on the condenser.
+  #
+  # DIRECT EXPANSION, AND THE EVAPORATOR IS MODELLED (ADR-103). The coil is
+  # recovered from that selection's own psychrometry -- the 10,5 degC coil
+  # surface its sensible/total split implies -- so the run asks the machine
+  # what it does at the return THIS room produces instead of holding it at
+  # the plate figure. At 26 degC of return, for instance, a unit gives about
+  # 80 kW, not 100,5. What is still not modelled is the CONDENSING side: the
+  # capacity holds at the selection's 37,6 degC outdoor air, and the report
+  # says so in its limitations.
+  model: P3100DA
+  count: 14                   # what the project has installed: 7 a side, on
+                              # the two gallery walls. 14 x 100,5 = 1.407 kW
+                              # of rated capacity for 1.000 kW of IT, and
+                              # 385.000 m3/h against the 268.500 the racks
+                              # draw -- a plant sized with redundancy, which
+                              # is what makes the per-unit capacity at the
+                              # real return the number worth reading.
+  static_pressure_pa: 100     # STATED HERE, not from the datasheet: neither
+                              # the manufacturer's sheet nor the as-built
+                              # gives an external static pressure for this
+                              # machine, which is the one field keeping it out
+                              # of `equipment.SHIPPED`. 100 Pa is the house
+                              # figure for a downflow unit on a 1,0 m plenum;
+                              # it decides the fan_capacity check and nothing
+                              # else in this result.
+  control: independent        # each unit to its own return. `team` runs the
+                              # units of one gallery to the worst return any
+                              # of them sees, which is what a networked plant
+                              # does -- and which now changes the answer for a
+                              # DX plant too, because its coil is modelled
+                              # (ADR-064, ADR-103).
+
+grilles:
+  size: 0.6
+  coverage: 1.0               # the whole ceiling over each contained aisle
+  free_area: 0.65             # the ceiling-return component's own figure
+
+containment:
+  enabled: true               # every hot aisle is contained
+
+mesh:
+  # Chosen so the ROOM is exact: every aisle, every rack band, the cage
+  # clearance, the gallery and the perimeter land on a cell face. The two
+  # warnings this case does print are the UNIT's own 1,777 m width and its
+  # depth -- a machine is the size it is, and rounding the room to suit it
+  # would be the wrong way round.
+  # x 0,40: two cells across an 800 mm cabinet; the gallery (4,4), the
+  # perimeter (3,2) and the cage clearance (1,2) are all multiples of it.
+  # y 0,20: every 1,20 m band, the perimeter and the fan wall's 3,4 m width.
+  # z 0,20: the rack (2,2), the false ceiling (4,0) and the slab (5,6).
+  cell_size: [0.40, 0.20, 0.20]
+
+solver:
+  max_iterations: 2000
+  residual_tolerance: 1.0e-4
+  sensor_interval: 100
+  warm_start: true
+  processors: 4

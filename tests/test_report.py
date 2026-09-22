@@ -598,8 +598,7 @@ class NamingTest(unittest.TestCase):
 
         from aicfd.model import build_model, to_dict
 
-        spec = yaml.safe_load(
-            (support.REPO / "cases" / "hall-cage-1mw.yaml").read_text())
+        spec = support.spec("hall-cage")
         built = build_model(copy.deepcopy(spec))
         payload = to_dict(built, spec)
         self.assertEqual(payload["unit_naming"]["noun"], "CRAC")
@@ -622,11 +621,10 @@ class NamingTest(unittest.TestCase):
         from aicfd import case as case_module
         from aicfd.model import build_model
 
-        for name, word in (("hall-cage-1mw", "CRACs"),
+        for name, word in (("hall-cage", "CRACs"),
                            ("pod-raised-floor", "CRAH"),
                            ("pod-fanwall", "Fan wall")):
-            spec = yaml.safe_load(
-                (support.REPO / "cases" / f"{name}.yaml").read_text())
+            spec = support.spec(name)
             built = build_model(copy.deepcopy(spec))
             with self.subTest(case=name):
                 self.assertIn(word, case_module.summary(built))
@@ -640,9 +638,7 @@ class NamingTest(unittest.TestCase):
 
         from aicfd.model import build_model
 
-        spec = yaml.safe_load(
-            (support.REPO / "cases" / "hall-cage-1mw.yaml").read_text())
-        built = build_model(copy.deepcopy(spec))
+        built = build_model(copy.deepcopy(support.spec("hall-cage")))
         said = " ".join(built.warnings)
         self.assertIn("CRAC", said)
         self.assertNotIn("fan wall", said)

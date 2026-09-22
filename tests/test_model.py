@@ -1060,8 +1060,7 @@ class EveryPlaneOnTheGridTest(unittest.TestCase):
         A unit height and a floor depth that do not add up to a multiple of
         the z cell. Before the fix the return plane stayed at 3.87 m.
         """
-        spec = yaml.safe_load(
-            (support.REPO / "cases" / "pod-raised-floor.yaml").read_text())
+        spec = support.spec("pod-raised-floor")
         spec["fanwall"]["height"] = 2.87          # the CRAH, off the grid
         spec["floor"] = dict(spec.get("floor") or {}, enabled=True, height=1.0)
         spec["mesh"]["cell_size"] = [0.6, 0.3, 0.25]
@@ -1094,8 +1093,7 @@ class FloorPlatesThatWouldOverlapTest(unittest.TestCase):
     """
 
     def hall(self, cold: float, tiles: int) -> dict:
-        spec = yaml.safe_load(
-            (support.REPO / "cases" / "hall-double-gallery.yaml").read_text())
+        spec = support.spec("hall-double-gallery")
         spec["aisles"]["cold"] = cold
         spec["fanwall"] = {"model": "39CRA150", "count": 4}
         spec["floor"] = {"enabled": True, "height": 1.0, "tiles_per_rack": tiles}

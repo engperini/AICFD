@@ -1396,8 +1396,12 @@ def build_model(spec: dict) -> Model:
     # sees the finished geometry and the deck lands on a grid line like every
     # other plane.
     floor = raised_floor_for(spec)
+    floor_notes: list[str] = []
     if floor:
         _raise_onto_floor(model, floor, spec, cell)
+        # What the plates had to give up to fit the aisle they lie in, said
+        # where every other geometry note is said (ADR-108).
+        floor_notes = list(floor.get("notes") or [])
     # After the floor, because a cage stands ON the finished floor and its
     # walls run from the deck up; before the snap, because its planes land on
     # cell faces like every other (ADR-096).
@@ -1420,7 +1424,8 @@ def build_model(spec: dict) -> Model:
     # REPLACES that list, so a note written before it disappeared -- silently,
     # which for a note saying "no cage wall is built on this side" is the
     # worst way to lose one (ADR-098).
-    model.warnings = list(layout.row_notes) + cage_notes + check_mesh_alignment(model)
+    model.warnings = (list(layout.row_notes) + floor_notes + cage_notes
+                      + check_mesh_alignment(model))
     # The fan placement snaps the unit's width itself (so units can be packed
     # without overlapping), so the alignment check never sees the nominal one.
     nominal = float(fan["width"]) if "width" in fan else None
@@ -1743,18 +1748,42 @@ def _floor_tiles(model: "Model", spec: dict, floor: dict, lift: float,
     # row lays them all (ADR-106).
     share: dict[str, int] = {}
     across = floor.get("tiles_across")
-    if across:
-        for band in model.cold_aisles:
-            facing = sorted(
-                (row for row in model.rows
-                 if min(abs(row.front_y - band[0]), abs(row.front_y - band[1])) < 1e-6),
-                key=lambda row: row.front_y,
+    notes = floor.setdefault("notes", [])
+    for band in model.cold_aisles:
+        facing = sorted(
+            (row for row in model.rows
+             if min(abs(row.front_y - band[0]), abs(row.front_y - band[1])) < 1e-6),
+            key=lambda row: row.front_y,
+        )
+        if not facing:
+            continue
+        # WHAT THIS AISLE HOLDS. A plate is laid outward from a cabinet's
+        # face, and two rows face the same aisle from opposite sides -- so an
+        # aisle of width W holds W/depth rows of plate BETWEEN them, not that
+        # many for each (ADR-095).
+        fits = max(1, int((band[1] - band[0]) / depth + 1e-9))
+        asked = across if across else standard * len(facing)
+        # CLAMPED, NOT REFUSED. `tiles_per_rack` defaults to 2, so every case
+        # with a raised floor and a 1,20 m cold aisle -- which is most of them
+        # -- asked for four rows of plate in an aisle that holds two and was
+        # refused by name. A default nobody typed should not stop a build:
+        # what the aisle holds is laid, and the note says what was dropped
+        # (ADR-108).
+        laid = min(asked, fits)
+        if laid < asked:
+            notes.append(
+                f"floor plates: rows {' and '.join(row.id for row in facing)} "
+                f"face the same {num(band[1] - band[0])} m cold aisle, which "
+                f"holds {fits} row(s) of {num(depth)} m plate between the "
+                f"cabinet faces. {asked} were asked for and {laid} laid. Say "
+                f"`floor.tiles_across: {fits}` to state it, or widen "
+                f"`aisles.cold` to {num(asked * depth)} m to fit them all."
             )
-            if len(facing) == 1:
-                share[facing[0].id] = across
-            elif facing:
-                share[facing[0].id] = (across + 1) // 2
-                share[facing[1].id] = across // 2
+        if len(facing) == 1:
+            share[facing[0].id] = laid
+        else:
+            share[facing[0].id] = (laid + 1) // 2
+            share[facing[1].id] = laid // 2
     out: list[Panel] = []
     for row in model.rows:
         # The plates lie in the cold aisle, which is the side the cabinets
@@ -2211,6 +2240,24 @@ def _cage_panels(model: "Model", cage: dict, spec: dict,
         if len(near) < 2:
             continue
         (below, gap_below), (above, gap_above) = near
+        # FLUSH AGAINST A CABINET IS NOT A CLEARANCE. A stated `cage.aisle`
+        # as wide as the clearance leaves the row on the other side of the
+        # wall nothing at all -- the partition lands on its cabinet faces,
+        # which seals them for a drywall cage and is not a room anybody
+        # builds either way. It was a warning, and a reader found it on the
+        # drawing instead (ADR-108).
+        for row, gap in ((below, gap_below), (above, gap_above)):
+            if gap <= 1e-6:
+                raise ValueError(
+                    f"cage.aisle: {num(gap_below + gap_above)} m of cold "
+                    f"aisle holds the {name} wall at {num(gap_below)} m from "
+                    f"{below} and {num(gap_above)} m from {above} -- "
+                    f"{row} has no clearance at all, and the wall lands on "
+                    f"its cabinet faces. `cage.clearance` is the gap on BOTH "
+                    f"sides of the wall: either drop `cage.aisle` and let it "
+                    f"be {num(2 * cage['clearance'])} m, or state an aisle "
+                    f"wider than {num(cage['clearance'])} m"
+                )
         # ONLY WHEN IT COSTS A ROW SOMETHING. A wall in an aisle wide enough
         # to hold it leaves both rows the cold aisle the hall was drawn with,
         # and there is nothing to report; saying it anyway would be one more

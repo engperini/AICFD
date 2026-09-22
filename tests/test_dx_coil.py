@@ -199,9 +199,7 @@ class CouplingTest(unittest.TestCase):
         from aicfd.model import build_model
         from tests import support
 
-        spec = yaml.safe_load(
-            (support.REPO / "cases" / "hall-cage-1mw.yaml").read_text())
-        spec = copy.deepcopy(spec)
+        spec = copy.deepcopy(support.spec("hall-cage"))
         spec.setdefault("fanwall", {})["control"] = control
         return build_model(spec)
 

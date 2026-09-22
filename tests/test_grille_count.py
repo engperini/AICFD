@@ -22,9 +22,7 @@ from tests import support
 
 
 def hall(**changes) -> dict:
-    spec = yaml.safe_load(
-        (support.REPO / "cases" / "hall-cage-1mw.yaml").read_text())
-    spec = copy.deepcopy(spec)
+    spec = copy.deepcopy(support.spec("hall-cage"))
     for section, values in changes.items():
         spec.setdefault(section, {}).update(values)
     return spec
@@ -169,10 +167,15 @@ class PlateRowsAcrossTheAisleTest(unittest.TestCase):
         self.assertEqual(counted, [2, 1],
                          "the odd plate row goes to the row nearer y = 0")
 
-    def test_a_count_wider_than_the_aisle_is_still_refused(self):
-        with self.assertRaises(ValueError) as caught:
-            self.plates_in_the_middle_aisle(tiles_across=6)
-        self.assertIn("floor", str(caught.exception))
+    def test_a_count_wider_than_the_aisle_is_clamped_and_said(self):
+        """It used to be refused. A number the aisle cannot hold is now laid
+        to fit, with a note -- because the count a case arrives with is often
+        one nobody typed (ADR-108)."""
+        built, rows = self.plates_in_the_middle_aisle(tiles_across=6)
+        self.assertEqual(len(rows), 3, "an 1,80 m aisle holds three")
+        said = " ".join(w for w in built.warnings if w.startswith("floor plates"))
+        self.assertIn("6 were asked for and 3 laid", said)
+        self.assertIn("floor.tiles_across: 3", said)
 
     def test_out_of_range_is_refused_by_name(self):
         with self.assertRaises(ValueError) as caught:

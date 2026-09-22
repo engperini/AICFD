@@ -36,8 +36,7 @@ def dx_units():
 
 
 def raised_floor_case(unit: str) -> dict:
-    spec = yaml.safe_load(
-        (support.REPO / "cases" / "pod-raised-floor.yaml").read_text())
+    spec = support.spec("pod-raised-floor")
     spec["fanwall"] = {"model": unit, "count": spec["fanwall"].get("count", 1)}
     return spec
 

@@ -38,7 +38,7 @@ from tests import support
 
 
 def pod(**cage) -> dict:
-    spec = yaml.safe_load((support.REPO / "cases" / "pod-fanwall.yaml").read_text())
+    spec = support.spec("pod-fanwall")
     if cage:
         spec["cage"] = {"enabled": True, **cage}
     return spec
@@ -145,8 +145,7 @@ class PlacementTest(unittest.TestCase):
     or across it dividing one customer from the rest (ADR-098)."""
 
     def hall(self, **cage) -> dict:
-        spec = yaml.safe_load(
-            (support.REPO / "cases" / "hall-double-gallery.yaml").read_text())
+        spec = support.spec("hall-double-gallery")
         spec["pods"] = 4
         spec["racks"]["blocks"] = 1
         spec["fanwall"]["count"] = 8
@@ -239,8 +238,7 @@ class BoundaryAisleTest(unittest.TestCase):
     """
 
     def hall(self, **cage) -> dict:
-        spec = yaml.safe_load(
-            (support.REPO / "cases" / "hall-double-gallery.yaml").read_text())
+        spec = support.spec("hall-double-gallery")
         spec["pods"] = 4
         spec["racks"]["blocks"] = 1
         spec["fanwall"]["count"] = 8
@@ -321,6 +319,27 @@ class BoundaryAisleTest(unittest.TestCase):
         self.assertAlmostEqual(grew, 2 * step, places=6,
                                msg="a cage between two pods divides the hall "
                                    "twice, so two aisles carry a wall")
+
+    def test_a_wall_flush_against_a_cabinet_is_refused(self):
+        """A stated aisle as wide as the clearance leaves the row on the other
+        side nothing at all: the partition lands on its cabinet faces, which
+        seals them for a drywall cage. It was a warning, and a reader found it
+        on the drawing instead (ADR-108)."""
+        cold = float(self.hall()["aisles"]["cold"])
+        with self.assertRaises(ValueError) as caught:
+            m.build_model(self.hall(aisle=cold, clearance=cold))
+        said = str(caught.exception)
+        self.assertIn("cage.aisle", said)
+        self.assertIn("no clearance at all", said)
+        self.assertRegex(said, r"F\d", "the refusal has to name the row")
+        self.assertIn(f"{cold * 2:.2f}", said, "and what to set it to")
+
+    def test_a_tight_but_real_clearance_is_only_a_note(self):
+        """0,60 m in front of a row is a different room from 1,20 (ADR-099),
+        and it is still a room. The refusal is for nothing at all."""
+        cold = float(self.hall()["aisles"]["cold"])
+        built = m.build_model(self.hall(aisle=cold, clearance=cold / 2 + 0.3))
+        self.assertTrue([w for w in built.warnings if w.startswith("cage ")])
 
     def test_an_aisle_outside_the_range_is_refused_by_name(self):
         with self.assertRaises(ValueError) as caught:
@@ -526,8 +545,7 @@ class ColdAisleContainmentTest(unittest.TestCase):
     """
 
     def hall(self, aisle: str) -> dict:
-        spec = yaml.safe_load(
-            (support.REPO / "cases" / "hall-cage-1mw.yaml").read_text())
+        spec = support.spec("hall-cage")
         spec["containment"] = dict(spec.get("containment") or {},
                                    enabled=True, aisle=aisle)
         return spec
@@ -631,8 +649,7 @@ class ColdAisleContainmentTest(unittest.TestCase):
     def test_a_cold_aisle_with_no_way_in_is_refused(self):
         """Sealed by the rack rows, a lid and two doors, the only way in is
         the floor. A supply blown into the room outside it cannot reach it."""
-        spec = yaml.safe_load(
-            (support.REPO / "cases" / "hall-double-gallery.yaml").read_text())
+        spec = support.spec("hall-double-gallery")
         spec["containment"] = {"enabled": True, "aisle": "cold"}
         with self.assertRaises(ValueError) as caught:
             m.build_model(spec)

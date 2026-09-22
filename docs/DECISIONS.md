@@ -4654,3 +4654,51 @@ always did.
 is two rooms stacked, and every coordinate in it has to say which one it
 belongs to. Absolute zero is the slab and it is not where anything in the
 data hall happens.
+
+---
+
+## ADR-108 — A case of your own never stops the build, and a default never refuses
+
+**Decision.** Three things, all of them the same mistake in different places:
+the software treating the engineer's own folder, and its own defaults, as
+though they were the repository's.
+
+1. **`cases/` is theirs.** The suite checks that the ten cases the repository
+   SHIPS build — a failure there stops a release. Anything else in that folder
+   is somebody's own work: a draft that does not build is reported once, as a
+   skip that names the file, and the suite goes on.
+2. **A default never refuses.** `floor.tiles_per_rack` defaults to 2, and two
+   rows facing a 1,20 m cold aisle at 2 plates each ask for four rows of plate
+   in an aisle that holds two. What the aisle holds is laid, and a note says
+   what was dropped and how to state it.
+3. **A cage wall flush against a cabinet is refused**, not warned.
+
+**Why the folder.** `docker build` runs the suite (ADR-003), and a draft of
+somebody's next project — a cold aisle they had not finished thinking about —
+stopped the image, the tests and the release. The failure named their own
+aisle, so the message was right and the consequence was absurd. ADR-056 said
+tests must not read `cases/` as a fixture; this is the same rule from the
+other side: what is in that folder cannot be allowed to decide whether the
+software is fit to ship.
+
+**And the tests that were still doing it.** Three tests added the same week
+read `cases/hall-cage-1mw.yaml` directly. An engineer with their own copy of
+that case — a different hot aisle, a row of their own — had three failures
+about a case they had every right to edit. Those tests read
+`tests/cases/hall-cage.yaml` now, a snapshot the suite owns, like every other
+test (ADR-056).
+
+**Why the default.** `tiles_per_rack: 2` was a house standard that the
+commonest aisle in the industry cannot hold, and the page WRITES the value it
+shows — so a case nobody typed a number into arrived with 2 and was refused by
+name. The guard it tripped is a real one (ADR-095: 90 plates laid twice, and
+`createBaffles` failing four steps later about a mesh face index), so the
+clamp is what changed, not the guard: the plates are laid to fit and the note
+says `floor.tiles_across: 2` if you want to state it.
+
+**Why the refusal.** `cage.clearance` is the gap on both sides of the wall
+(ADR-104). A stated `cage.aisle` as wide as the clearance leaves the row on
+the other side nothing: the partition lands on its cabinet faces, which seals
+them for a drywall cage and is not a room anybody builds either way. That was
+a warning, and a reader found it on the drawing instead of in the summary --
+which is the definition of a warning that should have been a refusal.

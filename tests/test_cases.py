@@ -32,27 +32,117 @@ class WorkedCasesTest(unittest.TestCase):
         the message, which buries it. This one does not."""
         raise self.failureException(message) from None
 
-    def test_every_case_on_disk_builds(self):
-        cases = sorted(support.CASES.glob("*.yaml"))
-        self.assertTrue(cases, "the repository ships worked cases")
-        for path in cases:
+    def test_every_shipped_case_builds(self):
+        """The ten cases the repository GUARANTEES. A failure here is the
+        repository's, and it stops a release."""
+        for name in support.SHIPPED_CASES:
+            path = support.CASES / f"{name}.yaml"
             with self.subTest(case=path.name):
-                try:
-                    spec = yaml.safe_load(path.read_text())
-                except yaml.YAMLError as broken:
-                    self.fail(f"cases/{path.name} is not valid YAML: {broken}")
-                try:
-                    m.build_model(spec)
-                except Exception as refused:  # noqa: BLE001 -- reported, not handled
-                    # `from None`: the reader needs the sentence, not the
-                    # generator's stack.
-                    refused = str(refused)
-                    self.fail_clean(
-                        f"cases/{path.name} does not build: {refused}\n"
-                        f"        This is the case file, not the code. Fix the "
-                        f"value the message names, or put the file back with\n"
-                        f"            git restore cases/{path.name}"
-                    )
+                if not path.is_file():
+                    self.skipTest(f"cases/{path.name} is not in this clone")
+                self.builds(path, shipped=True)
+
+    def test_a_case_of_your_own_is_reported_and_does_not_stop_the_build(self):
+        """ANYTHING ELSE in the folder is the engineer's own work, and it is
+        not the suite's business whether it is finished.
+
+        A draft of somebody's next project stopped `docker build` with a
+        message about their own cold aisle -- the image, the tests and the
+        release, blocked by a file nobody had finished writing. The folder is
+        theirs (ADR-056): a case of their own that does not build is SAID,
+        once, and skipped (ADR-108).
+        """
+        mine = {f"{name}.yaml" for name in support.SHIPPED_CASES}
+        theirs = [p for p in sorted(support.CASES.glob("*.yaml"))
+                  if p.name not in mine]
+        if not theirs:
+            self.skipTest("no cases of your own in this clone")
+        refused = []
+        for path in theirs:
+            try:
+                m.build_model(yaml.safe_load(path.read_text()))
+            except Exception as why:  # noqa: BLE001 -- reported, not handled
+                refused.append(f"cases/{path.name}: {why}")
+        if refused:
+            self.skipTest(
+                "a case of your own does not build -- the software is fine, "
+                "the file is not: " + "; ".join(refused))
+
+    def builds(self, path, shipped: bool = False):
+        try:
+            spec = yaml.safe_load(path.read_text())
+        except yaml.YAMLError as broken:
+            self.fail(f"cases/{path.name} is not valid YAML: {broken}")
+        try:
+            m.build_model(spec)
+        except Exception as refused:  # noqa: BLE001 -- reported, not handled
+            # `from None`: the reader needs the sentence, not the generator's
+            # stack.
+            self.fail_clean(
+                f"cases/{path.name} does not build: {refused}\n"
+                f"        This is the case file, not the code. Fix the "
+                f"value the message names, or put the file back with\n"
+                f"            git restore cases/{path.name}"
+            )
+
+
+class YourOwnCaseNeverStopsTheBuildTest(unittest.TestCase):
+    """Proved against a draft the suite writes, not against what is on disk.
+
+    A case of somebody's own that does not build stopped `docker build` --
+    the image, the tests and the release, held up by a file nobody had
+    finished writing (ADR-108). It has to be a SKIP that says what it found.
+    """
+
+    DRAFT = (
+        "name: zz-draft\n"
+        "pods: 2\n"
+        "aisles: {cold: 1.2, hot: 1.2, perimeter: 1.8}\n"
+        "racks: {per_row: 4, load_kw: 8.0, size: [0.6, 1.2, 2.2]}\n"
+        "hall: {height: 5.0, ceiling: 3.5}\n"
+        "gallery: {depth: 3.0}\n"
+        "grilles: {size: 0.6}\n"
+        "fanwall: {model: NO-SUCH-UNIT}\n"     # refused by name
+    )
+
+    def run_the_folder_test(self, folder) -> unittest.TestResult:
+        import unittest.mock
+
+        case = WorkedCasesTest(
+            "test_a_case_of_your_own_is_reported_and_does_not_stop_the_build")
+        result = unittest.TestResult()
+        with unittest.mock.patch.object(support, "CASES", folder):
+            case.run(result)
+        return result
+
+    def test_it_is_skipped_and_the_reason_names_the_file(self):
+        import tempfile
+        from pathlib import Path
+
+        with tempfile.TemporaryDirectory() as tmp:
+            folder = Path(tmp)
+            (folder / "zz-draft.yaml").write_text(self.DRAFT)
+            result = self.run_the_folder_test(folder)
+        self.assertEqual(result.failures, [], "a draft of your own failed the suite")
+        self.assertEqual(result.errors, [])
+        self.assertTrue(result.skipped, "nothing was said about it at all")
+        said = result.skipped[0][1]
+        self.assertIn("zz-draft", said)
+        self.assertIn("the software is fine", said)
+
+    def test_a_folder_of_good_drafts_passes(self):
+        import tempfile
+        from pathlib import Path
+
+        import yaml as y
+
+        with tempfile.TemporaryDirectory() as tmp:
+            folder = Path(tmp)
+            spec = support.spec("pod-fanwall")
+            (folder / "zz-fine.yaml").write_text(y.safe_dump(spec))
+            result = self.run_the_folder_test(folder)
+        self.assertEqual(result.failures, [])
+        self.assertFalse(result.skipped, f"skipped a case that builds: {result.skipped}")
 
 
 class TypicalRowTest(unittest.TestCase):
