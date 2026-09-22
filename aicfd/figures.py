@@ -228,8 +228,16 @@ def _cage(ax, export, h: int, v: int, width: float = 1.0) -> None:
     # `drywall`); older exports of a case without a cage carry None.
     style = CAGE_STYLE.get(export.model.get("cage"), "solid")
     for panel in export.panels("cage_"):
-        ax.plot([panel["lo"][h], panel["hi"][h]],
-                [panel["lo"][v], panel["hi"][v]],
+        lo, hi = panel["lo"], panel["hi"]
+        if hi[h] - lo[h] > 1e-6 and hi[v] - lo[v] > 1e-6:
+            # FACE-ON: a row-end wall of the cage, in a transverse section,
+            # spans both axes on the page. Drawn from one corner to the other
+            # it came out as a dashed DIAGONAL across the room -- the wall is
+            # a rectangle and reads as one (ADR-111).
+            _outline(ax, lo, hi, h, v, edgecolor=CAGE, linewidth=width,
+                     linestyle=style)
+            continue
+        ax.plot([lo[h], hi[h]], [lo[v], hi[v]],
                 color=CAGE, linewidth=width, linestyle=style,
                 solid_capstyle="butt")
 
@@ -363,6 +371,37 @@ def _containment_mark(ax, panel, h, v, **kwargs):
     _outline(ax, lo, hi, h, v, **style)
 
 
+def fan_body_box(panel: dict, depth: float | None):
+    """The MACHINE behind a fan panel, as a box, or None where the case does
+    not say how big it is.
+
+    One rule for all three drawings, because it was got wrong three different
+    ways in three of them (ADR-111):
+
+    * A fan wall is normal to x. The panel is the plane the solver sees and
+      the machine stands behind it, `depth` back on the side `sign` says the
+      gallery is.
+    * A DOWNFLOW unit is normal to z. Its footprint is already in the panel --
+      the depth is spent there -- and what stands above it is its HEIGHT: the
+      supply face is on the deck and the return face a storey up, which is
+      where `return_z` is. Extruding the depth along this panel's own normal
+      instead drew a 0,87 m tall CRAC hanging under the deck.
+    """
+    lo, hi = list(panel["lo"]), list(panel["hi"])
+    if panel["axis"] == 2:
+        top = panel.get("return_z")
+        if top is None:
+            return None
+        return (lo[0], lo[1], min(panel["position"], top)), \
+               (hi[0], hi[1], max(panel["position"], top))
+    if not depth:
+        return None
+    axis = panel["axis"]
+    back = panel["position"] - depth * panel.get("sign", 1)
+    lo[axis], hi[axis] = min(panel["position"], back), max(panel["position"], back)
+    return tuple(lo), tuple(hi)
+
+
 def _fan_body(ax, x0, y0, dx, dy):
     """The unit's envelope, set back into the gallery behind its face.
 
@@ -426,21 +465,31 @@ def plan(export: Export, out: Path, z: float, title: str,
     depth = export.fan_depth
     for i, panel in enumerate(fans):
         at, lo, hi = panel["position"], panel["lo"][1], panel["hi"][1]
-        if depth:
-            # Behind its own face, on the side `sign` says the gallery is.
-            back = at - depth * panel.get("sign", 1)
-            near, far = min(at, back), max(at, back)
+        # THE FOOTPRINT, wherever the case says how deep the machine is. For a
+        # downflow unit `position` is a HEIGHT and not a place on this page:
+        # drawn as a line at that number, all fourteen machines of this hall
+        # came out at x = 1,0 m, a stack of short lines inside one gallery
+        # with the other gallery's seven among them (ADR-111).
+        box = fan_body_box(panel, depth)
+        if box:
+            (x0, y0, _), (x1, y1, _) = box
             if turned:
-                _fan_body(ax, lo, near, hi - lo, far - near)
+                _fan_body(ax, y0, x0, y1 - y0, x1 - x0)
             else:
-                _fan_body(ax, near, lo, far - near, hi - lo)
-        line = ([lo, hi], [at, at]) if turned else ([at, at], [lo, hi])
-        ax.plot(*line, color=FAN, linewidth=3.2, solid_capstyle="butt")
+                _fan_body(ax, x0, y0, x1 - x0, y1 - y0)
+        if panel["axis"] != 2:
+            # The face itself: the plane the solver sees, seen edge-on.
+            line = ([lo, hi], [at, at]) if turned else ([at, at], [lo, hi])
+            ax.plot(*line, color=FAN, linewidth=3.2, solid_capstyle="butt")
         if len(fans) <= 20:
             away = -9 * panel.get("sign", 1)  # into the gallery, not the hall
+            mid = ((panel["lo"][0] + panel["hi"][0]) / 2
+                   if panel["axis"] == 2 else at)
+            if panel["axis"] == 2:
+                away = 0  # on the machine itself: it has a footprint to sit in
             ax.annotate(
                 export.unit_tag(i),
-                xy=((lo + hi) / 2, at) if turned else (at, (lo + hi) / 2),
+                xy=((lo + hi) / 2, mid) if turned else (mid, (lo + hi) / 2),
                 xytext=(0, away) if turned else (away, 0),
                 textcoords="offset points", fontsize=5.5, color=SECOND,
                 ha="center" if turned else ("left" if away > 0 else "right"),
@@ -521,17 +570,33 @@ def section(export: Export, out: Path, normal: int, at: float, title: str,
 
     depth = export.fan_depth
     for panel in export.panels("fan"):
-        if normal == 0 and abs(panel["position"] - at) > 1e-6:
+        vertical = panel["axis"] != 2
+        if normal == 0 and vertical and abs(panel["position"] - at) > 1e-6:
             continue
+        if normal == 0 and not vertical and not (
+                panel["lo"][0] - 1e-6 <= at <= panel["hi"][0] + 1e-6):
+            continue  # this section does not pass through the machine
         lo, hi = (panel["lo"][h], panel["hi"][h])
         z0, z1 = panel["lo"][2], panel["hi"][2]
+        if not vertical:
+            # A DOWNFLOW UNIT: the supply face is on the deck, the return
+            # face a storey above, and between them stands the machine
+            # (ADR-111).
+            box = fan_body_box(panel, depth)
+            if box:
+                top = box[1][2]
+                _fan_body(ax, lo, z0, hi - lo, top - z0)
+                ax.plot([lo, hi], [top, top], color=FAN, linewidth=1.6,
+                        solid_capstyle="butt")
+            ax.plot([lo, hi], [z0, z0], color=FAN, linewidth=2.4,
+                    solid_capstyle="butt")
+            continue
         # Looking across the hall (normal 1), x is on the page and the unit's
         # depth with it. Looking along it (normal 0), depth is the direction
         # being looked down, so there is nothing to draw.
-        if depth and h == 0:
-            back = panel["position"] - depth * panel.get("sign", 1)
-            near = min(panel["position"], back)
-            _fan_body(ax, near, z0, abs(depth), z1 - z0)
+        box = fan_body_box(panel, depth)
+        if box and h == 0:
+            _fan_body(ax, box[0][0], z0, box[1][0] - box[0][0], z1 - z0)
         _outline(ax, (lo, 0, z0), (hi, 0, z1), 0, 2,
                  edgecolor=FAN, linewidth=1.0)
     ax.set_xlim(0, span)
@@ -884,7 +949,10 @@ def geometry(export: Export, out: Path, axis: int, title: str,
                                "containment_lid", "blank"):
         _containment_mark(ax, panel, h, v, color=CONTAINMENT, linewidth=0.9)
     for panel in export.panels("fan"):
-        _outline(ax, panel["lo"], panel["hi"], h, v, edgecolor=FAN, linewidth=1.2)
+        # Seen from the side, a downflow unit is the machine between its two
+        # faces; its footprint alone is a line on the deck (ADR-111).
+        lo, hi = fan_body_box(panel, export.fan_depth) or (panel["lo"], panel["hi"])
+        _outline(ax, lo, hi, h, v, edgecolor=FAN, linewidth=1.2)
     for panel in export.panels("grille", "supply_mesh", "plenum_opening", "tile_"):
         # A rectangle, not a line from one corner to the other: a z-normal
         # grille seen in plan IS a rectangle, and the diagonal it was drawn as

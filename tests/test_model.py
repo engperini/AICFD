@@ -1143,3 +1143,30 @@ class FloorPlatesThatWouldOverlapTest(unittest.TestCase):
             with self.subTest(case=name):
                 m.build_model(yaml.safe_load(
                     (support.REPO / "cases" / f"{name}.yaml").read_text()))
+
+
+class TheUnitCarriesItsReturnFaceTest(unittest.TestCase):
+    """A downflow unit is two planes a storey apart, and both payloads have to
+    say where the second one is or no drawing can show the machine (ADR-111)."""
+
+    def spec(self) -> dict:
+        spec = support.spec("pod-raised-floor")
+        return spec
+
+    def test_the_page_payload_says_where_the_return_face_is(self):
+        built = m.build_model(self.spec())
+        payload = m.to_dict(built, self.spec())
+        fans = [p for p in payload["panels"] if p["kind"] == "fan"]
+        self.assertTrue(fans, "this case has no units")
+        for fan in fans:
+            with self.subTest(panel=fan["name"]):
+                self.assertEqual(fan["axis"], 2, "not a downflow unit")
+                self.assertIsNotNone(fan["return_z"])
+                self.assertGreater(fan["return_z"], fan["position"],
+                                   "the return face is above the supply one")
+
+    def test_a_fan_wall_has_no_second_plane(self):
+        built = m.build_model(support.spec("pod-fanwall"))
+        payload = m.to_dict(built, support.spec("pod-fanwall"))
+        for fan in [p for p in payload["panels"] if p["kind"] == "fan"]:
+            self.assertIsNone(fan["return_z"], fan["name"])

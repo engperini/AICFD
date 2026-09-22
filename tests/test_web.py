@@ -745,3 +745,33 @@ class SectionNamesTheAisleItContainsTest(unittest.TestCase):
         section = self.section_a()
         self.assertIn("'chimney' : 'hot aisle'", section)
         self.assertIn("'contained cold aisle' : 'cold aisle'", section)
+
+
+class TheMachineOnThePageTest(unittest.TestCase):
+    """A downflow unit stands on the deck; it does not hang under it.
+
+    The page extruded every unit's DEPTH along the panel's own normal. For a
+    fan wall that normal is x and the result is the machine set back into the
+    gallery, which is right. For a downflow unit it is z, so a 1,97 m CRAC was
+    drawn as a 0,87 m box below the raised floor (ADR-111).
+    """
+
+    def body(self) -> str:
+        js = (WEB / "drawing.js").read_text()
+        block = js[js.index("A DOWNFLOW UNIT IS NOT SET BACK ANYWHERE"):]
+        return block[:block.index("// 6.6")]
+
+    def test_the_unit_reaches_its_own_return_face(self):
+        said = self.body()
+        self.assertIn("panel.return_z", said)
+        self.assertIn("panel.axis === 2", said)
+
+    def test_a_fan_wall_is_still_set_back_by_its_depth(self):
+        said = self.body()
+        self.assertIn("model.fan_depth_m * (panel.sign ?? 1)", said)
+
+    def test_a_case_that_states_no_depth_draws_no_fan_wall_body(self):
+        """Inventing one would put a machine on the drawing that nothing in
+        the case describes (ADR-046)."""
+        self.assertIn("if (!downflow && !model.fan_depth_m) continue;",
+                      self.body())

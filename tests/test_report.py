@@ -903,3 +903,99 @@ class ContainmentIsDrawnAsItProjectsTest(unittest.TestCase):
         for function in (figures.plan, figures.section, figures.geometry):
             with self.subTest(figure=function.__name__):
                 self.assertIn("containment_side", inspect.getsource(function))
+
+
+class TheMachineIsDrawnAsTheMachineTest(unittest.TestCase):
+    """Where a cooling unit's body is, in every view (ADR-111).
+
+    A fan wall stands BEHIND its face, back into the gallery. A downflow unit
+    stands ON the deck: its footprint is the panel and its height is what
+    reaches up to the return face. Extruding the depth along the panel's own
+    normal, which is what the page and the report both did, drew a 0,87 m tall
+    CRAC in a room that holds a 1,97 m machine.
+    """
+
+    def box(self, panel, depth=None):
+        from aicfd.figures import fan_body_box
+
+        return fan_body_box(panel, depth)
+
+    def downflow(self, **kw):
+        return {"name": "fan1", "kind": "fan", "axis": 2, "position": 1.0,
+                "sign": -1, "lo": [3.6, 0.4, 1.0], "hi": [4.4, 3.0, 1.0],
+                **kw}
+
+    def test_a_downflow_unit_stands_on_the_deck_up_to_its_return_face(self):
+        lo, hi = self.box(self.downflow(return_z=2.97), depth=0.873)
+        self.assertEqual((lo[0], hi[0]), (3.6, 4.4), "the footprint moved")
+        self.assertEqual((lo[1], hi[1]), (0.4, 3.0), "the footprint moved")
+        self.assertAlmostEqual(lo[2], 1.0, msg="the machine is off the deck")
+        self.assertAlmostEqual(hi[2], 2.97, msg="the machine is not its height")
+
+    def test_a_downflow_unit_is_never_extruded_by_its_depth(self):
+        """The depth is the footprint, and it is already in the panel."""
+        lo, hi = self.box(self.downflow(return_z=2.97), depth=0.873)
+        self.assertGreater(hi[2] - lo[2], 1.0,
+                           "the machine came out one depth tall")
+
+    def test_an_export_without_the_return_face_draws_no_body(self):
+        """An export written before `return_z` existed: poorer, never wrong."""
+        self.assertIsNone(self.box(self.downflow()))
+        self.assertIsNone(self.box(self.downflow(return_z=None), depth=0.873))
+
+    def test_a_fan_wall_stands_behind_its_face(self):
+        wall = {"name": "fan1", "kind": "fan", "axis": 0, "position": 4.4,
+                "sign": 1, "lo": [4.4, 1.0, 0.0], "hi": [4.4, 4.4, 4.0]}
+        lo, hi = self.box(wall, depth=1.5)
+        self.assertAlmostEqual(lo[0], 2.9, msg="not set back into the gallery")
+        self.assertAlmostEqual(hi[0], 4.4)
+        self.assertEqual((lo[1], hi[1]), (1.0, 4.4), "the width moved")
+        self.assertIsNone(self.box(wall, depth=None),
+                          "a depth nothing states is a machine nothing knows")
+
+    def test_every_drawing_asks_the_same_question(self):
+        """Three drawings got this wrong three different ways. One rule now."""
+        import inspect
+
+        from aicfd import figures
+
+        for function in (figures.plan, figures.section, figures.geometry):
+            with self.subTest(figure=function.__name__):
+                self.assertIn("fan_body_box", inspect.getsource(function))
+
+
+class TheReportDescribesThePlantItHasTest(unittest.TestCase):
+    """Section 1.4 is the fixed method, and the method has two coil models
+    since ADR-103. It described the chilled-water one to a reader looking at
+    fourteen direct-expansion CRACs (ADR-112)."""
+
+    def source(self, function) -> str:
+        import inspect
+
+        from aicfd import report
+
+        return inspect.getsource(getattr(report, function))
+
+    def test_the_method_names_both_coils(self):
+        said = self.source("_introduction")
+        self.assertIn("CHILLED-WATER unit the cold side is the entering water",
+                      said)
+        self.assertIn("DIRECT-EXPANSION unit", said)
+        self.assertIn("apparatus dew point", said)
+        self.assertIn("counterflow heat exchanger", said,
+                      "the chilled-water physics is still stated once")
+
+    def test_the_introduction_still_rests_on_no_result(self):
+        """It takes no export, and naming the plant per case would need one."""
+        import inspect
+
+        from aicfd import report
+
+        self.assertEqual(
+            list(inspect.signature(report._introduction).parameters), ["doc"])
+
+    def test_the_control_note_moves_what_that_plant_actually_moves(self):
+        said = self.source("_control_section")
+        self.assertIn('"dx"', said)
+        self.assertIn("compressors", said)
+        self.assertIn("the water side", said)

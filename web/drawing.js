@@ -596,21 +596,30 @@ export function drawView(model, view, scale, options = {}) {
   // the gallery side -- `sign` is which side that is -- and it appears only
   // in the views where depth is on screen, which is to say wherever the fan
   // wall is seen edge-on (ADR-046).
-  if (model.fan_depth_m) {
-    for (const panel of model.panels) {
-      if (panel.kind !== 'fan' || panel.axis === view.normal) continue;
-      const { lo, hi } = panelBounds(panel);
-      const along = panel.axis === view.h ? view.v : view.h;
-      const back = panel.position - model.fan_depth_m * (panel.sign ?? 1);
-      const a = [0, 0, 0];
-      const b = [0, 0, 0];
-      a[panel.axis] = Math.min(back, panel.position);
-      b[panel.axis] = Math.max(back, panel.position);
-      a[along] = lo[along];
-      b[along] = hi[along];
-      const cut = straddles(lo, hi, view.normal, at);
-      paint(a, b, cut ? 'dw-fanbody' : 'dw-fanbody dw-beyond');
-    }
+  //
+  // A DOWNFLOW UNIT IS NOT SET BACK ANYWHERE. Its face is horizontal, so its
+  // depth is already the footprint the panel carries and the machine's other
+  // dimension is its HEIGHT: it stands on the deck and returns through its
+  // top, a storey up, which is the plane `return_z` names. Extruding the
+  // depth along the panel's own normal instead drew a 0,87 m tall box hanging
+  // under the deck, in a room that holds a 1,97 m machine (ADR-111).
+  for (const panel of model.panels) {
+    if (panel.kind !== 'fan' || panel.axis === view.normal) continue;
+    const { lo, hi } = panelBounds(panel);
+    const along = panel.axis === view.h ? view.v : view.h;
+    const downflow = panel.axis === 2 && panel.return_z != null;
+    if (!downflow && !model.fan_depth_m) continue;
+    const far = downflow
+      ? panel.return_z
+      : panel.position - model.fan_depth_m * (panel.sign ?? 1);
+    const a = [0, 0, 0];
+    const b = [0, 0, 0];
+    a[panel.axis] = Math.min(far, panel.position);
+    b[panel.axis] = Math.max(far, panel.position);
+    a[along] = lo[along];
+    b[along] = hi[along];
+    const cut = straddles(lo, hi, view.normal, at);
+    paint(a, b, cut ? 'dw-fanbody' : 'dw-fanbody dw-beyond');
   }
 
   // 6.6 — the containment the section plane sits inside.

@@ -4004,6 +4004,13 @@ def to_dict(model: Model, spec: dict) -> dict:
                 "resistance": p.resistance,
                 "sign": p.sign,
                 "of_rack": p.of_rack,
+                # A DOWNFLOW UNIT IS A MACHINE, NOT A PLANE. Its supply face
+                # lies on the deck and its return face a storey above, and
+                # `return_z` is where. Without it a drawing has only the
+                # footprint and the set-back depth, and extruding the depth
+                # along the panel's own normal drew a CRAC 0,87 m tall
+                # standing in a room that holds a 1,97 m machine (ADR-111).
+                "return_z": p.return_z,
             }
             for p in model.panels
         ],

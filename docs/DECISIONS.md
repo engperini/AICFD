@@ -4788,3 +4788,61 @@ wall. The hall derivation in `docs/CASE-AUTHORING.md` §2 gains that boundary,
 and `case.wall_plan` gains the `containment_side` group so the new panels are
 claimed like every other (an unclaimed panel is a face `createBaffles` refuses,
 and the orphan guard in `tests/test_case_files.py` is what says so).
+
+---
+
+## ADR-111 — A machine is drawn as the machine, in every view
+
+**Decision.** One function, `figures.fan_body_box`, says where a cooling unit's
+body is, and the plan, the sections, the report's geometry windows and the page
+all draw it from that:
+
+* a **fan wall** is normal to x — the panel is the plane the solver sees, and
+  the machine stands `fanwall.depth` behind it, on the side `sign` says the
+  gallery is;
+* a **downflow unit** is normal to z — its footprint is already the panel, the
+  depth is spent there, and what stands above it is its HEIGHT: the supply face
+  on the deck, the return face a storey up at `return_z`, which the panel now
+  carries into both payloads.
+
+A panel is drawn by what the view sees of it, not by its corners: a line where
+it is edge-on, the rectangle where it is face-on. This applies to the cage and
+the containment as much as the plant.
+
+**Why.** Four readings of the same report and the same page, all of them
+geometry the drawings got wrong rather than results:
+
+| what a reader saw | what it was |
+|---|---|
+| "the CRAC is tiny on the model page" | the page extruded the unit's DEPTH (0,873 m) along the panel's own normal, which for a downflow unit is z: a 0,87 m tall box hanging under the deck, where the room holds a 1,97 m machine |
+| "some CRACs are not in both galleries" | the report's plan drew each unit as a line at `panel["position"]`, which for a downflow unit is a HEIGHT: all fourteen machines came out at x = 1,0 m, one gallery, stacked on each other |
+| "there are diagonal dashes in some figures" | the cage's row-end wall, and the containment's end doors, are face-on in a transverse section; drawn corner to corner they came out as a dashed diagonal across the room |
+| — | the report's geometry window drew a downflow unit as a line on the deck |
+
+The reading a drawing gets is the one it earns. None of these changed a number,
+and every one of them changed what a reader believed the room was.
+
+**Consequence.** `return_z` is part of both payloads, so an export written
+before this carries none and its units fall back to the footprint alone — the
+drawing is poorer, never wrong. The page keeps drawing a fan wall exactly as it
+did.
+
+---
+
+## ADR-112 — The report describes the plant it has, not the plant it used to have
+
+**Decision.** Where the method section speaks of the coil, it names both: a
+chilled-water unit's counterflow exchanger against the entering water, and a
+direct-expansion unit's evaporator measured from its apparatus dew point
+(ADR-103). Where a results section speaks of what the control moves, it says
+the water side for a chilled-water plant and the compressors for a DX one. The
+coil table's note no longer calls every finned coil a chilled-water one.
+
+**Why.** Section 1.4 is the FIXED introduction — printed identically in every
+report, before any result, and it takes no export by design (ADR-036). When the
+software gained a second coil model, that section kept describing the first,
+so a report on fourteen direct-expansion CRACs told its reader about "the
+chilled water the unit was selected at". The section is the METHOD, and the
+method now has two coil models: it describes both and says that section 2 names
+which one this plant is. Nothing there depends on the result, so the guard that
+keeps the introduction result-free still holds.

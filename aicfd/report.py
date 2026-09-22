@@ -441,18 +441,26 @@ def _introduction(doc) -> None:
           "give the stated capacity — and builds the unit's coil from it.")
     _table(doc, ["Step", "What happens"], [
         ("1 — the selection is entered",
-         "Return and supply air, air flow, net sensible capacity, electrical "
-         "input, and the chilled water the unit was selected at."),
+         "Return and supply air, air flow, net sensible capacity and "
+         "electrical input. A chilled-water unit adds the water it was "
+         "selected at; a direct-expansion unit adds its total capacity "
+         "beside its sensible one, which is what fixes the coil surface."),
         ("2 — the selection is checked",
          "Air flow times the temperature difference has to carry the stated "
          "capacity. A selection whose own numbers disagree is refused before "
          "anything is solved."),
         ("3 — the coil is built",
-         "A chilled-water coil is a counterflow heat exchanger: what it "
-         "transfers is its effectiveness times the air's capacity rate times "
-         "the difference between the return air and the entering water. The "
-         "selection fixes the effectiveness at that point, and the "
-         "effectiveness fixes the conductance."),
+         "A coil is a heat exchanger: what it transfers is its effectiveness "
+         "times the air's capacity rate times the difference between the "
+         "return air and the cold side, and the selection fixes the "
+         "effectiveness at that one point, which fixes the conductance. In a "
+         "CHILLED-WATER unit the cold side is the entering water, and the "
+         "coil is a counterflow heat exchanger. In a DIRECT-EXPANSION unit "
+         "the refrigerant boils, so it holds its temperature and the cold "
+         "side is "
+         "the coil surface — the apparatus dew point that the selection's own "
+         "split between sensible and total capacity implies. Section 2 says "
+         "which of the two this plant is."),
         ("4 — the curve is reviewed",
          "The coil answers at any return air temperature and any air flow, "
          "which is the curve printed in section 3. The engineer keeps it, or "
@@ -462,8 +470,8 @@ def _introduction(doc) -> None:
          "section 1.5 describes."),
     ], widths=[4.0, 12.0],
         note="One selection is what the method needs. A manufacturer who "
-             "states the unit's own division of resistance between air and "
-             "water replaces the default in step 3.")
+             "states the unit's own division of resistance between the air "
+             "side and the cold side replaces the default in step 3.")
 
     _heading(doc, "1.5  Solving the room and the units together", 2)
     _para(doc,
@@ -1103,10 +1111,16 @@ def _control_section(doc, export: Export) -> None:
            "and they do not deliver the same supply temperature. Set "
            "`fanwall.control: team` to run them as one networked plant "
            "instead."))
+    # WHAT THE CONTROL MOVES is not the same machinery in the two plants,
+    # and naming the water side of a direct-expansion unit describes a pipe
+    # that is not there (ADR-111).
+    cold = export.kpis.get("coil_model") or {}
+    side = ("how hard the compressors work"
+            if cold.get("kind") == "dx" else "the water side")
     _para(doc,
-          "Either way every unit is given the same MASS flow. What the control "
-          "changes is the water side — how much each coil is asked to transfer "
-          "— not the air each unit moves.",
+          f"Either way every unit is given the same MASS flow. What the "
+          f"control changes is {side} — how much each coil is asked to "
+          f"transfer — not the air each unit moves.",
           size=9, colour=SECOND)
 
 
@@ -1374,9 +1388,9 @@ def _coil_section(doc, export: Export) -> None:
          f"{share} %" if share else "—"),
     ]
     _table(doc, ["Property of the coil", "Value"], rows, widths=[8.0, 8.0],
-           note="The resistance split is the usual one for a finned "
-                "chilled-water coil, and it is an input where the "
-                "manufacturer states the unit's own.")
+           note="The resistance split is the usual one for a finned coil of "
+                "this kind, and it is an input where the manufacturer states "
+                "the unit's own.")
 
 
 # --- 3 results ----------------------------------------------------------------

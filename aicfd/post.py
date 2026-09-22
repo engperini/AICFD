@@ -2212,6 +2212,10 @@ def export(
                     "sign": panel.sign,
                     "lo": list(panel.box().lo),
                     "hi": list(panel.box().hi),
+                    # Where a downflow unit's return face is, so the report's
+                    # sections can draw the machine and not just its footprint
+                    # (ADR-111).
+                    "return_z": panel.return_z,
                 }
                 for panel in model.panels
             ],
