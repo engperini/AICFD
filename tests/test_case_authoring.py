@@ -286,7 +286,14 @@ class DerivationTest(unittest.TestCase):
                 sides = int(spec.get("gallery", {}).get("sides", 1))
                 hall_length = (2 * perimeter + row_length
                                + sides * (plenum["depth"] if plenum else 0.0))
-                total_x = sides * float(spec["gallery"]["depth"]) + hall_length
+                # THE ROOM IS MESHED, so the last thing that happens to the
+                # overall size is the grid. A gallery depth off the cell --
+                # 4,77 m on a real layout, 0,20 m cells -- moves the total by
+                # up to half a cell, and the derivation has to end where the
+                # mesh does or it disagrees with the software by 0,10 m and
+                # neither is wrong (ADR-114).
+                total_x = on_grid(
+                    sides * float(spec["gallery"]["depth"]) + hall_length, 0)
                 # Each pod boundary is `aisles.cold`, except the one or two a
                 # cage wall stands in. There the clearance is a gap on BOTH
                 # faces of the wall, so the boundary holds two of them, and a
@@ -299,8 +306,8 @@ class DerivationTest(unittest.TestCase):
                                float(stated) if stated is not None else 0.0)
                     for k in model_module._cage_boundaries(spec, pods):
                         boundaries[k] = on_grid(wall, 1)
-                total_y = (2 * perimeter + pods * (2 * rack_dy + hot)
-                           + sum(boundaries))
+                total_y = on_grid(2 * perimeter + pods * (2 * rack_dy + hot)
+                                  + sum(boundaries), 1)
 
                 self.assertAlmostEqual(
                     total_x, built.domain.hi[0], places=6,
@@ -365,3 +372,55 @@ class ExampleTest(unittest.TestCase):
 
 if __name__ == "__main__":
     unittest.main()
+
+
+class TheDerivationEndsWhereTheMeshEndsTest(unittest.TestCase):
+    """A dimension off the cell moves the total, and §2 has to move with it.
+
+    Every shipped hall is drawn on its own grid, so the derivation agreed with
+    the software for the wrong reason: nothing in them was ever rounded. A
+    gallery of 4,77 m -- which is what the layout behind the 1 MW hall
+    measures -- makes a 22,34 m room the mesh builds at 22,40 m, and a manual
+    that stops before the grid tells its reader 22,34 (ADR-114).
+    """
+
+    def hall(self, depth: float):
+        import yaml
+
+        from aicfd import model as model_module
+
+        spec = yaml.safe_load((REPO / "cases" / "hall-cage-1mw.yaml").read_text())
+        spec["gallery"]["depth"] = depth
+        return spec, model_module.build_model(spec), model_module
+
+    def derived(self, spec, module) -> float:
+        cell = module.parse_cell_size(spec["mesh"]["cell_size"])
+
+        def on_grid(value, axis):
+            return max(1, round(value / cell[axis])) * cell[axis]
+
+        row_length = int(spec["racks"]["per_row"]) * on_grid(
+            float(spec["racks"]["size"][0]), 0)
+        hall_length = 2 * on_grid(float(spec["aisles"]["perimeter"]), 0) + row_length
+        sides = int(spec["gallery"].get("sides", 1))
+        return on_grid(sides * float(spec["gallery"]["depth"]) + hall_length, 0)
+
+    def test_an_off_grid_gallery_derives_the_room_the_mesh_builds(self):
+        for depth in (4.4, 4.45, 4.5, 4.55, 4.77, 5.0):
+            spec, built, module = self.hall(depth)
+            with self.subTest(gallery=depth):
+                self.assertAlmostEqual(
+                    self.derived(spec, module), built.domain.hi[0], places=6,
+                    msg="the derivation stops before the mesh does")
+
+    def test_the_software_says_which_plane_it_moved(self):
+        """The reader is told on the page, not by a failing build."""
+        _, built, _ = self.hall(4.45)
+        said = " ".join(built.warnings)
+        self.assertIn("domain length", said)
+        self.assertIn("falls between", said)
+
+    def test_the_manual_says_the_total_is_snapped(self):
+        text = MANUAL.read_text()
+        self.assertIn("The last step is the mesh", text)
+        self.assertIn("then snapped to cell x", text)

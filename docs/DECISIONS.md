@@ -4885,3 +4885,31 @@ holds the log and prints only the exit code is asking its user to guess.
 **Consequence.** The decomposition changes no result — it changes what the run
 pays to exchange. A case decomposed before this and re-run now must be built
 again, which is one of the failures the log reader names.
+
+---
+
+## ADR-114 — The derivation ends where the mesh ends
+
+**Decision.** The hall derivation in `docs/CASE-AUTHORING.md` §2 finishes with
+the grid: `total_x` and `total_y` are the sum of the parts SNAPPED to the cell,
+because that is the last thing the software does to them. The test that mirrors
+the formula snaps them too, and a guard now drives it with gallery depths that
+do not land on the cell.
+
+**Why.** A build failed on `hall-cage-1mw` with `22.9 != 22.8`: the manual's
+formula said 22,90 m, the software built 22,80 m, and neither was wrong. The
+room is meshed, and the overall size is rounded to the nearest cell face — a
+gallery of 4,45 m on 0,20 m cells moves the total by half a cell. Every shipped
+hall until now was drawn on its own grid, so the derivation agreed with the
+software for the wrong reason: nothing in any of them was ever rounded, and the
+one case a person edited on the page found the gap the same afternoon.
+
+The software already said so — `domain length: 21.700 m falls between 0.20 m
+grid lines; the mesh uses 21.80 m (+100 mm)` is in the summary, by name
+(ADR-074). What was missing was the manual agreeing with it, so an engineer
+checking a drawing against the derivation could tell a rounding from an error.
+
+**Consequence.** A case whose parts are all multiples of the cell derives
+exactly as before. One whose parts are not now derives what the mesh builds,
+and the difference — up to half a cell — is named in the summary rather than
+found by a failing test.

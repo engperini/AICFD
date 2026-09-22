@@ -55,9 +55,16 @@ You state `hall.size: [x, y, z]`.
 block_length  = sum of the position widths in the typical row       (each snapped to cell x)
 row_length    = blocks x block_length + (blocks - 1) x aisles.transverse
 hall_length   = 2 x aisles.perimeter + row_length + sides x plenum.depth
-total_x       = gallery.sides x gallery.depth + hall_length
+total_x       = gallery.sides x gallery.depth + hall_length          (then snapped to cell x)
 total_y       = 2 x aisles.perimeter + pods x (2 x rack_depth + aisles.hot) + (pods - 1) x aisles.cold
+                                                                     (then snapped to cell y)
 ```
+
+**The last step is the mesh.** The overall size is snapped to the cell, so a
+part that falls between grid lines moves the total by up to half a cell: a
+4,77 m gallery on 0,20 m cells makes a 22,34 m room the mesh builds at 22,40 m.
+Derive the nominal number, then snap it — and the software says which plane it
+moved, by name, in the summary (ADR-074, ADR-114).
 
 Read those backwards and they are your extraction procedure. Given a drawing
 with a measured hall, you solve for the inputs:
