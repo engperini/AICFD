@@ -16,6 +16,10 @@ import { withCase } from './case.js';
 // The ramp the maps are being shown in: the document follows the screen it
 // was asked for from (ADR-101).
 import { rememberedRamp } from './colormaps.js';
+// What this room's machines are called. One rule, in the model: a tile
+// reading `Fan wall` over a hall cooled by five CRACs is wrong about the
+// room, not about the number under it (ADR-102).
+import { unitNaming } from './drawing.js';
 
 main();
 
@@ -129,6 +133,13 @@ function currentMode() {
 
 // --- rendering --------------------------------------------------------------
 
+/** The room's machines, named as the model names them, capitalised for a
+ * tile: `Fan wall`, `CRAC`, `CRAH`. */
+function unitName(meta) {
+  const noun = unitNaming(meta?.model).noun;
+  return noun.charAt(0).toUpperCase() + noun.slice(1);
+}
+
 function layoutHtml(meta) {
   const kpis = meta.kpis;
   // Judged at the top of the rack when the export carries it -- the worst
@@ -201,8 +212,8 @@ function layoutHtml(meta) {
             ? ''
             : tile(
                 kpis.fan_static_pa
-                  ? `Fan wall (of ${kpis.fan_static_pa.toFixed(0)} Pa)`
-                  : 'Fan wall',
+                  ? `${unitName(meta)} (of ${kpis.fan_static_pa.toFixed(0)} Pa)`
+                  : unitName(meta),
                 kpis.fan_rise_pa.toFixed(1),
                 'Pa',
               )

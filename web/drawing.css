@@ -23,6 +23,12 @@
 .dw-wall{fill:var(--containment);stroke:var(--containment);stroke-width:1}
 .dw-opening{fill:var(--hot);stroke:var(--hot);stroke-width:1}
 .dw-fan{fill:var(--cold);stroke:var(--cold);stroke-width:1}
+/* The customer cage: a security boundary round one customer's rows, and
+   neither containment nor a grille. Violet, so a reader looking for it on the
+   plan finds it at once -- it was drawn in the containment green and read as
+   an aisle wall (ADR-102). */
+.dw-cage{fill:none;stroke:var(--series-7, #4a3aa7);stroke-width:1.6}
+.dw-cage.dw-edge{stroke-width:2.2}
 /* The unit's depth reaching back into the mechanical gallery: quiet, because
    it is the machine's envelope and not a surface the solver knows about. The
    heavy fan line is drawn over its face, so the two read as one machine. */

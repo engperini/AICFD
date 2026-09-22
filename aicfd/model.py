@@ -936,7 +936,7 @@ def stations(model: Model) -> list[Station]:
     """
     if not model.racks:
         return []
-    unit = "room unit" if model.floor_height else "fan wall"
+    unit = unit_naming(model.equipment, model.floor_height)["noun"]
     return [
         Station("supply", "Supply",
                 f"leaving the {unit}, mixed over every unit"),
@@ -1198,6 +1198,44 @@ def equipment_in_use(spec: dict) -> dict | None:
         "wants": wanted_arrangement(spec),
         "options": options,
     }
+
+
+#: WHAT THE MACHINES IN THIS ROOM ARE CALLED.
+#:
+#: A wall of fans in a mechanical gallery is a fan wall. A unit that stands in
+#: the room and blows down through the deck is a CRAC when it makes its own
+#: cold with a refrigerant circuit and a CRAH when it is fed chilled water --
+#: which is what the engineer reading the drawing calls them, and what the
+#: as-built schedule calls them. Keyed by (arrangement, cooling), because both
+#: decide the word (ADR-102).
+UNIT_NAMING = {
+    ("fanwall", "chilled_water"): ("fan wall", "fan walls", "FW"),
+    ("fanwall", "dx"): ("fan wall", "fan walls", "FW"),
+    ("downflow", "chilled_water"): ("CRAH", "CRAHs", "CRAH"),
+    ("downflow", "dx"): ("CRAC", "CRACs", "CRAC"),
+}
+
+
+def unit_naming(unit, floor_height: float | None = None) -> dict:
+    """The noun, its plural and the tag a drawing puts on each machine.
+
+    ONE place, because everything that speaks to a reader has to agree: the
+    drawings on the page, the figures in the report, the prose around them and
+    the summary. A plan that labelled five direct-expansion room units `fan
+    wall` was wrong in the one place a reader checks the model against the
+    room they know -- and it was wrong because each drawing decided the word
+    for itself (ADR-102).
+
+    With no unit named the room still has machines, and the arrangement alone
+    says which kind: a case on a raised floor is fed by units standing in it.
+    """
+    if unit is None:
+        noun, plural, tag = (("room unit", "room units", "AC") if floor_height
+                             else ("fan wall", "fan walls", "FW"))
+    else:
+        noun, plural, tag = UNIT_NAMING.get(
+            (unit.arrangement, unit.cooling), ("fan wall", "fan walls", "FW"))
+    return {"noun": noun, "plural": plural, "tag": tag}
 
 
 def equipment_for(spec: dict):
@@ -3283,7 +3321,8 @@ def summary_rows(model: Model) -> list[tuple[str, str, str]]:
             f"design bulk dT {num(model.design_delta_t_k, 1)} K",
         ),
         (
-            "Fan wall face" + (f" ({len(fans)} units)" if len(fans) > 1 else ""),
+            unit_naming(model.equipment, model.floor_height)["noun"].capitalize()
+            + " face" + (f" ({len(fans)} units)" if len(fans) > 1 else ""),
             face(fan),
             f"{num(fan.area)} m2 · {num(model.fan_face_velocity_ms)} m/s per unit",
         ),
@@ -3355,7 +3394,8 @@ def summary_rows(model: Model) -> list[tuple[str, str, str]]:
         ),
         *hvac_rows(model),
         (
-            "Fan wall pressure",
+            unit_naming(model.equipment, model.floor_height)["noun"].capitalize()
+            + " pressure",
             (
                 f"{num(model.fan_available_pa() or 0, 0)} Pa available at "
                 f"{num(model.unit_airflow_m3h, 0)} m3/h per unit"
@@ -3471,6 +3511,9 @@ def to_dict(model: Model, spec: dict) -> dict:
         ],
         "fans": [p.name for p in model.fans],
         "fan_sides": [p.sign for p in model.fans],
+        # What to CALL them, decided once here rather than by each drawing
+        # and each caption for itself (ADR-102).
+        "unit_naming": unit_naming(model.equipment, model.floor_height),
         # How the units decide their duty: to their own return, or as one
         # networked plant to the worst return any of them sees (ADR-064). The
         # report has to say which produced the per-unit capacity it shows.

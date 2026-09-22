@@ -35,7 +35,7 @@ import math
 import shutil
 from pathlib import Path
 
-from aicfd.model import BLOCKED_D, BLOCKED_F, Model, Panel
+from aicfd.model import BLOCKED_D, BLOCKED_F, Model, Panel, unit_naming
 
 TEMPLATES = Path(__file__).parent / "templates"
 
@@ -1245,6 +1245,14 @@ def _plenum_lines(model: Model) -> list[str]:
     ]
 
 
+def _unit_label(model: Model) -> str:
+    """What the summary calls this room's machines, pluralised where there is
+    more than one: `Fan walls`, `CRACs`, `CRAHs` (ADR-102)."""
+    naming = unit_naming(model.equipment, model.floor_height)
+    word = naming["plural"] if model.fan_count > 1 else naming["noun"]
+    return word[0].upper() + word[1:]
+
+
 def summary(model: Model) -> str:
     """What the generator derived, in the user's units."""
     dx, dy, dz = model.domain.size
@@ -1258,16 +1266,15 @@ def summary(model: Model) -> str:
         + " m)",
         f"  IT load         {model.total_load_w / 1000:.1f} kW across "
         f"{len(model.racks)} rack(s)",
-        f"  Fan wall{'s' if model.fan_count > 1 else ' '}       "
+        # Named for what the room really has: a wall of fans, or the CRACs
+        # and CRAHs that stand in it. The column stays put either way
+        # (ADR-102).
+        f"  {_unit_label(model):<15} "
         + (f"{model.fan_count} x " if model.fan_count > 1 else "")
         + f"{model.unit_airflow_m3h:,.0f} m3/h at "
         f"{model.supply_temp_c:.1f} degC, "
         f"{model.fan_face_velocity_ms:.2f} m/s through "
-        f"{model.fans[0].area:.2f} m2 each" if model.fan_count > 1 else
-        f"  Fan wall        {model.airflow_m3h:,.0f} m3/h at "
-        f"{model.supply_temp_c:.1f} degC, "
-        f"{model.fan_face_velocity_ms:.2f} m/s through "
-        f"{model.fans[0].area:.2f} m2",
+        f"{model.fans[0].area:.2f} m2" + (" each" if model.fan_count > 1 else ""),
         f"  Rack demand     {model.rack_demand_m3s * 3600:,.0f} m3/h "
         f"({model.rack_demand_m3s * 3600 / model.airflow_m3h * 100:.0f}% of supply)",
         f"  Design bulk dT  {model.design_delta_t_k:.1f} K",

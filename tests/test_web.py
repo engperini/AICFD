@@ -633,3 +633,48 @@ class ColourRampChoiceTest(unittest.TestCase):
             self.assertNotIn("aicfd.ramp", (WEB / name).read_text(),
                              f"{name} reads the key for itself")
         self.assertIn("'aicfd.ramp'", (WEB / "colormaps.js").read_text())
+
+
+class MachinesAreCalledWhatTheyAreTest(unittest.TestCase):
+    """A CRAC is not a fan wall, and the page must not say it is (ADR-102).
+
+    A hall cooled by five direct-expansion room units had `fan wall` on every
+    drawing, on the KPI tile and through the report, because the noun was a
+    literal in eight files. The model decides it now and everything reads the
+    model -- so this checks that the page takes it from there and that its
+    fallback for an older export is the same rule the model applies.
+    """
+
+    def test_the_page_takes_the_word_from_the_model(self):
+        source = (WEB / "drawing.js").read_text()
+        self.assertIn("model?.unit_naming", source,
+                      "the drawing decides the name for itself")
+        self.assertNotIn("return 'fan wall';", source,
+                         "a machine is still hard-coded as a fan wall")
+
+    def test_the_kpi_tile_is_named_the_same_way(self):
+        source = (WEB / "results.js").read_text()
+        self.assertIn("unitNaming", source)
+        self.assertNotIn("'Fan wall'", source,
+                         "the tile still says Fan wall whatever the room has")
+
+    def test_the_fallback_matches_the_model_s_own_rule(self):
+        """An export written before the key existed still has to be named,
+        and by the same rule -- a raised floor is fed by units standing in
+        it, anything else by a wall of fans."""
+        from aicfd.model import unit_naming
+
+        source = (WEB / "drawing.js").read_text()
+        block = source[source.index("export const unitNaming"):]
+        block = block[:block.index("};")]
+        for floor, expected in ((None, unit_naming(None)),
+                                (0.9, unit_naming(None, 0.9))):
+            with self.subTest(floor_height=floor):
+                self.assertIn(f"noun: '{expected['noun']}'", block)
+                self.assertIn(f"tag: '{expected['tag']}'", block)
+
+    def test_the_cage_is_drawn_as_itself(self):
+        """It was drawn in the containment green, where it read as an aisle
+        wall -- the room's most visible feature, invisible."""
+        self.assertIn("dw-cage", (WEB / "drawing.js").read_text())
+        self.assertIn(".dw-cage", (WEB / "drawing.css").read_text())

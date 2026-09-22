@@ -4387,3 +4387,54 @@ disagree with the screen.
 
 **Not repainted.** The categorical series colours (`palette.SERIES`) and the
 convergence chart: those name things, and identity is not a magnitude.
+
+---
+
+## ADR-102 — A drawing calls the machines what they are, and shows the cage
+
+**Decision.** `model.unit_naming` decides what this room's machines are called
+— `fan wall`, `CRAC` or `CRAH` — from the unit's arrangement and how it makes
+cold. It travels in the viewer payload, and everything that speaks to a reader
+takes the word from there: the page's drawings and KPI tiles, the report's
+figures, tables and prose, and the model summary. Each machine carries a tag,
+`CRAC-01` onwards, and the same tag appears on every figure. The customer cage
+is drawn — violet, dashed for mesh and solid for drywall — on the page and in
+the report. Each rack row is named on the plan with the cabinets it carries.
+The three dimensioned drawings (Figures A, B and C) are removed.
+
+**Why the name.** A hall cooled by five direct-expansion room units had `fan
+wall` printed on every drawing, on the KPI tile, in the model summary and
+through the report's prose. It is wrong in the one place a reader checks the
+model against the room they know, and it was wrong because each drawing
+decided the word for itself — the noun was a literal in eight files. A CRAC
+and a CRAH differ by more than a letter, too: one makes its own cold with a
+refrigerant circuit, the other is fed chilled water, and the report says
+different things about the two.
+
+**Why the cage was invisible.** `cage_*` panels were in the model, meshed,
+solved and named in the summary, and no figure drew them: the report's panel
+lists named the containment and the plenum and stopped there, and the page
+drew them in the containment green, where they read as an aisle wall. A reader
+checking a study against a layout drawing looked for the room's most visible
+feature and did not find it.
+
+**Why the rows are named.** A hall plan is rows of identical grey boxes.
+Without a name on each one a reader cannot say which row a hot spot is in or
+count what is in it — the two questions that figure is looked at for. Naming
+every CABINET is the detail figure's job; at hall scale those labels come out
+smaller than the lines of the drawing.
+
+**Why Figures A, B and C are gone.** They were a section, a section and a plan,
+each with a chain of dimensions down two margins. Equal aspect and rotated
+chain labels put the drawing in one corner with the figures scattered across
+the empty two thirds, nowhere near what they measured; on a 23 × 15 m hall the
+room took a third of the frame and the dimension text overlapped the title. A
+drawing nobody can measure is not a layout drawing. What replaced them is
+nothing: the model page draws the same room to scale, with the cut where the
+reader put it, and the report keeps the detail figure — every cabinet, its name
+and its load — which is the part that was working.
+
+**Cost accepted.** The report no longer carries a dimensioned drawing at all.
+That is a real loss for a reader with only the document, and it is smaller than
+the loss of four pages of drawings that cannot be read. A dimensioned figure
+worth printing is a separate piece of work.

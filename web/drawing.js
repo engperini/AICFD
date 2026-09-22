@@ -137,10 +137,31 @@ const isPlenumWall = (panel) => /^plenum_wall/.test(panel.name);
 // itself, and the mesh in the dividing wall below it (ADR-076).
 const isTile = (panel) => /^tile_/.test(panel.name);
 const isDeck = (panel) => panel.name === 'floor_deck';
+// The customer cage. Drawn as neither containment nor a grille: it is a
+// SECURITY boundary, and a reader looking for it on the plan has to find it
+// (ADR-096, ADR-102).
+const isCage = (panel) => /^cage_/.test(panel.name);
 
-/** A fan wall is named once: seventeen captions reading "fan wall" say less
- * than one, and the rest are the same blue rectangle in the same wall. */
-const fanLabel = (panel, seen) => {
+/**
+ * What THIS room's machines are called: a wall of fans in a gallery is a fan
+ * wall, a unit standing in the room is a CRAC when it makes its own cold and a
+ * CRAH when it is fed chilled water.
+ *
+ * The model decides it and carries it in the payload, so the page, the report
+ * and the prose all say the same word. A drawing that labelled five
+ * direct-expansion room units `fan wall` was wrong in the one place a reader
+ * checks the model against the room they know (ADR-102). An export written
+ * before the key existed falls back to the same rule the model applies.
+ */
+export const unitNaming = (model) =>
+  model?.unit_naming
+  ?? (model?.floor_height
+    ? { noun: 'room unit', plural: 'room units', tag: 'AC' }
+    : { noun: 'fan wall', plural: 'fan walls', tag: 'FW' });
+
+/** A machine is named once per drawing: seventeen captions reading "CRAC" say
+ * less than one, and the rest are the same blue rectangle in the same wall. */
+const fanLabel = (panel, seen, model) => {
   if (isSupply(panel)) {
     if (seen.supply) return null;
     seen.supply = true;
@@ -148,7 +169,7 @@ const fanLabel = (panel, seen) => {
   }
   if (panel.kind !== 'fan' || seen.fan) return null;
   seen.fan = true;
-  return 'fan wall';
+  return unitNaming(model).noun;
 };
 
 /**
@@ -187,12 +208,13 @@ const klass = (panel) =>
   // Giving it a colour of its own -- the cold blue of the air through it --
   // made it a new thing to learn on a drawing where red already means "a
   // grille is here".
-  isPlenumWall(panel) ? 'dw-partition'
-    // The deck is the floor, not a wall to look at: drawn faint so the room
-    // on top of it stays the thing being read.
-    : isDeck(panel) ? 'dw-deck'
-      : panel.kind === 'wall' ? 'dw-wall'
-        : panel.kind === 'fan' ? 'dw-fan' : 'dw-opening';
+  isCage(panel) ? 'dw-cage'
+    : isPlenumWall(panel) ? 'dw-partition'
+      // The deck is the floor, not a wall to look at: drawn faint so the room
+      // on top of it stays the thing being read.
+      : isDeck(panel) ? 'dw-deck'
+        : panel.kind === 'wall' ? 'dw-wall'
+          : panel.kind === 'fan' ? 'dw-fan' : 'dw-opening';
 
 function el(tag, attrs = {}, text) {
   const node = document.createElementNS(NS, tag);
@@ -454,7 +476,7 @@ export function drawView(model, view, scale, options = {}) {
       continue;
     }
     paint(lo, hi, cut ? klass(panel) : `${klass(panel)} dw-beyond`,
-      cut ? null : PANEL_LABEL[panel.name] ?? fanLabel(panel, seen),
+      cut ? null : PANEL_LABEL[panel.name] ?? fanLabel(panel, seen, model),
       { labelAtTop: true });
   }
 
@@ -628,7 +650,8 @@ export function drawView(model, view, scale, options = {}) {
     // Only name what this section actually cuts, and only when the caption
     // fits along the line: a label spilling past its own opening is worse
     // than no label at all.
-    const label = cut ? EDGE_LABEL[panel.name] ?? fanLabel(panel, seenEdge) : null;
+    const label = cut
+      ? EDGE_LABEL[panel.name] ?? fanLabel(panel, seenEdge, model) : null;
     const long = Math.abs(a[2] - a[0]) + Math.abs(a[3] - a[1]);
     if (label && long > label.length * 6) {
       const tx = (a[0] + a[2]) / 2;
@@ -740,7 +763,7 @@ function planBands(model, axis) {
     for (const [lo, hi] of model.hot_aisles || []) add(lo, hi, 'hot aisle');
     for (const [lo, hi] of model.cold_aisles || []) add(lo, hi, 'cold aisle');
     const fan = (model.panels || []).find((q) => q.kind === 'fan');
-    if (fan) add(fan.extent[0][0], fan.extent[0][1], 'fan wall');
+    if (fan) add(fan.extent[0][0], fan.extent[0][1], unitNaming(model).noun);
   }
   return seg.sort((a, b) => a.lo - b.lo || a.hi - b.hi);
 }

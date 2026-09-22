@@ -30,6 +30,9 @@ GRID = "#e1e0d9"
 RACK_EDGE = "#6f6e6a"
 FAN = "#2a78d6"
 CONTAINMENT = "#1baf7a"
+#: The customer cage. The palette's violet, because it is neither the
+#: containment it is often drawn beside nor a machine.
+CAGE = "#4a3aa7"
 GOOD = "#0ca30c"
 WARN = "#fab219"
 BAD = "#d03b3b"
@@ -156,6 +159,35 @@ class Export:
         return self._equipment
 
     @property
+    def naming(self) -> dict:
+        """What this room's machines are called: noun, plural and drawing tag.
+
+        Decided by the model (`model.unit_naming`) and carried in the payload,
+        so the figures, the prose and the page all say the same word. An
+        export written before that key existed is a fan wall case unless it
+        has a raised floor, which is the rule the model applies too (ADR-102).
+        """
+        stated = self.model.get("unit_naming")
+        if stated:
+            return stated
+        return ({"noun": "room unit", "plural": "room units", "tag": "AC"}
+                if self.model.get("floor_height")
+                else {"noun": "fan wall", "plural": "fan walls", "tag": "FW"})
+
+    def unit_tag(self, index: int) -> str:
+        """What one machine is labelled on a drawing: `CRAC-01`.
+
+        Numbered from one in the order the model built them, which is the
+        order every table in the report lists them in.
+        """
+        return f"{self.naming['tag']}-{index + 1:02d}"
+
+    @property
+    def rows(self) -> list[dict]:
+        """The rack rows, where the export names them."""
+        return self.model.get("rows") or []
+
+    @property
     def fan_depth(self) -> float | None:
         """How far a unit reaches back into the mechanical gallery.
 
@@ -176,6 +208,30 @@ class Export:
             for p in self.payload["geometry"]["panels"]
             if not prefixes or p["name"].startswith(prefixes)
         ]
+
+
+#: How a customer cage is drawn: mesh is what you can see through, drywall is
+#: not, and a drawing that shows the same rectangle for both says nothing
+#: about the room (ADR-096). Dashed for mesh, solid for drywall.
+CAGE_STYLE = {"mesh": (0, (4, 2)), "drywall": "solid"}
+
+
+def _cage(ax, export, h: int, v: int, width: float = 1.0) -> None:
+    """The customer cage's walls, in whichever view this is.
+
+    THE CAGE WAS NOT ON ANY FIGURE. It was in the model, meshed, solved and
+    named in the summary, and every drawing in the report showed the hall
+    without it -- so a reader checking the study against the layout looked for
+    the room's most visible feature and did not find it (ADR-102).
+    """
+    # The payload carries the construction as the word itself (`mesh`,
+    # `drywall`); older exports of a case without a cage carry None.
+    style = CAGE_STYLE.get(export.model.get("cage"), "solid")
+    for panel in export.panels("cage_"):
+        ax.plot([panel["lo"][h], panel["hi"][h]],
+                [panel["lo"][v], panel["hi"][v]],
+                color=CAGE, linewidth=width, linestyle=style,
+                solid_capstyle="butt")
 
 
 # --- field maps ---------------------------------------------------------------
@@ -234,6 +290,40 @@ def _temperature_bar(plt, fig, mesh, cax, label="Air temperature (°C)",
     bar.ax.set_xlabel(f"{label}    ·    {note}", color=SECOND, fontsize=7.5,
                       labelpad=4)
     return bar
+
+
+def _row_labels(ax, export, h: int, v: int) -> None:
+    """Name each rack row on the plan, with how many cabinets it carries.
+
+    A HALL PLAN IS ROWS OF IDENTICAL GREY BOXES. Without a name on each one a
+    reader cannot say which row a hot spot is in, and cannot count what is in
+    it either -- the two questions anybody asks of this figure. Naming every
+    CABINET is the detail figure's job; at hall scale the labels would be
+    smaller than the lines (ADR-102).
+
+    Only in plan, and only where the row really is a row of this drawing's
+    axes -- the label goes at the row's own centre, in the row.
+    """
+    if v != 1 and h != 1:
+        return
+    by_id = {r["name"]: r for r in export.racks}
+    for row in export.rows:
+        racks = [by_id[name] for name in row.get("racks", []) if name in by_id]
+        if not racks:
+            continue
+        lo_h = min(r["lo"][h] for r in racks)
+        hi_h = max(r["hi"][h] for r in racks)
+        lo_v = min(r["lo"][v] for r in racks)
+        hi_v = max(r["hi"][v] for r in racks)
+        loaded = sum(1 for r in racks if r.get("load_w"))
+        ax.annotate(
+            f"{row['id']} · {len(racks)} cab"
+            + (f" · {loaded} loaded" if loaded != len(racks) else ""),
+            xy=((lo_h + hi_h) / 2, (lo_v + hi_v) / 2),
+            ha="center", va="center", fontsize=5.5, color=SECOND,
+            rotation=0 if (hi_h - lo_h) >= (hi_v - lo_v) else 90,
+            rotation_mode="anchor",
+        )
 
 
 def _outline(ax, lo, hi, h, v, **kwargs):
@@ -297,6 +387,8 @@ def plan(export: Export, out: Path, z: float, title: str,
                                "containment_door"):
         ax.plot([panel["lo"][h], panel["hi"][h]], [panel["lo"][v], panel["hi"][v]],
                 color=INK, linewidth=0.7)
+    _cage(ax, export, h, v, width=1.1)
+    _row_labels(ax, export, h, v)
     fans = export.panels("fan")
     for x in model.get("dividers", [model["hall"]["lo"][0]]):
         line = ([0, span], [x, x]) if turned else ([x, x], [0, rise])
@@ -328,7 +420,7 @@ def plan(export: Export, out: Path, z: float, title: str,
         if len(fans) <= 20:
             away = -9 * panel.get("sign", 1)  # into the gallery, not the hall
             ax.annotate(
-                f"{i + 1:02d}",
+                export.unit_tag(i),
                 xy=((lo + hi) / 2, at) if turned else (at, (lo + hi) / 2),
                 xytext=(0, away) if turned else (away, 0),
                 textcoords="offset points", fontsize=5.5, color=SECOND,
@@ -364,6 +456,7 @@ def section(export: Export, out: Path, normal: int, at: float, title: str,
         if rack["lo"][normal] - 1e-6 <= at <= rack["hi"][normal] + 1e-6:
             _outline(ax, rack["lo"], rack["hi"], h, 2,
                      edgecolor=RACK_EDGE, linewidth=0.3)
+    _cage(ax, export, h, 2, width=1.1)
     ax.plot([export.model["hall"]["lo"][0] if h == 0 else 0,
              export.model["hall"]["hi"][0] if h == 0 else span],
             [export.model["ceiling_z"]] * 2, color=INK, linewidth=1.2)
@@ -517,7 +610,9 @@ def units(export: Export, out: Path) -> Path:
     fans = [f for f in export.kpis.get("fans", [])]
     if not any(f.get("return_temp_c") is not None for f in fans):
         return None  # an export written before per-unit returns were measured
-    names = [f["name"].replace("fan", "") for f in fans]
+    # The tag each unit carries on every drawing in this report, so a bar
+    # here and a rectangle on the plan are the same machine (ADR-102).
+    names = [export.unit_tag(i) for i in range(len(fans))]
     index = np.arange(len(fans))
     rating = (export.model.get("operating") or {}).get("unit_capacity_kw")
     sides = export.model.get("fan_sides") or []
@@ -542,8 +637,9 @@ def units(export: Export, out: Path) -> Path:
     axes[1].set_ylabel("Heat removed (kW)")
     axes[1].set_title("Heat removed by each unit", loc="left")
     axes[1].set_xticks(index)
-    axes[1].set_xticklabels(names, fontsize=6.5)
-    axes[1].set_xlabel("fan wall")
+    axes[1].set_xticklabels(names, fontsize=6.5,
+                            rotation=90 if len(fans) > 12 else 0)
+    axes[1].set_xlabel(export.naming["plural"])
     # Where the units change gallery, because that is the grouping a reader
     # needs to see: each gallery serves the rack blocks at its own end.
     breaks = [i for i in range(1, len(sides)) if sides[i] != sides[i - 1]]
@@ -721,127 +817,34 @@ def capacity(export: Export, out: Path) -> Path | None:
     return out
 
 
-# --- the geometry drawings ----------------------------------------------------
+# --- the room in detail -------------------------------------------------------
 #
-# The temperature maps show a RESULT. These show the ROOM: what was modelled,
-# dimensioned, before any field is quoted. A reader checking a study against a
-# layout drawing has to be able to measure the model, and a reader checking
-# which cabinet is which has to be able to read its name off the plan.
-
-#: Each distinct part is dimensioned ONCE, where it first occurs. A hall
-#: repeats -- four pods, sixteen rows, the same aisle between each pair -- and
-#: dimensioning every instance puts seventeen figures down one margin and says
-#: nothing the first four do not (ADR-086).
-def _bands(model: dict, axis: int) -> list[tuple[float, float, str]]:
-    seen, out = set(), []
-
-    def add(lo, hi, label):
-        key = f"{label}|{hi - lo:.2f}"
-        if hi - lo >= 0.05 and key not in seen:
-            seen.add(key)
-            out.append((lo, hi, label))
-
-    if axis == 0:
-        for g in model.get("galleries") or []:
-            add(g["lo"][0], g["hi"][0], "gallery")
-        supply = [p for p in model.get("panels", [])
-                  if p["name"].startswith("supply_mesh")]
-        if supply:
-            wall = (model.get("galleries") or [{}])[0].get("hi", [0])[0]
-            add(min(wall, supply[0]["position"]), max(wall, supply[0]["position"]),
-                "supply plenum")
-        blocks = model.get("blocks") or []
-        for lo, hi in blocks:
-            add(lo, hi, "row")
-        for i in range(1, len(blocks)):
-            add(blocks[i - 1][1], blocks[i][0], "cross aisle")
-    else:
-        for row in model.get("rows") or []:
-            add(row["band"][0], row["band"][1], "row")
-        for lo, hi in model.get("hot_aisles") or []:
-            add(lo, hi, "hot aisle")
-        for lo, hi in model.get("cold_aisles") or []:
-            add(lo, hi, "cold aisle")
-        fan = next((p for p in model.get("panels", []) if p["kind"] == "fan"), None)
-        if fan:
-            add(fan["extent"][0][0], fan["extent"][0][1], "fan wall")
-    return sorted(out, key=lambda b: (b[0], b[1]))
-
-
-def _lanes(bands, stack=False):
-    """Which lane each band goes in: the first it does not collide in.
-
-    Two dimensions that overlap along the axis cannot share a line, and two
-    that do not overlap should, or a chain of five parts becomes five lines.
-    """
-    lanes: list[list[tuple[float, float]]] = []
-    out = []
-    for lo, hi, label in bands:
-        if stack:
-            # ONE LANE EACH. A chain across the room's width dimensions bands
-            # that TILE it -- cold aisle, row, hot aisle, row -- so none of
-            # them overlaps and the packing would put them all on one line.
-            # Their text runs along the band and overhangs it, so a 1,2 m row
-            # prints over both its neighbours (ADR-086).
-            out.append((lo, hi, label, len(lanes)))
-            lanes.append([(lo, hi)])
-            continue
-        for i, taken in enumerate(lanes):
-            if all(hi <= a + 1e-6 or lo >= b - 1e-6 for a, b in taken):
-                taken.append((lo, hi))
-                out.append((lo, hi, label, i))
-                break
-        else:
-            lanes.append([(lo, hi)])
-            out.append((lo, hi, label, len(lanes) - 1))
-    return out, len(lanes)
-
-
-def _chain(ax, placed, origin, pitch, horizontal):
-    """A dimension chain outside the geometry, growing away from it."""
-    for lo, hi, label, lane in placed:
-        at = origin - pitch * lane
-        mid = (lo + hi) / 2
-        line = dict(color=MUTED, linewidth=0.6, clip_on=False)
-        tick = pitch * 0.14
-        if horizontal:
-            ax.plot([lo, hi], [at, at], **line)
-            for x in (lo, hi):
-                ax.plot([x, x], [at - tick, at + tick], **line)
-            ax.text(mid, at + tick * 1.4, f"{hi - lo:.2f}", ha="center",
-                    va="bottom", fontsize=5.5, color=MUTED, clip_on=False)
-            ax.text(mid, at - tick * 1.4, label, ha="center", va="top",
-                    fontsize=5, color=MUTED, clip_on=False)
-        else:
-            ax.plot([at, at], [lo, hi], **line)
-            for y in (lo, hi):
-                ax.plot([at - tick, at + tick], [y, y], **line)
-            # Value and name on ONE rotated line: a 1,2 m row on a hall's
-            # scale is shorter than the words describing it, so two lines
-            # collide with each other and with the neighbouring lane.
-            # `rotation_mode="anchor"` so the alignment applies in the
-            # ROTATED frame. Without it every lane's text anchored to almost
-            # the same x and the chain printed on top of itself.
-            ax.text(at - tick * 1.6, mid, f"{hi - lo:.2f}  {label}",
-                    ha="center", va="center", rotation=90,
-                    rotation_mode="anchor", fontsize=5.5, color=MUTED,
-                    clip_on=False)
-
+# The temperature maps show a RESULT. This shows the ROOM: which cabinet is
+# which, what each one carries, and where the cage stands around them.
+#
+# IT USED TO SHOW THREE DIMENSIONED DRAWINGS TOO -- a transverse section, a
+# longitudinal one and a plan, each with a chain of dimensions down two
+# margins. They were removed. Equal aspect and a chain of rotated labels put
+# the drawing in one corner of the page with the figures scattered across the
+# empty two thirds, nowhere near the thing they measured; on a 23 x 15 m hall
+# the room occupied a third of the frame and the dimension text overlapped the
+# title. A drawing nobody can measure is not a layout drawing, and the model
+# page draws the same room properly, to scale, with the cut where the reader
+# put it (ADR-102).
 
 def geometry(export: Export, out: Path, axis: int, title: str,
-             zoom: tuple[float, float, float, float] | None = None) -> Path:
-    """The room as modelled, dimensioned. ``axis`` is the view's normal.
+             zoom: tuple[float, float, float, float]) -> Path:
+    """The room over one window, with every cabinet named. ``axis`` is the
+    view's normal and ``zoom`` is ``(h0, h1, v0, v1)`` in the view's own axes.
 
-    With ``zoom`` -- a window ``(h0, h1, v0, v1)`` in the view's own axes --
-    the same plan is drawn over that window only and every cabinet carries its
-    name and its load. The window is cut on BOTH axes: four metres of row
-    across the full width of a hall is a strip 4 by 31 m, and the names in it
-    come out smaller than the lines of the drawing.
+    The window is cut on BOTH axes: four metres of row across the full width
+    of a hall is a strip 4 by 31 m, and the names in it come out smaller than
+    the lines of the drawing.
     """
     plt = _pyplot()
     model = export.model
     h, v = [(1, 2), (0, 2), (0, 1)][axis]
-    lo_h, hi_h, lo_v, hi_v = (zoom or (0.0, export.size[h], 0.0, export.size[v]))
+    lo_h, hi_h, lo_v, hi_v = zoom
     rise = hi_v - lo_v
     span = hi_h - lo_h
     fig, ax = plt.subplots(figsize=(7.2, max(2.0, min(7.0, 7.2 * rise / span + 0.9))))
@@ -865,30 +868,30 @@ def geometry(export: Export, out: Path, axis: int, title: str,
         _outline(ax, panel["lo"], panel["hi"], h, v, edgecolor=FAN,
                  linewidth=0.6, linestyle=(0, (3, 2)))
 
-    if zoom is not None:
-        for rack in export.racks:
-            x0, x1 = rack["lo"][h], rack["hi"][h]
-            y0, y1 = rack["lo"][v], rack["hi"][v]
-            if x1 <= lo_h or x0 >= hi_h or y1 <= lo_v or y0 >= hi_v:
-                continue
-            ax.text((x0 + x1) / 2, (y0 + y1) / 2,
-                    f"{rack['name']}\n{rack.get('load_w', 0) / 1000:g} kW",
-                    ha="center", va="center", fontsize=5.5, color=INK,
-                    rotation=90 if (y1 - y0) > (x1 - x0) else 0, linespacing=1.5)
-        ax.set_xlim(lo_h, hi_h)
-        ax.set_ylim(lo_v, hi_v)
-    else:
-        pitch = max(rise, span) * 0.05
-        below, n_below = _lanes(_bands(model, h))
-        beside, n_beside = _lanes(_bands(model, v), stack=True)
-        # The vertical chain's lanes need more room than the horizontal
-        # ones: its text is rotated, so a lane's width is a line of type
-        # rather than its height.
-        wide = pitch * 1.8
-        _chain(ax, below, -pitch * 1.2, pitch, True)
-        _chain(ax, beside, -wide * 1.1, wide, False)
-        ax.set_xlim(-wide * (1.1 + n_beside), hi_h + pitch * 0.4)
-        ax.set_ylim(-pitch * (1.9 + n_below), hi_v + pitch * 0.4)
+    _cage(ax, export, h, v, width=1.2)
+    for i, panel in enumerate(export.panels("fan")):
+        if panel["hi"][h] <= lo_h or panel["lo"][h] >= hi_h:
+            continue
+        if panel["hi"][v] <= lo_v or panel["lo"][v] >= hi_v:
+            continue
+        ax.annotate(
+            export.unit_tag(i),
+            xy=((panel["lo"][h] + panel["hi"][h]) / 2,
+                (panel["lo"][v] + panel["hi"][v]) / 2),
+            ha="center", va="center", fontsize=5.5, color=FAN)
+    for rack in export.racks:
+        x0, x1 = rack["lo"][h], rack["hi"][h]
+        y0, y1 = rack["lo"][v], rack["hi"][v]
+        if x1 <= lo_h or x0 >= hi_h or y1 <= lo_v or y0 >= hi_v:
+            continue
+        ax.text((x0 + x1) / 2, (y0 + y1) / 2,
+                f"{rack['name']}\n{rack.get('load_w', 0) / 1000:g} kW",
+                ha="center", va="center", fontsize=5.5, color=INK,
+                rotation=90 if (y1 - y0) > (x1 - x0) else 0, linespacing=1.5)
+    # A margin, so a name against the edge of the window is not clipped by it.
+    margin_h, margin_v = (hi_h - lo_h) * 0.02, (hi_v - lo_v) * 0.02
+    ax.set_xlim(lo_h - margin_h, hi_h + margin_h)
+    ax.set_ylim(lo_v - margin_v, hi_v + margin_v)
 
     ax.set_aspect("equal")
     ax.axis("off")

@@ -570,3 +570,145 @@ class EveryResultProducesAReportTest(unittest.TestCase):
                     out = build(result, Path(tmp) / f"{result.name}.docx")
                     self.assertTrue(out.exists())
                     self.assertGreater(out.stat().st_size, 20_000)
+
+
+class NamingTest(unittest.TestCase):
+    """The machines are called what they are, everywhere (ADR-102)."""
+
+    def test_the_model_decides_the_word_from_the_machine(self):
+        from aicfd import equipment as library
+        from aicfd.model import unit_naming
+
+        for name, expected in (("P3100DA", "CRAC"),      # downflow, dx
+                               ("HDCV5300F-HT", "CRAH"),  # downflow, water
+                               ("CA80NPVG6", "fan wall")):
+            with self.subTest(unit=name):
+                self.assertEqual(unit_naming(library.load(name))["noun"], expected)
+
+    def test_a_case_that_names_no_unit_is_still_named(self):
+        from aicfd.model import unit_naming
+
+        self.assertEqual(unit_naming(None)["noun"], "fan wall")
+        self.assertEqual(unit_naming(None, 0.9)["noun"], "room unit")
+
+    def test_the_payload_carries_it_so_nothing_has_to_guess(self):
+        import copy
+
+        import yaml
+
+        from aicfd.model import build_model, to_dict
+
+        spec = yaml.safe_load(
+            (support.REPO / "cases" / "hall-cage-1mw.yaml").read_text())
+        built = build_model(copy.deepcopy(spec))
+        payload = to_dict(built, spec)
+        self.assertEqual(payload["unit_naming"]["noun"], "CRAC")
+
+    def test_the_summary_names_them_too(self):
+        """The one line an engineer reads before every run."""
+        import copy
+
+        import yaml
+
+        from aicfd import case as case_module
+        from aicfd.model import build_model
+
+        for name, word in (("hall-cage-1mw", "CRACs"),
+                           ("pod-raised-floor", "CRAH"),
+                           ("pod-fanwall", "Fan wall")):
+            spec = yaml.safe_load(
+                (support.REPO / "cases" / f"{name}.yaml").read_text())
+            text = case_module.summary(build_model(copy.deepcopy(spec)))
+            with self.subTest(case=name):
+                self.assertIn(word, text)
+
+
+@unittest.skipUnless(HAVE_EXTRAS, "python-docx and matplotlib are not installed")
+class FiguresShowTheRoomTest(unittest.TestCase):
+    """What the drawings must carry: the cage, the rows, the unit tags.
+
+    THE CAGE WAS ON NO FIGURE AT ALL. It was in the model, meshed, solved and
+    named in the summary, and every figure in the report drew the hall without
+    it (ADR-102). These check the drawing calls rather than the pixels: what
+    matters is that the panel reaches the canvas.
+    """
+
+    class Recorder:
+        """An axes that remembers what was asked of it."""
+
+        def __init__(self):
+            self.plots, self.texts = [], []
+
+        def plot(self, *args, **kwargs):
+            self.plots.append((args, kwargs))
+
+        def annotate(self, text, *args, **kwargs):
+            self.texts.append(text)
+
+        def text(self, _x, _y, text, *args, **kwargs):
+            self.texts.append(text)
+
+    def export_with_a_cage(self):
+        from aicfd.figures import Export
+
+        for name in ("bytedance-cage-crac", "hall-cage-1mw"):
+            for base in ("results", "reference"):
+                path = support.REPO / base / name
+                if (path / "viewer.json").is_file():
+                    export = Export(path)
+                    if export.panels("cage_"):
+                        return export
+        self.skipTest("no solved result with a cage in this clone")
+
+    def test_the_cage_reaches_the_drawing(self):
+        from aicfd.figures import _cage
+
+        export = self.export_with_a_cage()
+        ax = self.Recorder()
+        _cage(ax, export, 0, 1)
+        self.assertEqual(len(ax.plots), len(export.panels("cage_")),
+                         "a cage panel the model built is missing from the plan")
+
+    def test_mesh_and_drywall_are_not_the_same_line(self):
+        """They are the same rectangle and different rooms (ADR-096), so the
+        drawing has to distinguish them."""
+        from aicfd.figures import CAGE_STYLE
+
+        self.assertNotEqual(CAGE_STYLE["mesh"], CAGE_STYLE["drywall"])
+
+    def test_every_row_is_named_on_the_plan(self):
+        from aicfd.figures import Export, _row_labels
+
+        export = Export(RESULT)
+        ax = self.Recorder()
+        _row_labels(ax, export, 0, 1)
+        self.assertEqual(len(ax.texts), len(export.rows))
+        for row in export.rows:
+            self.assertTrue(any(str(row["id"]) in t for t in ax.texts),
+                            f"row {row['id']} is not named on the plan")
+
+    def test_each_machine_carries_its_tag(self):
+        from aicfd.figures import Export
+
+        export = Export(RESULT)
+        self.assertEqual(export.unit_tag(0), f"{export.naming['tag']}-01")
+        self.assertEqual(export.unit_tag(9), f"{export.naming['tag']}-10")
+
+    def test_the_detail_drawing_needs_a_window(self):
+        """The three dimensioned drawings are gone and the window is no longer
+        optional: `geometry(...)` without one used to produce them (ADR-102)."""
+        import inspect
+
+        from aicfd.figures import geometry
+
+        zoom = inspect.signature(geometry).parameters["zoom"]
+        self.assertIs(zoom.default, inspect.Parameter.empty)
+
+    def test_the_report_draws_no_dimensioned_room(self):
+        import inspect
+
+        from aicfd import report
+
+        source = inspect.getsource(report._draw)
+        for key in ("geo_a", "geo_b", "geo_c"):
+            self.assertNotIn(key, source)

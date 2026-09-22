@@ -267,15 +267,12 @@ def _draw(export: Export, figures: Path, ramp: str | None = None) -> dict:
     cold = model["cold_aisles"][len(model["cold_aisles"]) // 2]
     block = blocks[len(blocks) // 2]
     return {
-        # The room as modelled, dimensioned, before any field is quoted.
-        "geo_a": geometry(export, figures / "geo-a.png", 0,
-                          "A · Transverse section — through a pod"),
-        "geo_b": geometry(export, figures / "geo-b.png", 1,
-                          "B · Longitudinal section — through the hot aisle"),
-        "geo_c": geometry(export, figures / "geo-c.png", 2,
-                          "C · Plan — at rack height"),
+        # The room in detail: which cabinet is which, and what it carries.
+        # The three dimensioned drawings that used to stand beside it were
+        # removed -- unreadable, and the model page draws the room properly
+        # (ADR-102).
         "geo_zoom": geometry(export, figures / "geo-zoom.png", 2,
-                             "C (detail) — every cabinet, its name and its load",
+                             "Every cabinet, its name and its load",
                              zoom=_zoom_span(export)),
         "plan_mid": plan(export, figures / "plan-rack-mid.png", rack_top / 2,
                          f"Temperature at z = {rack_top / 2:.2f} m — rack mid-height",
@@ -422,7 +419,7 @@ def _introduction(doc) -> None:
           "aisle widths and clearances. It is meshed as a single structured "
           "hexahedral block, with every internal surface cut into it as a "
           "two-sided baffle — containment panels, false ceiling, row ends and "
-          "tops, return grilles and the fan walls.")
+          "tops, return grilles and the cooling units.")
     _bullets(doc, [
         "Racks are porous zones carrying their own resistance curve and their "
         "own heat.",
@@ -467,9 +464,9 @@ def _introduction(doc) -> None:
 
     _heading(doc, "1.5  Solving the room and the units together", 2)
     _para(doc,
-          "The supply air temperature is an output. A fan wall delivers what "
-          "its coil gives it, from the air the room returns, so the room and "
-          "the machines are solved as one problem.")
+          "The supply air temperature is an output. A cooling unit delivers "
+          "what its coil gives it, from the air the room returns, so the room "
+          "and the machines are solved as one problem.")
     _table(doc, ["Step", "What happens"], [
         ("1 — the room is solved",
          "A segment of the flow solution runs at the current supply air "
@@ -536,7 +533,8 @@ def _summary(doc, export: Export, drawn: dict) -> None:
         "and to establish whether the cooling plant removes the heat the "
         "equipment releases.",
         f"The hall carries {len(zones)} rack positions in {len(model['rows'])} "
-        f"row segments and {len(model['fans'])} fan wall units, against an "
+        f"row segments and {len(model['fans'])} {export.naming['noun']} units, "
+        f"against an "
         f"installed IT load of {_num(kpis['total_load_w'] / 1000, 0)} kW.",
     ])
 
@@ -544,8 +542,9 @@ def _summary(doc, export: Export, drawn: dict) -> None:
     _bullets(doc, [
         "Establish the temperature of the air entering each rack, and check it "
         "against the ASHRAE class A1 recommended range of 18 °C to 27 °C.",
-        "Confirm that the air loop closes: that the fan walls move the mass they "
-        "are given, that nothing leaks through a wall or reverses through an "
+        f"Confirm that the air loop closes: that the {export.naming['plural']} "
+        "move the mass they are given, that nothing leaks through a wall or "
+        "reverses through an "
         "intake, and that the return air carries the installed load.",
         "Quantify the resistance the room presents to the units, against the "
         "external static pressure their datasheet offers.",
@@ -554,7 +553,7 @@ def _summary(doc, export: Export, drawn: dict) -> None:
         "CFD result is quoted.",
     ])
 
-    _heading(doc, "Basis of design — fan wall selection point", 2)
+    _heading(doc, f"Basis of design — {export.naming['noun']} selection point", 2)
     unit = export.equipment
     if unit:
         _para(doc,
@@ -751,7 +750,7 @@ def _methodology(doc, export: Export, drawn: dict) -> None:
                                  + (f", {len(model['hot_aisles']) * len(blocks)} "
                                     "separate containment volumes" if len(blocks) > 1 else "")),
         ("Cold aisles", f"{len(model['cold_aisles'])}"),
-        ("Fan wall units", f"{len(model['fans'])}"),
+        (f"{export.naming['noun'].capitalize()} units", f"{len(model['fans'])}"),
     ]
     _table(doc, ["Feature", "As built in the model"], rows, widths=[7.0, 9.0])
 
@@ -762,7 +761,8 @@ def _methodology(doc, export: Export, drawn: dict) -> None:
           f"{_num(cell[0], 2)} × {_num(cell[1], 2)} × {_num(cell[2], 2)} m, with "
           f"every internal surface cut into it afterwards as a two-sided baffle: "
           f"the containment panels, the false ceiling, the row ends and tops, the "
-          f"return grilles and the fan walls. The room's air loop closes inside "
+          f"return grilles and the {export.naming['plural']}. The room's air "
+          f"loop closes inside "
           f"the box, so none of those surfaces is a domain boundary.")
     across, through, tall = _cells_per_rack(export)
     _para(doc,
@@ -770,7 +770,8 @@ def _methodology(doc, export: Export, drawn: dict) -> None:
           f"on the cabinet: {_cells(across)} across a rack's face and "
           f"{_num(through, 0)} through its depth, which is what decides how well "
           "the porous zone reproduces its own pressure curve. In the vertical it "
-          "is fine enough that the false ceiling, the fan wall top and the rack "
+          f"is fine enough that the false ceiling, the {export.naming['noun']} "
+          "top and the rack "
           f"tops land on cell faces ({_cells(tall)} up a cabinet) — a "
           "plane that falls mid-cell produces a ragged surface that leaks "
           "silently.")
@@ -782,11 +783,12 @@ def _methodology(doc, export: Export, drawn: dict) -> None:
 
     _heading(doc, "Boundary conditions and models", 2)
     _table(doc, ["Feature", "How it is modelled"], [
-        ("Fan wall", "A pair of patches on the same internal faces: air leaves the "
-                     "gallery through the intake and re-enters the cold aisle "
-                     "through the supply. Both are set by MASS flow, not volume — "
-                     "the air leaving is warmer and thinner than the air arriving, "
-                     "and in a closed loop a 1 % mismatch has nowhere to go."),
+        (export.naming["noun"].capitalize(),
+         "A pair of patches on the same internal faces: air leaves the "
+         "gallery through the intake and re-enters the cold aisle "
+         "through the supply. Both are set by MASS flow, not volume — "
+         "the air leaving is warmer and thinner than the air arriving, "
+         "and in a closed loop a 1 % mismatch has nowhere to go."),
         ("Rack", "A Darcy–Forchheimer cell zone with a volumetric enthalpy "
                  "source. The momentum sink along the airflow axis is "
                  "S = −(µ·d·u + ½·ρ·f·|u|·u); d is set to a nominal value and "
@@ -911,18 +913,13 @@ def _layout_section(doc, export: Export, drawn: dict) -> None:
          ", ".join(f"{w:g} m" for w in widths)),
     ], widths=[5.0, 2.4, 8.6])
 
-    for key, caption in (
-        ("geo_a", "Figure A — transverse section. The gallery, the units, the "
-                  "aisles and the contained volume, dimensioned."),
-        ("geo_b", "Figure B — longitudinal section through the hot aisle, "
-                  "dimensioned."),
-        ("geo_c", "Figure C — plan at rack height. Each distinct part is "
-                  "dimensioned once, where it first occurs; the hall repeats."),
-        ("geo_zoom", "Figure C (detail) — one pod of one block, every cabinet "
-                     "with its name and the load it carries."),
-    ):
-        if drawn.get(key):
-            _figure(doc, drawn[key], caption)
+    if drawn.get("geo_zoom"):
+        _figure(doc, drawn["geo_zoom"],
+                "One pod of one block at rack height: every cabinet with its "
+                "name and the load it carries, the customer cage where the "
+                f"hall has one, and any {export.naming['noun']} standing in "
+                "the window. The room itself is drawn to scale, with the cut "
+                "where you put it, on the model page.")
 
 
 def _surfaces_section(doc, export: Export) -> None:
@@ -1263,9 +1260,12 @@ def _results(doc, export: Export, drawn: dict) -> None:
                "throughout.")
     _figure(doc, drawn["plan_mid"],
             "Plan at rack mid-height — the plane that governs the intake "
-            "condition of the IT equipment. Each outlined rectangle is one rack; "
-            "the heavy lines are the containment and the dividing walls; the "
-            "blue bars in the dividing walls are the fan wall units.")
+            "condition of the IT equipment. Each outlined rectangle is one rack "
+            "and each row carries its name and the cabinets in it; the heavy "
+            "lines are the containment and the dividing walls; the violet "
+            "lines are the customer cage where the hall has one; the blue bars "
+            f"are the {export.naming['plural']}, tagged "
+            f"{export.unit_tag(0)} onwards.")
     _figure(doc, drawn["plan_top"],
             "Plan just below the top of the racks, at the mouth of the contained "
             "hot aisles — where recirculating or leaking air arrives first.")
@@ -1355,7 +1355,7 @@ def _results(doc, export: Export, drawn: dict) -> None:
 
 
 _CHECK_MEANING = {
-    "mass_balance": "the fan walls supplying and drawing different masses",
+    "mass_balance": "the units supplying and drawing different masses",
     "sealed_envelope": "any wall or baffle passing air",
     "no_backflow": "air reversing through a fan intake",
     "energy_closure": "the return air not carrying the installed load",
