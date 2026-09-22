@@ -268,10 +268,46 @@ class CaseTest(unittest.TestCase):
         self.assertEqual(mpirun[2], "buoyantSimpleFoam")  # the log keeps the solver's name
         self.assertEqual(case.pipeline(1), case.PIPELINE)
 
-    def test_the_decomposition_slabs_the_longest_axis(self):
+    def test_the_decomposition_shares_as_few_faces_as_it_can(self):
+        """Every face on a processor boundary is exchanged each iteration, so
+        the cut that shares fewest is the cut to make (ADR-113)."""
         text = case.decompose_par_dict(self.model, 4)
         self.assertIn("numberOfSubdomains 4;", text)
-        self.assertIn("(1 4 1)", text)  # the hall is longest across y
+        nx, ny, nz = case.decomposition(self.model, 4)
+        self.assertIn(f"({nx} {ny} {nz})", text,
+                      "the dictionary does not carry the chosen cut")
+        cells = self.model.divisions
+        total = cells[0] * cells[1] * cells[2]
+
+        def faces(n):
+            return sum((n[a] - 1) * (total // cells[a]) for a in range(3))
+
+        for cores in (4, 9, 16, 24):
+            chosen = case.decomposition(self.model, cores)
+            slab = [1, 1, 1]
+            slab[max(range(3), key=lambda a: cells[a])] = cores
+            with self.subTest(cores=cores):
+                self.assertEqual(chosen[0] * chosen[1] * chosen[2], cores,
+                                 "the cores are not all used")
+                self.assertLessEqual(faces(chosen), faces(tuple(slab)),
+                                     "slabbing one axis would share fewer")
+
+    def test_no_axis_is_cut_more_finely_than_it_has_cells(self):
+        """A subdomain with no cells in it is one `decomposePar` refuses."""
+        cells = self.model.divisions
+        for cores in (7, 12, 32, 64):
+            n = case.decomposition(self.model, cores)
+            with self.subTest(cores=cores):
+                for axis in range(3):
+                    self.assertLessEqual(n[axis], cells[axis])
+
+    def test_a_core_count_the_mesh_cannot_hold_is_refused_by_name(self):
+        # A prime larger than any axis of this mesh: nothing divides it, so
+        # every candidate would leave a subdomain outside the mesh.
+        with self.assertRaises(ValueError) as caught:
+            case.decomposition(self.model, 10_007)
+        self.assertIn("solver.processors", str(caught.exception))
+        self.assertIn("no cells in it", str(caught.exception))
 
     def test_the_warm_seed_is_warm_in_every_hot_aisle_and_cold_in_every_cold_one(self):
         text = case.warm_start(self.model)

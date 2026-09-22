@@ -4846,3 +4846,42 @@ chilled water the unit was selected at". The section is the METHOD, and the
 method now has two coil models: it describes both and says that section 2 names
 which one this plant is. Nothing there depends on the result, so the guard that
 keeps the introduction result-free still holds.
+
+---
+
+## ADR-113 — The cores are cut where it costs least, and a failure to start says why
+
+**Decision.** `case.decomposition` picks the grid `(nx, ny, nz)` that shares
+the fewest faces between processors, out of every factorisation of the core
+count, never cutting an axis more finely than it has cells. `decomposeParDict`
+is written from it. And where a run fails, the log is read for the phrases that
+say what to do about it — `FoamCommandFailed` carries the meaning, not just the
+exit code.
+
+**Why.** Both came from the same afternoon on a 1 MW hall.
+
+The mesh was slabbed across its longest axis, because for a box slabs share
+fewest faces — which is true of ONE cut and false of many. Every extra slab is
+another plane of halo exchanged each iteration, while the work on each core
+falls:
+
+| cores | slabbed `(1 N 1)` | best grid | |
+|---|---|---|---|
+| 9 | 28.512 faces | `(3 3 1)` | 18.612 (−35 %) |
+| 16 | 53.460 | `(4 4 1)` | 27.918 (−48 %) |
+| 24 | 81.972 | `(4 6 1)` | 35.046 (−57 %) |
+| 32 | 110.484 | `(4 8 1)` | 42.174 (−62 %) |
+
+which is why 16 cores ran no faster than 9: nearly twice the communication for
+half the work each. On this mesh (108 × 174 × 33) the cut is never in z, and
+the search says so rather than a rule of thumb — on a smaller hall
+(15 × 60 × 32) the cheapest cut of four cores IS `(1 2 2)`.
+
+Then 24 cores would not start at all, and the tool said `mpirun exited 1`.
+Open MPI had written the reason into the log: it counts physical cores as
+slots, not threads, and refuses to put two ranks on one core. A tool that
+holds the log and prints only the exit code is asking its user to guess.
+
+**Consequence.** The decomposition changes no result — it changes what the run
+pays to exchange. A case decomposed before this and re-run now must be built
+again, which is one of the failures the log reader names.

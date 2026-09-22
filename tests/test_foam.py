@@ -152,3 +152,51 @@ class AshraeTests(unittest.TestCase):
 
 if __name__ == "__main__":
     unittest.main()
+
+
+class AFailureSaysWhatToDoTest(unittest.TestCase):
+    """`mpirun exited 1` is not a reason (ADR-113).
+
+    Asking for more cores than the machine gives MPI slots for, the solver
+    never starts. Open MPI says exactly why, in the log -- and the tool
+    printed only the exit code, so the reason sat in a file nobody was told to
+    open.
+    """
+
+    def failure(self, text: str):
+        import tempfile
+        from pathlib import Path
+
+        from aicfd.run import FoamCommandFailed
+
+        log = Path(tempfile.mkdtemp()) / "log.buoyantSimpleFoam"
+        log.write_text(text)
+        return FoamCommandFailed("mpirun", 1, log)
+
+    def test_too_many_cores_is_named_and_the_remedy_given(self):
+        failed = self.failure(
+            "There are not enough slots available in the system to satisfy "
+            "the 24 slots that were requested by the application\n")
+        self.assertIn("solver.processors", str(failed))
+        self.assertIn("core count", str(failed))
+        self.assertIsNotNone(failed.why)
+
+    def test_a_stale_decomposition_is_named(self):
+        failed = self.failure(
+            "number of processor directories = 9 is not equal to the number "
+            "of processors = 16\n")
+        self.assertIn("build it again", str(failed))
+
+    def test_a_failure_it_cannot_read_still_points_at_the_log(self):
+        failed = self.failure("Something nobody has seen before\n")
+        self.assertIsNone(failed.why)
+        self.assertIn("log.buoyantSimpleFoam", str(failed))
+        self.assertIn("exited 1", str(failed))
+
+    def test_a_log_that_is_not_there_is_not_a_second_failure(self):
+        from pathlib import Path
+
+        from aicfd.run import FoamCommandFailed
+
+        failed = FoamCommandFailed("mpirun", 1, Path("/nowhere/log.x"))
+        self.assertIn("exited 1", str(failed))

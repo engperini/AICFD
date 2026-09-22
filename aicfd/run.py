@@ -37,14 +37,58 @@ class FoamNotInstalled(RuntimeError):
     pass
 
 
+#: What a failure MEANS, where the message it prints is not the thing to do
+#: about it. The key is a phrase the utility writes into its log; the value is
+#: what the engineer can act on.
+#:
+#: The first of these cost an afternoon: asking for more cores than the
+#: machine gives MPI slots for, the solver never starts and the tool said only
+#: `mpirun exited 1`, with the reason sitting in a log nobody was told to open
+#: (ADR-113).
+FAILURE_MEANS = (
+    ("not enough slots",
+     "this machine offers MPI fewer slots than `solver.processors` asked "
+     "for. Open MPI counts physical cores, not threads, and it refuses to "
+     "put two ranks on one core rather than run them at half speed. Lower "
+     "`solver.processors` to the core count, or run it yourself with "
+     "`mpirun --use-hwthread-cpus` if you mean to use the threads"),
+    ("There are not enough slots available",
+     "this machine offers MPI fewer slots than `solver.processors` asked "
+     "for. Lower `solver.processors` to the machine's core count"),
+    ("unable to find the specified executable",
+     "the solver is not on the PATH mpirun was given. Check the OpenFOAM "
+     "environment is the same one AICFD found"),
+    ("number of processor directories",
+     "the decomposed mesh does not match `solver.processors`. The case was "
+     "decomposed for a different core count -- build it again"),
+)
+
+
+def _why_it_failed(log: Path) -> str | None:
+    """The line in the log that says what to do, where there is one."""
+    try:
+        text = log.read_text(errors="replace")
+    except OSError:
+        return None
+    for phrase, meaning in FAILURE_MEANS:
+        if phrase in text:
+            return meaning
+    return None
+
+
 class FoamCommandFailed(RuntimeError):
     def __init__(self, command: str, returncode: int, log: Path):
+        why = _why_it_failed(log)
         super().__init__(
-            f"{command} exited {returncode}. Full output: {log}"
+            f"{command} exited {returncode}"
+            + (f": {why}. " if why else ". ")
+            + f"Full output: {log}"
         )
         self.command = command
         self.returncode = returncode
         self.log = log
+        #: None where the log says nothing this tool knows how to read.
+        self.why = why
 
 
 @dataclass

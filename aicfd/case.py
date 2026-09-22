@@ -762,17 +762,66 @@ def _fan_baffle(model: Model, fan: Panel, k: float, epsilon: float) -> str:
     }}"""
 
 
+def decomposition(model: Model, processors: int) -> tuple[int, int, int]:
+    """How to cut the box between ``processors``, as (nx, ny, nz).
+
+    THE CUTS ARE WHAT THE RUN PAYS FOR. Every face on a processor boundary is
+    a halo exchange each iteration, and slabbing one axis makes that cost grow
+    with the core count while the work on each core falls. On the 1 MW hall
+    (108 x 174 x 33), slabbing y costs 28.512 shared faces at 9 cores and
+    53.460 at 16 -- nearly twice the communication for half the work each,
+    which is why going from 9 cores to 16 bought nothing measurable. Cutting
+    it 4 x 4 instead costs 27.918: the same 16 cores, 48 % less to exchange
+    (ADR-113).
+
+    A grid decomposition of `n` parts on an axis puts `n - 1` planes through
+    the mesh, so the faces to exchange are the sum over the axes of
+    (n - 1) x the cells in the plane normal to it. Every factorisation of the
+    core count is tried -- there are never many -- and the cheapest wins. Ties
+    go to the one that leaves the thickest slabs, because a subdomain one cell
+    thick is a halo on both sides of nothing.
+
+    An axis is never cut more finely than it has cells: that decomposition
+    holds empty subdomains, and `decomposePar` refuses it.
+    """
+    cells = model.divisions
+    total = cells[0] * cells[1] * cells[2]
+
+    def faces(n: tuple[int, int, int]) -> int:
+        return sum((n[a] - 1) * (total // cells[a]) for a in range(3))
+
+    options = []
+    for nx in range(1, processors + 1):
+        if processors % nx or nx > cells[0]:
+            continue
+        for ny in range(1, processors // nx + 1):
+            if (processors // nx) % ny or ny > cells[1]:
+                continue
+            nz = processors // (nx * ny)
+            if nz > cells[2]:
+                continue
+            n = (nx, ny, nz)
+            options.append((faces(n), -min(cells[a] // n[a] for a in range(3)), n))
+    if not options:
+        raise ValueError(
+            f"solver.processors: {processors} cores cannot be cut out of a "
+            f"{cells[0]} x {cells[1]} x {cells[2]} mesh -- every way of "
+            f"splitting them leaves a subdomain with no cells in it. Use "
+            f"fewer cores, or a finer mesh"
+        )
+    return min(options)[2]
+
+
 def decompose_par_dict(model: Model, processors: int) -> str:
-    """Split the box into slabs across its longest axis.
+    """Split the box between the cores, cutting as few faces as possible.
 
     ``simple`` rather than scotch because the packaged build ships scotch as a
-    stub, and for a box slabs are as good: fewest shared faces, and every
-    processor gets the same number of cells. Cyclic grille pairs and baffles
-    cut by a slab boundary are handled by OpenFOAM's processorCyclic patches.
+    stub, and for a box a grid is as good: every processor gets the same
+    number of cells, and `decomposition` picks the grid that shares the fewest
+    faces (ADR-113). Cyclic grille pairs and baffles cut by a processor
+    boundary are handled by OpenFOAM's processorCyclic patches.
     """
-    longest = max(range(3), key=lambda a: model.domain.size[a])
-    n = [1, 1, 1]
-    n[longest] = processors
+    n = decomposition(model, processors)
     return f"""{_header(model, "dictionary", "decomposeParDict")}
 numberOfSubdomains {processors};
 method          simple;
