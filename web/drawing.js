@@ -198,7 +198,7 @@ const coldAisles = (model) => model.cold_aisles || [model.aisles.cold];
 const hotAisles = (model) => model.hot_aisles || [model.aisles.hot];
 
 /** Colour class for a panel, by what it is. */
-const klass = (panel) =>
+const klass = (panel, model) =>
   // The plenum's inner leaf is the building, not containment. Every `wall`
   // is drawn in the containment green, and a green line across the end of
   // the hall says that end is contained, which it is not (ADR-058, and the
@@ -208,7 +208,10 @@ const klass = (panel) =>
   // Giving it a colour of its own -- the cold blue of the air through it --
   // made it a new thing to learn on a drawing where red already means "a
   // grille is here".
-  isCage(panel) ? 'dw-cage'
+  // Mesh and drywall are the same rectangle and different rooms, so the line
+  // says which: dashed for what the air crosses, solid for what it cannot
+  // (ADR-096, ADR-102). The model carries the word.
+  isCage(panel) ? `dw-cage${model?.cage === 'drywall' ? '' : ' dw-cage-mesh'}`
     : isPlenumWall(panel) ? 'dw-partition'
       // The deck is the floor, not a wall to look at: drawn faint so the room
       // on top of it stays the thing being read.
@@ -475,7 +478,7 @@ export function drawView(model, view, scale, options = {}) {
       if (!enclosing.has(id)) enclosing.set(id, [lo, hi]);
       continue;
     }
-    paint(lo, hi, cut ? klass(panel) : `${klass(panel)} dw-beyond`,
+    paint(lo, hi, cut ? klass(panel, model) : `${klass(panel, model)} dw-beyond`,
       cut ? null : PANEL_LABEL[panel.name] ?? fanLabel(panel, seen, model),
       { labelAtTop: true });
   }
@@ -641,7 +644,7 @@ export function drawView(model, view, scale, options = {}) {
     const { lo, hi } = panelBounds(panel);
     const along = panel.axis === view.h ? view.v : view.h;
     const cut = straddles(lo, hi, view.normal, at);
-    const cls = `${klass(panel)} dw-edge${cut ? '' : ' dw-edge-beyond'}`;
+    const cls = `${klass(panel, model)} dw-edge${cut ? '' : ' dw-edge-beyond'}`;
     const a = panel.axis === view.h
       ? [X(panel.position), Y(lo[along]), X(panel.position), Y(hi[along])]
       : [X(lo[along]), Y(panel.position), X(hi[along]), Y(panel.position)];
@@ -663,7 +666,7 @@ export function drawView(model, view, scale, options = {}) {
           x: tx,
           y: ty,
           dy: -5,
-          class: `dw-edge-label ${klass(panel)}`,
+          class: `dw-edge-label ${klass(panel, model)}`,
           ...(panel.axis === view.h ? { transform: `rotate(-90 ${tx} ${ty})` } : {}),
         }, label),
       );

@@ -30,6 +30,9 @@ from aicfd.figures import (
     Export, ashrae, capacity, convergence, geometry, plan, rack_map, section,
     units,
 )
+# `CRAC` at the start of a label stays `CRAC`; `str.capitalize` makes it
+# `Crac`, which is a different machine's name as far as a reader is concerned.
+from aicfd.model import as_a_label
 
 ACCENT = "2F6F6A"
 INK = "0B0B0B"
@@ -779,7 +782,7 @@ def _methodology(doc, export: Export, drawn: dict) -> None:
             + (f", K = {_num(model.get('cage_k'), 2)} each way"
                if model.get("cage_k") else ""))]
           if model.get("cage") else []),
-        (f"{export.naming['noun'].capitalize()} units", f"{len(model['fans'])}"),
+        (f"{as_a_label(export.naming['noun'])} units", f"{len(model['fans'])}"),
     ]
     _table(doc, ["Feature", "As built in the model"], rows, widths=[7.0, 9.0])
 
@@ -812,7 +815,7 @@ def _methodology(doc, export: Export, drawn: dict) -> None:
 
     _heading(doc, "Boundary conditions and models", 2)
     _table(doc, ["Feature", "How it is modelled"], [
-        (export.naming["noun"].capitalize(),
+        (as_a_label(export.naming["noun"]),
          "A pair of patches on the same internal faces: air leaves the "
          "gallery through the intake and re-enters the cold aisle "
          "through the supply. Both are set by MASS flow, not volume — "

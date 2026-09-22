@@ -604,6 +604,15 @@ class NamingTest(unittest.TestCase):
         payload = to_dict(built, spec)
         self.assertEqual(payload["unit_naming"]["noun"], "CRAC")
 
+    def test_an_acronym_keeps_its_capitals_in_a_label(self):
+        """`str.capitalize` turns CRAC into Crac, which is a different
+        machine's name as far as a reader is concerned."""
+        from aicfd.model import as_a_label
+
+        self.assertEqual(as_a_label("CRAC"), "CRAC")
+        self.assertEqual(as_a_label("CRAH"), "CRAH")
+        self.assertEqual(as_a_label("fan wall"), "Fan wall")
+
     def test_the_summary_names_them_too(self):
         """The one line an engineer reads before every run."""
         import copy
@@ -618,9 +627,25 @@ class NamingTest(unittest.TestCase):
                            ("pod-fanwall", "Fan wall")):
             spec = yaml.safe_load(
                 (support.REPO / "cases" / f"{name}.yaml").read_text())
-            text = case_module.summary(build_model(copy.deepcopy(spec)))
+            built = build_model(copy.deepcopy(spec))
             with self.subTest(case=name):
-                self.assertIn(word, text)
+                self.assertIn(word, case_module.summary(built))
+
+    def test_a_mesh_warning_names_the_machine_too(self):
+        """`CRAC width: 2,553 m falls between grid lines` -- the warning is
+        read beside a drawing that names the same thing (ADR-102)."""
+        import copy
+
+        import yaml
+
+        from aicfd.model import build_model
+
+        spec = yaml.safe_load(
+            (support.REPO / "cases" / "hall-cage-1mw.yaml").read_text())
+        built = build_model(copy.deepcopy(spec))
+        said = " ".join(built.warnings)
+        self.assertIn("CRAC", said)
+        self.assertNotIn("fan wall", said)
 
 
 @unittest.skipUnless(HAVE_EXTRAS, "python-docx and matplotlib are not installed")

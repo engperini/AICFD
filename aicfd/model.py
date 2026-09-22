@@ -1190,6 +1190,13 @@ UNIT_NAMING = {
 }
 
 
+def as_a_label(word: str) -> str:
+    """A noun at the start of a label: `fan wall` -> `Fan wall`, `CRAC` stays
+    `CRAC`. `str.capitalize` would make that `Crac`, which is a different
+    machine's name as far as a reader is concerned."""
+    return word[:1].upper() + word[1:]
+
+
 def unit_naming(unit, floor_height: float | None = None) -> dict:
     """The noun, its plural and the tag a drawing puts on each machine.
 
@@ -1404,7 +1411,8 @@ def build_model(spec: dict) -> Model:
         if abs(built - nominal) > 1e-6:
             model.warnings.insert(
                 0,
-                f"fan wall width: {num(nominal, 3)} m falls between "
+                f"{unit_naming(model.equipment, model.floor_height)['noun']} "
+                f"width: {num(nominal, 3)} m falls between "
                 f"{num(cell[1])} m grid lines; the mesh uses {num(built)} m "
                 f"({(built - nominal) * 1000:+.0f} mm).",
             )
@@ -3149,10 +3157,14 @@ def check_mesh_alignment(model: Model) -> list[str]:
     for rack in model.racks:
         for axis, label in enumerate(("width", "depth", "height")):
             checked.append((f"rack {label}", rack.box.hi[axis], axis))
+    # The machine is called what this room's machines are called, here as
+    # everywhere else a person reads it (ADR-102).
+    noun = unit_naming(model.equipment, model.floor_height)["noun"]
     for panel in model.panels:
-        checked.append((f"{article(panel)} position", panel.position, panel.axis))
+        checked.append((f"{article(panel, noun)} position", panel.position,
+                        panel.axis))
         for axis, (a0, a1) in zip(panel.in_plane_axes, panel.extent):
-            checked.append((f"{article(panel)} edge", a1, axis))
+            checked.append((f"{article(panel, noun)} edge", a1, axis))
 
     reported: set[str] = set()
     for label, value, axis in checked:
@@ -3179,8 +3191,15 @@ PANEL_LABEL = {
 }
 
 
-def article(panel: Panel) -> str:
-    """The panel's name as a person reads it, for a warning."""
+def article(panel: Panel, unit_noun: str = "fan wall") -> str:
+    """The panel's name as a person reads it, for a warning.
+
+    ``unit_noun`` is what this room's machines are called -- a fan wall, a
+    CRAC, a CRAH -- because a warning about a plane is read beside a drawing
+    that names the same thing (ADR-102).
+    """
+    if panel.name == "fan" or panel.name.startswith("fan"):
+        return unit_noun
     if panel.name in PANEL_LABEL:
         return PANEL_LABEL[panel.name]
     for prefix, name in (
@@ -3189,7 +3208,6 @@ def article(panel: Panel) -> str:
         ("containment_wall", "containment wall"),
         ("rack_top", "rack top"),
         ("rack_end", "row end"),
-        ("fan", "fan wall"),
     ):
         if panel.name.startswith(prefix):
             return name
@@ -3296,7 +3314,7 @@ def summary_rows(model: Model) -> list[tuple[str, str, str]]:
             f"design bulk dT {num(model.design_delta_t_k, 1)} K",
         ),
         (
-            unit_naming(model.equipment, model.floor_height)["noun"].capitalize()
+            as_a_label(unit_naming(model.equipment, model.floor_height)["noun"])
             + " face" + (f" ({len(fans)} units)" if len(fans) > 1 else ""),
             face(fan),
             f"{num(fan.area)} m2 · {num(model.fan_face_velocity_ms)} m/s per unit",
@@ -3369,7 +3387,7 @@ def summary_rows(model: Model) -> list[tuple[str, str, str]]:
         ),
         *hvac_rows(model),
         (
-            unit_naming(model.equipment, model.floor_height)["noun"].capitalize()
+            as_a_label(unit_naming(model.equipment, model.floor_height)["noun"])
             + " pressure",
             (
                 f"{num(model.fan_available_pa() or 0, 0)} Pa available at "
