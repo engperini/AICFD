@@ -647,58 +647,111 @@ class ColdAisleContainmentTest(unittest.TestCase):
 
     def test_every_cold_aisle_is_covered_exactly_once(self):
         """One lid per aisle -- except the aisle a cage wall stands in, which
-        is two aisles and gets one lid each. Together they still tile the
-        band, with nothing covered twice and nothing left open (ADR-104)."""
-        built = m.build_model(self.hall("cold"))
+        is two contained aisles with a walkway between them, and gets one lid
+        each. No two lids overlap, and every lid is as wide as `aisles.cold`
+        (ADR-110). What is NOT covered there is the walkway, which is open
+        floor and has to stay open."""
+        spec = self.hall("cold")
+        built = m.build_model(spec)
         lids = [p for p in built.panels if p.name.startswith("containment_lid")]
         walls = sorted(p.position for p in built.panels
                        if p.name.startswith("cage_") and p.axis == 1)
         self.assertEqual(len(lids), len(built.cold_aisles) + len(walls))
+        aisle = spec["aisles"]["cold"]
         covered = sorted(tuple(round(v, 6) for v in lid.extent[1]) for lid in lids)
         expected = []
         for band in built.cold_aisles:
-            cuts = [w for w in walls if band[0] < w < band[1]]
-            edges = [band[0], *cuts, band[1]]
-            expected += [(round(a, 6), round(b, 6))
-                         for a, b in zip(edges, edges[1:])]
+            if any(band[0] < w < band[1] for w in walls):
+                # The wall's aisle: one lid off each row's face, the walkway
+                # between them left open.
+                expected += [(round(band[0], 6), round(band[0] + aisle, 6)),
+                             (round(band[1] - aisle, 6), round(band[1], 6))]
+            else:
+                expected.append((round(band[0], 6), round(band[1], 6)))
         self.assertEqual(covered, sorted(expected))
+        for a, b in zip(covered, covered[1:]):
+            self.assertLessEqual(a[1], b[0] + 1e-6, "two lids overlap")
 
-    def test_the_cage_wall_divides_the_aisle_it_stands_in(self):
-        """A cage wall is not a closure: the lid and both doors are cut at it,
-        and each side becomes its own contained aisle. One volume spanning a
-        security boundary is not the room the drawing shows -- and for a mesh
-        cage it is not even closed (ADR-104)."""
-        built = m.build_model(self.hall("cold"))
+    def test_the_contained_aisle_closes_with_a_side_of_its_own(self):
+        """A CAGE WALL IS NOT A CLOSURE. A contained aisle ends on a wall of
+        the room, on a row of cabinets, or on a side of its own -- so the one
+        the cage wall stands in gets that side, and the rest of the clearance
+        stays open floor between the side and the cage (ADR-110).
+
+        Cutting the lid AT the wall, which is what this did first, made the
+        cage wall the fourth side of two enclosures. For a mesh cage that is
+        no enclosure at all: the air crosses it and pays K twice.
+        """
+        spec = self.hall("cold")
+        built = m.build_model(spec)
         wall = next(p for p in built.panels
                     if p.name.startswith("cage_") and p.axis == 1)
-        halves = [p for p in built.panels
-                  if p.name.startswith("containment_lid")
-                  and abs(p.extent[1][0] - wall.position) < 1e-6
-                  or p.name.startswith("containment_lid")
-                  and abs(p.extent[1][1] - wall.position) < 1e-6]
-        self.assertEqual(len(halves), 2, "the lid was not cut at the wall")
-        doors = [p for p in built.panels
-                 if p.name.startswith("containment_door")
-                 and (abs(p.extent[0][0] - wall.position) < 1e-6
-                      or abs(p.extent[0][1] - wall.position) < 1e-6)]
-        self.assertEqual(len(doors), 4, "each end needs a door on each side")
-        # And nothing spans it any more.
+        aisle = spec["aisles"]["cold"]
+        clearance = spec["cage"]["clearance"]
+        band = next(b for b in built.cold_aisles if b[0] < wall.position < b[1])
+
+        lids = sorted((p for p in built.panels
+                       if p.name.startswith("containment_lid")
+                       and band[0] - 1e-6 <= p.extent[1][0] <= band[1] + 1e-6),
+                      key=lambda p: p.extent[1][0])
+        self.assertEqual(len(lids), 2, "the aisle was not closed on both sides")
+        for lid, (lo, hi) in zip(lids, ((band[0], band[0] + aisle),
+                                        (band[1] - aisle, band[1]))):
+            with self.subTest(panel=lid.name):
+                self.assertAlmostEqual(lid.extent[1][0], lo)
+                self.assertAlmostEqual(lid.extent[1][1], hi)
+
+        sides = sorted((p for p in built.panels
+                        if p.name.startswith("containment_side")),
+                       key=lambda p: p.position)
+        self.assertEqual(len(sides), 2, "neither half got a side of its own")
+        for side, edge in zip(sides, (band[0] + aisle, band[1] - aisle)):
+            with self.subTest(panel=side.name):
+                self.assertEqual(side.axis, 1, "a side is a vertical panel")
+                self.assertAlmostEqual(side.position, edge)
+                self.assertEqual(side.kind, "wall")
+                # Floor to lid: an aisle open over the side is not contained.
+                self.assertAlmostEqual(side.extent[1][0], built.hall.lo[2])
+                self.assertAlmostEqual(side.extent[1][1], lids[0].position)
+                # And as long as the lid it closes.
+                self.assertEqual(side.extent[0], lids[0].extent[0])
+
+        # The walkway the clearance is there for, on both sides of the wall.
+        walkway = clearance - aisle
+        self.assertGreater(walkway, 0.0)
+        self.assertAlmostEqual(wall.position - sides[0].position, walkway)
+        self.assertAlmostEqual(sides[1].position - wall.position, walkway)
+
+        # And nothing of the containment reaches the cage wall, let alone
+        # spans it.
         for panel in built.panels:
-            if not panel.name.startswith("containment"):
+            if not panel.name.startswith("containment") or panel.axis == 1:
                 continue
-            band = panel.extent[1] if panel.axis == 2 else panel.extent[0]
-            if panel.axis == 1:
-                continue
+            reach = panel.extent[1] if panel.axis == 2 else panel.extent[0]
             with self.subTest(panel=panel.name):
                 self.assertFalse(
-                    band[0] + 1e-6 < wall.position < band[1] - 1e-6,
-                    "a containment panel still spans the cage wall")
+                    reach[0] - 1e-6 < wall.position < reach[1] + 1e-6,
+                    "a containment panel still ends on, or spans, the cage wall")
 
-    def test_the_division_is_said_in_the_summary(self):
+    def test_an_aisle_the_clearance_cannot_hold_is_refused(self):
+        """The side needs room: the contained aisle, then the walkway, then
+        the cage. A clearance no wider than the aisle leaves the containment
+        nowhere to end but on the cage wall, and that is the thing that
+        cannot be built (ADR-110)."""
+        spec = self.hall("cold")
+        spec["cage"] = dict(spec["cage"], clearance=spec["aisles"]["cold"])
+        with self.assertRaises(ValueError) as caught:
+            m.build_model(spec)
+        said = str(caught.exception)
+        self.assertIn("cage.clearance", said)
+        self.assertIn("cannot end on a cage wall", said)
+
+    def test_the_closure_is_said_in_the_summary(self):
         built = m.build_model(self.hall("cold"))
         said = " ".join(built.warnings)
         self.assertIn("stands in a contained cold aisle", said)
-        self.assertIn("not a closure", said)
+        self.assertIn("cannot end on a cage wall", said)
+        self.assertIn("walkway", said)
 
     def test_the_ceiling_grilles_stay_over_the_hot_aisle(self):
         """Which is what makes the arrangement work: the room is hot, so the

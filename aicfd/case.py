@@ -233,6 +233,11 @@ WALL_GROUPS = (
     ("containment_wall", "containment_roofwall"),
     ("containment_wall", "containment_wall"),
     ("containment_door", "containment_door"),
+    # THE SIDE OF A CONTAINED COLD AISLE, where a cage wall stands in it. A
+    # contained aisle cannot end on a cage wall, so it closes with a side of
+    # its own -- and a side that is built and never meshed is a hole, which is
+    # the fault this list has been caught by five times (ADR-110).
+    ("containment_side", "containment_side"),
 )
 
 

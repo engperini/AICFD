@@ -837,3 +837,69 @@ class CageInTheResultsTest(unittest.TestCase):
         source = inspect.getsource(report._results)
         self.assertIn('"Where"', source)
         self.assertIn("_cage_verdict(doc, zones, caged)", source)
+
+
+@unittest.skipUnless(HAVE_EXTRAS, "matplotlib is not installed")
+class ContainmentIsDrawnAsItProjectsTest(unittest.TestCase):
+    """A panel drawn corner to corner is a diagonal wherever the view sees
+    the whole rectangle (ADR-110).
+
+    It showed up twice: the end doors of a contained aisle, in the transverse
+    section, and the lid of a contained COLD aisle in plan. Both came out as a
+    line across the aisle from one corner to the other -- which reads as a
+    barrier standing where the room is open.
+    """
+
+    class _Ax:
+        def __init__(self):
+            self.lines, self.patches = [], []
+
+        def plot(self, xs, ys, **kwargs):
+            self.lines.append((tuple(xs), tuple(ys)))
+
+        def add_patch(self, patch):
+            self.patches.append(patch)
+
+    def mark(self, lo, hi, h, v):
+        from aicfd.figures import _containment_mark
+
+        ax = self._Ax()
+        _containment_mark(ax, {"lo": lo, "hi": hi}, h, v, linewidth=0.9)
+        return ax
+
+    def test_a_panel_seen_edge_on_is_a_line(self):
+        # A chimney wall (y-normal) in a transverse section: h=1, v=2.
+        ax = self.mark([7.6, 12.8, 1.0], [18.0, 12.8, 3.2], 1, 2)
+        self.assertEqual(ax.patches, [])
+        self.assertEqual(ax.lines, [((12.8, 12.8), (1.0, 3.2))])
+
+    def test_a_panel_seen_face_on_is_the_rectangle_it_is(self):
+        # The same section looking at an end door (x-normal): the whole
+        # rectangle is on the page, so a line would cross the aisle.
+        ax = self.mark([7.6, 11.6, 1.0], [7.6, 12.8, 3.2], 1, 2)
+        self.assertEqual(ax.lines, [])
+        self.assertEqual(len(ax.patches), 1)
+        patch = ax.patches[0]
+        self.assertAlmostEqual(patch.get_x(), 11.6)
+        self.assertAlmostEqual(patch.get_y(), 1.0)
+        self.assertAlmostEqual(patch.get_width(), 1.2)
+        self.assertAlmostEqual(patch.get_height(), 2.2)
+
+    def test_a_cold_aisle_lid_is_a_rectangle_in_plan_and_a_line_in_section(self):
+        lo, hi = [7.6, 11.6, 3.2], [18.0, 12.8, 3.2]
+        plan = self.mark(lo, hi, 0, 1)
+        self.assertEqual(len(plan.patches), 1, "the lid came out as a diagonal")
+        section = self.mark(lo, hi, 1, 2)
+        self.assertEqual(section.patches, [])
+        self.assertEqual(section.lines, [((11.6, 12.8), (3.2, 3.2))])
+
+    def test_the_figures_draw_the_side_a_contained_aisle_closes_with(self):
+        """The panel that keeps the containment off the cage wall is on the
+        drawing, or the report shows an aisle open to somebody else's room."""
+        import inspect
+
+        from aicfd import figures
+
+        for function in (figures.plan, figures.section, figures.geometry):
+            with self.subTest(figure=function.__name__):
+                self.assertIn("containment_side", inspect.getsource(function))

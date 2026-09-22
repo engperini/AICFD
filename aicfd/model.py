@@ -1414,7 +1414,7 @@ def build_model(spec: dict) -> Model:
         model.cage = cage["construction"]
         model.cage_racks = tuple(r.id for r in _cage_racks(model, cage))
         # A contained COLD aisle the cage wall stands in is two aisles.
-        cage_notes.extend(_divide_containment(model, cage_walls))
+        cage_notes.extend(_divide_containment(model, cage_walls, spec, cage))
     # The row's own notes first: a cabinet width the mesh moved is said by
     # position, which is what a reader can act on, where the general alignment
     # check can only say a face fell between grid lines (ADR-074).
@@ -2363,28 +2363,48 @@ def _rows_beside(model: "Model", at: float) -> list:
     return [(below[0], at - below[1]), (above[0], above[1] - at)]
 
 
-def _divide_containment(model: "Model", walls: list[Panel]) -> list[str]:
-    """Split a contained COLD aisle where a cage wall stands in it.
+def _divide_containment(model: "Model", walls: list[Panel], spec: dict,
+                        cage: dict) -> list[str]:
+    """Close a contained COLD aisle that a cage wall stands in, on its own.
 
-    A CAGE WALL IS NOT A CLOSURE FOR AN AISLE. With the hot aisle contained it
-    never has to be: the cage boundary stands in a COLD aisle, and a cold aisle
-    is open. Contain the cold aisle instead and the two meet -- one lid and one
-    pair of doors were built over the whole aisle, straight across the cage
-    wall, so the model had a single contained volume spanning a security
-    boundary that the drawing showed dividing it. For a mesh cage that volume
-    is not even closed: the air crosses the wall and pays K for it (ADR-104).
+    A CAGE WALL IS NOT A CLOSURE FOR AN AISLE, and a contained aisle has to
+    end on something: a wall of the room, a row of cabinets, or a side of its
+    own. With the hot aisle contained this never arises -- the cage boundary
+    stands in a COLD aisle, and a cold aisle is open. Contain the cold aisle
+    and the two meet.
 
-    So the lid and the doors are cut at the wall. Each side becomes its own
-    contained aisle -- its row, its lid, its two doors and the cage wall -- and
-    the wall stays what it is, mesh or drywall, with its own physics. Returns a
-    note per division, because it changes what the reader is looking at.
+    It was wrong twice. First one lid and one pair of doors were built over the
+    whole aisle, straight across the cage wall, so the model held a single
+    contained volume spanning a security boundary (ADR-104). Then the lid was
+    cut AT the wall, which made the cage wall the fourth side of two
+    enclosures -- and for a mesh cage that is not a closure at all: the air
+    crosses it and pays K twice (ADR-096).
+
+    What is built now is what a hall is built as (ADR-110):
+
+        F4 row | contained aisle | containment SIDE | walkway | cage wall
+
+    The contained aisle keeps the width the hall was drawn with
+    (`aisles.cold`), measured from its own row's faces. Its far side is a
+    panel of the containment -- the full side the drawing shows -- and what is
+    left of `cage.clearance` between that panel and the cage wall is open
+    floor, which is the walkway the clearance is there for.
     """
+    if model.contained != "cold":
+        # A contained HOT aisle is a chimney between two rows: it ends on the
+        # rows, not on anything the cage decides, and a cage wall that crosses
+        # one is a partition INSIDE a closed volume, which is what the panel
+        # already is. Nothing to close (ADR-110).
+        return []
     cuts = sorted(w.position for w in walls if w.axis == 1)
     if not cuts:
         return []
+    aisle = float((spec.get("aisles") or {}).get("cold", 1.2))
+    clearance = float(cage.get("clearance", 1.2))
     notes: list[str] = []
     for at in cuts:
         divided: list[Panel] = []
+        sides: list[Panel] = []
         for panel in model.panels:
             name = panel.name
             if not (name.startswith("containment_lid")
@@ -2398,7 +2418,20 @@ def _divide_containment(model: "Model", walls: list[Panel]) -> list[str]:
             if not band[0] + 1e-6 < at < band[1] - 1e-6:
                 divided.append(panel)
                 continue
-            for half, (lo, hi) in enumerate(((band[0], at), (at, band[1]))):
+            if aisle >= clearance - 1e-6:
+                raise ValueError(
+                    f"containment.aisle cold: the cage wall at {num(at)} m "
+                    f"stands in a contained cold aisle, and a contained aisle "
+                    f"cannot end on a cage wall -- it closes with a side of "
+                    f"its own, and the rest of `cage.clearance` is the "
+                    f"walkway to the cage. That needs a clearance wider than "
+                    f"the {num(aisle)} m aisle, and `cage.clearance` is "
+                    f"{num(clearance)} m. Widen it, or narrow `aisles.cold`"
+                )
+            # Each side keeps ITS row's aisle: from the low face outwards,
+            # and from the high face inwards.
+            halves = ((band[0], band[0] + aisle), (band[1] - aisle, band[1]))
+            for half, (lo, hi) in enumerate(halves):
                 extent = list(panel.extent)
                 extent[index] = (lo, hi)
                 divided.append(replace(
@@ -2406,15 +2439,27 @@ def _divide_containment(model: "Model", walls: list[Panel]) -> list[str]:
                     name=f"{panel.name}_{'ab'[half]}",
                     extent=tuple(extent),  # type: ignore[arg-type]
                 ))
-            if panel.axis == 2:
-                notes.append(
-                    f"the cage wall at {num(at)} m stands in a contained cold "
-                    f"aisle, so that aisle is two: {num(at - band[0])} m of it "
-                    f"inside the cage and {num(band[1] - at)} m outside, each "
-                    f"with its own lid and doors. A cage wall is not a "
-                    f"closure -- it is the wall the case says it is."
-                )
-        model.panels = divided
+            if panel.axis != 2:
+                continue
+            # THE SIDE THE DRAWING SHOWS: the panel that closes the aisle
+            # where the cage wall does not. One per half, the length of the
+            # lid, from the floor to the lid.
+            span = panel.extent[0]
+            for half, edge in enumerate((halves[0][1], halves[1][0])):
+                sides.append(Panel(
+                    f"containment_side{panel.name[len('containment_lid'):]}"
+                    f"_{'ab'[half]}",
+                    "wall", axis=1, position=edge,
+                    extent=(span, (model.hall.lo[2], panel.position)),
+                ))
+            notes.append(
+                f"the cage wall at {num(at)} m stands in a contained cold "
+                f"aisle. A contained aisle cannot end on a cage wall, so each "
+                f"side closes with a side of its own: {num(aisle)} m of "
+                f"contained aisle from each row's faces, then "
+                f"{num(clearance - aisle)} m of walkway to the cage wall."
+            )
+        model.panels = divided + sides
     return notes
 
 

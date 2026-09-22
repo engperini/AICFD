@@ -72,6 +72,13 @@ with a measured hall, you solve for the inputs:
   stands in for the outermost one. A hall drawn with a full cold aisle against
   each end wall is a hall whose `aisles.perimeter` is that aisle's width, not a
   code clearance.
+- A **cage wall standing in a cold aisle widens that one boundary**: the
+  clearance is a gap on both faces of the wall, so the aisle there is at least
+  `2 x cage.clearance` (and at least `aisles.cold`), whatever `cage.aisle`
+  says. Contain the cold aisle and it is wider still in use, because each side
+  closes with a side of its own and the rest of the clearance is walkway
+  (ADR-110). Add the difference to `total_y` for every boundary a cage wall
+  stands in.
 
 `pods` counts **pairs of rows facing a contained hot aisle**. A hall with ten
 rack rows is `pods: 5`. Counting rows instead of pods builds a hall twice the

@@ -344,6 +344,25 @@ def _containment(ax, x0, y0, dx, dy):
                            linewidth=1.4, linestyle=(0, (4, 2))))
 
 
+def _containment_mark(ax, panel, h, v, **kwargs):
+    """A containment panel, projected onto the view it is seen in.
+
+    A wall or a door is degenerate along one of the two axes on the page and
+    draws as a line. A LID is not: it is z-normal, so a plan sees the whole
+    rectangle, and drawn corner to corner it came out as a diagonal across
+    the aisle -- the same mistake the grilles were drawn with (ADR-110). The
+    span decides: no width on the page means a line, otherwise the outline.
+    """
+    lo, hi = panel["lo"], panel["hi"]
+    if hi[h] - lo[h] < 1e-6 or hi[v] - lo[v] < 1e-6:
+        ax.plot([lo[h], hi[h]], [lo[v], hi[v]], **kwargs)
+        return
+    style = dict(kwargs)
+    style["edgecolor"] = style.pop("color", CONTAINMENT)
+    style.setdefault("linestyle", (0, (4, 2)))
+    _outline(ax, lo, hi, h, v, **style)
+
+
 def _fan_body(ax, x0, y0, dx, dy):
     """The unit's envelope, set back into the gallery behind its face.
 
@@ -384,9 +403,9 @@ def plan(export: Export, out: Path, z: float, title: str,
         _outline(ax, rack["lo"], rack["hi"], h, v,
                  edgecolor=RACK_EDGE, linewidth=0.25)
     for panel in export.panels("containment_wall", "containment_roofwall",
-                               "containment_door"):
-        ax.plot([panel["lo"][h], panel["hi"][h]], [panel["lo"][v], panel["hi"][v]],
-                color=INK, linewidth=0.7)
+                               "containment_door", "containment_lid",
+                               "containment_side"):
+        _containment_mark(ax, panel, h, v, color=INK, linewidth=0.7)
     _cage(ax, export, h, v, width=1.1)
     _row_labels(ax, export, h, v)
     fans = export.panels("fan")
@@ -472,7 +491,8 @@ def section(export: Export, out: Path, normal: int, at: float, title: str,
     # because in both views the surface lies off the plane; outlined, because
     # a wash would tint the temperatures underneath.
     drawn = set()
-    for panel in export.panels("containment_wall", "containment_roofwall"):
+    for panel in export.panels("containment_wall", "containment_roofwall",
+                               "containment_side"):
         lo, hi = panel["lo"], panel["hi"]
         if normal == 1:
             key = (lo[0], hi[0], lo[2], hi[2])
@@ -855,10 +875,14 @@ def geometry(export: Export, out: Path, axis: int, title: str,
     for rack in export.racks:
         _outline(ax, rack["lo"], rack["hi"], h, v, edgecolor=RACK_EDGE,
                  linewidth=0.35)
+    # Seen edge-on a containment panel is a line; seen face-on it is the
+    # rectangle it is. Drawn corner to corner it came out as a diagonal
+    # across the aisle -- the end doors in a transverse section, and the lid
+    # of a contained cold aisle in plan (ADR-110).
     for panel in export.panels("containment_wall", "containment_roofwall",
-                               "containment_door", "blank"):
-        ax.plot([panel["lo"][h], panel["hi"][h]], [panel["lo"][v], panel["hi"][v]],
-                color=CONTAINMENT, linewidth=0.9)
+                               "containment_door", "containment_side",
+                               "containment_lid", "blank"):
+        _containment_mark(ax, panel, h, v, color=CONTAINMENT, linewidth=0.9)
     for panel in export.panels("fan"):
         _outline(ax, panel["lo"], panel["hi"], h, v, edgecolor=FAN, linewidth=1.2)
     for panel in export.panels("grille", "supply_mesh", "plenum_opening", "tile_"):

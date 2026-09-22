@@ -287,14 +287,18 @@ class DerivationTest(unittest.TestCase):
                 hall_length = (2 * perimeter + row_length
                                + sides * (plenum["depth"] if plenum else 0.0))
                 total_x = sides * float(spec["gallery"]["depth"]) + hall_length
-                # Each pod boundary is `aisles.cold`, except the one or two
-                # a cage wall stands in, which `cage.aisle` widens so the rows
-                # either side keep an aisle to breathe from (ADR-099).
+                # Each pod boundary is `aisles.cold`, except the one or two a
+                # cage wall stands in. There the clearance is a gap on BOTH
+                # faces of the wall, so the boundary holds two of them, and a
+                # stated `cage.aisle` can only widen that further (ADR-109).
                 boundaries = [cold] * max(0, pods - 1)
                 cage = spec.get("cage") or {}
-                if cage.get("enabled") and cage.get("aisle") is not None:
+                if cage.get("enabled"):
+                    stated = cage.get("aisle")
+                    wall = max(cold, 2 * float(cage["clearance"]),
+                               float(stated) if stated is not None else 0.0)
                     for k in model_module._cage_boundaries(spec, pods):
-                        boundaries[k] = on_grid(float(cage["aisle"]), 1)
+                        boundaries[k] = on_grid(wall, 1)
                 total_y = (2 * perimeter + pods * (2 * rack_dy + hot)
                            + sum(boundaries))
 

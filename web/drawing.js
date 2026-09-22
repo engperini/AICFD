@@ -712,8 +712,16 @@ function annotate(svg, model, view, X, Y, bounds) {
     // sat inside the under-floor plenum on every raised-floor case, naming
     // the supply plenum `cold aisle` (ADR-107).
     const deck = model.floor_height || 0;
-    put([hallMidX, mid(cold), deck + 0.45], 'cold aisle', 'dw-note dw-cold-t');
-    put([hallMidX, mid(hot), model.ceiling_z - 1.1], 'chimney', 'dw-note dw-hot-t');
+    // WHICH aisle is contained decides both captions. A lid over the cold
+    // aisle means the room above the racks is hot and open -- calling that
+    // hot aisle a chimney, which this did unconditionally, described the
+    // other arrangement (ADR-100, ADR-110).
+    const lidded = model.panels.some((p) => p.name.startsWith('containment_lid'));
+    const walled = model.panels.some((p) => p.name.startsWith('containment_wall'));
+    put([hallMidX, mid(cold), deck + 0.45],
+      lidded ? 'contained cold aisle' : 'cold aisle', 'dw-note dw-cold-t');
+    put([hallMidX, mid(hot), model.ceiling_z - 1.1],
+      walled ? 'chimney' : 'hot aisle', 'dw-note dw-hot-t');
     if (model.floor_height) {
       put([hallMidX, mid(cold), model.floor_height / 2],
         'underfloor supply plenum', 'dw-note dw-cold-t');

@@ -4742,3 +4742,49 @@ cabinet, a wall past a row (ADR-104) — can no longer be reached by any case,
 because the aisle is sized before the wall is placed. They stay, and they are
 exercised directly, because they are what stands between a future change to
 the layout and a partition through the middle of somebody's cabinets.
+
+---
+
+## ADR-110 — A contained cold aisle closes with a side of its own, never on the cage wall
+
+**Decision.** Where a cage wall stands in a CONTAINED cold aisle, the
+containment does not reach it. Each half keeps the width the hall was drawn
+with (`aisles.cold`), measured from its own row's cabinet faces, and closes
+with a `containment_side` panel of its own: a vertical panel the length of the
+lid, from the floor deck to the lid. What is left of `cage.clearance` between
+that side and the cage wall is open floor — the walkway the clearance exists
+for. A case whose `cage.clearance` is not wider than `aisles.cold` is refused
+by name, because there is nowhere for the side to stand.
+
+With the HOT aisle contained nothing is divided at all. A contained hot aisle
+is a chimney between two rows: it ends on the rows, and a cage wall crossing
+one is a partition inside a volume that is already closed, which is exactly
+what the panel is.
+
+**Why, for the third time on the same wall.** The three attempts, in order:
+
+| | what was built | what is wrong with it |
+|---|---|---|
+| first | one lid and one pair of doors over the whole aisle, straight across the wall | a single contained volume spanning a security boundary |
+| ADR-104 | the lid and doors cut AT the wall, each side its own aisle | the cage wall became the fourth side of two enclosures |
+| this | each side stops short and closes with its own panel, walkway to the wall | — |
+
+The second is the subtle one and it is the one a reader caught on the drawing.
+Cutting at the wall is only sound if the wall closes the aisle. For a mesh cage
+it does not close anything: the air crosses it and pays K twice (ADR-096), so
+the "contained" aisle was open on its fourth side. For a drywall cage it closes
+it, but then the containment's own doors are somebody else's security wall,
+which is not how either is built or maintained.
+
+**The rule, stated once.** A contained aisle ends on one of three things: a
+wall of the room, a row of cabinets, or a side of the containment. A cage wall
+is none of them. It is a security boundary standing in the room, and what a
+room keeps around one is a walkway.
+
+**Consequence.** `cage.clearance` now has to be wider than `aisles.cold`
+wherever the cold aisle is contained — on the shipped example, 1.80 m of
+clearance against a 1.20 m aisle, leaving 0.60 m of walkway on each face of the
+wall. The hall derivation in `docs/CASE-AUTHORING.md` §2 gains that boundary,
+and `case.wall_plan` gains the `containment_side` group so the new panels are
+claimed like every other (an unclaimed panel is a face `createBaffles` refuses,
+and the orphan guard in `tests/test_case_files.py` is what says so).

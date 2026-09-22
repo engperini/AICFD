@@ -718,3 +718,30 @@ class RaisedFloorDrawingTest(unittest.TestCase):
                       "the caption is placed from absolute zero again")
         self.assertIn("underfloor supply plenum", section,
                       "the section does not name the volume under the deck")
+
+
+class SectionNamesTheAisleItContainsTest(unittest.TestCase):
+    """`chimney` was printed over the hot aisle of every hall.
+
+    It is the right word for hot-aisle containment and the wrong one for
+    cold: contain the cold aisle and the hot one is the room itself, open
+    from the rack tops to the false ceiling. A drawing that calls it a
+    chimney describes the other arrangement (ADR-100, ADR-110).
+    """
+
+    def section_a(self) -> str:
+        js = (WEB / "drawing.js").read_text()
+        block = js[js.index("if (view.id === 'section-a')"):]
+        return block[:block.index("if (view.id === 'section-b')")]
+
+    def test_the_caption_follows_what_the_model_actually_built(self):
+        section = self.section_a()
+        self.assertIn("containment_lid", section,
+                      "nothing in the caption looks for a contained cold aisle")
+        self.assertIn("containment_wall", section,
+                      "nothing in the caption looks for a chimney")
+
+    def test_each_arrangement_gets_its_own_two_words(self):
+        section = self.section_a()
+        self.assertIn("'chimney' : 'hot aisle'", section)
+        self.assertIn("'contained cold aisle' : 'cold aisle'", section)
