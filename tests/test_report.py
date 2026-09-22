@@ -712,3 +712,63 @@ class FiguresShowTheRoomTest(unittest.TestCase):
         source = inspect.getsource(report._draw)
         for key in ("geo_a", "geo_b", "geo_c"):
             self.assertNotIn(key, source)
+
+
+@unittest.skipUnless(HAVE_EXTRAS, "python-docx and matplotlib are not installed")
+class CageInTheReportTest(unittest.TestCase):
+    """A hall with a customer cage is TWO rooms, and the document says so.
+
+    The cage was drawn on no figure and named in no table: a reader had the
+    hall's totals and no way to see what was inside the fence and what was
+    outside it (ADR-102).
+    """
+
+    class Stub:
+        """Enough of an export for the section under test."""
+
+        def __init__(self, cage=True):
+            caged = [{"name": f"F1-{i:02d}", "load_w": 10_000, "in_cage": True}
+                     for i in range(1, 11)]
+            caged.append({"name": "F1-11", "load_w": 0, "in_cage": True})
+            outside = [{"name": f"F5-{i:02d}", "load_w": 4_000, "in_cage": False}
+                       for i in range(1, 21)]
+            self.racks = (caged + outside) if cage else [
+                dict(r, in_cage=False) for r in outside]
+            self.model = {"cage": "mesh", "cage_k": 1.618} if cage else {}
+
+    def rendered(self, stub) -> str:
+        import docx
+
+        from aicfd.report import _cage_split
+
+        doc = docx.Document()
+        _cage_split(doc, stub)
+        text = "\n".join(p.text for p in doc.paragraphs)
+        cells = "\n".join(c.text for t in doc.tables for r in t.rows for c in r.cells)
+        return text + "\n" + cells
+
+    def test_it_totals_the_two_rooms_separately(self):
+        said = self.rendered(self.Stub())
+        self.assertIn("Inside the cage", said)
+        self.assertIn("Rest of the data hall", said)
+        self.assertIn("100.0 kW", said)   # 10 cabinets of 10 kW
+        self.assertIn("80.0 kW", said)    # 20 of 4 kW
+        self.assertIn("11", said)         # positions inside, the ODF included
+
+    def test_it_says_how_the_cage_is_built(self):
+        said = self.rendered(self.Stub())
+        self.assertIn("mesh", said)
+        self.assertIn("1.62", said, "the loss coefficient the air pays")
+
+    def test_a_hall_without_a_cage_says_nothing_at_all(self):
+        self.assertEqual(self.rendered(self.Stub(cage=False)).strip(), "")
+
+    def test_the_layout_section_calls_it(self):
+        """The section exists and is wired in: removing the call left every
+        test passing and the table out of the document."""
+        import inspect
+
+        from aicfd import report
+
+        self.assertIn("_cage_split(doc, export)",
+                      inspect.getsource(report._layout_section))

@@ -226,24 +226,16 @@ class Equipment:
         """
         if self._coil is not _UNFITTED:
             return self._coil
-        if self.cooling != "chilled_water":
-            # Not a file that is unfinished: a machine this model does not
-            # describe. Said in its own terms, because "does not say what
-            # water it was selected at" would send somebody looking for a
-            # field that cannot exist (ADR-073).
-            object.__setattr__(self, "_coil", None)
-            object.__setattr__(self, "_coil_problem", (
-                f"{self.model} is a {self.cooling} unit: its capacity follows "
-                f"the refrigerant circuit and the outdoor air its condenser "
-                f"rejects into, which this software does not model. Its "
-                f"selection is carried and checked; what it does at any other "
-                f"return air is not answered"
-            ))
-            return None
         from aicfd import coil as model
 
+        # A DIRECT-EXPANSION EVAPORATOR IS THE SAME EXCHANGER WITH ONE SIDE
+        # BOILING, so it is fitted too -- from the apparatus dew point its
+        # selection implies rather than from an entering water temperature
+        # (ADR-103). It used to be refused here, which left every DX case
+        # answered at its plate figure and uncoupled from the room.
+        fit = model.fit_dx if self.cooling == "dx" else model.fit
         try:
-            fitted, problem = model.fit(self), None
+            fitted, problem = fit(self), None
         except model.CannotFit as missing:
             # Not a second kind of unit, a file that is not finished. One
             # selection is all the fit needs and it is what every unit

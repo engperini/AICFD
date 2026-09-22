@@ -4438,3 +4438,76 @@ and its load — which is the part that was working.
 That is a real loss for a reader with only the document, and it is smaller than
 the loss of four pages of drawings that cannot be read. A dimensioned figure
 worth printing is a separate piece of work.
+
+---
+
+## ADR-103 — A direct-expansion coil is modelled, from the psychrometry of its selection
+
+**Decision.** A DX unit's evaporator is fitted like any other coil and asked
+what it does at the return the room produces. The refrigerant boils, so it
+holds its temperature and the counterflow relation collapses to
+
+    epsilon = 1 - exp(-NTU),   Q = epsilon · C_air · (T_return - ADP)
+
+measured from the coil's **apparatus dew point** instead of an entering water
+temperature. The compressors take the valve's place: they modulate to hold the
+supply setpoint until there is nothing left to give. DX cases therefore join
+the coupled solve, and `fanwall.control: team` changes their answer as it does
+for a chilled-water plant (ADR-064). ADR-073 and the coil half of ADR-097 are
+superseded.
+
+**Why it was refused before, and why that was wrong.** The old position was
+that a DX unit's capacity "follows the refrigerant circuit and the outdoor air
+its condenser rejects into, which is not modelled" — so every DX case ran at
+its plate figure, uncoupled, and the report told the reader to *ask the
+manufacturer for its capacity at 26,4 °C*. That is the one thing a model of the
+machine exists to avoid. And it conflated two different sides of the machine:
+the air side of a DX evaporator is the same finned bank as a chilled-water
+coil's, and it is exactly as knowable from a selection.
+
+**Where the surface temperature comes from.** The selection's own split between
+sensible and total capacity. The process line from the air entering to the air
+leaving the coil, extended to saturation, is the ADP. On the P3100DA's sheet:
+110,3 kW total against 109,4 kW sensible — 0,8 % latent — puts the ADP at
+**10,5 °C**, just under the 10,6 °C dew point of the air entering. That is the
+physical statement a nearly-dry coil makes, and it is what a precision unit
+selected on sensible heat is.
+
+**What it answers.** The same unit, rated 100,5 kW at 30 °C return:
+
+| return air | net sensible | supply air |
+|---|---|---|
+| 30,0 °C (its rating) | 100,5 kW | 18,7 °C |
+| 28,0 °C | 89,9 kW | 18,0 °C |
+| 26,4 °C | 81,1 kW | 17,4 °C |
+| 24,0 °C | 68,0 kW | 16,5 °C |
+
+A room returning 26,4 °C gets **81 %** of the plate figure out of the machine.
+The alert says that now, with the number, instead of naming a phone call.
+
+**What is still not modelled, and is now said precisely.** The CONDENSING
+side. Capacity follows the outdoor air the condenser rejects into, and one
+selection cannot say how much; the result holds it at the selection's own
+ambient (37,6 °C here), which is the design day and therefore the conservative
+end. The compressors are taken as modulating continuously — a two-scroll
+machine cycles about this — and the ADP is held where the selection put it,
+while a real fixed-capacity compressor drops its suction pressure at part load
+and gives slightly more. Both approximations make the ceiling conservative,
+which is the right direction for a capacity a plant is sized on.
+
+**What a thin sheet costs.** Where a selection prints no total beside its
+sensible capacity, the coil is taken as dry; on the one sheet here that prints
+both, that assumption is worth 0,12 K of coil surface and 0,6 % of capacity.
+Where it prints no gross capacity, gross is net plus the stated fan power. Each
+assumption is carried on the coil, listed in the report's limitations, and
+named in the summary line beside the capacity it decides (ADR-071).
+
+**Consequence for the team control.** A DX plant could not be run as a network
+before, because nothing re-solved its supply: `control: team` changed the case
+file and not the answer. It does now.
+
+**Consequence for `saturated`.** A unit told to work harder for a worse-placed
+peer delivers air COLDER than the setpoint; it was being counted as one that
+cannot hold it, so a whole team read as failing and the report said every
+temperature was optimistic where they were pessimistic. Saturation is now the
+unit's own: its supply above the setpoint it was given.

@@ -347,6 +347,12 @@ class Model:
     -- or None where the hall has no cage. The two are different rooms: a
     drywall cage is a partition the air cannot cross, a mesh one is a
     resistance the air pays twice, once in and once out (ADR-096)."""
+    cage_racks: tuple[str, ...] = ()
+    """Which cabinets the cage encloses, by id. A hall with a cage is TWO
+    rooms as far as a reader is concerned -- one customer's and everybody
+    else's -- and the split has to survive into the export, or the report can
+    show a cage on the drawing and no way to say what is inside it
+    (ADR-096, ADR-102)."""
     warnings: list[str] = field(default_factory=list)
     alerts: list[str] = field(default_factory=list)
     """Design criteria the HVAC does not meet. Alerts, never blockers: a
@@ -1072,15 +1078,12 @@ def equipment_mismatch(unit, spec: dict) -> str | None:
     machine the Apply then refuses -- or, worse, greying out one that would
     have worked (ADR-092).
     """
-    # A DX UNIT IS USABLE, AT ITS RATED POINT. What is not modelled is its
-    # COIL: capacity against return air follows the refrigerant circuit, the
-    # compressor's speed and the outdoor air its condenser rejects into
-    # (ADR-073). Everything the room needs -- the airflow, the supply
-    # temperature, the dimensions, the sensible capacity at the rated return
-    # -- is on the sheet and as well defined as any chilled-water unit's. So
-    # the case runs, the coupled re-solve is skipped because there is nothing
-    # to re-ask, and `dx_limitation` below says so before the solve rather
-    # than after it (ADR-097).
+    # A DX UNIT IS USABLE, AND ITS EVAPORATOR IS MODELLED (ADR-103): the coil
+    # is recovered from the psychrometry of its own selection, so it answers
+    # at the return the room produces and joins the coupled solve like any
+    # other. What is still not modelled is its CONDENSING side, which follows
+    # the outdoor air -- the report says that once, in its limitations, off
+    # the coil itself rather than from a second copy of the wording here.
     wanted = wanted_arrangement(spec)
     if unit.arrangement != wanted:
         how = ("stands in the room and discharges downward"
@@ -1120,35 +1123,6 @@ def equipment_defaults(unit, design_return_c=None) -> dict:
         "static_pressure_pa": unit.selection.get("esp_pa"),
         "curve": (unit.curve or {}).get("points"),
     }
-
-
-def dx_limitation(unit) -> str | None:
-    """What a direct-expansion unit's result does NOT answer, or None.
-
-    A DX unit's capacity is not a curve this software can evaluate, so the
-    run holds the supply temperature at the unit's selected one instead of
-    re-solving it against the return the room produces (ADR-040, ADR-097).
-    The result is this room at the plant's RATED duty, which is a real answer
-    to a real question and not the same question a chilled-water case answers.
-    Said before the solve, because after it the number is already on a page.
-    """
-    if unit is None or unit.cooling == "chilled_water":
-        return None
-    point = unit.design or {}
-    rated = point.get("nscc_kw")
-    at = point.get("return_c")
-    supply = point.get("supply_c")
-    return (
-        f"{unit.model} is a {unit.cooling} unit: its capacity follows the "
-        f"refrigerant circuit and the outdoor air its condenser rejects into, "
-        f"which is not modelled. This result is the room at the unit's RATED "
-        + (f"point -- {num(rated, 1)} kW at {num(at, 1)} degC return, "
-           f"supplying {num(supply, 1)} degC -- " if rated and at else "point ")
-        + "with the supply temperature held there rather than re-solved "
-        "against the return the room produces. Read the return this run "
-        "reports against that rated return: the further apart they are, the "
-        "less the rated capacity says about what the machine would do here"
-    )
 
 
 def equipment_in_use(spec: dict) -> dict | None:
@@ -1411,6 +1385,7 @@ def build_model(spec: dict) -> Model:
     if cage:
         model.panels.extend(_cage_panels(model, cage, spec, cage_notes))
         model.cage = cage["construction"]
+        model.cage_racks = tuple(r.id for r in _cage_racks(model, cage))
     # The row's own notes first: a cabinet width the mesh moved is said by
     # position, which is what a reader can act on, where the general alignment
     # check can only say a face fell between grid lines (ADR-074).
@@ -3550,6 +3525,7 @@ def to_dict(model: Model, spec: dict) -> dict:
         # shows a rectangle either way; the answer is not the same (ADR-096).
         "cage": model.cage,
         "cage_k": cage_k(spec),
+        "cage_racks": list(model.cage_racks),
         "racks": [
             {
                 "id": r.id,

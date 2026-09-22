@@ -1,28 +1,22 @@
-"""A direct-expansion CRAC is usable, at its rated point, and says so.
+"""A direct-expansion CRAC runs, and its evaporator is modelled.
 
 ADR-073 carried DX units in the library and checked their sheets, and
-`equipment_for` refused to build a case from one. The reason was sound and
-too wide: what this software cannot model is a DX unit's COIL -- capacity
-against return air, which follows the refrigerant circuit, the compressors'
-staging and the outdoor air the condenser rejects into. Everything the ROOM
-needs is on the sheet and as well defined as any chilled-water unit's: the
-airflow, the supply temperature, the dimensions, the sensible capacity at the
-rated return.
+`equipment_for` refused to build a case from one. ADR-097 let the case run, at
+the unit's RATED point, with the coil left unmodelled -- so the supply
+temperature was held wherever the sheet put it, the coupled solve was skipped,
+and the report told the reader to ask the manufacturer what the machine does at
+the return the room gives it.
 
-So a DX unit runs (ADR-097). The coupled re-solve is skipped because there is
-nothing to re-ask, and the result is the room at the plant's RATED duty -- a
-real answer to a real question, and not the question a chilled-water case
-answers. What keeps that honest is saying it three times over, in the places
-a reader actually looks:
+ADR-103 finished the job. A DX evaporator is the same finned bank as a
+chilled-water coil with one side BOILING, and it is recovered from the
+psychrometry of the same selection: the apparatus dew point its sensible/total
+split implies. So the machine answers at any return, the room and the plant are
+solved together, and `control: team` means something for a CRAC plant too.
 
-  before the solve   an alert off the build, so it is read before the run is
-                     paid for
-  in the export      the coil problem in its own words
-  after the solve    the return the room PRODUCED against the return the unit
-                     was RATED at. Measured on the first DX case run here: a
-                     unit rated 51,7 kW at 30,0 degC, in a room that returns
-                     21,8 -- 8,2 K below the plate, where a DX circuit does
-                     markedly less sensible work than its plate says
+What is still NOT modelled is the CONDENSING side: capacity follows the outdoor
+air the condenser rejects into, and one selection cannot say how much. That is
+said once, in the report's limitations -- not in the alerts card, which is for
+what THIS plant fails to do (ADR-098).
 """
 
 from __future__ import annotations
@@ -102,70 +96,127 @@ class SaysWhatIsNotAnsweredTest(unittest.TestCase):
         self.assertNotIn("RATED", " ".join(built.alerts))
         self.assertNotIn("refrigerant", " ".join(built.alerts))
 
-    def test_the_report_carries_it_once_in_the_limitations(self):
+    def test_the_report_names_the_condenser_as_what_is_left(self):
+        """The evaporator is modelled and the limitation says so, so that a
+        reader knows which half of the machine the number rests on."""
+        from aicfd import report
+
+        class Stub:
+            payload = {
+                "model": {"floor_height": 1.0},
+                "kpis": {"unit_model": "X1", "coil_model": {
+                    "kind": "dx", "adp_c": 10.5, "rated_ambient_c": 37.6,
+                    "assumptions": [],
+                }},
+            }
+
+        said = " ".join(report._model_limits(Stub()))
+        self.assertIn("X1", said)
+        self.assertIn("EVAPORATOR is modelled", said)
+        self.assertIn("CONDENSING side is not", said)
+        self.assertIn("37.6", said)
+        self.assertNotIn("ask the manufacturer", said)
+
+    def test_every_assumption_the_fit_made_is_listed_too(self):
+        from aicfd import report
+
+        class Stub:
+            payload = {
+                "model": {"floor_height": 1.0},
+                "kpis": {"unit_model": "X1", "coil_model": {
+                    "kind": "dx", "adp_c": 11.5, "rated_ambient_c": 38.8,
+                    "assumptions": ["the coil is dry"],
+                }},
+            }
+
+        self.assertIn("assumed that the coil is dry",
+                      " ".join(report._model_limits(Stub())))
+
+    def test_a_unit_whose_coil_could_not_be_fitted_still_says_so(self):
+        """The old sentence, kept for the case it is now true of: a file that
+        does not carry what the fit needs."""
         from aicfd import report
 
         class Stub:
             payload = {
                 "model": {"floor_height": 1.0},
                 "kpis": {"unit_model": "X1", "rated_return_c": 30.0,
-                         "rated_nscc_kw": 100.5},
+                         "rated_nscc_kw": 100.5,
+                         "coil_problem": "X1 does not say how humid the air was"},
             }
 
         said = " ".join(report._model_limits(Stub()))
-        self.assertIn("X1", said)
-        self.assertIn("direct-expansion", said)
         self.assertIn("RATED", said)
+        self.assertIn("does not say how humid", said)
 
     def test_a_chilled_water_report_carries_none_of_it(self):
         from aicfd import report
 
         class Stub:
-            payload = {"model": {"floor_height": 1.0}, "kpis": {"unit_model": "Y"}}
+            payload = {"model": {"floor_height": 1.0},
+                       "kpis": {"unit_model": "Y",
+                                "coil_model": {"kind": "chilled_water"}}}
 
         self.assertNotIn("direct-expansion", " ".join(report._model_limits(Stub())))
 
-    def test_the_limitation_is_one_function_with_one_reader_per_place(self):
-        """`dx_limitation` is what the build says; `equipment.coil_problem` is
-        what the export carries. Both name the refrigerant circuit, and
-        neither is a copy of the other's wording to keep in step."""
-        unit, built = self.built()
-        self.assertIsNone(m.dx_limitation(None))
-        self.assertIsNotNone(m.dx_limitation(built.equipment))
-        chilled = equipment.load("CA80NPVG6")
-        self.assertIsNone(m.dx_limitation(chilled))
+    def test_the_limitation_is_read_off_the_coil_and_not_written_twice(self):
+        """It used to be a `dx_limitation` function in the model AND a
+        sentence in the report, both naming the refrigerant circuit and both
+        to keep in step. The coil describes itself now, and that is the only
+        source (ADR-103)."""
+        self.assertFalse(hasattr(m, "dx_limitation"))
+        described = equipment.load("P3100DA").coil.describe()
+        self.assertEqual(described["kind"], "dx")
+        self.assertIn("rated_ambient_c", described)
 
 
 class RatingAgainstTheRoomTest(unittest.TestCase):
-    """The plate figure holds at one return, and a reader should not have to
-    find the two numbers and subtract them."""
+    """The plate figure holds at one return, and the report says what the
+    machine does at the return the room actually produced (ADR-103)."""
 
-    def alerts(self, actual: float, rated: float = 30.0) -> list[str]:
+    def alerts(self, actual: float, rated: float = 30.0,
+               available: float = 41.7) -> list[str]:
         return post._coil_alerts({
-            "coil_problem": "X is a dx unit: ... which this software does not model",
             "unit_model": "X",
+            "coil_model": {"kind": "dx"},
+            "fans": [{"name": "fan1"}],
+            "available_kw": available,
             "rated_return_c": rated,
             "rated_nscc_kw": 51.7,
             "return_temp_c": actual,
         })
 
-    def test_a_room_far_below_the_rating_is_said_so(self):
+    def test_a_room_below_the_rating_is_told_what_it_really_gets(self):
         said = " ".join(self.alerts(21.8))
         self.assertIn("8.2 K", said)
         self.assertIn("below", said)
-        self.assertIn("21.8", said, "the return to ask the manufacturer about")
+        self.assertIn("41.7 kW", said, "the capacity the coil actually gives")
+        self.assertIn("81%", said.replace(" %", "%"))
+        self.assertNotIn("ask the manufacturer", said)
 
     def test_a_room_above_the_rating_is_said_the_other_way(self):
-        self.assertIn("above", " ".join(self.alerts(34.0)))
+        self.assertIn("above", " ".join(self.alerts(34.0, available=60.0)))
 
     def test_a_room_at_the_rating_says_nothing_at_all(self):
-        self.assertEqual(self.alerts(30.5), [],
+        self.assertEqual(self.alerts(30.5, available=52.0), [],
                          "within 2 K of the plate there is nothing to add, "
                          "and the limitation itself is in the report")
+
+    def test_a_unit_with_no_coil_falls_back_to_the_old_sentence(self):
+        said = " ".join(post._coil_alerts({
+            "unit_model": "X",
+            "coil_problem": "X does not state its gross capacities",
+            "rated_return_c": 30.0,
+            "rated_nscc_kw": 51.7,
+            "return_temp_c": 21.8,
+        }))
+        self.assertIn("plate figure", said)
+        self.assertIn("does not carry", said)
 
     def test_a_chilled_water_result_never_gets_this_alert(self):
         self.assertFalse(post._coil_alerts({
             "unit_model": "CA80NPVG6", "return_temp_c": 34.0,
+            "coil_model": {"kind": "chilled_water"},
             "coil_water_out_c": None, "coil_water_out_design_c": None,
         }))
 

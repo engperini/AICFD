@@ -439,7 +439,9 @@ def coil_capacity(model: Model, fans: list[dict], kpis: dict) -> dict:
         # that says whether it can still hold its supply temperature. The flow
         # itself is a hydraulic question this tool does not answer.
         fan["coil_valve_pct"] = round(point.valve * 100, 0)
-        fan["coil_water_out_c"] = round(coil.leaving_water_c(point.capacity_kw), 2)
+        water_out = coil.leaving_water_c(point.capacity_kw)
+        if water_out is not None:
+            fan["coil_water_out_c"] = round(water_out, 2)
         available += point.ceiling_kw
         if fan.get("heat_kw") is not None:
             removed += fan["heat_kw"]
@@ -451,6 +453,11 @@ def coil_capacity(model: Model, fans: list[dict], kpis: dict) -> dict:
         return {}
     return {
         "unit_model": unit.model,
+        # The plate figure and the return it holds at. A rating is only a
+        # rating at its own return, and the alert below says how far the room
+        # ran from it (ADR-097, ADR-103).
+        "rated_return_c": (unit.design or {}).get("return_c"),
+        "rated_nscc_kw": (unit.design or {}).get("nscc_kw"),
         "available_kw": round(available, 1),
         "utilisation_pct": round(removed / available * 100, 1),
         "units_over_capacity": sum(
@@ -461,14 +468,12 @@ def coil_capacity(model: Model, fans: list[dict], kpis: dict) -> dict:
         # point, and quoting one for the other is the mistake this exists to
         # stop.
         "catalogue_kw": round((model.unit_capacity_kw or 0) * len(fans), 1) or None,
+        # The coil describes ITSELF -- a chilled-water one in water
+        # temperatures and a valve, a direct-expansion one in its apparatus
+        # dew point and its compressors -- so nothing here has to know which
+        # kind it is holding (ADR-103).
         "coil_model": {
-            "water_c": coil.water_c,
-            "design_return_c": coil.design_return_c,
-            "air_split_pct": round(coil.air_split * 100),
-            "water_max_m3h": round(coil.water_max / 4.18 * 3.6, 1),
-            "reference_selections": len(coil.reference_returns),
-            "reference_error_k": (round(coil.reference_error_k, 3)
-                                  if coil.reference_error_k is not None else None),
+            **coil.describe(),
             # Fields the datasheet did not print, which somebody read out of
             # it. Carried so a report never quotes such a unit as though it
             # were admitted on its own arithmetic (ADR-071).
@@ -486,9 +491,10 @@ def coil_capacity(model: Model, fans: list[dict], kpis: dict) -> dict:
         # figure -- that is the heat exchanger, not a mistake -- and this is
         # the number that says whether the PLANT could ever give it that
         # (ADR-063).
-        "coil_water_out_c": round(max(
+        "coil_water_out_c": (round(max(
             (f["coil_water_out_c"] for f in fans if f.get("coil_water_out_c")),
-            default=coil.water_c), 2),
+            default=coil.water_c), 2)
+            if getattr(coil, "water_c", None) is not None else None),
         "coil_water_out_design_c": unit.design_leaving_water_c,
         # On the mass the solve actually moved, the same basis every other
         # number here uses. Deriving it from the nominal volume flow instead
@@ -510,6 +516,17 @@ def _coil_provenance(kpis: dict) -> str:
     coil = kpis.get("coil_model") or {}
     if not coil:
         return ""
+    if coil.get("kind") == "dx":
+        # A direct-expansion coil is recovered from the psychrometry of one
+        # selection: the surface temperature its own sensible/total split
+        # implies (ADR-103). What it assumed, where the sheet was thin, is
+        # said in the same breath as the capacity it decides.
+        line = (f". Its evaporator is fitted to the design selection, with the "
+                f"coil surface at {coil.get('adp_c')} degC and "
+                f"{coil.get('contact_factor_pct')}% of the air reaching it")
+        for assumption in coil.get("assumptions") or []:
+            line += f". Assumed: {assumption}"
+        return line
     checked = coil.get("reference_selections") or 0
     error = coil.get("reference_error_k")
     if checked >= 2 and error is not None:
@@ -563,8 +580,8 @@ def _coil_alerts(kpis: dict) -> list[str]:
     # (ADR-097).
     rated_at = kpis.get("rated_return_c")
     actual = kpis.get("return_temp_c")
+    rated = kpis.get("rated_nscc_kw")
     if problem and rated_at and actual is not None and abs(actual - rated_at) > 2.0:
-        rated = kpis.get("rated_nscc_kw")
         out.append(
             f"The room returns {num(actual, 1)} degC and "
             f"{kpis.get('unit_model')} is rated"
@@ -572,10 +589,26 @@ def _coil_alerts(kpis: dict) -> list[str]:
             + f" at {num(rated_at, 1)} degC -- "
             f"{num(abs(actual - rated_at), 1)} K "
             + ("below" if actual < rated_at else "above")
-            + " it. The capacity quoted above is the plate figure and this "
-            "run cannot say what the machine does at the return it is "
-            "actually given; ask the manufacturer for its capacity at "
-            f"{num(actual, 1)} degC."
+            + " it. The capacity quoted above is the plate figure, and this "
+            "unit's file does not carry what its coil would need to answer "
+            "at the return the room gives it."
+        )
+    # A UNIT WITH A COIL ANSWERS FOR ITSELF. It used to say "ask the
+    # manufacturer for its capacity at 26,4 degC", which is the one thing a
+    # model of the machine exists to avoid -- so it says what the machine
+    # does there, and how that compares with the plate (ADR-103).
+    per_unit = (kpis.get("available_kw") or 0) / max(1, len(kpis.get("fans") or []))
+    if (not problem and rated and rated_at and actual is not None
+            and per_unit and abs(actual - rated_at) > 2.0):
+        out.append(
+            f"The room returns {num(actual, 1)} degC and {kpis.get('unit_model')} "
+            f"is rated {num(rated, 1)} kW at {num(rated_at, 1)} degC -- "
+            f"{num(abs(actual - rated_at), 1)} K "
+            + ("below" if actual < rated_at else "above")
+            + f" it. At the return this run produced its coil gives "
+            f"{num(per_unit, 1)} kW per unit, "
+            f"{num(per_unit / rated * 100, 0)}% of the plate figure. The plate "
+            f"is not the capacity this room has; the number above is."
         )
     water, design = kpis.get("coil_water_out_c"), kpis.get("coil_water_out_design_c")
     if water and design and water > design + 0.5:
@@ -2159,6 +2192,11 @@ def export(
                     "lo": list(rack.box.lo),
                     "hi": list(rack.box.hi),
                     "load_w": rack.load_w,
+                    # Whose room this cabinet is in. A hall with a customer
+                    # cage is two rooms, and every table that totals a load
+                    # has to be able to say which (ADR-102).
+                    **({"in_cage": rack.id in set(model.cage_racks)}
+                       if model.cage_racks else {}),
                 }
                 for rack in model.racks
             ],

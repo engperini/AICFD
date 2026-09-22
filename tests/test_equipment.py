@@ -1134,26 +1134,32 @@ class EveryShippedUnitTest(unittest.TestCase):
     wrong elevation -- and each was sent back to its vendor instead (ADR-071).
     """
 
-    def test_every_chilled_water_unit_fits_a_coil(self):
+    def test_every_shipped_unit_fits_a_coil(self):
+        """Both kinds. A direct-expansion evaporator is the same exchanger
+        with one side boiling, and it is fitted from the psychrometry of its
+        own selection (ADR-103) -- it used to be carried and never asked."""
         for model in equipment.SHIPPED:
             unit = equipment.load(model)
-            if unit.cooling != "chilled_water":
-                continue
-            with self.subTest(model=model):
+            with self.subTest(model=model, cooling=unit.cooling):
                 self.assertIsNotNone(unit.coil, unit.coil_problem)
 
-    def test_a_dx_unit_says_what_is_not_modelled_rather_than_what_is_missing(self):
-        """Its selection is carried and checked; the model that would answer
-        for a refrigerant circuit is not built, and that is not the same thing
-        as a file somebody did not finish (ADR-073)."""
+    def test_every_coil_reproduces_the_selection_it_was_fitted_to(self):
+        """The one thing a fit must do. A coil that does not give back its own
+        design point answers nothing else credibly either."""
+        from aicfd.coil import air_capacity_rate
+
         for model in equipment.SHIPPED:
             unit = equipment.load(model)
-            if unit.cooling == "chilled_water":
-                continue
+            design = unit.design
+            air = air_capacity_rate(float(design["airflow_m3h"]),
+                                    float(design["return_c"]),
+                                    float(unit.selection["elevation_m"]))
+            point = unit.coil.operate(float(design["return_c"]), air)
             with self.subTest(model=model):
-                self.assertIsNone(unit.coil)
-                self.assertIn("does not model", unit.coil_problem)
-                self.assertNotIn("missing", unit.coil_problem)
+                self.assertAlmostEqual(point.ceiling_kw, float(design["nscc_kw"]),
+                                       delta=0.02 * float(design["nscc_kw"]))
+                self.assertAlmostEqual(point.supply_c, float(design["supply_c"]),
+                                       delta=0.3)
 
     def test_their_air_side_closes_on_the_net_figure(self):
         """Airflow x density x cp x dT is the net sensible capacity. Every
@@ -1407,19 +1413,23 @@ class ArrangementTest(unittest.TestCase):
 
 
 class DirectExpansionTest(unittest.TestCase):
-    """A CRAC is carried and checked, and not asked what it cannot answer.
+    """A CRAC is modelled, at every return, and says what it assumed.
 
-    Its capacity follows the refrigerant circuit, the compressor's speed and
-    the outdoor air its condenser rejects into. The coil this software fits is
-    a chilled-water one; there is no equivalent, and pretending otherwise
-    would put a number in a report that nothing stands behind (ADR-073).
+    Its evaporator is the same heat exchanger as a chilled-water coil with one
+    side BOILING: the refrigerant holds its temperature while it changes
+    phase, so the counterflow relation collapses to `1 - exp(-NTU)` measured
+    from the coil's apparatus dew point. What that does NOT model is the
+    condensing side, which follows the outdoor air (ADR-103).
+
+    It used to be refused outright, which left every DX case answered at its
+    plate figure, uncoupled from the room, and told to ask the manufacturer.
     """
 
     def test_the_shipped_crac_declares_itself(self):
         unit = equipment.load("IDAV1911F")
         self.assertEqual(unit.cooling, "dx")
         self.assertEqual(unit.arrangement, "downflow")
-        self.assertIsNone(unit.coil)
+        self.assertIsNotNone(unit.coil, unit.coil_problem)
 
     def test_everything_else_is_chilled_water(self):
         for model in equipment.SHIPPED:

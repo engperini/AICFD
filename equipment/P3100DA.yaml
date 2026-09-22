@@ -14,14 +14,20 @@
 # has left to push air the length of an under-floor plenum, and it is what
 # decides whether the plates furthest from the machine deliver anything.
 #
-# NOT CHILLED WATER. Direct expansion, two scroll compressors on R410A and a
-# remote air-cooled condenser, so its capacity follows the refrigerant
-# circuit, the compressors' staging and the outdoor air the condenser rejects
-# into. The coil this software fits is a chilled-water one and there is no
-# equivalent here (`cooling: dx`, ADR-073). A case may still name it: the run
-# is the room at this RATED point, with the supply temperature held there
-# rather than re-solved against the return the room produces, and the model
-# says so in an alert before the solve (ADR-097).
+# DIRECT EXPANSION, and MODELLED. Two scroll compressors on R410A and a
+# remote air-cooled condenser. Its evaporator is the same heat exchanger as a
+# chilled-water coil with one side BOILING, so it is fitted the same way --
+# an epsilon-NTU coil measured from the APPARATUS DEW POINT the selection
+# implies rather than from an entering water temperature (`cooling: dx`,
+# ADR-103). The sheet's performance table is what makes that possible: it
+# gives the air in and out with wet bulbs, and the gross total beside the
+# gross sensible, and the gap between those two is what says how cold the
+# coil surface runs.
+#
+# What is NOT modelled is the condensing side. The capacity below is at the
+# selection's own 37,6 degC outdoor air; a cooler day gives more and a hotter
+# one less, and one selection cannot say how much. The report says so once,
+# in the limitations.
 #
 # NOT A FAN WALL. It stands in the room and discharges downward into the
 # inter-floor plenum, so a case naming it needs `floor.enabled: true`
@@ -54,8 +60,8 @@
 # without the project being named in a public repository.
 #
 # THE ONE CHECK THAT APPLIES (ADR-071), computed at the sheet's own altitude:
-#   air   27.500 m3/h from 30,0 to 18,7 degC at 25 m  ->  100,5 kW  (0,0%)
-#   gross less the 7,5 kW of FAN power                ->  100,5 kW  (net)
+#   air   27.500 m3/h from 30,0 to 18,8 degC at 25 m  ->  100,3 kW  (0,2%)
+#   gross sensible 109,4 less the 8,9 kW the fans add ->  100,5 kW  (net)
 #
 # Note which power nets the capacity: the EC FANS' 7,5 kW, not the 27,8 kW of
 # compressors. The compressor heat leaves the room through the refrigerant
@@ -101,18 +107,41 @@ selection:
   power_supply: 460V/3ph/60Hz
 
 design:
-  return_c: 30.0              # air the unit RECEIVES, dry bulb, at 30% RH
-  supply_c: 18.7              # DERIVED, not stated: 30,0 - 100,5 kW over
-                              # 27.500 m3/h of 1,161 kg/m3 air at 25 m, which
-                              # is 11,3 K. The sheet gives the capacity and
-                              # the flow and leaves the discharge implicit.
+  # ALL OF THIS IS THE SHEET'S OWN PERFORMANCE TABLE (page 4, "General
+  # Input/Output Data"). The first version of this file was entered from the
+  # bullet list on page 2 alone and derived the supply air; page 4 states it,
+  # and states the wet bulbs and the gross capacities the coil model needs.
+  return_c: 30.0              # "Return Air D/B"
+  return_wb_c: 18.0           # "Return Air W/B" -- 30% RH at that dry bulb,
+                              # which the sheet also prints. The wet bulb is
+                              # what the selection program worked in.
+  supply_c: 18.8              # "Supply Air D/B". STATED, not derived.
   airflow_m3h: 27500          # "Vazão de ar", the sheet's own figure
-  nscc_kw: 100.5              # "Calor Sensível NET"
-  power_kw: 7.5               # EC FAN power (3 x 2,5 kW), which is what nets
-                              # the capacity. The unit also absorbs 27,8 kW of
-                              # compressors, 12 kW of electric reheat and
-                              # 9,6 kW of humidifier, and the condenser 3,35 kW
-                              # outdoors -- none of which is this air.
+  nscc_kw: 100.5              # "Net Sensible kW" -- "Calor Sensível NET"
+  net_total_kw: 101.4         # "Net Total kW"
+  gross_sensible_kw: 109.4    # "Grs Sensible kW"
+  gross_total_kw: 110.3       # "Grs Total kW". The 0,9 kW between this and
+                              # the gross sensible is the whole of the latent
+                              # duty: the coil is all but dry, which is what
+                              # a precision unit selected on sensible heat is
+                              # -- and it is what puts the apparatus dew point
+                              # at 10,5 degC, just under the 10,6 degC dew
+                              # point of the air entering (ADR-103).
+  heat_rejection_kw: 135.4    # "Total Heat Rejection" -- what the condenser
+                              # puts into the outdoor air: the room's heat
+                              # plus the compressors' work.
+  power_kw: 7.5               # EC FAN power (3 x 2,5 kW). The selection nets
+                              # the capacity by 8,9 kW (gross sensible less
+                              # net sensible), which is this plus the motor
+                              # heat it counted; the coil model uses the
+                              # selection's own figure.
+  compressor_kw: 27.8         # 2 x 13,9 kW. NOT in this air: the compressors'
+                              # work leaves through the refrigerant and is
+                              # rejected outdoors (ADR-073).
+  condenser_kw: 3.35          # outdoors, at 37,6 degC ambient.
+                              # The unit also carries 12 kW of electric reheat
+                              # and 9,6 kW of humidifier, neither of which is
+                              # modelled or wanted in a data hall.
 
 # NO CURVE. The sheet states no P-Q curve and no external static pressure, so
 # there is nothing to anchor one on. `fan_capacity` is not checked for this

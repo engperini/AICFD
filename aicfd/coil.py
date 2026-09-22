@@ -199,7 +199,14 @@ class Coil:
             ceiling_kw=max(0.0, air * (return_c - coldest)),
             effectiveness=self.epsilon(air, water),
             valve=ordered.valve,
-            saturated=ordered.saturated,
+            # SATURATED IS ABOUT THIS UNIT, not about the network. A unit told
+            # to open for a worse-placed peer delivers air COLDER than the
+            # setpoint, and reporting it as one that cannot hold the setpoint
+            # made every unit of a team read as failing -- and put "every
+            # temperature in this result is optimistic" under a run where
+            # they were pessimistic (ADR-064, ADR-103).
+            saturated=ordered.saturated and (
+                setpoint_c is not None and supply > setpoint_c + 1e-6),
             water_m3h=ordered.water_m3h,
         )
 
@@ -218,6 +225,27 @@ class Coil:
             return self.water_c
         # The water carries what the air lost PLUS what the fans put back.
         return self.water_c + (capacity_kw + self.fan_power_kw) / rate
+
+    # --- what a report says about it ------------------------------------------
+
+    def describe(self) -> dict:
+        """The coil's own properties, for the KPIs and the report.
+
+        Both kinds of coil answer this, so nothing downstream has to know
+        which one it is holding -- it reads `kind` where the difference
+        matters and the shared fields where it does not (ADR-103).
+        """
+        return {
+            "kind": "chilled_water",
+            "water_c": self.water_c,
+            "design_return_c": self.design_return_c,
+            "air_split_pct": round(self.air_split * 100),
+            "water_max_m3h": round(self.water_max / 4.18 * 3.6, 1),
+            "reference_selections": len(self.reference_returns),
+            "reference_error_k": (round(self.reference_error_k, 3)
+                                  if self.reference_error_k is not None else None),
+            "duty_label": "water valve",
+        }
 
     # --- the machine under control -------------------------------------------
 
@@ -500,3 +528,342 @@ def _misfit(split, ua0, air0, water0, points, water_in) -> float:
         total += ((effectiveness(ua / low, low / high) * low / air - eps)
                   * (ret - water_in)) ** 2
     return total
+
+
+# --- direct expansion ---------------------------------------------------------
+#
+# A DX unit's evaporator is the same heat exchanger with one side BOILING.
+# Refrigerant changing phase holds its temperature, so the cold side's capacity
+# rate is effectively infinite and the counterflow relation collapses to
+#
+#     epsilon = 1 - exp(-UA / C_air)
+#
+# measured from the coil's APPARATUS DEW POINT rather than from an entering
+# water temperature -- the surface the air is dragged towards. That is the
+# bypass-factor model every psychrometric text prints, written as epsilon-NTU
+# so a DX unit and a chilled-water unit are answered by one piece of code
+# (ADR-103).
+#
+# WHAT IS ASSUMED, said once. The ADP is held at the value the manufacturer's
+# selection implies. A real circuit moves it: a fixed-capacity compressor
+# against a lighter load drops its suction pressure, so the coil runs colder
+# and gives a little more than this says, and a unit with staged or inverter
+# compressors unloads instead. Both make the number here a conservative
+# ceiling, which is the right direction for a capacity a plant is sized on.
+# The condensing side is the selection's own outdoor air; capacity moves with
+# that too, and one selection cannot say how much (ADR-103).
+
+
+def saturation_pressure_pa(temp_c: float) -> float:
+    """Saturation vapour pressure over water, in Pa (ASHRAE Fundamentals)."""
+    t = temp_c + 273.15
+    return math.exp(
+        -5.8002206e3 / t + 1.3914993 - 4.8640239e-2 * t + 4.1764768e-5 * t**2
+        - 1.4452093e-8 * t**3 + 6.5459673 * math.log(t)
+    )
+
+
+def humidity_ratio(temp_c: float, pressure_pa: float, *, rh_pct: float | None = None,
+                   wetbulb_c: float | None = None) -> float:
+    """Mass of water per mass of dry air, from relative humidity or wet bulb.
+
+    Wet bulb is preferred where a selection states it: it is what a selection
+    program works in, and the two disagree by a few per cent on the sheets in
+    hand.
+    """
+    if wetbulb_c is not None:
+        w_sat = 0.621945 * saturation_pressure_pa(wetbulb_c) / (
+            pressure_pa - saturation_pressure_pa(wetbulb_c))
+        return ((2501 - 2.326 * wetbulb_c) * w_sat
+                - 1.006 * (temp_c - wetbulb_c)) / (
+                    2501 + 1.86 * temp_c - 4.186 * wetbulb_c)
+    if rh_pct is None:
+        raise CannotFit("neither a wet bulb nor a relative humidity was given")
+    pv = rh_pct / 100.0 * saturation_pressure_pa(temp_c)
+    return 0.621945 * pv / (pressure_pa - pv)
+
+
+def saturated_humidity_ratio(temp_c: float, pressure_pa: float) -> float:
+    ps = saturation_pressure_pa(temp_c)
+    return 0.621945 * ps / (pressure_pa - ps)
+
+
+def dew_point_c(humidity: float, pressure_pa: float) -> float:
+    """The temperature this air would have to reach to start condensing."""
+    return _solve(
+        lambda t: saturated_humidity_ratio(t, pressure_pa) - humidity,
+        -40.0, 90.0,
+    ) or -40.0
+
+
+def apparatus_dew_point_c(t_in: float, w_in: float, t_out: float, w_out: float,
+                          pressure_pa: float) -> float:
+    """Where the coil's own process line meets saturation, in degC.
+
+    The line from the air entering to the air leaving the COIL, extended. For
+    a coil that removes almost no moisture -- which is what a precision unit
+    selected on sensible heat is -- it is nearly horizontal, and it meets
+    saturation just below the entering air's dew point. That is the physical
+    statement being made: the surface is barely cold enough to wet.
+    """
+    if abs(t_out - t_in) < 1e-9:
+        raise CannotFit("the selection leaves the air at the temperature it entered")
+    slope = (w_out - w_in) / (t_out - t_in)
+    found = _solve(
+        lambda t: saturated_humidity_ratio(t, pressure_pa)
+        - (w_in + slope * (t - t_in)),
+        -30.0, t_out,
+    )
+    if found is None:
+        raise CannotFit(
+            "the selection's own air states do not meet saturation: no coil "
+            "surface produces them"
+        )
+    return found
+
+
+@dataclass(frozen=True)
+class DXCoil:
+    """A direct-expansion evaporator, recovered from its design selection.
+
+    The same interface as `Coil`, because everything downstream -- the coupled
+    solve, the per-unit capacities, the capacity figure -- should not have to
+    know which kind of machine it is holding.
+    """
+
+    adp_c: float
+    """Apparatus dew point: the surface temperature the air is dragged towards."""
+    ua: float
+    """Conductance at the fitted air flow, in kW/K."""
+    air_fitted: float
+    design_return_c: float
+    fan_power_kw: float
+    """What the fans hand back to the air, downstream of the coil."""
+    rated_capacity_kw: float
+    rated_ambient_c: float | None
+    """The outdoor air the condenser was selected against. Capacity moves with
+    it and one selection cannot say how much, so the result holds it there."""
+    compressor_kw: float | None = None
+    condenser_kw: float | None = None
+    refrigerant: str | None = None
+    assumptions: tuple[str, ...] = ()
+    """What the fit had to assume because the selection did not print it. Said
+    in the report, beside the capacity it decides (ADR-071)."""
+
+    # --- the machine ----------------------------------------------------------
+
+    def epsilon(self, air: float) -> float:
+        """Contact factor at this air capacity rate.
+
+        The conductance follows the air flow with the same exponent the
+        chilled-water coil uses -- it is the same finned bank, and only the
+        air side moves.
+        """
+        ua = self.ua * (air / self.air_fitted) ** AIR_EXPONENT
+        return effectiveness(ua / air, 0.0)
+
+    def supply(self, return_c: float, air: float, duty: float = 1.0) -> float:
+        """Air leaving the unit, fans included, at ``duty`` of full cooling."""
+        gross = self.epsilon(air) * air * (return_c - self.adp_c) * duty
+        return return_c - max(0.0, gross - self.fan_power_kw) / air
+
+    def ceiling_kw(self, return_c: float, air: float) -> float:
+        """Net sensible capacity with the compressors at full, at this return."""
+        gross = self.epsilon(air) * air * (return_c - self.adp_c)
+        return max(0.0, gross - self.fan_power_kw)
+
+    def leaving_water_c(self, capacity_kw: float) -> None:
+        """There is no water. Said as None rather than left off the class, so
+        a caller holding either kind of coil does not have to ask which."""
+        return None
+
+    # --- the machine under control -------------------------------------------
+
+    def operate(self, return_c: float, air: float,
+                setpoint_c: float | None = None) -> Operating:
+        """What the unit does at this return, with the compressors doing their
+        job: unloading, staging and cycling to hold the supply setpoint until
+        there is nothing left to give.
+
+        The chilled-water coil's valve and this are the same control question
+        answered with different hardware, so the answer has the same shape --
+        including a unit told to cool air already colder than its setpoint,
+        which shuts its compressors off and ventilates (ADR-062).
+        """
+        ceiling = self.ceiling_kw(return_c, air)
+        if setpoint_c is not None and return_c <= setpoint_c:
+            return Operating(
+                return_c=return_c, supply_c=return_c, capacity_kw=0.0,
+                ceiling_kw=ceiling, effectiveness=0.0, valve=0.0,
+                saturated=False, water_m3h=0.0,
+            )
+        coldest = return_c - ceiling / air
+        if setpoint_c is None or setpoint_c <= coldest:
+            supply, duty = coldest, 1.0
+            saturated = setpoint_c is not None
+        else:
+            wanted = air * (return_c - setpoint_c)
+            duty = min(1.0, (wanted + self.fan_power_kw)
+                       / max(1e-9, ceiling + self.fan_power_kw))
+            supply, saturated = setpoint_c, False
+        return Operating(
+            return_c=return_c,
+            supply_c=supply,
+            capacity_kw=air * (return_c - supply),
+            ceiling_kw=ceiling,
+            effectiveness=self.epsilon(air),
+            # How much of its refrigeration the unit is using: the compressor's
+            # analogue of a valve position, and read the same way.
+            valve=max(0.0, min(1.0, duty)),
+            saturated=saturated,
+            water_m3h=0.0,
+        )
+
+    def operate_shared(self, seen_c: float, return_c: float, air: float,
+                       setpoint_c: float | None = None) -> Operating:
+        """What this unit does when its control reads ``seen_c``.
+
+        Units on one network run to the worst return any of them sees: what is
+        shared is the reading, and what the reading buys is the compressor
+        duty. A unit whose own air is cool is told to work as hard as the
+        worst-placed unit has to, and then delivers what ITS coil gives at ITS
+        own return -- which is how a unit far from the load stops idling at
+        the setpoint and takes a share of it (ADR-064).
+        """
+        if seen_c <= return_c:
+            return self.operate(return_c, air, setpoint_c)
+        ordered = self.operate(seen_c, air, setpoint_c)
+        if ordered.valve <= 0:
+            return self.operate(return_c, air, setpoint_c)
+        supply = min(self.supply(return_c, air, ordered.valve), return_c)
+        return Operating(
+            return_c=return_c,
+            supply_c=supply,
+            capacity_kw=air * (return_c - supply),
+            ceiling_kw=self.ceiling_kw(return_c, air),
+            effectiveness=self.epsilon(air),
+            valve=ordered.valve,
+            # About THIS unit: one working hard for a worse-placed peer is
+            # over-cooling, not failing. See `Coil.operate_shared`.
+            saturated=ordered.saturated and (
+                setpoint_c is not None and supply > setpoint_c + 1e-6),
+            water_m3h=0.0,
+        )
+
+    # --- what a report says about it ------------------------------------------
+
+    def describe(self) -> dict:
+        """The coil's own properties, for the KPIs and the report."""
+        return {
+            "kind": "dx",
+            "design_return_c": self.design_return_c,
+            "adp_c": round(self.adp_c, 2),
+            "contact_factor_pct": round(self.epsilon(self.air_fitted) * 100, 1),
+            "rated_ambient_c": self.rated_ambient_c,
+            "rated_capacity_kw": self.rated_capacity_kw,
+            "compressor_kw": self.compressor_kw,
+            "condenser_kw": self.condenser_kw,
+            "refrigerant": self.refrigerant,
+            "assumptions": list(self.assumptions),
+            "duty_label": "compressor duty",
+        }
+
+
+def fit_dx(unit) -> DXCoil:
+    """Recover a direct-expansion evaporator from its design selection.
+
+    What it needs is the selection's psychrometry: the air in (dry bulb and
+    wet bulb, or relative humidity), the air off the coil, and how much of the
+    duty was sensible. The last is what says how cold the surface is -- a
+    selection that removes no moisture is telling you the coil barely reaches
+    the dew point, and one that removes a lot is telling you it is far below.
+
+    Raises CannotFit, naming the field, where the sheet does not carry it.
+    """
+    design = unit.design or {}
+    selection = unit.selection or {}
+    missing = [k for k in ("return_c", "supply_c", "airflow_m3h", "nscc_kw")
+               if design.get(k) is None]
+    if missing:
+        raise CannotFit(
+            f"{unit.model} has no design selection to characterise it: "
+            f"design.{', design.'.join(missing)} missing"
+        )
+    humidity = design.get("return_wb_c"), design.get("return_rh_pct")
+    if humidity == (None, None):
+        humidity = None, selection.get("entering_air_rh")
+    if humidity == (None, None):
+        raise CannotFit(
+            f"{unit.model} does not say how humid the air it was selected on "
+            f"was (design.return_wb_c, or design.return_rh_pct), so the coil "
+            f"surface its capacity implies cannot be found. A direct-expansion "
+            f"unit's sensible capacity is a psychrometric statement"
+        )
+    assumed: list[str] = []
+    # THE GROSS SENSIBLE DUTY: what the COIL does, before the fans put their
+    # own power back into the air downstream of it. A sheet that prints it is
+    # used; one that does not has said the same thing in two numbers, because
+    # net is gross less the fan power it states.
+    gross = design.get("gross_sensible_kw")
+    if gross is None:
+        gross = float(design["nscc_kw"]) + float(design.get("power_kw") or 0.0)
+        assumed.append(
+            "the coil's gross duty is the net sensible plus the stated fan "
+            "power, because the selection prints only the net figure"
+        )
+    # THE LATENT DUTY, which is what says how far below the entering dew point
+    # the surface runs. A precision unit selected on sensible heat is all but
+    # dry -- on the one sheet here that prints both, the latent is 0,8% of the
+    # total, and carrying it moves the apparatus dew point by 0,12 K and the
+    # capacity by 0,6%. So a sheet that prints no total is taken as dry, and
+    # the report says so (ADR-103).
+    total = design.get("gross_total_kw")
+    if total is None:
+        total = gross
+        assumed.append(
+            "the coil is dry -- no moisture removed -- because the selection "
+            "prints no total capacity beside its sensible one. On a sheet "
+            "that prints both, that is worth 0,1 K of coil surface"
+        )
+    return_c = float(design["return_c"])
+    altitude = float(selection.get("elevation_m") or 0.0)
+    pressure = site_pressure(altitude)
+    air = air_capacity_rate(float(design["airflow_m3h"]), return_c, altitude)
+    mass = air / (CP_AIR / 1000)
+    # What the fans hand back to the air: the selection's own difference
+    # between gross and net, which is what it applied. The nameplate fan power
+    # is the fallback, and the two differ by a kilowatt or so on the sheets in
+    # hand -- motor heat the selection counted and the plate does not.
+    fan_power = float(gross) - float(design["nscc_kw"])
+    if fan_power <= 0:
+        fan_power = float(design.get("power_kw") or 0.0)
+    off_coil = return_c - float(gross) / air
+    w_in = humidity_ratio(return_c, pressure,
+                          wetbulb_c=humidity[0], rh_pct=humidity[1])
+    latent = max(0.0, float(total) - float(gross))
+    # Latent heat of vaporisation near a coil surface, kJ/kg.
+    w_out = max(0.0, w_in - latent / (mass * 2450.0))
+    adp = apparatus_dew_point_c(return_c, w_in, off_coil, w_out, pressure)
+    if adp >= off_coil:
+        raise CannotFit(
+            f"{unit.model}: the selection's own numbers put the coil surface "
+            f"at {adp:.1f} degC and the air leaving it at {off_coil:.1f} degC, "
+            f"which no coil does"
+        )
+    epsilon = (return_c - off_coil) / (return_c - adp)
+    return DXCoil(
+        assumptions=tuple(assumed),
+        adp_c=adp,
+        ua=-math.log(1.0 - epsilon) * air,
+        air_fitted=air,
+        design_return_c=return_c,
+        fan_power_kw=fan_power,
+        rated_capacity_kw=float(design["nscc_kw"]),
+        rated_ambient_c=(float(selection["outside_air_c"])
+                         if selection.get("outside_air_c") is not None else None),
+        compressor_kw=(float(design["compressor_kw"])
+                       if design.get("compressor_kw") is not None else None),
+        condenser_kw=(float(design["condenser_kw"])
+                      if design.get("condenser_kw") is not None else None),
+        refrigerant=selection.get("refrigerant"),
+    )

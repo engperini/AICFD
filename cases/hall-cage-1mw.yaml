@@ -1,5 +1,5 @@
 # DATA HALL WITH A CUSTOMER CAGE AT ONE END -- 1 MW, direct expansion,
-# downflow units on a raised floor.
+# downflow CRACs on a raised floor.
 #
 # What this case is here to show, and what makes it different from the other
 # halls in this folder:
@@ -11,19 +11,24 @@
 #   not already close is built instead, which is a cage standing free in the
 #   middle (ADR-096, ADR-098).
 #
-#   TWO LOAD DENSITIES IN ONE ROOM. 510 kW inside the cage across 40
-#   positions and 490 kW outside it across 100. The cage runs at 12,75 kW a
-#   cabinet against 4,90 outside, which is the arrangement a colocation hall
-#   is really in and the one a single `racks.load_kw` cannot express.
+#   A REAL RACK SCHEDULE INSIDE IT. 509,96 kW over 52 positions, cabinet by
+#   cabinet, as the customer's drawing lays them out: 20 kW cabinets at the
+#   ends of each row, 10 kW through the middle, five ODF positions carrying
+#   nothing at all, and twelve future positions at 8,33 kW. Outside the cage
+#   the remaining 490,1 kW is spread evenly over 130 positions at 3,77 kW --
+#   which is how a colocation hall really is, and what a single
+#   `racks.load_kw` cannot say.
 #
-#   A DIRECT-EXPANSION PLANT. The units are DX room units, not chilled-water
-#   fan walls, so this result is the room at their RATED point: their capacity
-#   against return air follows the refrigerant circuit and is not modelled,
-#   and the report says so in its limitations (ADR-097).
+#   A DIRECT-EXPANSION PLANT, MODELLED. The units are DX room units, not
+#   chilled-water fan walls, and their evaporator is fitted from the
+#   manufacturer's own selection (ADR-103): the run asks each machine what it
+#   does at the return this room gives it rather than holding it at the plate
+#   figure. What is still not modelled is the condensing side, which follows
+#   the outdoor air -- the report says so once, in its limitations.
 #
 # The geometry is taken from a real colocation layout and the room is real in
-# its proportions. The LOADS are not a client's schedule: 510 and 490 are a
-# round split of 1 MW, spread evenly, to make the two densities the point.
+# its proportions. The cage's loads are the project's own schedule with the
+# client's names taken off.
 #
 # The air loop: downflow units -> under-floor plenum -> floor plates in the
 # cold aisles -> racks -> contained hot aisles -> ceiling grilles -> return
@@ -75,62 +80,92 @@ aisles:
                               # refuses it by name.
 
 racks:
-  per_row: 10                 # 10 x 800 mm = 8,0 m of row, the same length
-                              # inside the cage and outside it.
-  load_kw: 4.9                # OUTSIDE THE CAGE. 100 positions in pods 3 to 7
-                              # at 4,9 kW = 490 kW, which is what is left of
-                              # the room's 1.000 kW once the cage's 510 is
-                              # taken out. Spread evenly here; a real study
-                              # states the distribution it has.
+  per_row: 13                 # 13 x 800 mm = 10,4 m of row. The cage's rows
+                              # are 13 positions on the customer's schedule:
+                              # ten fitted and three held for future cabinets.
+                              # Every row of the hall is the same length.
+  load_kw: 3.77               # OUTSIDE THE CAGE, spread evenly: 130 positions
+                              # in pods 3 to 7. 130 x 3,77 = 490,1 kW, which
+                              # with the cage's 509,96 makes 1.000,1 kW -- the
+                              # room's 1 MW, and the 60 W is what rounding a
+                              # per-cabinet figure to two decimals costs. A
+                              # real study states the distribution it has.
   size: [0.8, 1.2, 2.2]       # 800 mm wide, 1,20 m deep, 2,2 m tall.
   airflow_cfm_per_kw: 158     # the design reference (ADR-023). A rack
                               # datasheet beats it where there is one.
 
-  # THE CAGE, pods 1 and 2: 40 positions x 12,75 kW = 510 kW, the
-  # figure asked for. Stated position by position rather than as a
-  # second default, because `racks.load_kw` is the hall's one load
-  # and a case has only one of those.
+  # THE CAGE, POSITION BY POSITION, from the customer's rack schedule. Rows A,
+  # B, C and D on that drawing are F1 to F4 here -- pod 1 is A and B facing
+  # across their hot aisle, pod 2 is C and D.
+  #
+  #   410,00 kW  the cabinets the schedule marks and colours, 20 kW and 10 kW
+  #     99,96 kW  twelve future positions (11, 12, 13 of each row) at 8,33 kW
+  #   ---------
+  #   509,96 kW  which is the 510 kW the cage is let at, to four hundredths
+  #
+  # The ODF positions carry NO load: an optical distribution frame is a
+  # cabinet full of fibre. It is still in the model as a cabinet, because it
+  # still stands in the row and the air still has to get round it.
   loads:
-    F1-01: 12.75
-    F1-02: 12.75
-    F1-03: 12.75
-    F1-04: 12.75
-    F1-05: 12.75
-    F1-06: 12.75
-    F1-07: 12.75
-    F1-08: 12.75
-    F1-09: 12.75
-    F1-10: 12.75
-    F2-01: 12.75
-    F2-02: 12.75
-    F2-03: 12.75
-    F2-04: 12.75
-    F2-05: 12.75
-    F2-06: 12.75
-    F2-07: 12.75
-    F2-08: 12.75
-    F2-09: 12.75
-    F2-10: 12.75
-    F3-01: 12.75
-    F3-02: 12.75
-    F3-03: 12.75
-    F3-04: 12.75
-    F3-05: 12.75
-    F3-06: 12.75
-    F3-07: 12.75
-    F3-08: 12.75
-    F3-09: 12.75
-    F3-10: 12.75
-    F4-01: 12.75
-    F4-02: 12.75
-    F4-03: 12.75
-    F4-04: 12.75
-    F4-05: 12.75
-    F4-06: 12.75
-    F4-07: 12.75
-    F4-08: 12.75
-    F4-09: 12.75
-    F4-10: 12.75
+    # A on the schedule: A01 at 20 kW, A02-A08 at 10, A09 at 20, A10 an ODF.
+    F1-01: 20
+    F1-02: 10
+    F1-03: 10
+    F1-04: 10
+    F1-05: 10
+    F1-06: 10
+    F1-07: 10
+    F1-08: 10
+    F1-09: 20
+    F1-10: 0  # ODF: a cabinet that breathes and makes no heat
+    F1-11: 8.33
+    F1-12: 8.33
+    F1-13: 8.33
+
+    # B: B01 at 20, B02-B07 at 10, B08 at 20, B09 and B10 ODFs.
+    F2-01: 20
+    F2-02: 10
+    F2-03: 10
+    F2-04: 10
+    F2-05: 10
+    F2-06: 10
+    F2-07: 10
+    F2-08: 20
+    F2-09: 0  # ODF: a cabinet that breathes and makes no heat
+    F2-10: 0  # ODF: a cabinet that breathes and makes no heat
+    F2-11: 8.33
+    F2-12: 8.33
+    F2-13: 8.33
+
+    # C: C01 at 20, C02-C08 at 10, C09 and C10 ODFs.
+    F3-01: 20
+    F3-02: 10
+    F3-03: 10
+    F3-04: 10
+    F3-05: 10
+    F3-06: 10
+    F3-07: 10
+    F3-08: 10
+    F3-09: 0  # ODF: a cabinet that breathes and makes no heat
+    F3-10: 0  # ODF: a cabinet that breathes and makes no heat
+    F3-11: 8.33
+    F3-12: 8.33
+    F3-13: 8.33
+
+    # D: D01-D09 at 10, D10 at 20.
+    F4-01: 10
+    F4-02: 10
+    F4-03: 10
+    F4-04: 10
+    F4-05: 10
+    F4-06: 10
+    F4-07: 10
+    F4-08: 10
+    F4-09: 10
+    F4-10: 20
+    F4-11: 8.33
+    F4-12: 8.33
+    F4-13: 8.33
 
 cage:
   # AT THE EDGE OF THE HALL, which is what the plan shows: the cage occupies
@@ -199,27 +234,41 @@ components:
   ceiling_return: ceiling-return-600
 
 fanwall:
-  # A DOWNFLOW DX ROOM UNIT, from the library. Everything below comes from
-  # `equipment/IDAV1911F.yaml`, which carries the manufacturer's selection in
-  # full: 14.215 m3/h, 51,7 kW NET sensible at 30,0 degC return, and 38,8 degC
-  # of outdoor air at the condenser -- the condition a DX unit's capacity
-  # depends on and a chilled-water one's does not.
+  # THE EMERSON CRACs THAT ARE INSTALLED. Everything below comes from
+  # `equipment/P3100DA.yaml`, which carries the manufacturer's selection in
+  # full -- 27.500 m3/h, 100,5 kW NET sensible at 30,0 degC return, supplying
+  # 18,8 degC, at 37,6 degC of outdoor air on the condenser.
   #
-  # DIRECT EXPANSION, so the coil is not modelled: capacity against return air
-  # follows the refrigerant circuit, the compressor's speed and that outdoor
-  # air. The run holds the supply at the unit's selected 17,9 degC instead of
-  # re-solving it against the return this room produces, and the report's
-  # limitations say so. Compare the return the result reports against the
-  # 30,0 degC the unit was rated at: the further apart, the less the plate
-  # figure says about what the machine would do here (ADR-097).
-  model: IDAV1911F
-  count: 20                   # 20 x 51,7 = 1.034 kW for 1.000 kW of IT, and
-                              # 284.300 m3/h against the 268.400 the racks
-                              # draw. Ten a side, on the two gallery walls.
+  # DIRECT EXPANSION, AND THE EVAPORATOR IS MODELLED (ADR-103). The coil is
+  # recovered from that selection's own psychrometry -- the 10,5 degC coil
+  # surface its sensible/total split implies -- so the run asks the machine
+  # what it does at the return THIS room produces instead of holding it at
+  # the plate figure. At 26 degC of return, for instance, a unit gives about
+  # 80 kW, not 100,5. What is still not modelled is the CONDENSING side: the
+  # capacity holds at the selection's 37,6 degC outdoor air, and the report
+  # says so in its limitations.
+  model: P3100DA
+  count: 14                   # what the project has installed: 7 a side, on
+                              # the two gallery walls. 14 x 100,5 = 1.407 kW
+                              # of rated capacity for 1.000 kW of IT, and
+                              # 385.000 m3/h against the 268.500 the racks
+                              # draw -- a plant sized with redundancy, which
+                              # is what makes the per-unit capacity at the
+                              # real return the number worth reading.
+  static_pressure_pa: 100     # STATED HERE, not from the datasheet: neither
+                              # the manufacturer's sheet nor the as-built
+                              # gives an external static pressure for this
+                              # machine, which is the one field keeping it out
+                              # of `equipment.SHIPPED`. 100 Pa is the house
+                              # figure for a downflow unit on a 1,0 m plenum;
+                              # it decides the fan_capacity check and nothing
+                              # else in this result.
   control: independent        # each unit to its own return. `team` runs the
                               # units of one gallery to the worst return any
                               # of them sees, which is what a networked plant
-                              # does (ADR-064).
+                              # does -- and which now changes the answer for a
+                              # DX plant too, because its coil is modelled
+                              # (ADR-064, ADR-103).
 
 grilles:
   size: 0.6

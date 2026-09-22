@@ -663,22 +663,45 @@ def _summary(doc, export: Export, drawn: dict) -> None:
 
 
 def _selection_rows(unit) -> list[tuple[str, str]]:
-    """The chilled-water and air conditions a unit's table was selected at.
+    """The conditions a unit's table was selected at.
 
     They belong beside the capacity because they are what makes it true. The
     same coil at 12 °C entering water is a different machine as far as any
-    number in this report is concerned.
+    number in this report is concerned -- and so is the same CRAC on a
+    37,6 °C day (ADR-103).
     """
     if not unit or not unit.selection:
         return []
     labels = (
         ("entering_water_c", "Entering chilled water", "°C", 1),
         ("leaving_water_c", "Leaving chilled water", "°C", 1),
+        ("outside_air_c", "Outdoor air at the condenser", "°C", 1),
         ("entering_air_rh", "Entering air relative humidity", "%", 0),
     )
-    return [(label, f"{_num(unit.selection[key], digits)} {suffix}")
+    rows = [(label, f"{_num(unit.selection[key], digits)} {suffix}")
             for key, label, suffix, digits in labels
             if unit.selection.get(key) is not None]
+    if unit.cooling == "dx":
+        design = unit.design or {}
+        if unit.selection.get("refrigerant"):
+            rows.append(("Refrigerant", str(unit.selection["refrigerant"])))
+        # WHAT THE MACHINE COSTS TO RUN. A chilled-water unit's compressor is
+        # in a chiller somewhere else and this report cannot see it; a CRAC's
+        # is inside the box, so the same table can say what the cooling costs.
+        # Neither number reaches the air in the room (ADR-073).
+        power = [design.get(k) for k in ("compressor_kw", "condenser_kw")]
+        if design.get("compressor_kw"):
+            rows.append((
+                "Electrical input at the rated point",
+                f"{_num(sum(v for v in power if v) + (design.get('power_kw') or 0), 1)} kW"
+                f" — {_num(design.get('power_kw'), 1)} kW of fans, "
+                f"{_num(design.get('compressor_kw'), 1)} kW of compressors"
+                + (f", {_num(design.get('condenser_kw'), 1)} kW at the condenser"
+                   if design.get("condenser_kw") else "")))
+        if design.get("heat_rejection_kw"):
+            rows.append(("Heat rejected outdoors",
+                         f"{_num(design['heat_rejection_kw'], 1)} kW"))
+    return rows
 
 
 # --- 2 methodology ------------------------------------------------------------
@@ -750,6 +773,12 @@ def _methodology(doc, export: Export, drawn: dict) -> None:
                                  + (f", {len(model['hot_aisles']) * len(blocks)} "
                                     "separate containment volumes" if len(blocks) > 1 else "")),
         ("Cold aisles", f"{len(model['cold_aisles'])}"),
+        *([("Customer cage",
+            f"{model['cage']} around {len(model.get('cage_racks') or [])} "
+            f"cabinets"
+            + (f", K = {_num(model.get('cage_k'), 2)} each way"
+               if model.get("cage_k") else ""))]
+          if model.get("cage") else []),
         (f"{export.naming['noun'].capitalize()} units", f"{len(model['fans'])}"),
     ]
     _table(doc, ["Feature", "As built in the model"], rows, widths=[7.0, 9.0])
@@ -897,6 +926,7 @@ def _layout_section(doc, export: Export, drawn: dict) -> None:
           f"hall carries the same pattern of widths and loads; a position that "
           f"disagrees with it says so on its own.",
           size=9.5, colour=SECOND)
+    _cage_split(doc, export)
     _table(doc, ["What stands in the row", "How many", "Detail"], [
         ("Cabinets carrying load", f"{len(racks) - zero}",
          "loads of " + ", ".join(f"{v:g} kW" for v in loads if v) + " installed"
@@ -920,6 +950,57 @@ def _layout_section(doc, export: Export, drawn: dict) -> None:
                 f"hall has one, and any {export.naming['noun']} standing in "
                 "the window. The room itself is drawn to scale, with the cut "
                 "where you put it, on the model page.")
+
+
+def _cage_split(doc, export: Export) -> None:
+    """What is inside the customer cage and what is in the rest of the hall.
+
+    A hall with a cage is TWO rooms: one customer's, at their density, and
+    everybody else's. Every number a reader wants -- how many cabinets, how
+    much load, how much per cabinet -- is different on the two sides of that
+    fence, and a table that totals the hall says neither (ADR-102). Absent,
+    with no extra words, where the hall has no cage.
+    """
+    caged = [r for r in export.racks if r.get("in_cage")]
+    if not caged:
+        return
+    outside = [r for r in export.racks if not r.get("in_cage")]
+    construction = export.model.get("cage") or "mesh"
+    k = export.model.get("cage_k")
+
+    def density(racks) -> str:
+        loaded = [r for r in racks if r.get("load_w")]
+        if not loaded:
+            return "—"
+        kw = sum(r["load_w"] for r in loaded) / 1000
+        return (f"{_num(kw / len(loaded), 2)} kW per loaded cabinet"
+                + (f", {len(racks) - len(loaded)} carrying nothing"
+                   if len(racks) - len(loaded) else ""))
+
+    _heading(doc, "Basis of design — the customer cage and the rest of the hall", 2)
+    _para(doc,
+          f"One customer's rows are fenced off inside the hall, in "
+          f"{construction}"
+          + (f" of loss coefficient K = {_num(k, 2)}" if k and construction == "mesh"
+             else "")
+          + ". The two sides are different rooms and this study reports them "
+            "as such: the cage is drawn on every plan, the cabinets inside it "
+            "are named in the detail figure, and section 4 ranks every "
+            "cabinet of both.",
+          size=9.5, colour=SECOND)
+    _table(doc, ["", "Positions", "Installed load", "Density"], [
+        ("Inside the cage", f"{len(caged)}",
+         f"{_num(sum(r['load_w'] for r in caged) / 1000, 1)} kW", density(caged)),
+        ("Rest of the data hall", f"{len(outside)}",
+         f"{_num(sum(r['load_w'] for r in outside) / 1000, 1)} kW",
+         density(outside)),
+        ("The room", f"{len(export.racks)}",
+         f"{_num(sum(r['load_w'] for r in export.racks) / 1000, 1)} kW",
+         density(export.racks)),
+    ], widths=[4.6, 2.4, 3.4, 5.6],
+        note="A cabinet carrying nothing is still in the model: it stands in "
+             "the row, it has the resistance of its neighbours and the air "
+             "still has to get round it.")
 
 
 def _surfaces_section(doc, export: Export) -> None:
@@ -1029,18 +1110,36 @@ def _model_limits(export: Export) -> list[str]:
             "obstructs an aisle is not in the geometry. The room is the "
             "cabinets, the aisles, the containment and the plant."
         )
-    # A DIRECT-EXPANSION PLANT IS A LIMITATION OF THE MODEL, not a design
-    # criterion the plant misses -- so it is read here, once, rather than
-    # arriving in the alerts card on every run (ADR-097, ADR-098).
+    # WHAT A DIRECT-EXPANSION PLANT STILL DOES NOT ANSWER. Its evaporator is
+    # modelled (ADR-103); its CONDENSER is not, and the difference belongs
+    # here, once, rather than in the alerts card on every run (ADR-098).
     kpis = export.payload.get("kpis") or {}
-    if kpis.get("rated_return_c"):
+    coil = kpis.get("coil_model") or {}
+    if coil.get("kind") == "dx":
+        ambient = coil.get("rated_ambient_c")
         limits.append(
-            f"{kpis.get('unit_model')} is a direct-expansion unit. Its "
-            f"capacity follows the refrigerant circuit, the compressors' "
-            f"staging and the outdoor air its condenser rejects into, none of "
-            f"which is modelled here: the coil this software fits is a "
-            f"chilled-water one. So this result is the room at the unit's "
-            f"RATED point — {_num(kpis.get('rated_nscc_kw'), 1)} kW at "
+            f"{kpis.get('unit_model')} is a direct-expansion unit and its "
+            f"EVAPORATOR is modelled: the capacities here are its coil at the "
+            f"air each unit received, measured from the "
+            f"{_num(coil.get('adp_c'), 1)} °C coil surface its selection "
+            f"implies. Its CONDENSING side is not. Capacity follows the "
+            f"outdoor air the condenser rejects into, and this result holds "
+            f"that at the selection's own"
+            + (f" {_num(ambient, 1)} °C" if ambient is not None else " value")
+            + " — a hotter day gives less, a cooler one more, and one "
+            "selection cannot say how much. The compressors are taken as "
+            "modulating continuously; a staged machine cycles about this."
+        )
+        for assumption in coil.get("assumptions") or []:
+            limits.append(
+                f"The coil fit for {kpis.get('unit_model')} assumed that "
+                f"{assumption}."
+            )
+    elif kpis.get("rated_return_c") and kpis.get("coil_problem"):
+        limits.append(
+            f"{kpis.get('unit_model')}'s coil is not modelled: "
+            f"{kpis.get('coil_problem')}. So this result is the room at the "
+            f"unit's RATED point — {_num(kpis.get('rated_nscc_kw'), 1)} kW at "
             f"{_num(kpis.get('rated_return_c'), 1)} °C return — with the "
             f"supply temperature held there rather than re-solved against the "
             f"return the room produces, and the capacity quoted in this "
@@ -1187,6 +1286,40 @@ def _coil_section(doc, export: Export) -> None:
     if not coil:
         return
     share = export.kpis.get("coil_air_share_pct")
+    if coil.get("kind") == "dx":
+        _para(doc,
+              "The design selection above characterises the unit's "
+              "EVAPORATOR. A direct-expansion coil is the same heat exchanger "
+              "as the chilled-water one section 1.4 sets out, with one side "
+              "boiling: the refrigerant holds its temperature while it "
+              "changes phase, so the coil is measured from the surface "
+              "temperature — the apparatus dew point — that its own split "
+              "between sensible and total capacity implies. That coil gives "
+              "this unit's capacity at every condition this hall produced; "
+              "the compressors modulate to hold the supply temperature until "
+              "there is nothing left to give.",
+              size=9.5)
+        rows = [
+            ("Design return air",
+             f"{_num(coil.get('design_return_c'), 1)} °C"),
+            ("Coil surface (apparatus dew point)",
+             f"{_num(coil.get('adp_c'), 1)} °C"),
+            ("Air reaching the surface (contact factor)",
+             f"{coil.get('contact_factor_pct')} %"),
+            ("Outdoor air the capacity is held at",
+             f"{_num(coil.get('rated_ambient_c'), 1)} °C"
+             if coil.get("rated_ambient_c") is not None else "not in this export"),
+            ("Air flow in this hall, against the design selection",
+             f"{share} %" if share else "—"),
+        ]
+        _table(doc, ["Property of the evaporator", "Value"], rows,
+               widths=[8.0, 8.0],
+               note="The condensing side is not modelled: capacity is held at "
+                    "the outdoor air above. Section 6 says what that means.")
+        for assumption in coil.get("assumptions") or []:
+            _para(doc, f"Assumed, because the selection does not print it: "
+                       f"{assumption}.", size=9, colour=MUTED, italic=True)
+        return
     _para(doc,
           "The design selection above characterises the counterflow coil that "
           "section 1.4 sets out, and that coil gives this unit's capacity at "
