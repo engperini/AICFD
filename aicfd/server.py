@@ -102,12 +102,21 @@ EDITABLE = {
     "floor": (("floor", "enabled"), bool, None),
     "floor_height": (("floor", "height"), float, (0.2, 3.0)),
     "floor_tiles": (("floor", "tiles_per_rack"), int, (0, 10)),
+    # HOW MANY PLATE ROWS THE AISLE HOLDS, counting both sides of it. The only
+    # way to an odd number: one plate each side of a 1,20 m aisle is two, two
+    # each is four, and three was not sayable (ADR-106).
+    "floor_tiles_across": (("floor", "tiles_across"), int, (1, 20)),
     "supply_grille": (("components", "supply_grille"), "component", "supply_grille"),
     "fan_static_pa": (("fanwall", "static_pressure_pa"), float, (0.0, 2_000.0)),
     # --- return grilles -----------------------------------------------------
     "grille_size": (("grilles", "size"), float, (0.1, 3.0)),
     "grille_count": (("grilles", "count"), int, (1, 200)),
     "grille_coverage": (("grilles", "coverage"), float, (0.05, 1.0)),
+    # The ceiling counted in its own modules, in either direction. `coverage`
+    # sizes an area; these count the 600 x 600 grilles a ceiling grid holds,
+    # which is what a reader has on their reflected ceiling plan (ADR-106).
+    "grille_across": (("grilles", "across"), int, (1, 20)),
+    "grille_along": (("grilles", "along"), int, (1, 200)),
     # Which component fills each role. Validated against the library rather
     # than a range: a name that is not in it is not a value out of bounds, it
     # is a case pointing at nothing (ADR-048).

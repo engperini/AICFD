@@ -111,6 +111,10 @@ const SECTIONS = [
         optional: true },
       { key: 'floor_tiles', label: 'Plates in front of each rack', unit: '',
         step: 1, optional: true },
+      // The aisle's own count, which is the way a floor is described and the
+      // only way to an odd number of plate rows across it (ADR-106).
+      { key: 'floor_tiles_across', label: 'Plate rows across the cold aisle',
+        unit: '', step: 1, optional: true },
     ],
   },
   {
@@ -173,6 +177,14 @@ const SECTIONS = [
       { key: 'grille_size', label: 'Grille size', unit: 'm', step: 0.05 },
       { key: 'grille_count', label: 'Grilles', unit: '', step: 1 },
       { key: 'grille_coverage', label: 'Ceiling covered over each hot aisle', unit: '0-1', step: 0.05 },
+      // COUNTED, in the ceiling's own 600 x 600 modules. `coverage` sizes the
+      // opening as a fraction of the row; these say how many grilles there
+      // are, which is what the reflected ceiling plan shows and what the
+      // floor has always let a case state (ADR-106).
+      { key: 'grille_across', label: 'Grilles across the aisle', unit: '',
+        step: 1, optional: true },
+      { key: 'grille_along', label: 'Grilles along each row', unit: '',
+        step: 1, optional: true },
       { key: 'containment', label: 'Contain an aisle', check: true, optional: true },
       // Two arrangements, not a degree of one. A hot aisle is walled from the
       // rack tops to the ceiling with the return grille on top; a cold aisle

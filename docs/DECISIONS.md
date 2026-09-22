@@ -4586,3 +4586,45 @@ drawing and could not find either here.
 visibly stopping before the longer one. The racks are drawn; the chain now
 measures them rather than the band they were asked to fill, which is the same
 number when the rows agree and the truth when they do not (ADR-104).
+
+---
+
+## ADR-106 — The ceiling is counted in its own modules, like the floor
+
+**Decision.** A case can count the 600 mm return grilles over each contained
+aisle: `grilles.across` modules across it and `grilles.along` modules along the
+row (hall) or `grilles.count` along it (POD). Counting a direction switches it
+from the coverage strip to the module grid; leaving both out keeps the strip
+exactly as it was. The floor gains the matching key, `floor.tiles_across` — the
+plate rows **across** the cold aisle, counting both sides of it.
+
+**Why.** `grilles.coverage` is a fraction of the row length: the right input
+when a reader is sizing an area, the wrong one when they are counting the
+grilles a ceiling grid holds. And there was no way at all to say *three 600 ×
+600 across this aisle*, though the floor has had a count since the raised floor
+existed. A reflected ceiling plan is a count, and a ceiling is ordered in
+modules.
+
+**Why the floor needed a second key.** `floor.tiles_per_rack` is laid outward
+from each cabinet's face, and two rows face the same aisle — so the aisle holds
+an EVEN number: one each side is two, two each is four. An 1,80 m aisle takes
+three, and three was not sayable. `tiles_across` counts the aisle's plate rows
+and the two rows split them, the odd one going to the row nearer `y = 0`, which
+is how a floor grid runs. The double-laying guard (ADR-095) still applies and
+catches a count wider than the aisle.
+
+**A count the mesh cannot hold is not a count.** A 600 mm module on a 0,40 m
+cell is a module and a half: the opening's edges would be snapped back to the
+cell and the summary would claim seventeen grilles over an opening seventeen and
+a third long. So a counted direction whose cell does not divide the module is
+refused, naming the cell sizes that do. The uncounted direction is unaffected,
+which is why the two are independent.
+
+**Where the modules sit.** Centred on the aisle, rounded onto the cell and held
+inside it. Centred and left there, a single 600 mm module on a 1,20 m aisle came
+out 400 mm wide after snapping.
+
+**Cost accepted.** A hall's opening is still ONE panel per aisle per block, not
+one per module: a hall of fourteen pods at 3 × 17 modules is 714 faceZones for a
+rectangle the solver treats as one surface. A POD keeps discrete modules,
+because there are a handful of them and discrete is what a ceiling grid is.

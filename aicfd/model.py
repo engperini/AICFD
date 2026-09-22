@@ -298,6 +298,12 @@ class Model:
     """The unit's P-Q curve as (m3/h, Pa) points, flow ascending, if given."""
     grille_free_area: float | None = None
     """Free-area ratio of the return grilles, from their datasheet."""
+    grille_size: float = 0.6
+    """The return grille module, 600 mm square as a ceiling grid is built."""
+    grille_counts: tuple[int | None, int | None] = (None, None)
+    """How many modules the case counted (across, along), where it counted
+    them. None means the opening is sized by `grilles.coverage` instead
+    (ADR-106)."""
     unit_capacity_kw: float | None = None
     """Net sensible cooling of one fan wall unit, from its datasheet."""
     unit_power_kw: float | None = None
@@ -1368,6 +1374,15 @@ def build_model(spec: dict) -> Model:
         ),
         fan_curve=parse_fan_curve(fan.get("curve")),
         grille_free_area=_grille_free_area(spec),
+        grille_size=float((spec.get("grilles") or {}).get("size", 0.6)),
+        # What the case COUNTED, as it counted it -- so the summary can say
+        # `3 across of 0,60 m` rather than only the rectangle (ADR-106).
+        grille_counts=(
+            None if (spec.get("grilles") or {}).get("across") is None
+            else int(spec["grilles"]["across"]),
+            None if (spec.get("grilles") or {}).get("along") is None
+            else int(spec["grilles"]["along"]),
+        ),
         plenum_depth=layout.plenum_depth,
         supply_mesh_k=layout.supply_mesh_k,
     )
@@ -1481,6 +1496,100 @@ def _supply_mesh_k(spec: dict) -> float | None:
         return float(plenum["mesh_loss_coefficient"])
     mesh = component_for(spec, "gallery_mesh")
     return mesh.k if mesh else None
+
+
+def grille_modules(spec: dict, aisle: tuple[float, float],
+                   span: tuple[float, float]) -> tuple[int | None, int | None]:
+    """How many 600 mm return grilles the case counts over one contained
+    aisle, as (across, along). None in either place means "not counted there".
+
+    THE CEILING IS BUILT IN MODULES, like the floor. `grilles.coverage` says
+    what fraction of the row length is open, which is the right input when a
+    reader is sizing an area and the wrong one when they are counting the
+    grilles a ceiling grid actually holds -- and there was no way to say
+    "three 600 x 600 across this aisle" at all, though the floor has had a
+    count since the raised floor existed (ADR-106).
+
+    Each direction is independent: count the modules across the aisle and
+    leave the length to `coverage`, count both, or count neither and keep the
+    strip every case in this repository is drawn with.
+    """
+    raw = spec.get("grilles") or {}
+    across, along = raw.get("across"), raw.get("along")
+    if across is None and along is None:
+        return None, None
+    size = float(raw["size"])
+    coverage = float(raw.get("coverage", 1.0))
+    fits = {
+        "grilles.across": (across, max(1, int((aisle[1] - aisle[0]) / size + 1e-9)),
+                           f"{num(aisle[1] - aisle[0])} m aisle"),
+        "grilles.along": (along, max(1, int(coverage * (span[1] - span[0]) / size + 1e-9)),
+                          f"{num(span[1] - span[0])} m of row"),
+    }
+    for key, (count, limit, what) in fits.items():
+        if count is None:
+            continue
+        if int(count) < 1:
+            raise ValueError(f"{key}: {count} is not a number of grilles")
+        if int(count) > limit:
+            raise ValueError(
+                f"{key}: {count} grilles of {num(size)} m need "
+                f"{num(int(count) * size)} m, and the {what} holds {limit}. "
+                f"Use {limit}, or change the aisle the grilles have to fit in"
+            )
+    return (None if across is None else int(across),
+            None if along is None else int(along))
+
+
+def grille_extent(spec: dict, aisle: tuple[float, float],
+                  span: tuple[float, float], strip: tuple[float, float],
+                  cell: tuple[float, float, float] | None = None):
+    """The opening's rectangle: modules where the case counts them, and the
+    coverage strip or the whole aisle where it does not.
+
+    A COUNT THE MESH CANNOT HOLD IS NOT A COUNT. A 600 mm module on a 0,40 m
+    cell is a module and a half, so `snap_to_mesh` would move the opening's
+    edges back to the cell and the summary would claim seventeen grilles over
+    an opening that is seventeen and a third. Refused by name, on the axis
+    that is counted, with the cell sizes the module does divide (ADR-106).
+    """
+    across, along = grille_modules(spec, aisle, span)
+    if across is None and along is None:
+        return strip, aisle
+    size = float((spec.get("grilles") or {})["size"])
+    if cell is not None:
+        for axis, count, key in ((0, along, "grilles.along"),
+                                 (1, across, "grilles.across")):
+            if count is None:
+                continue
+            steps = size / cell[axis]
+            if count > 1 and abs(steps - round(steps)) > 1e-9:
+                raise ValueError(
+                    f"{key}: a {num(size)} m grille is {steps:.2f} cells on "
+                    f"the {'xyz'[axis]} mesh of {num(cell[axis])} m, so "
+                    f"{count} of them cannot be built where they are counted. "
+                    f"Use a cell the module divides by -- "
+                    f"{', '.join(num(size / n) for n in (1, 2, 3, 4))} m -- "
+                    f"or drop {key} and size the opening with "
+                    f"`grilles.coverage`"
+                )
+
+    def middle(lo: float, hi: float, n: int, axis: int) -> tuple[float, float]:
+        """`n` modules, as near the middle of (lo, hi) as the mesh allows.
+
+        Centred and left there, the block's edges land between cell faces
+        whenever the aisle's own midpoint does -- a single 600 mm module
+        centred on a 1,20 m aisle came out 400 mm wide after snapping. So the
+        start is rounded onto the cell first, and then held inside the aisle.
+        """
+        start = (lo + hi) / 2 - n * size / 2
+        if cell is not None:
+            start = lo + round((start - lo) / cell[axis]) * cell[axis]
+        start = min(max(start, lo), max(lo, hi - n * size))
+        return (start, start + n * size)
+
+    return (strip if along is None else middle(*span, along, 0),
+            aisle if across is None else middle(*aisle, across, 1))
 
 
 def _grille_k(spec: dict) -> float | None:
@@ -1628,6 +1737,24 @@ def _floor_tiles(model: "Model", spec: dict, floor: dict, lift: float,
     depth = float(tile.size[1]) if tile and getattr(tile, "size", None) else 0.6
     standard = floor["tiles_per_rack"]
     stated = rack_tiles(spec)
+    # `floor.tiles_across` counts the plate rows in the AISLE, so the two rows
+    # facing it split them: the odd one goes to the row nearer y = 0, which is
+    # how a floor grid runs. A perimeter aisle has one row facing it and that
+    # row lays them all (ADR-106).
+    share: dict[str, int] = {}
+    across = floor.get("tiles_across")
+    if across:
+        for band in model.cold_aisles:
+            facing = sorted(
+                (row for row in model.rows
+                 if min(abs(row.front_y - band[0]), abs(row.front_y - band[1])) < 1e-6),
+                key=lambda row: row.front_y,
+            )
+            if len(facing) == 1:
+                share[facing[0].id] = across
+            elif facing:
+                share[facing[0].id] = (across + 1) // 2
+                share[facing[1].id] = across // 2
     out: list[Panel] = []
     for row in model.rows:
         # The plates lie in the cold aisle, which is the side the cabinets
@@ -1635,7 +1762,7 @@ def _floor_tiles(model: "Model", spec: dict, floor: dict, lift: float,
         face = row.front_y
         step = -depth if row.front_sign > 0 else depth
         for rack in row.racks:
-            count = stated.get(rack.id, standard)
+            count = stated.get(rack.id, share.get(row.id, standard))
             if count <= 0:
                 continue
             for n in range(count):
@@ -2281,6 +2408,20 @@ def raised_floor_for(spec: dict) -> dict | None:
     tiles = int(raw.get("tiles_per_rack", 2))
     if not 0 <= tiles <= 10:
         raise ValueError(f"floor.tiles_per_rack: {tiles} is outside 0-10")
+    # HOW MANY PLATE ROWS THE AISLE HOLDS, which is the way a floor is
+    # actually described: "three 600 mm plates between these two rows". Laid
+    # from both faces, it is the only way to an ODD number -- one each side of
+    # a 1,20 m aisle is two, two each is four, and three was not sayable at
+    # all (ADR-106).
+    across = raw.get("tiles_across")
+    if across is not None:
+        across = int(across)
+        if not 1 <= across <= 20:
+            raise ValueError(
+                f"floor.tiles_across: {across} is outside 1-20. It is how "
+                f"many rows of plate stand across the cold aisle, counting "
+                f"both sides of it"
+            )
     if (spec.get("plenum") or {}).get("enabled") or \
             (spec.get("plenum") or {}).get("as_mesh"):
         raise ValueError(
@@ -2288,7 +2429,7 @@ def raised_floor_for(spec: dict) -> dict | None:
             "same air from the same units into the same aisles. Choose one: "
             "`floor.enabled` with downflow units, or `plenum` with a fan wall"
         )
-    return {"height": height, "tiles_per_rack": tiles}
+    return {"height": height, "tiles_per_rack": tiles, "tiles_across": across}
 
 
 def rack_tiles(spec: dict) -> dict[str, int]:
@@ -2855,18 +2996,42 @@ def _pod_layout(spec: dict, cell, rack_spec: dict | None = None) -> _Layout:
 
     grille = float(spec["grilles"]["size"])
     grille_count = int(spec["grilles"].get("count", count))
+    # ACROSS THE AISLE as well, where the case says so: a 1,80 m aisle holds
+    # three 600 mm modules, and one row of them was all a POD could have
+    # (ADR-106). A POD keeps its modules as separate openings -- there are a
+    # handful of them, and discrete is what a ceiling grid is.
+    rows_across = int((spec.get("grilles") or {}).get("across") or 1)
+    if rows_across * grille > hot_aisle[1] - hot_aisle[0] + 1e-9:
+        raise ValueError(
+            f"grilles.across: {rows_across} grilles of {num(grille)} m need "
+            f"{num(rows_across * grille)} m, and the "
+            f"{num(hot_aisle[1] - hot_aisle[0])} m hot aisle holds "
+            f"{max(1, int((hot_aisle[1] - hot_aisle[0]) / grille + 1e-9))}"
+        )
+    # Centred on the aisle where the case COUNTS the rows, and on its low edge
+    # where it does not -- which is where a POD has always put its one row of
+    # modules, and on the mesh. Centring unconditionally moved a single 600 mm
+    # module off the grid and the snapping said so (ADR-106).
+    if (spec.get("grilles") or {}).get("across") is None:
+        start = hot_aisle[0]
+    else:
+        start = (hot_aisle[0] + hot_aisle[1]) / 2 - rows_across * grille / 2
+        start = hot_aisle[0] + round((start - hot_aisle[0]) / cell[1]) * cell[1]
+        start = min(max(start, hot_aisle[0]),
+                    max(hot_aisle[0], hot_aisle[1] - rows_across * grille))
     grilles = [
         Panel(
-            f"grille{i + 1}",
+            f"grille{j * grille_count + i + 1}",
             "opening",
             axis=2,
             position=ceiling,
             extent=(
                 (span[0] + i * grille, span[0] + (i + 1) * grille),
-                (hot_aisle[0], hot_aisle[0] + grille),
+                (start + j * grille, start + (j + 1) * grille),
             ),
             resistance=_grille_k(spec),
         )
+        for j in range(rows_across)
         for i in range(grille_count)
     ]
 
@@ -3079,7 +3244,8 @@ def _hall_layout(spec: dict, cell, rack_spec: dict | None = None) -> _Layout:
                     "opening",
                     axis=2,
                     position=ceiling,
-                    extent=(strip_of(shared), hot_aisle),
+                    extent=grille_extent(spec, hot_aisle, shared,
+                                         strip_of(shared), cell),
                     resistance=_grille_k(spec),
                 )
             )
@@ -3381,6 +3547,32 @@ def grille_loss_coefficient(free_area: float) -> float:
     return (0.707 * (1 - s) ** 0.375 + (1 - s)) ** 2 / s**2
 
 
+def grille_module_note(model: Model) -> str:
+    """The return opening over one aisle, in modules where they were counted.
+
+    `3 x 17 of 0,60 m` says what a ceiling contractor orders; `10,20 x 1,80 m
+    strip` says what the mesh builds. Both are the same rectangle, and which
+    one a reader wants depends on whether they counted (ADR-106).
+    """
+    grilles = [p for p in model.panels if p.name.startswith("grille")]
+    if not grilles:
+        return "-"
+    size = model.grille_size
+    across, along = model.grille_counts
+    if across is None and along is None:
+        lo, hi = grilles[0].extent[0]
+        band = grilles[0].extent[1]
+        return f"{num(hi - lo)} x {num(band[1] - band[0])} m strip"
+    counted = []
+    for n, what in ((across, "across"), (along, "along")):
+        if n is not None:
+            counted.append(f"{n} {what}")
+    lo, hi = grilles[0].extent[0]
+    band = grilles[0].extent[1]
+    return (f"{' and '.join(counted)} of {num(size)} m -- "
+            f"{num(hi - lo)} x {num(band[1] - band[0])} m")
+
+
 def summary_rows(model: Model) -> list[tuple[str, str, str]]:
     """The derived numbers, as rows for the page and the CLI.
 
@@ -3478,7 +3670,10 @@ def summary_rows(model: Model) -> list[tuple[str, str, str]]:
             (
                 f"{num(grilles[0].extent[0][1] - grilles[0].extent[0][0])} m square"
                 if len(model.rows) == 1
-                else f"{face(grilles[0])} strip over each hot aisle"
+                # HOW MANY MODULES, where the case counts them. A reader who
+                # set `grilles.across: 3` is owed the number back, and the
+                # 600 x 600 grid is what a ceiling is ordered in (ADR-106).
+                else f"{grille_module_note(model)} over each hot aisle"
             )
             + (
                 f", {num(model.grille_free_area * 100, 0)}% free area"

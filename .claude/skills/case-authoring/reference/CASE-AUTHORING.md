@@ -261,14 +261,17 @@ or three.
 | `floor.enabled` | bool | | §4 |
 | `floor.height` | float | 0.2 to 3 | the access floor's depth. The building grows by it; the room above is unchanged |
 | `floor.tiles_per_rack` | int | 0 to 10 | perforated plates in the cold aisle per cabinet, laid outward from the cabinet face. **Two rows face the same cold aisle**, so an aisle of width W holds W/0.6 rows of plate between them — not that many for each. Asking for more is refused by name (ADR-095) |
+| `floor.tiles_across` | int | 1 to 20 | plate rows **across the aisle**, counting both sides of it — the way a floor is described, and the only way to an odd number: one plate each side of a 1,20 m aisle is two, two each is four, three needs this key. The two rows split them, the odd one going to the row nearer `y = 0` (ADR-106) |
 
 ### Perforated surfaces
 
 | key | type | range | where the number comes from |
 |---|---|---|---|
 | `grilles.size` | float | 0.1 to 3 | one ceiling return grille, from the ceiling grid |
-| `grilles.count` | int | 1 to 200 | **POD only** |
+| `grilles.count` | int | 1 to 200 | **POD only**: 600 mm modules along the row |
 | `grilles.coverage` | float | 0.05 to 1 | **hall only**: the fraction of each hot-aisle block the grille strip covers |
+| `grilles.across` | int | 1 to 20 | 600 mm modules **across** the hot aisle — three of them fill a 1,80 m aisle. Counting switches that direction from the aisle's full width to the module grid |
+| `grilles.along` | int | 1 to 200 | **hall only**: 600 mm modules **along** each block, instead of the `coverage` fraction. Counted modules have to land on the mesh, so the cell on that axis must divide the module — 0,60, 0,30, 0,20, 0,15 m — and a case that cannot is refused by name (ADR-106) |
 | `grilles.free_area` | float | 0.05 to 1 | open area fraction, from the grille datasheet |
 | `grilles.loss_coefficient` | float | 0 to 100 | K from the grille datasheet (ADR-020) |
 | `components.ceiling_return` | str | | a file in `components/` with role `ceiling_return`, instead of the two numbers above |
