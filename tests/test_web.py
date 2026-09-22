@@ -678,3 +678,43 @@ class MachinesAreCalledWhatTheyAreTest(unittest.TestCase):
         wall -- the room's most visible feature, invisible."""
         self.assertIn("dw-cage", (WEB / "drawing.js").read_text())
         self.assertIn(".dw-cage", (WEB / "drawing.css").read_text())
+
+
+class RaisedFloorDrawingTest(unittest.TestCase):
+    """The room stands ON the deck, and the drawing has to show that.
+
+    The room's air was painted from the SLAB, so on every raised-floor case
+    the hot aisles ran straight down through the under-floor plenum: the
+    transverse section showed a contained hot aisle a metre below the floor
+    anybody stands on, striping the supply plenum pink. And the caption
+    `cold aisle`, placed 0,45 m above absolute zero, sat inside that plenum
+    and named it (ADR-107).
+    """
+
+    def drawing(self) -> str:
+        return (WEB / "drawing.js").read_text()
+
+    def test_the_room_s_air_starts_at_the_deck(self):
+        js = self.drawing()
+        self.assertIn("const deck = model.floor_height || model.domain.lo[2];", js)
+        block = js[js.index("// 2 — what volume is what."):js.index("// 3 —")]
+        self.assertNotIn("model.domain.lo[2]],", block,
+                         "a wash still starts at the slab")
+        self.assertEqual(block.count("deck"), 4,
+                         "the cold wash, the hot bands and the comment "
+                         "should all speak of the deck")
+
+    def test_the_plenum_is_still_painted_as_the_supply_it_is(self):
+        """Cold, and from the slab: it IS the volume under the deck."""
+        js = self.drawing()
+        self.assertIn("// 3b", js)
+        self.assertIn("model.floor_height],", js)
+
+    def test_the_cold_aisle_caption_is_in_the_room(self):
+        js = self.drawing()
+        section = js[js.index("if (view.id === 'section-a')"):]
+        section = section[:section.index("if (view.id === 'section-b')")]
+        self.assertIn("deck + 0.45", section,
+                      "the caption is placed from absolute zero again")
+        self.assertIn("underfloor supply plenum", section,
+                      "the section does not name the volume under the deck")

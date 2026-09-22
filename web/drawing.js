@@ -416,19 +416,26 @@ export function drawView(model, view, scale, options = {}) {
   // nor a rack as bare paper -- the space above a rack, the transverse aisle
   // between two blocks, the whole of the longitudinal section. White read as
   // a gap in the drawing rather than as the room (ADR-052).
+  // THE ROOM STANDS ON THE DECK. With a raised floor the volume below it is
+  // the supply plenum, not the room: painting the room's air from the slab
+  // ran the hot aisles straight down through the plenum, so the section
+  // showed a contained hot aisle a metre below the floor anybody stands on
+  // (ADR-107). Without a floor the two are the same line.
+  const deck = model.floor_height || model.domain.lo[2];
   paint(
-    [model.hall.lo[0], model.domain.lo[1], model.domain.lo[2]],
+    [model.hall.lo[0], model.domain.lo[1], deck],
     [model.hall.hi[0], model.domain.hi[1], model.ceiling_z],
     'dw-cold',
   );
   // The hot aisles, where the y axis is on screen to show them. They stop
   // where the rack rows stop: an aisle is the space between two rows, and
-  // beyond the last rack there are no rows to be between.
+  // beyond the last rack there are no rows to be between. And they stop at
+  // the deck, for the reason above.
   if (view.h === 1 || view.v === 1) {
     for (const band of hotAisles(model)) {
       for (const [x0, x1] of rackBlocks(model)) {
         paint(
-          [x0, band[0], model.domain.lo[2]],
+          [x0, band[0], deck],
           [x1, band[1], view.v === 2 ? model.ceiling_z : model.domain.hi[2]],
           'dw-hot',
         );
@@ -701,8 +708,16 @@ function annotate(svg, model, view, X, Y, bounds) {
   const galleryMids = galleries.map((box) => mid([box.lo[0], box.hi[0]]));
 
   if (view.id === 'section-a') {
-    put([hallMidX, mid(cold), 0.45], 'cold aisle', 'dw-note dw-cold-t');
+    // IN THE ROOM, which stands on the deck. At 0,45 m absolute the caption
+    // sat inside the under-floor plenum on every raised-floor case, naming
+    // the supply plenum `cold aisle` (ADR-107).
+    const deck = model.floor_height || 0;
+    put([hallMidX, mid(cold), deck + 0.45], 'cold aisle', 'dw-note dw-cold-t');
     put([hallMidX, mid(hot), model.ceiling_z - 1.1], 'chimney', 'dw-note dw-hot-t');
+    if (model.floor_height) {
+      put([hallMidX, mid(cold), model.floor_height / 2],
+        'underfloor supply plenum', 'dw-note dw-cold-t');
+    }
   }
   if (view.id === 'section-b') {
     for (const x of galleryMids) {

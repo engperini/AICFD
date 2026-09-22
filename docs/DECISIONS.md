@@ -4628,3 +4628,29 @@ out 400 mm wide after snapping.
 one per module: a hall of fourteen pods at 3 × 17 modules is 714 faceZones for a
 rectangle the solver treats as one surface. A POD keeps discrete modules,
 because there are a handful of them and discrete is what a ceiling grid is.
+
+---
+
+## ADR-107 — The room stands on the deck, and the section says so
+
+**Decision.** On a raised-floor case the drawing paints the room's air from
+the **deck**, not from the slab: the cold wash over the hall and the hot-aisle
+bands both start at `floor_height`. The volume below it keeps its own wash and
+its own caption, in the transverse section as well as the longitudinal one.
+
+**Why.** Both washes started at `domain.lo[2]`, so every hot aisle ran
+straight down through the under-floor supply plenum — the transverse section
+showed a contained hot aisle a metre below the floor anybody stands on, with
+the plenum striped pink where the aisles crossed it. The washes are
+translucent, so the plenum's own blue did not hide it; it mixed with it.
+
+**And the caption with it.** `cold aisle` was placed 0,45 m above absolute
+zero, which on a 1,0 m plenum is inside the plenum: the drawing named the
+supply plenum `cold aisle`, one line below where the cold aisle is. It is
+placed from the deck now, and section A names the plenum the way section B
+always did.
+
+**The rule this is an instance of.** A drawing of a room with a raised floor
+is two rooms stacked, and every coordinate in it has to say which one it
+belongs to. Absolute zero is the slab and it is not where anything in the
+data hall happens.
