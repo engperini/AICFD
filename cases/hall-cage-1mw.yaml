@@ -15,7 +15,7 @@
 #   cabinet, as the customer's drawing lays them out: 20 kW cabinets at the
 #   ends of each row, 10 kW through the middle, five ODF positions carrying
 #   nothing at all, and twelve future positions at 8,33 kW. Outside the cage
-#   the remaining 490,1 kW is spread evenly over 130 positions at 3,77 kW --
+#   the remaining 488,8 kW is spread evenly over 104 positions at 4,7 kW --
 #   which is how a colocation hall really is, and what a single
 #   `racks.load_kw` cannot say.
 #
@@ -26,13 +26,18 @@
 #   figure. What is still not modelled is the condensing side, which follows
 #   the outdoor air -- the report says so once, in its limitations.
 #
+#   A CONTAINED COLD AISLE, AND A CAGE WALL STANDING IN ONE. The aisle
+#   between rows F4 and F5 is the one the dividing wall crosses, so the
+#   containment does not reach it: each side closes with a side of its own
+#   and the rest of the clearance is the walkway to the cage (ADR-110).
+#
 # The geometry is taken from a real colocation layout and the room is real in
 # its proportions. The cage's loads are the project's own schedule with the
 # client's names taken off.
 #
 # The air loop: downflow units -> under-floor plenum -> floor plates in the
-# cold aisles -> racks -> contained hot aisles -> ceiling grilles -> return
-# plenum -> back to the units.
+# contained cold aisles -> racks -> the room, which is the hot side ->
+# ceiling grilles over the hot aisles -> return plenum -> back to the units.
 name: hall-cage-1mw
 
 site:
@@ -55,41 +60,39 @@ hall:
                               # result, so on a real study they come off the
                               # section rather than off a case like this one.
 
-pods: 7                       # 7 x (row + contained hot aisle + row). Every
+pods: 6                       # 6 x (row + contained hot aisle + row). Every
                               # aisle here is 1,20 m, so the pod pitch is
-                              # 4,80 m and seven of them make a 38,8 m room --
-                              # the depth of the layout this is drawn from.
-                              # The cage is pods 1 and 2, rows F1 to F4.
+                              # 4,80 m; six of them, the wider aisle the cage
+                              # wall stands in and the perimeter make a 34,8 m
+                              # room. The cage is pods 1 and 2, rows F1 to F4.
 
 aisles:
   cold: 1.2                   # measured: B to C, 6,58 -> 7,78 m
   hot: 1.2                    # measured: the hatched HAC bands, 1,199 m
-  perimeter: 3.2              # rack face to HALL wall, which is the cage
-                              # clearance PLUS the hall outside the cage:
-                              # measured 1,18 m of cold aisle inside the cage
-                              # and 1,80 m of room outside it on the row-A
-                              # side, so 2,98 m measured against the 3,2 m
-                              # used here -- 3,2 puts the row start and every
-                              # band on a cell face, and nothing in this model
-                              # is snapped as a result.
-                              # Modelled symmetric; on the row-D side
-                              # the real hall runs 25 m further, to the nine
-                              # row positions that are not in this model.
-                              # It has to exceed `cage.clearance`, or the
-                              # cage wall IS the hall wall and the build
-                              # refuses it by name.
+  perimeter: 1.2              # rack face to HALL wall. It is the outermost
+                              # cold aisle as well as the clearance, and at
+                              # 1,20 m it is the same aisle as every other one
+                              # in the room. Measured 1,18 m inside the cage on
+                              # the row-A side. It lands on the 0,20 m cell, so
+                              # nothing here is snapped.
+                              # Modelled symmetric; on the row-D side the real
+                              # hall runs further, to the row positions that
+                              # are not in this model.
+                              # Where a cage side is really built, this has to
+                              # exceed `cage.clearance`, or the cage wall IS
+                              # the hall wall and the build refuses it by name.
 
 racks:
   per_row: 13                 # 13 x 800 mm = 10,4 m of row. The cage's rows
                               # are 13 positions on the customer's schedule:
                               # ten fitted and three held for future cabinets.
                               # Every row of the hall is the same length.
-  load_kw: 3.77               # OUTSIDE THE CAGE, spread evenly: 130 positions
-                              # in pods 3 to 7. 130 x 3,77 = 490,1 kW, which
-                              # with the cage's 509,96 makes 1.000,1 kW -- the
-                              # room's 1 MW, and the 60 W is what rounding a
-                              # per-cabinet figure to two decimals costs. A
-                              # real study states the distribution it has.
+  load_kw: 4.7                # OUTSIDE THE CAGE, spread evenly: 104 positions
+                              # in pods 3 to 6. 104 x 4,7 = 488,8 kW, which
+                              # with the cage's 509,96 makes 998,76 kW -- the
+                              # room's 1 MW to within the rounding of a
+                              # per-cabinet figure. A real study states the
+                              # distribution it has.
   size: [0.8, 1.2, 2.2]       # 800 mm wide, 1,20 m deep, 2,2 m tall.
   airflow_cfm_per_kw: 158     # the design reference (ADR-023). A rack
                               # datasheet beats it where there is one.
@@ -184,26 +187,32 @@ cage:
                               # out. `drywall` is a solid partition -- switch
                               # this one word and run it again to see what the
                               # construction costs.
-  aisle: 2.4                  # THE COLD AISLE THE CAGE WALL STANDS IN. A wall
+  aisle: 6                    # THE COLD AISLE THE CAGE WALL STANDS IN. A wall
                               # in an aisle halves it, and the row inside the
                               # cage and the row outside BOTH breathe from it
                               # -- so at the hall's own 1,20 m each of them
                               # would be left 0,60 m of cold aisle, which is a
-                              # different room (ADR-099). 2,40 m here, so both
-                              # keep a full 1,20 m. Only this aisle changes;
-                              # the other six stay as `aisles.cold` drew them.
-  clearance: 1.8              # WHERE the wall sits in that aisle, measured
+                              # different room (ADR-099). 6,00 m here: 1,20 m
+                              # of contained cold aisle and 1,20 m of walkway
+                              # on each face of the wall, which is the 4,80 m
+                              # the clearance needs plus the aisle itself.
+                              # It can only widen what the clearance needs, and
+                              # never narrow it (ADR-109). Only this aisle
+                              # changes; the other five stay as `aisles.cold`
+                              # drew them.
+  clearance: 2.4              # WHERE the wall sits in that aisle, measured
                               # from the enclosed rows' faces -- on BOTH
                               # sides, so the aisle the wall stands in is at
                               # least twice this (ADR-109).
                               #
-                              # 1,80 m rather than 1,20 because this hall can
-                              # be run with the COLD aisle contained: a
+                              # It has to exceed `aisles.cold`, because this
+                              # hall is run with the COLD aisle contained: a
                               # contained aisle cannot end on a cage wall, so
                               # it closes with a side of its own and the rest
                               # of the clearance is the walkway to the cage
                               # (ADR-110). 1,20 m of contained aisle from each
-                              # row's faces leaves 0,60 m of walkway.
+                              # row's faces leaves 1,20 m of walkway on each
+                              # face of the wall.
                               # On the three sides the room closes, neither
                               # applies: the rectangle is clipped to the hall
                               # so the wall that IS built runs wall to wall.
@@ -215,6 +224,7 @@ cage:
   # an open top is a different room and a legitimate thing to ask for instead
   # -- and the only way to build a DRYWALL one, which closed at the top would
   # leave the racks with an exit and no entry (ADR-096).
+  roof: false
 
 floor:
   # SUPPLY THROUGH THE FLOOR. The units stand in the room and discharge DOWN
@@ -229,17 +239,20 @@ floor:
                               # velocity, which is what decides whether the
                               # far plates deliver -- so on a real study it is
                               # a number to ask for, not to inherit.
-  tiles_per_rack: 1           # One plate in front of each cabinet, which is
-                              # what a 1,20 m cold aisle holds between two
-                              # facing rows: each row lays its plates outward
-                              # from its own face, so the aisle holds
-                              # 1,20/0,60 = 2 rows of plate BETWEEN them, not
-                              # two for each. Asking for two is refused, by
-                              # name (ADR-095). Widen the aisle to model more.
+  tiles_per_rack: 2           # Two plates in front of each cabinet. A 1,20 m
+                              # cold aisle holds 1,20/0,60 = 2 rows of plate
+                              # BETWEEN two facing rows, not two for each, so
+                              # what is laid there is 2 and the summary says
+                              # so by aisle (ADR-108). State
+                              # `floor.tiles_across: 2` to say it outright, or
+                              # widen `aisles.cold` to 2,40 m to fit all four.
+                              # The aisle the cage wall stands in is wide
+                              # enough to take them.
 
 components:
   cage: cage-mesh-13          # 13 x 13 mm, 3 mm wire, 65% free area
   ceiling_return: ceiling-return-600
+  supply_grille: supply-grille-2000
 
 fanwall:
   # THE EMERSON CRACs THAT ARE INSTALLED. Everything below comes from
@@ -277,6 +290,13 @@ fanwall:
                               # does -- and which now changes the answer for a
                               # DX plant too, because its coil is modelled
                               # (ADR-064, ADR-103).
+  airflow_m3h: 27500
+  capacity_kw: 100.5
+  power_kw: 7.5
+  width: 2.553
+  height: 1.97
+  depth: 0.873
+  supply_temp_c: 18.8
 
 grilles:
   size: 0.6
@@ -284,7 +304,13 @@ grilles:
   free_area: 0.65             # the ceiling-return component's own figure
 
 containment:
-  enabled: true               # every hot aisle is contained
+  enabled: true               # every COLD aisle is contained: a lid at rack
+  aisle: cold                 # height and a door at each end, so the room
+                              # around the rows is the hot one and the ceiling
+                              # grilles take the return from it (ADR-100).
+                              # Where the cage wall stands in one, the
+                              # containment stops short of it and closes with
+                              # a side of its own (ADR-110).
 
 mesh:
   # Chosen so the ROOM is exact: every aisle, every rack band, the cage
@@ -292,15 +318,25 @@ mesh:
   # warnings this case does print are the UNIT's own 1,777 m width and its
   # depth -- a machine is the size it is, and rounding the room to suit it
   # would be the wrong way round.
-  # x 0,40: two cells across an 800 mm cabinet; the gallery (4,4), the
-  # perimeter (3,2) and the cage clearance (1,2) are all multiples of it.
-  # y 0,20: every 1,20 m band, the perimeter and the fan wall's 3,4 m width.
-  # z 0,20: the rack (2,2), the false ceiling (4,0) and the slab (5,6).
-  cell_size: [0.40, 0.20, 0.20]
+  # 0,20 m on all three axes: four cells across an 800 mm cabinet, and every
+  # 1,20 m band, the perimeter, the gallery (4,4), the cage clearance (2,4)
+  # and the aisle it stands in (6,0) are multiples of it. In z it holds the
+  # rack (2,2), the false ceiling (4,0), the slab (5,6) and the 1,0 m plenum.
+  # 620.136 cells: a uniform mesh, and the price of one fine enough in x to
+  # resolve the cabinet rather than the row.
+  cell_size: [0.2, 0.2, 0.2]
 
 solver:
-  max_iterations: 2000
+  max_iterations: 500
   residual_tolerance: 1.0e-4
   sensor_interval: 100
   warm_start: true
-  processors: 4
+  processors: 9
+
+plenum:
+  enabled: false
+  as_mesh: false
+  depth: 1.2
+  grille:
+    width: 1.2
+    height: 3.2
