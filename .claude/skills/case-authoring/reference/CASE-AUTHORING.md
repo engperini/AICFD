@@ -327,6 +327,13 @@ racks:
 A position takes `type`, `blank`, `width` and `load_kw` and nothing else; an
 unknown key is refused by name.
 
+**A worked one.** `cases/hall-cage-1mw.yaml` carries a customer's real rack
+schedule this way: 52 positions in the cage, 20 kW cabinets at the row ends,
+10 kW through the middle, five ODF positions at zero and twelve future
+positions at 8,33 kW — 509,96 kW in all — against the rest of the hall spread
+evenly. Read it beside the drawing it came from: every number in it is one a
+reader can find on that sheet.
+
 **Per-position overrides** — by **rack id**, for the ones that differ from the
 typical row. The id is built by the layout, and you must use its exact form:
 
@@ -439,20 +446,25 @@ a CRAH is visible on a hall without a raised floor, and says what it would
 take (ADR-092).
 
 **Chilled water and direct expansion.** A unit's file also states its
-`cooling`. Both run. What differs is what the result answers:
+`cooling`. Both run, and both are modelled: a DX evaporator is the same finned
+bank with one side boiling, so it is fitted from the same kind of selection
+(ADR-103). What differs is where the cold comes from, and therefore what the
+fit needs and what it cannot answer:
 
 | | `chilled_water` | `dx` |
 |---|---|---|
-| the coil | fitted from the manufacturer's selections, so the unit can be asked what it does at the return **this room** produces | not modelled: capacity follows the refrigerant circuit, the compressors' staging and the outdoor air the condenser rejects into |
-| the supply temperature | re-solved against the room, pass by pass (ADR-040) | held at the selected one |
-| the result is | the room at the plant's real duty | the room at the plant's **rated point** |
+| the coil is measured from | the entering chilled water | the **apparatus dew point** the selection implies |
+| the fit needs | `selection.entering_water_c` and `leaving_water_c` | the air's humidity (`design.return_wb_c`, or a return RH) and the sensible/total split (`design.gross_sensible_kw`, `gross_total_kw`) |
+| the duty is controlled by | the water valve | the compressors, staging and unloading |
+| what is **not** modelled | — | the **condensing** side: capacity follows the outdoor air, and the result holds it at `selection.outside_air_c` |
 
-A DX case is a real answer to a real question, and the build says which
-question before the solve. After it, the result compares the return the room
-produced against the return the unit was rated at — the further apart they
-are, the less the plate figure says about what the machine would do here
-(ADR-097). Get the manufacturer's capacity at the return the run reports and
-put it in the file.
+Both re-solve the supply temperature against the room, pass by pass (ADR-040),
+and both answer at the return the room really produces rather than at the
+plate. A thin DX sheet still fits: with no `gross_total_kw` the coil is taken
+as dry, with no `gross_sensible_kw` the gross duty is the net plus the stated
+fan power, and each assumption is listed in the report's limitations. What a DX
+file should carry, where the sheet prints it, is the whole performance table —
+`equipment/P3100DA.yaml` is the pattern.
 
 **When you add a file**, it carries its source in its own words: which document,
 which revision, who issued it, when. The existing files are the pattern —
