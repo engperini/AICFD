@@ -744,6 +744,10 @@ function planBands(model, axis) {
     seen.add(key);
     seg.push({ lo, hi, label });
   };
+  // THE DATA HALL ITSELF, on both axes. The overall line under the drawing
+  // used to be the modelled DOMAIN -- galleries plus hall, one number that is
+  // neither room -- and the hall's own length and width were nowhere (ADR-105).
+  if (model.hall) add(model.hall.lo[axis], model.hall.hi[axis], 'data hall');
   if (axis === 0) {
     for (const g of model.galleries) add(g.lo[0], g.hi[0], 'gallery');
     const supply = model.panels.filter((p) => p.name.startsWith('supply_mesh'));
@@ -752,17 +756,20 @@ function planBands(model, axis) {
       add(Math.min(wall, supply[0].position), Math.max(wall, supply[0].position),
         'supply plenum');
     }
+    // THE CABINETS, not the block they were asked to fill. `model.blocks` is
+    // what the rows turned out to be (ADR-085) and a hall whose rows differ
+    // carries one span each -- dimensioning them all as `row` printed 10,40
+    // and 10,00 down the same margin with the cabinets visibly stopping
+    // before the longer one. The racks are drawn; this measures them, once
+    // per distinct length (ADR-105).
     const blocks = model.blocks || [];
-    if (blocks.length) {
-
-      for (const [lo, hi] of blocks) add(lo, hi, 'row');
-      for (let i = 1; i < blocks.length; i += 1) {
-        add(blocks[i - 1][1], blocks[i][0], 'cross aisle');
-      }
+    for (const [lo, hi] of blocks) add(lo, hi, 'racks');
+    for (let i = 1; i < blocks.length; i += 1) {
+      add(blocks[i - 1][1], blocks[i][0], 'cross aisle');
     }
   } else {
     const rows = model.rows || [];
-    for (const r of rows) add(r.band[0], r.band[1], 'row');
+    for (const r of rows) add(r.band[0], r.band[1], 'row depth');
     for (const [lo, hi] of model.hot_aisles || []) add(lo, hi, 'hot aisle');
     for (const [lo, hi] of model.cold_aisles || []) add(lo, hi, 'cold aisle');
     const fan = (model.panels || []).find((q) => q.kind === 'fan');
@@ -843,14 +850,22 @@ function dimensions(svg, model, view, X, Y, width, height, hSpan) {
   const plan = view.id === 'plan';
   if (plan) planDimensions(svg, model, view, X, Y, width, height);
   const y = Y(d.lo[view.v]) + (plan ? 56 : 20);
-  const x0 = X(d.lo[view.h]);
-  const x1 = X(d.hi[view.h]);
+  // The plan's overall is the DATA HALL. Gallery plus hall in one figure is
+  // the box the mesher builds and no room anybody stands in; the galleries
+  // carry their own dimension in the chain above (ADR-105). A section keeps
+  // the domain, which is what it is a section of.
+  const ends = plan && model.hall
+    ? [model.hall.lo[view.h], model.hall.hi[view.h]]
+    : [d.lo[view.h], d.hi[view.h]];
+  const x0 = X(ends[0]);
+  const x1 = X(ends[1]);
   svg.append(el('line', { x1: x0, x2: x1, y1: y, y2: y, class: 'dw-dim' }));
   for (const x of [x0, x1]) {
     svg.append(el('line', { x1: x, x2: x, y1: y - 3, y2: y + 3, class: 'dw-dim' }));
   }
   svg.append(
-    el('text', { x: (x0 + x1) / 2, y: y - 5, class: 'dw-dimtext' }, fmt(hSpan)),
+    el('text', { x: (x0 + x1) / 2, y: y - 5, class: 'dw-dimtext' },
+      plan && model.hall ? `${fmt(ends[1] - ends[0])} data hall` : fmt(hSpan)),
   );
   svg.append(
     el('text', { x: (x0 + x1) / 2, y: height - 6, class: 'dw-axis' }, view.hLabel),

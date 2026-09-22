@@ -693,3 +693,72 @@ class EveryPodIsTheSamePodTest(unittest.TestCase):
             for face in (lo, hi):
                 with self.subTest(face=face):
                     self.assertAlmostEqual(face / cell, round(face / cell), places=6)
+
+
+class RowsMayDifferInLengthTest(unittest.TestCase):
+    """A row whose one position the mesh had to move is a different length.
+
+    `racks.widths` overrides one position of one row, and a width the mesh
+    has to move is not the width that was asked for -- so that row ends
+    somewhere its neighbour does not. The ends were taken from whichever row of the pair was
+    built LAST: a row's own top and end walls were built at its neighbour's
+    end, leaving its last cabinet uncapped, and a drawing dimensioned a row of
+    10,40 m over cabinets that stopped at 10,00 (ADR-104).
+    """
+
+    def hall(self, **widths) -> dict:
+        """This suite's own hall, with one position's width overridden. Not a
+        shipped case: those belong to whoever is using the tool (ADR-056)."""
+        spec = copy.deepcopy(SPEC)
+        spec["racks"]["widths"] = widths
+        return spec
+
+    def built(self, **widths):
+        return M.build_model(self.hall(**widths))
+
+    def ends_of(self, model, row_id: str) -> list[float]:
+        return sorted(p.position for p in model.panels
+                      if p.name.startswith(f"rack_end_{row_id}_"))
+
+    def racks_of(self, model, row_id: str) -> tuple[float, float]:
+        row = next(r for r in model.rows if r.id == row_id)
+        return (min(r.box.lo[0] for r in row.racks),
+                max(r.box.hi[0] for r in row.racks))
+
+    def test_each_row_is_capped_at_its_own_end(self):
+        model = self.built(**{"F1-02": 1.0})
+        for row_id in ("F1", "F2"):
+            lo, hi = self.racks_of(model, row_id)
+            with self.subTest(row=row_id):
+                walls = self.ends_of(model, row_id)
+                self.assertEqual(len(walls), 2)
+                for wall, face in zip(walls, (lo, hi)):
+                    self.assertAlmostEqual(
+                        wall, face, places=6,
+                        msg="the row's end wall is not at its own end")
+
+    def test_the_rows_really_do_differ(self):
+        """The premise: if the widths did not make them differ there would be
+        nothing to check."""
+        model = self.built(**{"F1-02": 1.0})
+        self.assertNotAlmostEqual(*(self.racks_of(model, r)[1]
+                                    for r in ("F1", "F2")))
+
+    def test_the_lid_covers_the_longer_row_of_the_pair(self):
+        """A lid that stops where the shorter row stops leaves the other
+        row's last cabinet outside the containment."""
+        model = self.built(**{"F1-02": 1.0})
+        longest = max(self.racks_of(model, r)[1] for r in ("F1", "F2"))
+        tops = [p for p in model.panels if p.name.startswith("rack_top_F1")]
+        self.assertTrue(tops)
+        grille = next(p for p in model.panels if p.name.startswith("grille"))
+        self.assertGreaterEqual(grille.extent[0][1] + 1e-6, longest - 1e-6)
+
+    def test_the_build_says_which_rows_differ(self):
+        said = " ".join(self.built(**{"F1-02": 1.0}).warnings)
+        self.assertIn("not the same length", said)
+        self.assertIn("F1", said)
+        self.assertIn("F2", said)
+
+    def test_a_uniform_hall_says_nothing_of_the_sort(self):
+        self.assertNotIn("not the same length", " ".join(self.built().warnings))

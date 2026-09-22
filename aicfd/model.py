@@ -25,7 +25,7 @@ from __future__ import annotations
 
 import dataclasses
 import math
-from dataclasses import dataclass, field
+from dataclasses import dataclass, field, replace
 
 RHO_AIR = 1.19
 CP_AIR = 1005.0
@@ -1390,9 +1390,12 @@ def build_model(spec: dict) -> Model:
     cage = cage_for(spec)
     cage_notes: list[str] = []
     if cage:
-        model.panels.extend(_cage_panels(model, cage, spec, cage_notes))
+        cage_walls = _cage_panels(model, cage, spec, cage_notes)
+        model.panels.extend(cage_walls)
         model.cage = cage["construction"]
         model.cage_racks = tuple(r.id for r in _cage_racks(model, cage))
+        # A contained COLD aisle the cage wall stands in is two aisles.
+        cage_notes.extend(_divide_containment(model, cage_walls))
     # The row's own notes first: a cabinet width the mesh moved is said by
     # position, which is what a reader can act on, where the general alignment
     # check can only say a face fell between grid lines (ADR-074).
@@ -1794,11 +1797,12 @@ def _cage_boundaries(spec: dict, pods: int) -> list[int]:
     2 and 3 of seven divides the hall twice -- before pod 2 and after pod 3 --
     and both aisles carry a wall, so both are the ones `cage.aisle` widens.
 
-    Empty unless the case states `cage.aisle`: without it every boundary is
-    `aisles.cold` and the hall is the hall it always was.
+    Every cage has them: the aisle a cage wall stands in is wider than the
+    hall's own, because the wall is not free -- it costs a clearance on each
+    side of it (see `cage_aisle`).
     """
     cage = spec.get("cage") or {}
-    if not cage.get("enabled") or cage.get("aisle") is None:
+    if not cage.get("enabled"):
         return []
     inside = cage.get("pods") or list(range(1, pods + 1))
     try:
@@ -1815,6 +1819,31 @@ def _cage_boundaries(spec: dict, pods: int) -> list[int]:
     if last < pods and (sides is None or "right" in sides):
         out.append(last - 1)
     return [k for k in out if 0 <= k < pods - 1]
+
+
+def cage_aisle(spec: dict, cold: float) -> float:
+    """How wide the cold aisle a cage wall stands in has to be.
+
+    THE CLEARANCE IS A GAP ON BOTH SIDES OF THE WALL. `cage.clearance` is the
+    distance from a cabinet's face to the cage wall, and the cabinets outside
+    the cage have faces too: the wall stands in an aisle that the row inside
+    and the row outside BOTH breathe from. Giving it to the inside only put
+    the hall's row hard against the partition -- 1,20 m of aisle inside the
+    cage and nothing outside it -- which is not a room anybody builds, and it
+    is what a reader noticed on the drawing (ADR-104).
+
+    So the default is twice the clearance, and never less than the aisle the
+    hall was drawn with: both rows keep their gap, and the hall grows by what
+    the wall costs. `cage.aisle` overrides it for an asymmetric split -- give
+    the cage 1,80 m of a 3,00 m aisle and the hall outside keeps 1,20 -- and
+    the build says so when one row ends up with less than `aisles.cold`
+    (ADR-099).
+    """
+    cage = cage_for(spec) or {}
+    stated = cage.get("aisle")
+    if stated is not None:
+        return float(stated)
+    return max(cold, 2 * float(cage.get("clearance", 1.2)))
 
 
 def cage_for(spec: dict) -> dict | None:
@@ -2015,6 +2044,32 @@ def _cage_panels(model: "Model", cage: dict, spec: dict,
                     f"cage with `cage.pods`"
                 )
 
+    # AND IT MAY NOT JUMP A ROW. Landing inside a cabinet is the loud version
+    # of this; the quiet one is a wall that clears the next row's cabinets and
+    # stops in the aisle beyond them, leaving a row of somebody else's
+    # cabinets inside the cage rectangle with no cage wall between. It happens
+    # to a stated `cage.aisle` narrower than the clearance asks for -- 3,50 m
+    # of clearance in a 1,20 m aisle put the wall two rows away, and the only
+    # complaint was a snapping note (ADR-104).
+    enclosed = {r.id for r in inside}
+    for name in wanted:
+        axis, at, _span = plan[name]
+        near, far = (min(r.box.lo[axis] for r in inside),
+                     max(r.box.hi[axis] for r in inside))
+        for rack in model.racks:
+            if rack.id in enclosed:
+                continue
+            beyond = (rack.box.hi[axis] <= near + 1e-6 and at < rack.box.lo[axis] - 1e-6
+                      or rack.box.lo[axis] >= far - 1e-6 and at > rack.box.hi[axis] + 1e-6)
+            if beyond:
+                raise ValueError(
+                    f"cage.clearance: {num(gap)} m puts the {name} wall at "
+                    f"{num(at)} m, past {rack.id} -- which is not in the cage, "
+                    f"and would stand inside it with no wall between. Lose "
+                    f"clearance, widen the aisle the wall stands in with "
+                    f"`cage.aisle`, or enclose that row with `cage.pods`"
+                )
+
     # WHAT THE WALL LEAVES THE ROWS EITHER SIDE OF IT. A cage boundary stands
     # in a cold aisle that the row inside the cage and the row outside it BOTH
     # breathe from, so it halves that aisle -- and 0,60 m of cold aisle in
@@ -2114,6 +2169,61 @@ def _rows_beside(model: "Model", at: float) -> list:
     if below is None or above is None:
         return []
     return [(below[0], at - below[1]), (above[0], above[1] - at)]
+
+
+def _divide_containment(model: "Model", walls: list[Panel]) -> list[str]:
+    """Split a contained COLD aisle where a cage wall stands in it.
+
+    A CAGE WALL IS NOT A CLOSURE FOR AN AISLE. With the hot aisle contained it
+    never has to be: the cage boundary stands in a COLD aisle, and a cold aisle
+    is open. Contain the cold aisle instead and the two meet -- one lid and one
+    pair of doors were built over the whole aisle, straight across the cage
+    wall, so the model had a single contained volume spanning a security
+    boundary that the drawing showed dividing it. For a mesh cage that volume
+    is not even closed: the air crosses the wall and pays K for it (ADR-104).
+
+    So the lid and the doors are cut at the wall. Each side becomes its own
+    contained aisle -- its row, its lid, its two doors and the cage wall -- and
+    the wall stays what it is, mesh or drywall, with its own physics. Returns a
+    note per division, because it changes what the reader is looking at.
+    """
+    cuts = sorted(w.position for w in walls if w.axis == 1)
+    if not cuts:
+        return []
+    notes: list[str] = []
+    for at in cuts:
+        divided: list[Panel] = []
+        for panel in model.panels:
+            name = panel.name
+            if not (name.startswith("containment_lid")
+                    or name.startswith("containment_door")):
+                divided.append(panel)
+                continue
+            # The aisle's y range: a lid carries it as its second in-plane
+            # axis, a door as its first.
+            index = 1 if panel.axis == 2 else 0
+            band = panel.extent[index]
+            if not band[0] + 1e-6 < at < band[1] - 1e-6:
+                divided.append(panel)
+                continue
+            for half, (lo, hi) in enumerate(((band[0], at), (at, band[1]))):
+                extent = list(panel.extent)
+                extent[index] = (lo, hi)
+                divided.append(replace(
+                    panel,
+                    name=f"{panel.name}_{'ab'[half]}",
+                    extent=tuple(extent),  # type: ignore[arg-type]
+                ))
+            if panel.axis == 2:
+                notes.append(
+                    f"the cage wall at {num(at)} m stands in a contained cold "
+                    f"aisle, so that aisle is two: {num(at - band[0])} m of it "
+                    f"inside the cage and {num(band[1] - at)} m outside, each "
+                    f"with its own lid and doors. A cage wall is not a "
+                    f"closure -- it is the wall the case says it is."
+                )
+        model.panels = divided
+    return notes
 
 
 def _cage_racks(model: "Model", cage: dict) -> list:
@@ -2878,7 +2988,7 @@ def _hall_layout(spec: dict, cell, rack_spec: dict | None = None) -> _Layout:
     # those only, so the rest of the hall keeps the aisle it was drawn with.
     boundaries = [cold] * max(0, pods - 1)
     for k in _cage_boundaries(spec, pods):
-        boundaries[k] = on_grid(float((spec.get("cage") or {})["aisle"]), 1)
+        boundaries[k] = on_grid(cage_aisle(spec, cold), 1)
     width = 2 * perimeter + pods * (2 * rack_dy + hot) + sum(boundaries)
     domain = Box((0.0, 0.0, 0.0), (total_x, width, height))
     hall = Box((gallery_depth, 0.0, 0.0), (gallery_depth + hall_length, width, height))
@@ -2908,7 +3018,14 @@ def _hall_layout(spec: dict, cell, rack_spec: dict | None = None) -> _Layout:
         return (mid - half, mid + half)
 
     closes = contained_aisle(spec)
-    built_spans = list(spans)
+    # WHERE THE RACKS REALLY END, block by block. Not the nominal row length:
+    # a case that overrides one position's width (`racks.widths`) makes THAT
+    # row a different length from its neighbours, because a 300 mm frame on a
+    # 0,40 m grid is not 300 mm of row. The ends were taken from whichever row
+    # of the pair was built last, so the drawing dimensioned a row of 10,40 m
+    # over cabinets that stopped at 10,00 -- and the row's own end wall was
+    # built at its neighbour's end (ADR-104).
+    built_spans = [(span[0], span[0]) for span in spans]
     y = perimeter
     for k in range(pods):
         a = (y, y + rack_dy)
@@ -2918,7 +3035,7 @@ def _hall_layout(spec: dict, cell, rack_spec: dict | None = None) -> _Layout:
         hot_aisles.append(hot_aisle)
         for j, span in enumerate(spans):
             tag = "" if n_blocks == 1 else f"B{j + 1}"
-            pair = []
+            pair, ends = [], []
             for offset, band, front in ((1, a, +1), (2, b, -1)):
                 row_id = f"F{n + offset}{tag}"
                 places = rack_positions(
@@ -2931,22 +3048,38 @@ def _hall_layout(spec: dict, cell, rack_spec: dict | None = None) -> _Layout:
                                                   cell_x=cell[0])
                 pair.append(built)
                 walls += blanked
-                span = (span[0], end_x)
+                ends.append(end_x)
             rows += pair
-            for row in pair:
-                walls += _row_walls(row, span, rack_dz, suffix=f"_{row.id}")
+            # EACH ROW'S OWN END WALL, at its own end.
+            for row, end_x in zip(pair, ends):
+                walls += _row_walls(row, (span[0], end_x), rack_dz,
+                                    suffix=f"_{row.id}")
+            # WHAT THE PAIR SHARES -- the containment over their aisle and the
+            # ceiling grille above it -- covers the longer of the two, because
+            # a lid that stops where the shorter row stops leaves the other
+            # row's last cabinet outside the containment.
+            shared = (span[0], max(ends))
+            if max(ends) - min(ends) > 1e-6:
+                row_notes.append(
+                    f"rows {pair[0].id} and {pair[1].id} are not the same "
+                    f"length: {num(ends[0] - span[0])} m and "
+                    f"{num(ends[1] - span[0])} m of cabinets. A position whose "
+                    f"width the mesh had to move makes one row longer than the "
+                    f"other; the containment and the ceiling grille over their "
+                    f"aisle cover the longer one."
+                )
             suffix = f"_{k + 1}" if n_blocks == 1 else f"_{k + 1}b{j + 1}"
             if closes == "hot":
-                walls += _containment(hot_aisle, span, rack_dz, ceiling,
+                walls += _containment(hot_aisle, shared, rack_dz, ceiling,
                                       (a[1], b[0]), suffix=suffix)
-            built_spans[j] = span
+            built_spans[j] = (span[0], max(built_spans[j][1], shared[1]))
             grilles.append(
                 Panel(
                     f"grille{len(grilles) + 1}",
                     "opening",
                     axis=2,
                     position=ceiling,
-                    extent=(strip_of(span), hot_aisle),
+                    extent=(strip_of(shared), hot_aisle),
                     resistance=_grille_k(spec),
                 )
             )

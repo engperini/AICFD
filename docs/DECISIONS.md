@@ -4511,3 +4511,78 @@ peer delivers air COLDER than the setpoint; it was being counted as one that
 cannot hold it, so a whole team read as failing and the report said every
 temperature was optimistic where they were pessimistic. Saturation is now the
 unit's own: its supply above the setpoint it was given.
+
+---
+
+## ADR-104 — The cage wall costs a clearance on both sides, and divides what it crosses
+
+**Decision.** Three things a reader found on one drawing, all of them the cage
+wall not being treated as a wall with two sides:
+
+1. **`cage.clearance` is a gap on BOTH sides.** The aisle a cage boundary
+   stands in is `max(aisles.cold, 2 × clearance)` by default, so the row
+   inside the cage and the row outside it each keep the clearance.
+   `cage.aisle` still overrides it for an asymmetric split.
+2. **A cage wall may not jump a row.** Landing inside a cabinet was already
+   refused; a wall that clears the next row's cabinets and stops in the aisle
+   beyond them now is too, naming the row it passed.
+3. **A contained COLD aisle the wall stands in is two aisles.** The lid and
+   both doors are cut at the wall, each side gets its own, and the cage wall
+   stays what the case says it is.
+
+**Why the clearance.** `cage.clearance` is the distance from a cabinet's face
+to the cage wall, and the cabinets outside the cage have faces too. It was
+applied to the enclosed rows only: the wall was placed at the clearance from
+them, and whatever was left of a 1,20 m aisle — nothing — went to the hall's
+row. The drawing showed the hall's cabinets hard against the partition. The
+hall grows by what the wall costs, which is what a real project does.
+
+**Why the jump.** A stated `cage.aisle` narrower than the clearance asks for
+walks the wall past the next row entirely: 3,50 m of clearance in a 1,20 m
+aisle put it two rows away, with a row of somebody else's cabinets inside the
+cage rectangle and no wall between. The only complaint was a snapping note.
+
+**Why the division.** With the hot aisle contained this never came up: a cage
+boundary stands in a COLD aisle, and a cold aisle was open. Contain the cold
+aisle (ADR-100) and the two meet — one lid and one pair of doors were built
+over the whole aisle, straight across the cage wall, so the model held a
+single contained volume spanning a security boundary that the drawing showed
+dividing it. For a mesh cage that volume is not even closed: the air crosses
+the wall and pays K for it, twice (ADR-096). A cage wall is not an aisle
+closure. Each half is now its own contained aisle — its row, its lid, its two
+doors and the cage wall — and the summary says so.
+
+**And the rows' own ends.** The same drawing showed a row dimensioned 10,40 m
+over cabinets that stopped at 10,00. A case that overrides one position's
+width (`racks.widths`) makes that row a different length from its neighbours,
+because a 300 mm frame on a 0,40 m grid is not 300 mm of row. The pair's ends
+were taken from whichever row was built last, so a row's own end wall was
+built at its neighbour's end, and the ceiling grille and the containment over
+the aisle were sized from one row for two. Each row now carries its own end
+wall at its own end; what the pair SHARES covers the longer of the two,
+because a lid that stops where the shorter row stops leaves the other row's
+last cabinet outside the containment; and the build says which two rows differ
+and by how much.
+
+---
+
+## ADR-105 — The plan dimensions the data hall, and measures the cabinets once
+
+**Decision.** On the plan, the overall dimension is the **data hall** —
+`hall.lo` to `hall.hi` on the axis being measured — and both axes carry it in
+the band chain as well. The galleries keep their own bands. The `row` band is
+gone: what is dimensioned along the hall is `racks`, the span the cabinets
+actually occupy, once per distinct length. Sections still dimension the
+domain, which is what they are sections of.
+
+**Why.** The overall was the modelled DOMAIN: gallery plus hall plus the
+gallery at the other end, one figure that is neither room. A reader checking
+the model against a layout drawing has the hall's length and width on that
+drawing and could not find either here.
+
+**Why the row band went.** `model.blocks` is what the rows turned out to be
+(ADR-085), so a hall whose rows differ in length carries one span each —
+`10,40 row` and `10,00 row` printed down the same margin, with the cabinets
+visibly stopping before the longer one. The racks are drawn; the chain now
+measures them rather than the band they were asked to fill, which is the same
+number when the rows agree and the truth when they do not (ADR-104).
