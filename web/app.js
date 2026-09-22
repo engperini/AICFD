@@ -155,6 +155,12 @@ const SECTIONS = [
       { key: 'cage_construction', label: 'Built as', default: 'mesh',
         choices: [{ value: 'mesh', label: 'Woven mesh \u2014 the air crosses it, at a cost' },
                   { value: 'drywall', label: 'Drywall \u2014 solid, the air cannot cross' }] },
+      // The clearance is a gap on BOTH faces of the wall, and the aisle it
+      // stands in has to hold two of them -- so the aisle is a field too.
+      // Without it, raising the clearance here could only be paid for by the
+      // row on the other side of the wall (ADR-109).
+      { key: 'cage_aisle', label: 'Cold aisle the cage wall stands in',
+        unit: 'm', step: 0.1, optional: true },
       { key: 'cage_clearance', label: 'Cabinet faces to the cage wall',
         unit: 'm', step: 0.1, optional: true },
       { key: 'cage_height', label: 'Cage height', unit: 'm', step: 0.1,

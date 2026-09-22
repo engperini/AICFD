@@ -121,25 +121,38 @@ class PlateRowsAcrossTheAisleTest(unittest.TestCase):
     """Three plates between two rows, which an even count cannot give."""
 
     def plates_in_the_middle_aisle(self, **floor):
-        spec = hall(aisles={"cold": 1.8}, floor=floor, cage={"aisle": 1.8})
+        """A NORMAL cold aisle of the hall, 1,80 m wide.
+
+        Not the one the cage wall stands in: that one is at least two
+        clearances wide, whatever the case says (ADR-109), so it is 2,40 m
+        here and holds four rows of plate rather than three.
+        """
+        spec = hall(aisles={"cold": 1.8}, floor=floor)
         built = m.build_model(spec)
-        band = built.cold_aisles[2]
-        return built, sorted({(round(p.extent[1][0], 3), round(p.extent[1][1], 3))
-                              for p in built.panels
-                              if p.name.startswith("tile_")
-                              and band[0] - 1e-6 <= p.extent[1][0]
-                              and p.extent[1][1] <= band[1] + 1e-6})
+        caged = sorted(p.position for p in built.panels
+                       if p.name.startswith("cage_") and p.axis == 1)
+        band = next(b for b in built.cold_aisles
+                    if abs((b[1] - b[0]) - 1.8) < 1e-6
+                    and not any(b[0] < at < b[1] for at in caged)
+                    and len([row for row in built.rows
+                             if min(abs(row.front_y - b[0]),
+                                    abs(row.front_y - b[1])) < 1e-6]) == 2)
+        rows = sorted({(round(p.extent[1][0], 3), round(p.extent[1][1], 3))
+                       for p in built.panels
+                       if p.name.startswith("tile_")
+                       and band[0] - 1e-6 <= p.extent[1][0]
+                       and p.extent[1][1] <= band[1] + 1e-6})
+        return built, rows, band
 
     def test_one_each_side_leaves_the_middle_of_the_aisle_bare(self):
         """The arrangement before the key existed, and a real one -- but not
         the only one a floor can have."""
-        _built, rows = self.plates_in_the_middle_aisle(tiles_per_rack=1)
+        _built, rows, _band = self.plates_in_the_middle_aisle(tiles_per_rack=1)
         self.assertEqual(len(rows), 2)
 
     def test_three_across_tiles_the_aisle(self):
-        built, rows = self.plates_in_the_middle_aisle(tiles_across=3)
+        built, rows, band = self.plates_in_the_middle_aisle(tiles_across=3)
         self.assertEqual(len(rows), 3)
-        band = built.cold_aisles[2]
         self.assertAlmostEqual(rows[0][0], band[0], places=6)
         self.assertAlmostEqual(rows[-1][1], band[1], places=6)
         for (_lo, hi), (lo2, _hi2) in zip(rows, rows[1:]):
@@ -149,8 +162,7 @@ class PlateRowsAcrossTheAisleTest(unittest.TestCase):
         """Two from the row nearer y = 0 and one from the other, which is how
         a floor grid runs. A perimeter aisle has one row facing it, and that
         row lays all three."""
-        built, _rows = self.plates_in_the_middle_aisle(tiles_across=3)
-        band = built.cold_aisles[2]
+        built, _rows, band = self.plates_in_the_middle_aisle(tiles_across=3)
         facing = sorted(
             (row for row in built.rows
              if min(abs(row.front_y - band[0]), abs(row.front_y - band[1])) < 1e-6),
@@ -171,7 +183,7 @@ class PlateRowsAcrossTheAisleTest(unittest.TestCase):
         """It used to be refused. A number the aisle cannot hold is now laid
         to fit, with a note -- because the count a case arrives with is often
         one nobody typed (ADR-108)."""
-        built, rows = self.plates_in_the_middle_aisle(tiles_across=6)
+        built, rows, band = self.plates_in_the_middle_aisle(tiles_across=6)
         self.assertEqual(len(rows), 3, "an 1,80 m aisle holds three")
         said = " ".join(w for w in built.warnings if w.startswith("floor plates"))
         self.assertIn("6 were asked for and 3 laid", said)

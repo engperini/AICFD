@@ -282,6 +282,7 @@ or three.
 | `containment.aisle` | `hot` or `cold` | | which aisle is closed. `hot` is a chimney from the rack tops to the false ceiling with the return grille on top; `cold` is a lid at rack height, the racks discharging into a hot room. Cold needs a raised floor — a sealed cold aisle's only way in is the floor (ADR-100) |
 | `cage.enabled` | bool | | §4 |
 | `cage.construction` | `mesh` or `drywall` | | §4. The answer, not a detail of the drawing |
+| `cage.aisle` | float | 0.6 to 10 | the cold aisle the cage wall stands in. It can only WIDEN what the clearance needs: the aisle is always at least `2 x cage.clearance` and at least `aisles.cold`, because the clearance is a gap on BOTH faces of the wall, and a case that states less is widened with a note (ADR-109). The extra of a wider aisle goes to the row outside the cage |
 | `cage.clearance` | float | 0.1 to 10 | from the outermost cabinet faces to the cage wall. A side whose plane reaches the hall wall is **not built** — the room closes it — and the rectangle is clipped to the room so the walls that *are* built run wall to wall |
 | `cage.pods` | list of int | | **YAML only.** Which PODs are inside, counted from 1 along the hall and contiguous. Pod 2 is rows F3 and F4. Omitted, the cage encloses every rack |
 | `cage.sides` | list | `near`, `far`, `left`, `right` | **YAML only.** Which walls to build. `near`/`far` close the row ends (normal to x), `left`/`right` run along the rows. Omitted, every side the room does not already close is built |

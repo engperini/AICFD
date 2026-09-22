@@ -138,6 +138,10 @@ EDITABLE = {
     "cage_construction": (("cage", "construction"), "choice",
                           model_module.CAGE_CONSTRUCTIONS),
     "cage_clearance": (("cage", "clearance"), float, (0.1, 10.0)),
+    # The aisle the cage wall stands in. Editable because it was NOT, and a
+    # reader who raised the clearance on this page could only take the
+    # difference out of the row on the other side of the wall (ADR-109).
+    "cage_aisle": (("cage", "aisle"), float, (0.6, 10.0)),
     "cage_height": (("cage", "height"), float, (1.0, 20.0)),
     "cage_roof": (("cage", "roof"), bool, None),
     "cage_mesh": (("components", "cage"), "component", "cage"),

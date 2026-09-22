@@ -191,36 +191,76 @@ class PlacementTest(unittest.TestCase):
         self.assertIn("cage.pods", said)
         self.assertIn("pods 1 to 4", said, "the refusal has to say what it has")
 
-    def test_a_wall_may_not_cut_a_cabinet(self):
-        """Too big a clearance for the aisle it was given walks the dividing
-        wall into the next pod's rows, which meshes and models a partition
-        through the middle of somebody's cabinets.
-
-        It takes a STATED `cage.aisle` to get there now: left to itself the
-        aisle is as wide as the clearance asks for (ADR-104)."""
-        with self.assertRaises(ValueError) as caught:
-            m.build_model(self.hall(clearance=2.0, aisle=1.2,
-                                    pods=[1, 2], sides=["right"]))
-        said = str(caught.exception)
-        self.assertIn("inside", said)
-        self.assertRegex(said, r"F\d", "the refusal has to name the cabinet")
-
-    def test_a_wall_may_not_jump_a_row_either(self):
-        """The quiet version of the same fault: the wall clears the next row's
-        cabinets and stops in the aisle beyond them, leaving somebody else's
-        row inside the cage rectangle with no wall between. All it used to
-        produce was a snapping note (ADR-104)."""
-        with self.assertRaises(ValueError) as caught:
-            m.build_model(self.hall(clearance=3.5, aisle=1.2,
-                                    pods=[1, 2], sides=["right"]))
-        said = str(caught.exception)
-        self.assertIn("past", said)
-        self.assertRegex(said, r"F\d", "the refusal has to name the row")
+    def test_a_clearance_bigger_than_the_aisle_widens_the_hall(self):
+        """It used to walk the wall into the next pod's cabinets, or past them
+        altogether, because a stated `cage.aisle` capped it. The aisle holds
+        two clearances now, whatever the case states, so the hall grows
+        instead (ADR-109). The refusals behind that are in
+        `TheGuardBehindTheAisleTest`."""
+        narrow = m.build_model(self.hall(clearance=1.2, aisle=1.2,
+                                         pods=[1, 2], sides=["right"]))
+        wide = m.build_model(self.hall(clearance=3.5, aisle=1.2,
+                                       pods=[1, 2], sides=["right"]))
+        self.assertGreater(wide.domain.hi[1], narrow.domain.hi[1])
+        for built, gap in ((narrow, 1.2), (wide, 3.5)):
+            wall = next(p for p in built.panels if p.name == "cage_right")
+            rows = {row.id: row.band for row in built.rows}
+            cell = built.cell(1)
+            inside = wall.position - rows["F4"][1]
+            outside = rows["F5"][0] - wall.position
+            with self.subTest(clearance=gap):
+                # To within the cell: the wall lands on a mesh face like
+                # every other plane, and the aisle is never narrower than the
+                # one the hall was drawn with -- so the surplus of a wide
+                # aisle goes to the row outside the cage.
+                self.assertAlmostEqual(inside, gap, delta=cell + 1e-9)
+                self.assertGreaterEqual(outside + 1e-9, gap - cell)
 
     def test_a_side_is_a_side(self):
         with self.assertRaises(ValueError) as caught:
             m.build_model(self.hall(clearance=1.2, sides=["north"]))
         self.assertIn("cage.sides", str(caught.exception))
+
+
+class TheGuardBehindTheAisleTest(unittest.TestCase):
+    """The refusals that the aisle now makes unreachable, exercised anyway.
+
+    `cage_aisle` sizes the aisle so the wall always has its clearance on both
+    sides (ADR-109), so no case can ask for a wall inside a cabinet or past a
+    row any more. The checks that catch those stay: they are what stands
+    between a future change to the layout and a partition through the middle
+    of somebody's cabinets, which is a thing that has happened (ADR-098).
+    Called directly, with the aisle's protection out of the way.
+    """
+
+    def hall(self, **cage) -> dict:
+        return BoundaryAisleTest().hall(**cage)
+
+    def cage_panels(self, clearance: float):
+        """`_cage_panels` on a hall built with a NARROW aisle, and a cage dict
+        whose clearance the aisle was never sized for."""
+        spec = self.hall(clearance=0.6, pods=[1, 2], sides=["right"])
+        spec["aisles"]["cold"] = 0.6      # so the boundary aisle is 1,20 m
+        built = m.build_model(spec)
+        cage = dict(m.cage_for(spec), clearance=clearance)
+        return m._cage_panels(built, cage, spec, [])
+
+    def test_a_wall_inside_a_cabinet_is_refused_by_name(self):
+        with self.assertRaises(ValueError) as caught:
+            self.cage_panels(1.5)
+        said = str(caught.exception)
+        self.assertIn("inside", said)
+        self.assertRegex(said, r"F\d", "the refusal has to name the cabinet")
+
+    def test_a_wall_past_a_row_is_refused_by_name(self):
+        with self.assertRaises(ValueError) as caught:
+            self.cage_panels(3.0)
+        said = str(caught.exception)
+        self.assertIn("past", said)
+        self.assertRegex(said, r"F\d", "the refusal has to name the row")
+
+    def test_a_clearance_the_aisle_does_hold_builds(self):
+        self.assertTrue(self.cage_panels(0.6))
 
 
 class BoundaryAisleTest(unittest.TestCase):
@@ -280,11 +320,34 @@ class BoundaryAisleTest(unittest.TestCase):
         self.assertAlmostEqual(inside, 0.6, places=6)
         self.assertAlmostEqual(inside + outside, cold, places=6)
 
-    def test_a_stated_aisle_still_wins(self):
-        """For an asymmetric split -- more room inside the cage than out."""
-        inside, outside = self.gaps(aisle=4.2, clearance=3.0)
-        self.assertAlmostEqual(inside, 3.0, places=6)
-        self.assertAlmostEqual(outside, 1.2, places=6)
+    def test_a_stated_aisle_can_only_widen_it(self):
+        """`cage.aisle` says how much room the wall stands in; it cannot take
+        the clearance away from the row on the far side of it. An aisle wider
+        than two clearances gives the extra to the hall (ADR-109)."""
+        inside, outside = self.gaps(aisle=4.2, clearance=1.2)
+        self.assertAlmostEqual(inside, 1.2, places=6)
+        self.assertAlmostEqual(outside, 3.0, places=6)
+
+    def test_an_aisle_too_narrow_for_the_clearance_is_widened_and_said(self):
+        """The shipped example declares 2,40 m. Somebody set the clearance to
+        1,80 on the page -- which had no field for the aisle -- and the row
+        outside the cage was left 0,60 m. Read off the drawing (ADR-109)."""
+        inside, outside = self.gaps(aisle=2.4, clearance=1.8)
+        self.assertAlmostEqual(inside, 1.8, places=6)
+        self.assertAlmostEqual(outside, 1.8, places=6)
+        said = " ".join(w for w in m.build_model(
+            self.hall(aisle=2.4, clearance=1.8)).warnings
+            if w.startswith("cage.aisle"))
+        self.assertIn("cannot hold", said)
+        self.assertIn("3.60", said, "the note has to say what it used instead")
+
+    def test_the_aisle_is_a_field_on_the_page(self):
+        """A key only the YAML can set is a key the page can only starve."""
+        from aicfd.server import EDITABLE
+
+        self.assertEqual(EDITABLE["cage_aisle"][0], ("cage", "aisle"))
+        self.assertIn("cage_aisle",
+                      (support.REPO / "web" / "app.js").read_text())
 
     def test_it_widens_only_the_aisle_the_wall_stands_in(self):
         cold = float(self.hall()["aisles"]["cold"])
@@ -300,12 +363,15 @@ class BoundaryAisleTest(unittest.TestCase):
         self.assertEqual(len(wide.cold_aisles), len(cold))
 
     def test_the_clearance_positions_the_wall_inside_it(self):
+        """Two clearances exactly fill the aisle, so the wall centres itself;
+        a wider aisle gives the extra to the hall side, never less than the
+        clearance to either (ADR-109)."""
         centred = self.gaps(aisle=4.2, clearance=2.1)
         self.assertAlmostEqual(centred[0], 2.1, places=6)
         self.assertAlmostEqual(centred[1], 2.1, places=6)
-        offset = self.gaps(aisle=4.2, clearance=3.0)
-        self.assertAlmostEqual(offset[0], 3.0, places=6)
-        self.assertAlmostEqual(offset[1], 1.2, places=6)
+        offset = self.gaps(aisle=4.2, clearance=1.5)
+        self.assertAlmostEqual(offset[0], 1.5, places=6)
+        self.assertAlmostEqual(offset[1], 2.7, places=6)
 
     def test_a_cage_in_the_middle_of_the_hall_widens_both_boundaries(self):
         spec = self.hall(aisle=4.2)
@@ -320,19 +386,17 @@ class BoundaryAisleTest(unittest.TestCase):
                                msg="a cage between two pods divides the hall "
                                    "twice, so two aisles carry a wall")
 
-    def test_a_wall_flush_against_a_cabinet_is_refused(self):
-        """A stated aisle as wide as the clearance leaves the row on the other
-        side nothing at all: the partition lands on its cabinet faces, which
-        seals them for a drywall cage. It was a warning, and a reader found it
-        on the drawing instead (ADR-108)."""
+    def test_a_wall_can_no_longer_be_flush_against_a_cabinet(self):
+        """An aisle as wide as the clearance used to leave the row on the far
+        side nothing at all -- the partition landing on its cabinet faces,
+        which seals them for a drywall cage. The aisle is widened to hold both
+        clearances now, so the arrangement cannot be asked for (ADR-108,
+        ADR-109). The refusal behind it is exercised in
+        `TheGuardBehindTheAisleTest`."""
         cold = float(self.hall()["aisles"]["cold"])
-        with self.assertRaises(ValueError) as caught:
-            m.build_model(self.hall(aisle=cold, clearance=cold))
-        said = str(caught.exception)
-        self.assertIn("cage.aisle", said)
-        self.assertIn("no clearance at all", said)
-        self.assertRegex(said, r"F\d", "the refusal has to name the row")
-        self.assertIn(f"{cold * 2:.2f}", said, "and what to set it to")
+        inside, outside = self.gaps(aisle=cold, clearance=cold)
+        self.assertAlmostEqual(inside, cold, places=6)
+        self.assertAlmostEqual(outside, cold, places=6)
 
     def test_a_tight_but_real_clearance_is_only_a_note(self):
         """0,60 m in front of a row is a different room from 1,20 (ADR-099),
@@ -372,11 +436,14 @@ class TheWallSaysWhatItCostsTest(unittest.TestCase):
         self.assertEqual(self.notes(aisle=2 * cold, clearance=cold), [])
 
     def test_only_the_starved_row_is_named_when_the_wall_is_off_centre(self):
+        """A clearance smaller than the aisle the hall was drawn with leaves
+        the row INSIDE the cage short while the hall's row keeps the rest of
+        the aisle -- so one row is named and the other is not (ADR-109)."""
         cold = float(BoundaryAisleTest().hall()["aisles"]["cold"])
-        said = self.notes(aisle=3 * cold, clearance=6.9)
+        said = self.notes(aisle=cold + 0.6, clearance=0.6)
         self.assertTrue(said)
-        self.assertIn("F5 breathes through", said[0])
-        self.assertNotIn("F4 breathes through", said[0])
+        self.assertIn("F4 breathes through", said[0])
+        self.assertNotIn("F5 breathes through", said[0])
 
 
 class ConstructionTest(unittest.TestCase):

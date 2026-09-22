@@ -1977,29 +1977,47 @@ def _cage_boundaries(spec: dict, pods: int) -> list[int]:
     return [k for k in out if 0 <= k < pods - 1]
 
 
-def cage_aisle(spec: dict, cold: float) -> float:
+def cage_aisle(spec: dict, cold: float, notes: list[str] | None = None) -> float:
     """How wide the cold aisle a cage wall stands in has to be.
 
-    THE CLEARANCE IS A GAP ON BOTH SIDES OF THE WALL. `cage.clearance` is the
-    distance from a cabinet's face to the cage wall, and the cabinets outside
-    the cage have faces too: the wall stands in an aisle that the row inside
-    and the row outside BOTH breathe from. Giving it to the inside only put
-    the hall's row hard against the partition -- 1,20 m of aisle inside the
-    cage and nothing outside it -- which is not a room anybody builds, and it
-    is what a reader noticed on the drawing (ADR-104).
+    THE CLEARANCE IS A GAP ON BOTH SIDES OF THE WALL, and nothing overrides
+    that. `cage.clearance` is the distance from a cabinet's face to the cage
+    wall, and the cabinets outside the cage have faces too: the wall stands in
+    an aisle that the row inside and the row outside BOTH breathe from, mesh
+    or drywall.
 
-    So the default is twice the clearance, and never less than the aisle the
-    hall was drawn with: both rows keep their gap, and the hall grows by what
-    the wall costs. `cage.aisle` overrides it for an asymmetric split -- give
-    the cage 1,80 m of a 3,00 m aisle and the hall outside keeps 1,20 -- and
-    the build says so when one row ends up with less than `aisles.cold`
-    (ADR-099).
+    So the aisle is at least twice the clearance, and at least the aisle the
+    hall was drawn with. `cage.aisle` can only WIDEN it beyond that -- a case
+    that states one too narrow to hold the clearance on both sides is widened
+    to fit, and the build says so.
+
+    IT HAS BEEN WRONG TWICE, both times by treating one side as the only side.
+    First the aisle stayed as `aisles.cold` and the clearance was measured
+    from the cage, so the hall's row stood hard against the partition
+    (ADR-104). Then a stated `cage.aisle` capped it: the shipped example
+    declares 2,40 m, somebody set the clearance to 1,80 on the page -- which
+    has no field for the aisle -- and the outside row was left 0,60 m. Read
+    off the drawing, which was drawing exactly what it was given (ADR-109).
     """
     cage = cage_for(spec) or {}
+    clearance = float(cage.get("clearance", 1.2))
+    needed = max(cold, 2 * clearance)
     stated = cage.get("aisle")
-    if stated is not None:
-        return float(stated)
-    return max(cold, 2 * float(cage.get("clearance", 1.2)))
+    if stated is None:
+        return needed
+    stated = float(stated)
+    if stated >= needed - 1e-9:
+        return stated
+    if notes is not None:
+        notes.append(
+            f"cage.aisle: {num(stated)} m cannot hold {num(clearance)} m of "
+            f"clearance on both sides of the wall, and the clearance is a gap "
+            f"on both sides -- the aisle the wall stands in is "
+            f"{num(needed)} m, so the hall is {num(needed - stated)} m wider "
+            f"than the case asked for. State `cage.aisle: {num(needed)}` to "
+            f"say so, or lower `cage.clearance`."
+        )
+    return needed
 
 
 def cage_for(spec: dict) -> dict | None:
@@ -3200,7 +3218,7 @@ def _hall_layout(spec: dict, cell, rack_spec: dict | None = None) -> _Layout:
     # those only, so the rest of the hall keeps the aisle it was drawn with.
     boundaries = [cold] * max(0, pods - 1)
     for k in _cage_boundaries(spec, pods):
-        boundaries[k] = on_grid(cage_aisle(spec, cold), 1)
+        boundaries[k] = on_grid(cage_aisle(spec, cold, row_notes), 1)
     width = 2 * perimeter + pods * (2 * rack_dy + hot) + sum(boundaries)
     domain = Box((0.0, 0.0, 0.0), (total_x, width, height))
     hall = Box((gallery_depth, 0.0, 0.0), (gallery_depth + hall_length, width, height))

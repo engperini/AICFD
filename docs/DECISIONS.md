@@ -4702,3 +4702,43 @@ the other side nothing: the partition lands on its cabinet faces, which seals
 them for a drywall cage and is not a room anybody builds either way. That was
 a warning, and a reader found it on the drawing instead of in the summary --
 which is the definition of a warning that should have been a refusal.
+
+---
+
+## ADR-109 — `cage.clearance` is a minimum on both faces, and nothing overrides it
+
+**Decision.** The aisle a cage wall stands in is `max(aisles.cold,
+2 × cage.clearance)`. `cage.aisle` can only WIDEN it beyond that: a case that
+states an aisle too narrow to hold the clearance on both sides is widened to
+fit, with a note saying by how much the hall grew. The aisle is also a field
+on the model page now, beside the clearance.
+
+**Why, for the third time.** The same wall, the same mistake from a third
+direction:
+
+| | what happened |
+|---|---|
+| ADR-104 | the aisle stayed `aisles.cold` and the clearance was measured from the cage, so the hall's row stood hard against the partition |
+| ADR-108 | a stated aisle as wide as the clearance left the far row zero; refused |
+| this | a stated aisle WIDER than the clearance but narrower than two of them quietly split the difference — 2,40 m of aisle with 1,80 m of clearance left the row outside the cage 0,60 m |
+
+The third one is the shipped example plus the page: `hall-cage-1mw` declares
+`cage.aisle: 2.40`, the page offers `cage.clearance` and had no field for the
+aisle, so the only thing a reader could do by raising the clearance was take
+the difference out of the row on the other side of the wall. Measured on that
+exact configuration: 1,80 m inside the cage, 0,60 m outside. It was read off
+the drawing, which was drawing exactly what it was given.
+
+**The rule, stated once.** A cage wall is a wall with two faces. Both of them
+face somebody's cabinets, and the clearance is what each of them gets — mesh
+or drywall, because a security boundary is a security boundary and a mesh one
+is also a pressure the air pays twice (ADR-096). The hall grows by what the
+wall costs. A case that wants more room on one side asks for a wider aisle,
+which gives the extra to the hall side; it cannot ask for less than the
+clearance anywhere.
+
+**Consequence.** The two refusals that stood behind this — a wall inside a
+cabinet, a wall past a row (ADR-104) — can no longer be reached by any case,
+because the aisle is sized before the wall is placed. They stay, and they are
+exercised directly, because they are what stands between a future change to
+the layout and a partition through the middle of somebody's cabinets.
