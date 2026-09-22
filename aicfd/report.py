@@ -955,6 +955,35 @@ def _layout_section(doc, export: Export, drawn: dict) -> None:
                 "where you put it, on the model page.")
 
 
+def _cage_verdict(doc, zones: list[dict], caged: set) -> None:
+    """The warmest cabinet on each side of the fence.
+
+    The cage is the customer's room and the rest is everybody else's. They are
+    judged separately because they are let separately, and a hall-wide worst
+    case says nothing about which of the two is in trouble (ADR-102).
+    """
+    if not caged:
+        return
+    inside = [z for z in zones if z["name"] in caged and z.get("inlet_top_c")]
+    outside = [z for z in zones if z["name"] not in caged and z.get("inlet_top_c")]
+    if not inside or not outside:
+        return
+    worst_in = max(inside, key=lambda z: z["inlet_top_c"])
+    worst_out = max(outside, key=lambda z: z["inlet_top_c"])
+    over = sum(1 for z in inside
+               if (z.get("ashrae") or {}).get("verdict", "").startswith("above"))
+    _para(doc,
+          f"Inside the customer cage the warmest intake is "
+          f"{_num(worst_in['inlet_top_c'], 1)} °C, at {worst_in['name']}"
+          + (f" — {over} of the {len(inside)} cabinets in the cage are above "
+             f"the ASHRAE recommended envelope"
+             if over else f", and all {len(inside)} cabinets in the cage are "
+                          f"inside the ASHRAE recommended envelope")
+          + f". In the rest of the hall it is "
+            f"{_num(worst_out['inlet_top_c'], 1)} °C, at {worst_out['name']}.",
+          size=9.5)
+
+
 def _cage_split(doc, export: Export) -> None:
     """What is inside the customer cage and what is in the rest of the hall.
 
@@ -1430,9 +1459,18 @@ def _results(doc, export: Export, drawn: dict) -> None:
             "them; on the fixed band of the maps above, every rack in a healthy "
             "hall falls inside one 2,5 K step. Read this figure for the ranking "
             "and the figure below for the absolute judgement.")
-    _table(doc, ["Rack", "Row", "Intake, top of rack", "Intake, face mean",
+    # WHICH ROOM EACH CABINET IS IN. A hall with a customer cage is two
+    # rooms, and the question a reader has of this table is whose cabinet is
+    # warmest -- so the column is there when there is a cage and absent when
+    # there is not (ADR-102).
+    caged = {r["name"] for r in export.racks if r.get("in_cage")}
+    _cage_verdict(doc, zones, caged)
+    _table(doc, ["Rack", "Row", *(["Where"] if caged else []),
+                 "Intake, top of rack", "Intake, face mean",
                  "Exhaust", "Rise", "ASHRAE"],
-           [(z["name"], z["row"], f"{_num(z['inlet_top_c'], 2)} °C",
+           [(z["name"], z["row"],
+             *(["cage" if z["name"] in caged else "hall"] if caged else []),
+             f"{_num(z['inlet_top_c'], 2)} °C",
              f"{_num(z['inlet_temp_c'], 2)} °C", f"{_num(z['peak_temp_c'], 2)} °C",
              f"{_num((z['peak_temp_c'] or 0) - (z['inlet_temp_c'] or 0), 2)} K",
              (z.get("ashrae") or {}).get("verdict", ""))

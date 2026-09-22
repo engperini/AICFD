@@ -797,3 +797,47 @@ class CageInTheReportTest(unittest.TestCase):
 
         self.assertIn("_cage_split(doc, export)",
                       inspect.getsource(report._layout_section))
+
+
+@unittest.skipUnless(HAVE_EXTRAS, "python-docx and matplotlib are not installed")
+class CageInTheResultsTest(unittest.TestCase):
+    """The two rooms are judged separately, because they are let separately."""
+
+    def zones(self):
+        return [
+            {"name": "F1-01", "row": "F1", "inlet_top_c": 31.2,
+             "ashrae": {"verdict": "above recommended"}},
+            {"name": "F1-02", "row": "F1", "inlet_top_c": 24.0,
+             "ashrae": {"verdict": "within recommended"}},
+            {"name": "F6-01", "row": "F6", "inlet_top_c": 22.5,
+             "ashrae": {"verdict": "within recommended"}},
+        ]
+
+    def rendered(self, caged):
+        import docx
+
+        from aicfd.report import _cage_verdict
+
+        doc = docx.Document()
+        _cage_verdict(doc, self.zones(), caged)
+        return "\n".join(p.text for p in doc.paragraphs)
+
+    def test_it_names_the_worst_on_each_side_of_the_fence(self):
+        said = self.rendered({"F1-01", "F1-02"})
+        self.assertIn("31.2", said)
+        self.assertIn("F1-01", said)
+        self.assertIn("22.5", said)
+        self.assertIn("F6-01", said)
+        self.assertIn("1 of the 2", said)
+
+    def test_a_hall_with_no_cage_says_nothing(self):
+        self.assertEqual(self.rendered(set()).strip(), "")
+
+    def test_the_rack_table_says_which_room_each_cabinet_is_in(self):
+        import inspect
+
+        from aicfd import report
+
+        source = inspect.getsource(report._results)
+        self.assertIn('"Where"', source)
+        self.assertIn("_cage_verdict(doc, zones, caged)", source)
