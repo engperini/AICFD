@@ -1352,3 +1352,19 @@ class ThePlantAlertsSpeakOfUnitsNotOfMixedAirTest(unittest.TestCase):
         self.assertIn("21.98 to 24.05 degC across the units, 22.69 degC mixed", said)
         self.assertIn("water valve wide open", said)
         self.assertNotIn("solved at the 22.69", said)
+
+
+class ThePlateAlertNamesTheAirflowTooTest(unittest.TestCase):
+    def test_a_unit_at_half_its_selections_airflow_says_so(self):
+        k = {"rated_return_c": 38.0, "return_temp_c": 32.4, "rated_nscc_kw": 573.7,
+             "unit_model": "CA80NEVGT", "available_kw": 1104.4,
+             "fans": [{}, {}, {}, {}], "coil_air_share_pct": 53}
+        said = " ".join(post._coil_alerts(k))
+        self.assertIn(", and at 53 % of the selection's air MASS flow,", said)
+
+    def test_a_unit_at_its_selections_airflow_does_not(self):
+        k = {"rated_return_c": 34.0, "return_temp_c": 29.4, "rated_nscc_kw": 100.0,
+             "unit_model": "HXCV5000F-HT", "available_kw": 993.0,
+             "fans": [{}] * 14, "coil_air_share_pct": 100}
+        said = " ".join(post._coil_alerts(k))
+        self.assertNotIn("air MASS flow", said)

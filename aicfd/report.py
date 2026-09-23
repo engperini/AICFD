@@ -997,6 +997,17 @@ def _methodology(doc, export: Export, drawn: dict) -> None:
               "velocity beside the drop their datasheet asks for. No limit is "
               "put on that velocity: what is high for one hall is ordinary in "
               "another, and the reader knows which they have.")
+    if not raised:
+        _para(doc,
+              f"The units stand in the mechanical galler"
+              f"{'ies' if len(galleries) > 1 else 'y'} and blow through the "
+              f"dividing wall into the room, so the room itself is the cold "
+              f"side: the air crosses the woven mesh in the wall, fills the "
+              f"space between the rows, enters the cabinets through their "
+              f"fronts and leaves them into the "
+              + ("contained hot aisles, which discharge through the ceiling "
+                 "grilles into the return plenum." if _containment_of(export) == "hot"
+                 else "hot aisles and rises to the ceiling grilles."))
     if len(galleries) > 1:
         _para(doc,
               "The false ceiling covers the whole hall and stops at each "
@@ -1042,12 +1053,12 @@ def _methodology(doc, export: Export, drawn: dict) -> None:
           "The cell sizes differ by axis on purpose. In plan the mesh is sized "
           f"on the cabinet: {_cells(across)} across a rack's face and "
           f"{_num(through, 0)} through its depth, which is what decides how well "
-          "the porous zone reproduces its own pressure curve. In the vertical it "
-          f"is fine enough that the false ceiling, the {export.naming['noun']} "
-          "top and the rack "
-          f"tops land on cell faces ({_cells(tall)} up a cabinet) — a "
-          "plane that falls mid-cell produces a ragged surface that leaks "
-          "silently.")
+          "the porous zone reproduces its own pressure curve. In the vertical "
+          f"every plane — the false ceiling, the {export.naming['noun']} top, "
+          f"the rack tops ({_cells(tall)} up a cabinet) — is put on a cell "
+          "face, because a plane that falls mid-cell produces a ragged surface "
+          "that leaks silently; where that moved a plane, the list below says "
+          "by how much.")
     _para(doc, _resolution_verdict(across, through), bold=True)
     if model.get("warnings"):
         _para(doc, "Dimensions the mesh snapped to its nearest cell face:",
@@ -1133,8 +1144,25 @@ def _methodology(doc, export: Export, drawn: dict) -> None:
     units = max(1, len(model["fans"]))
     per_unit = ((model.get("operating") or {}).get("unit_airflow_m3h")
                 or kpis["supply_flow_m3h"] / units)
+    selected = ((export.equipment.design or {}).get("airflow_m3h")
+                if export.equipment else None)
+    # BY VOLUME HERE, BY MASS IN THE COIL. The coil sees capacity rate, and
+    # this hall's air at sea level is denser than the sheet's at altitude, so
+    # 54 % of the selection's m3/h is 61 % of its kg/s. Both are true and a
+    # reader meeting the two numbers unlabelled has found a contradiction.
+    mass_share = kpis.get("coil_air_share_pct")
+    step_one = ("1 — the unit's airflow, from the datasheet"
+                if not selected or abs(per_unit - selected) < 1
+                else f"1 — the unit's airflow as operated, "
+                     f"{per_unit / selected * 100:.0f} % by volume of the "
+                     f"{_num(selected, 0)} m³/h it was selected at"
+                     + (f" ({mass_share:.0f} % by mass: this hall's air is "
+                        f"denser than at the selection's altitude)"
+                        if mass_share is not None
+                        and abs(mass_share - per_unit / selected * 100) > 1
+                        else ""))
     _table(doc, ["Step", "Value"], [
-        ("1 — the unit's airflow, from the datasheet", f"{_num(per_unit, 0)} m³/h"),
+        (step_one, f"{_num(per_unit, 0)} m³/h"),
         ("2 — units installed", f"{units}"),
         ("3 — total delivered to the room", f"{_num(per_unit * units, 0)} m³/h"),
         ("4 — at the supply density",
@@ -1287,8 +1315,19 @@ def _surfaces_section(doc, export: Export) -> None:
     needs to see which component each surface is and what it costs -- not be
     told that grilles exist.
     """
-    roles = export.payload["model"].get("components") or []
-    surfaces = [r for r in roles if r.get("kind") != "load" and r.get("applied")]
+    model = export.payload["model"]
+    roles = model.get("components") or []
+    # ONLY THE SURFACES THIS ROOM HAS. The library marks a component
+    # `applied` when a case may use it, and a fan-wall hall with no floor and
+    # no plenum listed "Raised floor plates" and "Plenum supply grilles" in a
+    # table headed "in the model".
+    built = {
+        "floor_tile": bool(model.get("floor_height")),
+        "supply_grille": bool(model.get("plenum_depth_m")),
+        "cage": bool(model.get("cage")),
+    }
+    surfaces = [r for r in roles if r.get("kind") != "load" and r.get("applied")
+                and built.get(r.get("role"), True)]
     if not surfaces:
         return
     _heading(doc, "Perforated surfaces in the model", 2)
@@ -1317,6 +1356,12 @@ _ROLE_VELOCITY = {
 def _face_velocity(export: Export, role: str | None) -> str:
     key = _ROLE_VELOCITY.get(role or "")
     value = export.kpis.get(key) if key else None
+    if value is None and role == "ceiling_return":
+        # The aisle-exit station IS the ceiling grilles: the same face,
+        # measured the same way.
+        value = next((s.get("speed_ms") for s in export.kpis.get("stations") or []
+                      if s.get("name") == "aisle_exit" or s.get("label") == "Aisle exit"),
+                     None)
     return f"{_num(value, 2)} m/s" if value is not None else "—"
 
 
@@ -1999,6 +2044,35 @@ def _conclusions(doc, export: Export) -> None:
             f"{_num(spread, 2)} K across the {len(fans)} units, from "
             f"{_num(min(returns), 2)} °C to {_num(max(returns), 2)} °C."
         )
+    # CABINETS THE ROOM STARVES. The racks have no fans (ADR-013): what
+    # passes through one is what the row's pressure difference drives, so a
+    # 20 kW cabinet between 4,7 kW neighbours gets much the same air they do
+    # and rises by far more than its design temperature difference. That is
+    # the finding a rack-level report exists to make -- the commercial tools
+    # call it an airflow deficit -- and this document printed the rise in an
+    # annex column and drew no conclusion from it.
+    design_dt = (model.get("operating") or {}).get("design_delta_t_k")
+    if design_dt:
+        rises = [(z["name"], (z.get("peak_temp_c") or 0) - (z.get("inlet_temp_c") or 0))
+                 for z in zones if z.get("peak_temp_c") is not None
+                 and z.get("inlet_temp_c") is not None and z.get("load_w")]
+        starved = [(n, r) for n, r in rises if r > 2 * design_dt]
+        if starved:
+            worst = max(starved, key=lambda x: x[1])
+            findings.append(
+                f"{len(starved)} cabinet{'s' if len(starved) != 1 else ''} "
+                f"{'rise' if len(starved) != 1 else 'rises'} by more than twice "
+                f"the {_num(design_dt, 1)} K the design airflow of "
+                f"{_num((kpis.get('hvac') or {}).get('cfm_per_kw'), 0)} CFM/kW "
+                f"implies — the worst is {worst[0]}, at {_num(worst[1], 1)} K. "
+                f"A cabinet has no fan in this model: it draws what the "
+                f"pressure across its row gives it, so a heavily loaded "
+                f"cabinet among lightly loaded neighbours gets much the same "
+                f"air they do and runs that much hotter. In the room, its own "
+                f"fans would pull harder and the deficit would show as "
+                f"recirculation at its intake instead. Either way it is the "
+                f"cabinet to look at first."
+            )
     if heats and rating:
         over = [f for f in fans if (f.get("heat_kw") or 0) > rating]
         findings.append(

@@ -5393,3 +5393,36 @@ written for one machine, one arrangement, or by a program:
   where this sheet anchors it on the maximum;
 * the static-pressure caption named "the supply plenum" on halls that have
   none.
+
+### The fan-wall twin, read end to end
+
+`hall-cage-1mw-fanwall` closed in four passes, holds its 23,0 °C setpoint with
+reserve, and passes every check. Its report, read the same way, found the
+document describing a room it does not have and missing the one rack-level
+conclusion a CFD study exists to make:
+
+* the surfaces table listed "Raised floor plates" and "Plenum supply grilles"
+  in a hall with neither — the library's `applied` flag says a case MAY use a
+  component, and the table now also asks whether this arrangement built it;
+* the face-velocity column read "—" on every row of every report: the plate
+  and grille velocities were measured and never exported, and the ceiling
+  grilles' is the aisle-exit station's;
+* "the unit's airflow, from the datasheet: 75.000 m³/h" of a unit whose sheet
+  says 140.165 — it is the operated airflow, and it says so, by volume and by
+  mass, because the coil sees mass and this hall's sea-level air is denser
+  than the sheet's at 661 m;
+* the mesh prose claimed the unit top "lands on a cell face" three lines above
+  a list saying it was moved 80 mm;
+* the geometry section described the raised-floor air path or nothing — the
+  fan-wall path has its own paragraph now;
+* the plate alert blamed the return temperature alone for a coil at 48 % of
+  plate that is also moving 61 % of the selection's air.
+
+**The finding that was missing.** The racks have no fans (ADR-013): a cabinet
+draws what the pressure across its row gives it, so a 20 kW cabinet between
+4,7 kW neighbours gets much the same air they do and rises by two or three
+times its design ΔT — 27,5 K on F1-01 here, 35 K elsewhere. The report printed
+that rise in an annex column and concluded nothing. Section 5 now counts the
+cabinets rising by more than twice the design ΔT, names the worst, and says
+what the number means in the model and in the room. It is what the commercial
+tools report as an airflow deficit, and it is the cabinet to look at first.

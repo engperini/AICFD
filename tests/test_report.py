@@ -1290,3 +1290,103 @@ class TheSameReportReadsRightOnAnyMachineTest(unittest.TestCase):
 
         said = inspect.getsource(report._summary)
         self.assertIn("fans at full speed", said)
+
+
+class TheFanWallReportDescribesTheRoomItHasTest(unittest.TestCase):
+    """Reading the fan-wall twin of a raised-floor hall (ADR-124)."""
+
+    def test_the_surfaces_table_lists_only_what_this_room_builds(self):
+        import inspect
+
+        from aicfd import report
+
+        said = inspect.getsource(report._surfaces_section)
+        self.assertIn('"floor_tile": bool(model.get("floor_height"))', said)
+        self.assertIn('"supply_grille": bool(model.get("plenum_depth_m"))', said)
+        self.assertIn('"cage": bool(model.get("cage"))', said)
+
+    def test_the_ceiling_grilles_face_velocity_is_the_aisle_exit_station(self):
+        from aicfd.report import _face_velocity
+
+        class Export:
+            kpis = {"stations": [{"name": "aisle_exit", "label": "Aisle exit",
+                                  "speed_ms": 0.989}]}
+
+        self.assertEqual(_face_velocity(Export(), "ceiling_return"), "0.99 m/s")
+        self.assertEqual(_face_velocity(Export(), "gallery_mesh"), "—")
+
+    def test_the_export_carries_the_plate_and_grille_velocities(self):
+        import inspect
+
+        from aicfd import post
+
+        source = inspect.getsource(post)
+        self.assertIn('"floor_face_velocity_ms": k.get("floor_face_velocity_ms")', source)
+        self.assertIn('"supply_face_velocity_ms": k.get("supply_face_velocity_ms")', source)
+
+    def test_an_operated_airflow_is_not_called_the_datasheets(self):
+        import inspect
+
+        from aicfd import report
+
+        said = inspect.getsource(report._methodology)
+        self.assertIn("the unit's airflow as operated", said)
+        self.assertIn("by volume of the", said)
+        self.assertIn("% by mass: this hall's air is", said)
+
+    def test_the_mesh_prose_does_not_claim_planes_landed_that_were_moved(self):
+        import inspect
+
+        from aicfd import report
+
+        said = inspect.getsource(report._methodology)
+        self.assertNotIn("tops land on cell faces", said)
+        self.assertIn("is put on a cell", said)
+
+    def test_a_hall_with_no_floor_gets_its_own_air_path_paragraph(self):
+        import inspect
+
+        from aicfd import report
+
+        said = inspect.getsource(report._methodology)
+        self.assertIn("blow through the", said)
+        self.assertIn("the room itself is the cold", said)
+
+
+class StarvedCabinetsAreAFindingTest(unittest.TestCase):
+    """A 20 kW cabinet between 4,7 kW neighbours rose 35 K and the report
+    drew no conclusion from it (ADR-013, ADR-124)."""
+
+    def render(self, zones):
+        import docx
+
+        from aicfd import report
+
+        class Export:
+            kpis = {"zones": zones, "fans": [], "energy_closure": 1.0,
+                    "hvac": {"cfm_per_kw": 158}}
+            model = {"operating": {"design_delta_t_k": 10.0}, "fans": []}
+            payload = {"valid": True}
+
+        doc = docx.Document()
+        report._conclusions(doc, Export())
+        return "\n".join(p.text for p in doc.paragraphs)
+
+    def zone(self, name, inlet, peak, load=10000):
+        return {"name": name, "inlet_temp_c": inlet, "inlet_top_c": inlet,
+                "peak_temp_c": peak, "load_w": load}
+
+    def test_a_cabinet_rising_more_than_twice_the_design_dt_is_named(self):
+        said = self.render([self.zone("F2-01", 24.0, 59.0),
+                            self.zone("F2-02", 24.0, 35.0)])
+        self.assertIn("1 cabinet rises by more than twice the 10.0 K", said)
+        self.assertIn("the worst is F2-01, at 35.0 K", said)
+        self.assertIn("has no fan in this model", said)
+
+    def test_a_hall_whose_cabinets_all_rise_as_designed_says_nothing(self):
+        said = self.render([self.zone("F2-01", 24.0, 35.0)])
+        self.assertNotIn("rises by more than", said)
+
+    def test_an_empty_cabinet_cannot_be_starved(self):
+        said = self.render([self.zone("F2-10", 24.0, 60.0, load=0)])
+        self.assertNotIn("rises by more than", said)

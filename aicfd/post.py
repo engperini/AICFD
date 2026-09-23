@@ -634,6 +634,10 @@ def _coil_alerts(kpis: dict) -> list[str]:
     # model of the machine exists to avoid -- so it says what the machine
     # does there, and how that compares with the plate (ADR-103).
     per_unit = (kpis.get("available_kw") or 0) / max(1, len(kpis.get("fans") or []))
+    # A fan wall at 53 % of its selection's air flow gives less for that as
+    # much as for the return, and an alert that named the return alone sent
+    # the reader looking for a temperature effect that is half an airflow one.
+    share = kpis.get("coil_air_share_pct")
     if (not problem and rated and rated_at and actual is not None
             and per_unit and abs(actual - rated_at) > 2.0):
         out.append(
@@ -641,8 +645,10 @@ def _coil_alerts(kpis: dict) -> list[str]:
             f"is rated {num(rated, 1)} kW at {num(rated_at, 1)} degC -- "
             f"{num(abs(actual - rated_at), 1)} K "
             + ("below" if actual < rated_at else "above")
-            + f" it. At the return this run produced its coil gives "
-            f"{num(per_unit, 1)} kW per unit, "
+            + " it. At the return this run produced"
+            + (f", and at {share:.0f} % of the selection's air MASS flow,"
+               if share is not None and abs(share - 100) > 5 else "")
+            + f" its coil gives {num(per_unit, 1)} kW per unit, "
             f"{num(per_unit / rated * 100, 0)}% of the plate figure. The plate "
             f"is not the capacity this room has; the number above is."
         )
@@ -2551,6 +2557,10 @@ def _viewer_kpis(model: Model, results: PodResults) -> dict:
         "available_kw": k.get("available_kw"),
         "utilisation_pct": k.get("utilisation_pct"),
         "units_over_capacity": k.get("units_over_capacity"),
+        # The face velocities the surfaces table prints; without them here the
+        # column read "--" on every row of every report.
+        "floor_face_velocity_ms": k.get("floor_face_velocity_ms"),
+        "supply_face_velocity_ms": k.get("supply_face_velocity_ms"),
         "catalogue_kw": k.get("catalogue_kw"),
         "coil_model": k.get("coil_model"),
         "coil_saturated_units": k.get("coil_saturated_units"),
