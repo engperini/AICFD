@@ -108,6 +108,11 @@ EDITABLE = {
     "floor_tiles_across": (("floor", "tiles_across"), int, (1, 20)),
     "supply_grille": (("components", "supply_grille"), "component", "supply_grille"),
     "fan_static_pa": (("fanwall", "static_pressure_pa"), float, (0.0, 2_000.0)),
+    # WHERE THE MACHINES STAND, as a layout drawing dimensions a row of them:
+    # the first unit off the gallery wall, and the pitch between them. Neither
+    # is an airflow decision (ADR-121).
+    "fan_offset": (("fanwall", "offset"), float, (0.0, 20.0)),
+    "fan_pitch": (("fanwall", "pitch"), float, (0.1, 30.0)),
     # --- return grilles -----------------------------------------------------
     "grille_size": (("grilles", "size"), float, (0.1, 3.0)),
     "grille_count": (("grilles", "count"), int, (1, 200)),

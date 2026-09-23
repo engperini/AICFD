@@ -798,3 +798,114 @@ class RowsMayDifferInLengthTest(unittest.TestCase):
 
     def test_a_uniform_hall_says_nothing_of_the_sort(self):
         self.assertNotIn("not the same length", " ".join(self.built().warnings))
+
+
+class WhereTheMachinesStandTest(unittest.TestCase):
+    """A row of units is dimensioned off the wall and by its pitch, the way a
+    layout drawing dimensions one (ADR-121).
+
+    What set the spacing before was the COLD AISLES: one unit centred on each,
+    which is what a fan wall is for and what a downflow unit has nothing to do
+    with. On a hall whose aisles are not evenly spaced -- a 6 m aisle where a
+    cage wall stands, 1,2 m at the perimeter -- the machines came out at gaps
+    of 1,5 / 4,5 / 4,2 / 2,1 / 2,1 / 1,5 m, and the drawing they were taken
+    from has them at one pitch from 240 mm off the wall.
+    """
+
+    def row(self, **kw):
+        return M.row_of_units(7, 2.553, 34.8, 0.1, **kw)
+
+    def test_a_stated_row_is_laid_where_the_drawing_puts_it(self):
+        row = self.row(offset=0.24, pitch=4.8)
+        self.assertEqual(len(row), 7)
+        self.assertAlmostEqual(row[0][0], 0.2, places=6)  # 0,24 on a 0,1 grid
+        for before, after in zip(row, row[1:]):
+            self.assertAlmostEqual(after[0] - before[0], 4.8, places=6)
+
+    def test_a_pitch_on_its_own_centres_the_row(self):
+        row = self.row(pitch=4.8)
+        head, tail = row[0][0], 34.8 - row[-1][1]
+        self.assertAlmostEqual(head, tail, places=1)
+        for before, after in zip(row, row[1:]):
+            self.assertAlmostEqual(after[0] - before[0], 4.8, places=6)
+
+    def test_an_offset_on_its_own_shares_what_is_left(self):
+        """A drawing that dimensions the two end gaps and nothing between."""
+        row = self.row(offset=0.24)
+        self.assertAlmostEqual(row[0][0], 0.2, places=6)
+        self.assertAlmostEqual(34.8 - row[-1][1], 0.2, places=1)
+        gaps = [after[0] - before[0] for before, after in zip(row, row[1:])]
+        self.assertAlmostEqual(max(gaps) - min(gaps), 0.0, places=6)
+
+    def test_every_edge_lands_on_the_mesh(self):
+        for cell in (0.1, 0.2, 0.3):
+            for lo, hi in M.row_of_units(5, 2.553, 34.8, cell, offset=0.24,
+                                         pitch=5.4):
+                with self.subTest(cell=cell, edge=lo):
+                    self.assertAlmostEqual(lo / cell, round(lo / cell), places=6)
+                    self.assertAlmostEqual(hi / cell, round(hi / cell), places=6)
+
+    def test_a_pitch_inside_the_unit_is_refused_by_name(self):
+        with self.assertRaises(ValueError) as caught:
+            self.row(pitch=1.5)
+        self.assertIn("fanwall.pitch", str(caught.exception))
+        self.assertIn("inside its neighbour", str(caught.exception))
+
+    def test_a_row_that_runs_off_the_wall_is_refused_by_name(self):
+        with self.assertRaises(ValueError) as caught:
+            self.row(offset=0.24, pitch=6.0)
+        self.assertIn("fanwall.offset/pitch", str(caught.exception))
+
+    def test_an_offset_with_no_room_left_is_refused_by_name(self):
+        with self.assertRaises(ValueError) as caught:
+            M.row_of_units(7, 2.553, 34.8, 0.1, offset=17.0)
+        self.assertIn("fanwall.offset", str(caught.exception))
+
+    def test_units_that_cannot_fit_the_wall_at_all_are_refused(self):
+        with self.assertRaises(ValueError) as caught:
+            M.row_of_units(20, 2.553, 34.8, 0.1)
+        self.assertIn("do not fit", str(caught.exception))
+
+
+class TheArrangementDecidesTheDefaultTest(unittest.TestCase):
+    """A fan wall faces the aisle it feeds; a downflow unit faces the deck.
+
+    Aligning a downflow unit with a cold aisle is a fan wall's rule applied
+    where it does not belong: the machine discharges into the plenum and the
+    plates distribute (ADR-072, ADR-121).
+    """
+
+    def spec(self, name: str) -> dict:
+        from tests import support
+
+        return support.spec(name)
+
+    def units(self, spec) -> list[tuple[float, float]]:
+        built = M.build_model(spec)
+        gallery = [p for p in built.panels if p.kind == "fan"]
+        half = len(gallery) // (len(built.galleries or [1]))
+        axis = 1 if gallery[0].axis == 2 else 0
+        return [p.extent[axis] for p in gallery[:half]]
+
+    def test_a_downflow_hall_gets_an_even_row(self):
+        spec = self.spec("hall-cage")
+        spec.setdefault("floor", {})["enabled"] = True
+        row = self.units(spec)
+        gaps = [b[0] - a[0] for a, b in zip(row, row[1:])]
+        self.assertTrue(gaps)
+        self.assertLess(max(gaps) - min(gaps), 0.35,
+                        f"the units are not evenly spaced: {gaps}")
+
+    def test_a_fan_wall_hall_still_faces_its_aisles(self):
+        spec = self.spec("hall-double-gallery")
+        built = M.build_model(spec)
+        if built.floor_height:
+            self.skipTest("this fixture is a raised floor")
+        fans = [p for p in built.panels if p.kind == "fan"]
+        centres = sorted((p.extent[0][0] + p.extent[0][1]) / 2 for p in fans)
+        aisles = sorted((lo + hi) / 2 for lo, hi in built.cold_aisles)
+        for centre in centres[: len(aisles)]:
+            with self.subTest(centre=centre):
+                self.assertTrue(
+                    any(abs(centre - a) < 2.0 for a in aisles),
+                    "a fan wall no longer stands in front of an aisle")

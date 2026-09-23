@@ -257,6 +257,8 @@ or three.
 | `fanwall.height` | float | 0.5 to 20 | unit height |
 | `fanwall.depth` | float | 0.1 to 10 | how far the unit reaches into the gallery. Drawn, not meshed (ADR-046) |
 | `fanwall.supply_temp_c` | float | -10 to 40 | supply air at the selection point |
+| `fanwall.offset` | float | 0 to 20 | from the start of the gallery wall to the FACE of the first unit. With `pitch`, the row is laid exactly there; on its own, the row ends the same distance from the far end and shares what is between (ADR-121) |
+| `fanwall.pitch` | float | 0.1 to 30 | centre to centre between units. On its own the row is centred on the wall. At least the unit's width, or the build refuses it by name |
 | `fanwall.static_pressure_pa` | float | 0 to 2000 | external static pressure the unit was selected at |
 | `fanwall.control` | `team` or `independent` | | §4 |
 | `fanwall.curve` | list of `[m3h, Pa]` | | the unit's P-Q curve. Anchor it on the selection point |

@@ -138,6 +138,12 @@ const SECTIONS = [
       // On, the units of one gallery run to the worst return any of them sees
       // (ADR-064).
       { key: 'fan_team', label: 'Units work as a team, per gallery', check: true, default: false, on: 'team' },
+      // The row as the drawing dimensions it: both optional, and without
+      // them the units are spread along the wall (ADR-121).
+      { key: 'fan_offset', label: 'First unit off the gallery wall', unit: 'm',
+        step: 0.05, optional: true },
+      { key: 'fan_pitch', label: 'Unit pitch, centre to centre', unit: 'm',
+        step: 0.1, optional: true },
       { key: 'fan_static_pa', label: 'External static pressure', unit: 'Pa', step: 5, optional: true },
     ],
   },

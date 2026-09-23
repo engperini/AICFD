@@ -5119,3 +5119,42 @@ coupling passes' extra iterations, which is what ADR-040 already says a coupled
 solve costs, and the page shows them as they happen. A case with
 `solver.couple: false` gets the plain solve, on the page as on the command
 line.
+
+---
+
+## ADR-121 — A row of machines is dimensioned off the wall, not off the aisles
+
+**Decision.** Two fields say where the units stand: `fanwall.offset`, from the
+start of the gallery wall to the face of the first unit, and `fanwall.pitch`,
+centre to centre. Both are optional; with either stated, `row_of_units` lays
+the row where the drawing puts it. Failing that, the ARRANGEMENT decides:
+
+* a **fan wall** keeps one unit per cold aisle, centred on the aisle it faces;
+* a **downflow** unit gets an even row along the wall.
+
+**Why.** "One unit centred on each cold aisle" is what a fan wall is for: it
+blows horizontally into the aisle in front of it, so facing the aisle it feeds
+is the whole point. A downflow unit feeds no aisle at all — it discharges
+through the deck into the plenum, and the plates distribute — so aligning it
+with an aisle was a fan wall's rule applied where it does not belong.
+
+It showed. On a 1 MW hall whose cold aisles are not evenly spaced — 6 m where
+the cage wall stands, 1,2 m at the perimeter — seven CRACs came out at gaps of
+1,5 / 4,5 / 4,2 / 2,1 / 2,1 / 1,5 m, with the first flush against the wall
+because a 2,7 m machine centred on a 1,2 m aisle starts outside the room. The
+engineer checked the layout it was taken from: first unit 240 mm off the wall,
+and one pitch from there.
+
+Which is the point. What sets the offset and the pitch is the structure, the
+pipework, the door swing and the space to pull a unit out — never the air. A
+tool that derives them from the aisles is deriving them from the wrong thing,
+and a tool that cannot be told them cannot reproduce a hall that exists.
+
+**Consequence.** Any raised-floor hall whose unit count happened to equal its
+aisle count moves its machines. That is the correction, not a side effect:
+`hall-cage-1mw`'s seven units go from those uneven gaps to an even row, and
+stating `offset` and `pitch` puts them where its drawing has them.
+
+An offset finer than the cell cannot survive the mesh — 240 mm does not exist
+on a 300 mm grid — and the alignment check says so by name (ADR-074), as it
+does for every other plane.

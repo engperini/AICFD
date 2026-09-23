@@ -3379,6 +3379,9 @@ def _hall_layout(spec: dict, cell, rack_spec: dict | None = None) -> _Layout:
 
     fan = spec["fanwall"]
     fan_width = float(fan["width"])
+    # Which kind of machine this room is fed by: a fan wall faces an aisle, a
+    # downflow unit faces the deck (ADR-072, ADR-121).
+    arrangement = wanted_arrangement(spec)
     count = int(fan.get("count", len(cold_aisles) * sides))
     # The units split evenly between the galleries; an odd count gives the
     # extra unit to the first, as a real installation does.
@@ -3387,9 +3390,26 @@ def _hall_layout(spec: dict, cell, rack_spec: dict | None = None) -> _Layout:
     for side, (gallery, n_units) in enumerate(zip(galleries, share)):
         if n_units < 1:
             raise ValueError(f"{count} fan walls cannot be shared between {sides} galleries")
+        # WHERE THE MACHINES STAND. The case's own row wins: a layout
+        # drawing dimensions the first unit off the wall and the pitch
+        # between them, and nothing about the air decides either (ADR-121).
+        #
+        # Failing that, the arrangement decides. A FAN WALL blows
+        # horizontally into the cold aisle in front of it, so one per aisle,
+        # facing the aisle it feeds, is what it is for. A DOWNFLOW unit
+        # feeds no aisle at all -- it discharges into the plenum and the
+        # plates distribute -- so aligning it with an aisle is a fan wall's
+        # rule applied where it does not belong. It gets the even row a hall
+        # is really built with.
+        offset = fan.get("offset")
+        pitch = fan.get("pitch")
         extents = (
-            place_fans(cold_aisles, fan_width, width, cell[1])
-            if n_units == len(cold_aisles)
+            row_of_units(n_units, fan_width, width, cell[1],
+                         None if offset is None else float(offset),
+                         None if pitch is None else float(pitch))
+            if offset is not None or pitch is not None
+            else place_fans(cold_aisles, fan_width, width, cell[1])
+            if n_units == len(cold_aisles) and arrangement == "fanwall"
             else distribute_fans(n_units, fan_width, width, cell[1])
         )
         position = gallery.hi[0] if side == 0 else gallery.lo[0]
@@ -3439,6 +3459,68 @@ def place_fans(aisles: list[tuple[float, float]], width: float, wall: float,
             f"{len(aisles)} fan walls of {width:g} m do not fit a {wall:g} m wall"
         )
     return [(round(s, 6), round(s + width, 6)) for s in starts]
+
+
+def row_of_units(count: int, width: float, wall: float, cell: float,
+                 offset: float | None = None,
+                 pitch: float | None = None) -> list[tuple[float, float]]:
+    """A row of machines along the gallery wall, as a drawing dimensions one.
+
+    `offset` is from the start of the wall to the FACE of the first unit;
+    `pitch` is centre to centre. A layout drawing gives one or both, and
+    neither is an airflow decision -- what sets them is the structure, the
+    pipework, the door swing and the space to pull a unit out (ADR-121).
+
+    * both: the row is laid exactly where the drawing puts it;
+    * pitch alone: the row keeps that spacing and is centred on the wall;
+    * offset alone: the row starts there, ends the same distance from the far
+      end, and shares what is between evenly -- which is how a drawing that
+      dimensions the two end gaps is read.
+
+    Every edge lands on the mesh, so the snapping later changes nothing. An
+    offset finer than the cell cannot survive it, and the alignment check says
+    so by name (ADR-074): a 240 mm offset does not exist on a 300 mm grid.
+    """
+    snap = lambda v: round(v / cell) * cell  # noqa: E731
+    width = snap(width)
+    if count < 1:
+        raise ValueError("a row of no units has nothing to place")
+    if count * width > wall + 1e-9:
+        raise ValueError(
+            f"{count} units of {num(width)} m do not fit a {num(wall)} m wall"
+        )
+    if pitch is not None and count > 1 and pitch < width - 1e-9:
+        raise ValueError(
+            f"fanwall.pitch: {num(pitch)} m centre to centre puts a "
+            f"{num(width)} m unit inside its neighbour. The pitch is at least "
+            f"the unit's width"
+        )
+    if offset is not None and pitch is None:
+        span = wall - 2.0 * offset - width
+        if span < -1e-9:
+            raise ValueError(
+                f"fanwall.offset: {num(offset)} m at each end leaves no room "
+                f"for a {num(width)} m unit on a {num(wall)} m wall"
+            )
+        pitch = span / (count - 1) if count > 1 else 0.0
+    if pitch is None:
+        pitch = (wall - width) / (count - 1) if count > 1 else 0.0
+    if offset is None:
+        offset = (wall - ((count - 1) * pitch + width)) / 2.0
+    last = offset + (count - 1) * pitch + width
+    if offset < -1e-9 or last > wall + 1e-9:
+        raise ValueError(
+            f"fanwall.offset/pitch: {count} units of {num(width)} m from "
+            f"{num(offset)} m at {num(pitch)} m centres reach {num(last)} m "
+            f"on a {num(wall)} m wall"
+        )
+    starts = [snap(offset + i * pitch) for i in range(count)]
+    for i in range(1, count):  # the grid may have closed a gap the case left
+        starts[i] = max(starts[i], starts[i - 1] + width)
+    starts[-1] = min(starts[-1], snap(wall - width))
+    for i in range(count - 2, -1, -1):
+        starts[i] = min(starts[i], starts[i + 1] - width)
+    return [(round(v, 6), round(v + width, 6)) for v in starts]
 
 
 def distribute_fans(count: int, width: float, wall: float,
