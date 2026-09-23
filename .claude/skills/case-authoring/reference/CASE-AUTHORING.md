@@ -555,7 +555,7 @@ a finding about the project, not a reason to edit the case.
 
 ## 11. What the solve will judge
 
-A finished run is held to up to thirteen checks. They test the **model**, so a
+A finished run is held to up to fourteen checks. They test the **model**, so a
 FAIL is usually a statement about your inputs:
 
 | check | a FAIL usually means |
@@ -570,6 +570,7 @@ FAIL is usually a statement about your inputs:
 | `plenum_resistance` | the same, for the supply plenum |
 | `floor_resistance` | the same, for the raised floor plates |
 | `fan_capacity` | the units cannot do what the case asks of them |
+| `coil_closure` | the field was solved with supply air the plant does not make: raise `solver.coupling_passes` so the loop closes, or state a `fanwall.supply_temp_c` the plant can hold |
 | `settled` | not converged; raise `max_iterations` |
 | `ashrae_inlet` | rack intake temperatures outside the envelope — a real result, not necessarily a modelling fault |
 | `plausible_velocity` | a velocity nothing in a data hall produces; look for a geometry error |

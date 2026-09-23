@@ -5191,3 +5191,103 @@ iterations and watching the run carry on to 2800 with no explanation is a tool
 doing something behind its user. It now says which pass it is on, how many
 there are, and where the next one ends. A case that wants the old behaviour
 sets `solver.coupling_passes: 1`, or `solver.couple: false` to turn it off.
+
+---
+
+## ADR-123 — A result is only real if the units deliver the air their coils make
+
+**Decision.** A twelfth physical check, `coil_closure`, compares the supply
+temperature every unit **imposes on the field** with the supply temperature
+its **coil produces** at the return it actually receives. More than
+`COIL_CLOSURE_TOLERANCE_K` = 0,1 K apart on any unit and the report fails its
+checks.
+
+**Why.** This is the one thing the checks did not test, and it is the thing
+that decides whether a result describes the room at all.
+
+The field is solved with a supply temperature at each unit: the air leaves the
+floor at that temperature and everything downstream of it — the inlet
+temperatures, the ΔT, the recirculation, every KPI in section 4 — is measured
+from it. The coil model is what says whether the machine can actually make
+that air at the return it gets. When the two agree, the result is a room whose
+plant can exist. When they do not, the field was solved with air the plant
+does not produce, and **every temperature in the result is wrong by the
+difference** — not approximately, not conservatively, in one direction:
+optimistic.
+
+Two things can put them apart:
+
+* A coupled solve that ran out of passes. The loop was still moving when
+  `coupling_passes` ended, so the field carries pass four's supply and the coil
+  has moved on to pass five's.
+* A run solved with `couple: false` on a plant that cannot hold the stated
+  `supply_temp_c` — the field simply asserts a temperature and nothing ever
+  checks it.
+
+`hall-cage-1mw` was the second kind and then the first: 23,25 °C in the field
+against 24,37 °C from the coil at the 35,09 °C return that unit sees — 1,12 K.
+The report said so, in a paragraph, as an **alert**, under a cover page that
+said the checks had passed. A document cannot say "these results are sound"
+and "every temperature here is a kelvin optimistic" on the same page. That is
+what made it a check rather than a warning.
+
+**Why 0,1 K.** Measured, not chosen. Across every tracked result, a coupled
+solve that closed agrees to 0,00–0,01 K, and the one that stopped at its pass
+cap was 1,12 K out. A tenth of a kelvin is ten times the first and a tenth of
+the second: nothing sound fails and nothing broken passes.
+
+**What it is not.** It is not "a unit is saturated". A unit at full duty whose
+supply follows its return is a real machine doing its best, and a perfectly
+good result can be full of them — every unit of `hall-double-gallery-water21`
+is saturated and it closes to 0,01 K. Saturation is an engineering finding and
+stays an alert (ADR-118). Disagreement between the field and the machine is an
+arithmetic contradiction, and that is a failure.
+
+The remedy the check names is the remedy: raise `solver.coupling_passes` until
+the loop closes, or state a `fanwall.supply_temp_c` the plant can hold.
+
+### What the same read found in the report
+
+The check above came out of reading the document end to end and asking, of
+every page, whether an experienced engineer would have written it that way.
+Six other things did not survive that reading, and all six are the same fault:
+the document stating one quantity two ways.
+
+* **The headline pressure contradicted the conclusion.** Section 2 charged the
+  most loaded unit for the WHOLE loop — 113,6 Pa against the 50 Pa of external
+  static it offers, which reads 227 % — four pages above a section 5 that said
+  54 %. The subtraction that separates the cabinets' own drop from the room's
+  (ADR-115) lived in two places and had only been fixed in one. It is one
+  exported number now, `room_static_pa`, and everything that quotes it reads
+  that.
+* **Two supply temperatures under one heading.** Section 2's table, introduced
+  as "that machine's own manufacturer selection", printed the SOLVED supply —
+  23,2 °C — while section 3's selection table printed 18,8 °C for the same
+  machine. Both are real; neither was labelled. They are now two rows.
+* **Two elevations, likewise**: 0 m for the hall and 25 m for the selection,
+  with nothing saying they were different things.
+* **The method promised what the run had not delivered.** Section 1.6 said
+  "all of them pass before a temperature in this document is quoted" on the
+  front of a report whose cover said CHECKS FAILED, and counted "eleven"
+  identities above a table of thirteen. Section 1 is fixed text and cannot
+  know either, so it states the RULE; the verdict now leads section 4.1 and
+  section 5, where the numbers are.
+* **`PASS … (148 %)`.** The resistance checks quoted the ratio against the
+  DESIGN figure and then explained, three clauses later, that the field's own
+  closed form asks something else (ADR-119). A reader cannot be asked to find
+  the correction and redo the division: the percentage is now the one the
+  verdict was taken on, and the design figure stays in the sentence.
+* **Thirty-three bullets, ten of them distinct.** Every containment lid, row
+  end and door that landed on the same 3,200 m plane got its own paragraph.
+  Identical snaps are collapsed to one line naming every plane that took them.
+
+Two more were not contradictions but a report written by a program rather than
+by a person: `2 unit(s)`, and a pressure column headed `Rise` in pascals beside
+four temperature columns.
+
+The one thing the reading found MISSING rather than wrong is the coupling
+record. Whether the loop closed is what decides everything above, and it was
+returned to the caller and written down nowhere — so the only way to know was
+to have watched the run, and a reader of the report was not there. The solve
+now leaves `coupling.json` in the case, and section 4.2 says how many passes
+ran, how far the last one moved, and whether that closed.

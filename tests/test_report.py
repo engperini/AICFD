@@ -985,14 +985,34 @@ class TheReportDescribesThePlantItHasTest(unittest.TestCase):
         self.assertIn("counterflow heat exchanger", said,
                       "the chilled-water physics is still stated once")
 
-    def test_the_introduction_still_rests_on_no_result(self):
-        """It takes no export, and naming the plant per case would need one."""
+    def test_the_introduction_states_the_rule_and_promises_no_verdict(self):
+        """Section 1 is the method, printed identically every run, so it
+        cannot say how this run came out.
+
+        It said "all of them pass before a temperature in this document is
+        quoted" on the front of a report whose cover said CHECKS FAILED, and
+        counted "eleven" identities above a table of thirteen. The rule stays
+        here; the verdict belongs where the numbers are (ADR-123).
+        """
         import inspect
 
         from aicfd import report
 
         self.assertEqual(
             list(inspect.signature(report._introduction).parameters), ["doc"])
+        # The RENDERED text, not the source: the source carries the comment
+        # that explains what these sentences used to say.
+        import docx
+
+        doc = docx.Document()
+        report._introduction(doc)
+        printed = "\n".join(p.text for p in doc.paragraphs)
+        self.assertIn("accepted only when every check that applies passes",
+                      printed)
+        self.assertNotIn("all of them pass before a temperature", printed)
+        for counted in ("Eleven identities", "and seven more"):
+            self.assertNotIn(counted, printed,
+                             "a fixed section cannot count a variable list")
 
     def test_the_control_note_moves_what_that_plant_actually_moves(self):
         said = self.source("_control_section")
@@ -1023,3 +1043,112 @@ class TheConclusionsAgreeWithTheChecksTest(unittest.TestCase):
         said = self.source()
         self.assertIn("abs(closure - 100) <= 2", said)
         self.assertIn("still settling", said)
+
+
+class TheReportDoesNotContradictItselfTest(unittest.TestCase):
+    """Four places in this document quoted the same quantity two ways.
+
+    A reader cannot tell which of two numbers to believe, and an engineer
+    circulating a report that disagrees with itself has to defend both. Each
+    of these is one measurement with one definition (ADR-115, ADR-123).
+    """
+
+    def source(self, function: str) -> str:
+        import inspect
+
+        from aicfd import report
+
+        return inspect.getsource(getattr(report, function))
+
+    def test_the_headline_pressure_is_the_one_the_check_took(self):
+        """Section 2 charged the unit for the whole loop -- 113,6 Pa of the
+        50 Pa it offers, 227 % -- above a section 5 that said 54 %."""
+        said = self.source("_summary")
+        self.assertIn("room_static_pa", said)
+        self.assertNotIn("'fan_rise_pa'), 1)} Pa\",\n         f\"of the", said)
+
+    def test_the_room_static_is_defined_once(self):
+        """One subtraction, in the export, read by everyone who quotes it."""
+        import inspect
+
+        from aicfd import post
+
+        source = inspect.getsource(post)
+        self.assertIn('kpis["room_static_pa"]', source)
+        for function in ("_summary", "_conclusions"):
+            self.assertIn("room_static_pa", self.source(function))
+
+    def test_the_two_supply_temperatures_are_labelled(self):
+        """Section 2 printed the SOLVED supply under a heading that says
+        manufacturer selection, so it read 23,2 degC where section 3's
+        selection table read 18,8 -- of the same machine."""
+        said = self.source("_summary")
+        self.assertIn("Supply air temperature, at the selection point", said)
+        self.assertIn("Supply air temperature delivered in this run", said)
+
+    def test_the_two_elevations_are_labelled(self):
+        said = self.source("_summary")
+        self.assertIn("Site elevation, this hall", said)
+        self.assertIn("the selection was taken at", said)
+
+    def test_the_pressure_column_is_not_called_rise(self):
+        """In pascals, beside four temperature columns."""
+        said = self.source("_results")
+        self.assertIn('headers.append("Loop static")', said)
+
+    def test_every_check_the_solver_runs_has_a_meaning_in_the_table(self):
+        """A FAIL with an empty 'What it catches' cell tells a reader
+        nothing."""
+        import re
+
+        from pathlib import Path
+
+        from aicfd.report import _CHECK_MEANING
+
+        source = (Path(__file__).resolve().parents[1]
+                  / "aicfd" / "post.py").read_text()
+        real = set(re.findall(r'Check\(\s*\n\s*"([a-z_]+)"', source))
+        self.assertTrue(real)
+        self.assertFalse(real - set(_CHECK_MEANING),
+                         "a check with no row in the report's meaning table")
+
+
+class TheSnapListIsReadableTest(unittest.TestCase):
+    """A 1 MW hall produced 33 bullets of which 10 were distinct (ADR-123)."""
+
+    def test_identical_snaps_collapse_to_one_line(self):
+        from aicfd.report import _grouped_warnings
+
+        lines = _grouped_warnings([
+            "rack height: 3.200 m falls between 0.25 m grid lines; the mesh uses 3.25 m (+50 mm).",
+            "row end edge: 3.200 m falls between 0.25 m grid lines; the mesh uses 3.25 m (+50 mm).",
+            "CRAC width: 2.553 m falls between 0.30 m grid lines; the mesh uses 2.70 m (+147 mm).",
+        ])
+        self.assertEqual(len(lines), 2)
+        self.assertIn("rack height and row end edge: 3.200 m", lines[0])
+        self.assertIn("CRAC width: 2.553 m", lines[1])
+
+    def test_the_same_finding_about_four_aisles_is_one_line(self):
+        from aicfd.report import _grouped_warnings
+
+        note = ("floor plates: rows {a} and {b} face the same 1.20 m cold "
+                "aisle, which holds 2 row(s) of plate.")
+        lines = _grouped_warnings([
+            note.format(a="F2", b="F3"), note.format(a="F6", b="F7"),
+            note.format(a="F8", b="F9"), note.format(a="F10", b="F11"),
+        ])
+        self.assertEqual(len(lines), 1)
+        self.assertIn("floor plates: rows F2/F3, rows F6/F7, rows F8/F9 and "
+                      "rows F10/F11 face the same", lines[0])
+
+    def test_nothing_is_dropped_or_reworded(self):
+        from aicfd.report import _grouped_warnings
+
+        one = "domain height: 6.600 m falls between 0.25 m grid lines."
+        self.assertEqual(_grouped_warnings([one]), [one])
+
+    def test_a_line_with_no_subject_survives(self):
+        from aicfd.report import _grouped_warnings
+
+        plain = "the cage wall at 12.00 m stands in a contained cold aisle."
+        self.assertEqual(_grouped_warnings([plain]), [plain])

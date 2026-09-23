@@ -777,7 +777,7 @@ class NegligibleResistanceTest(unittest.TestCase):
     def test_two_pressures_that_are_both_nearly_zero_agree(self):
         """The mesh leaf failed at "0.00 Pa against 0.00 Pa (0%)", which is
         not a disagreement about anything."""
-        passed, why = post._resistance_verdict(0.001, 0.004)
+        passed, why, _expected = post._resistance_verdict(0.001, 0.004)
         self.assertTrue(passed)
         self.assertIn("too open for the ratio", why)
 
@@ -961,7 +961,7 @@ class ResistanceVerdictTest(unittest.TestCase):
     """The closed form for THIS field, not for the drawing board (ADR-082)."""
 
     def test_an_evenly_fed_surface_is_judged_against_its_rated_drop(self):
-        passed, why = post._resistance_verdict(2.4, 2.2)
+        passed, why, _expected = post._resistance_verdict(2.4, 2.2)
         self.assertTrue(passed)
         self.assertEqual(why, "")
 
@@ -969,7 +969,7 @@ class ResistanceVerdictTest(unittest.TestCase):
         """0,88 Pa where the rating says 0,31 is 284% and looks like an
         instrument fault. Reached 2,9 times harder than the rating assumes,
         its own K asks 0,90 Pa of this field -- and 0,88 is 2% under it."""
-        passed, why = post._resistance_verdict(0.88, 0.308, 2.925)
+        passed, why, _expected = post._resistance_verdict(0.88, 0.308, 2.925)
         self.assertTrue(passed)
         self.assertIn("times harder", why)
         self.assertIn("0.90 Pa", why)
@@ -1036,7 +1036,7 @@ class ReverseFlowTest(unittest.TestCase):
     def test_the_verdict_says_both_faults_apart(self):
         """Uneven flow wants a deeper plenum; air going round in circles wants
         the units aimed differently. One number, two remedies."""
-        _passed, why = post._resistance_verdict(0.88, 0.308, 2.9, 0.097)
+        _passed, why, _expected = post._resistance_verdict(0.88, 0.308, 2.9, 0.097)
         self.assertIn("2.9 times harder", why)
         self.assertIn("10% of the mass", why)
         self.assertNotIn("going back the other way",
@@ -1195,7 +1195,7 @@ class AnUnevenlyFedSurfaceIsJudgedOnItsOwnFieldTest(unittest.TestCase):
         spread = post.flow_spread(self.step, "tile_")
         rated = sum(flows) / len(flows) / (rho * area)
         asked = k * 0.5 * rho * rated ** 2
-        passed, why = post._resistance_verdict(measured, asked, spread)
+        passed, why, _expected = post._resistance_verdict(measured, asked, spread)
         self.assertTrue(passed, f"{measured:.3f} Pa against {asked * spread:.3f}")
         self.assertAlmostEqual(measured / (asked * spread), 1.0, places=2)
         self.assertIn("times harder", why)
@@ -1212,3 +1212,79 @@ class AnUnevenlyFedSurfaceIsJudgedOnItsOwnFieldTest(unittest.TestCase):
             post.grille_pressure_drop(self.step, "tile_"),
             k * 0.5 * rho * rated ** 2,
             post.flow_spread(self.step, "tile_"))[0])
+
+
+class TheAirTheUnitsDeliverIsTheAirTheirCoilsMakeTest(unittest.TestCase):
+    """The identity that says a result is REAL and not just converged
+    (ADR-123).
+
+    A field solved at a supply temperature the plant cannot produce is wrong
+    by the difference, in every cell. It reached a report as an alert -- a
+    paragraph saying "every temperature in this result is that much
+    optimistic" under a cover page that said the checks passed -- which is a
+    document contradicting itself. It is a check now.
+    """
+
+    def check(self, fans: list[dict]):
+        from aicfd.post import COIL_CLOSURE_TOLERANCE_K
+
+        rows = [(f["name"], f["supply_temp_c"], f["coil_supply_c"],
+                 f.get("return_temp_c")) for f in fans]
+        worst = max(rows, key=lambda r: abs(r[1] - r[2]))
+        return abs(worst[1] - worst[2]) <= COIL_CLOSURE_TOLERANCE_K, worst
+
+    def unit(self, name, supply, coil, ret=30.0):
+        return {"name": name, "supply_temp_c": supply, "coil_supply_c": coil,
+                "return_temp_c": ret}
+
+    def test_a_closed_loop_passes(self):
+        """Every tracked coupled run that closed agrees to 0,01 K."""
+        passed, _ = self.check([self.unit("fan1", 21.90, 21.90),
+                                self.unit("fan2", 21.90, 21.91)])
+        self.assertTrue(passed)
+
+    def test_a_loop_that_stopped_at_its_cap_fails(self):
+        """The 1 MW hall: the field carries pass four's answer and the coil
+        has moved on to pass five's."""
+        passed, worst = self.check([self.unit("fan1", 23.25, 24.37, 35.09),
+                                    self.unit("fan2", 23.25, 23.30)])
+        self.assertFalse(passed)
+        self.assertEqual(worst[0], "fan1")
+
+    def test_a_plant_that_cannot_hold_the_stated_supply_fails(self):
+        """An uncoupled run of a hall whose machines are short: the field
+        carries 22,0 degC and the coil makes 23,3."""
+        passed, _ = self.check([self.unit("fan1", 22.0, 23.33, 34.37)])
+        self.assertFalse(passed)
+
+    def test_saturation_on_its_own_is_not_a_failure(self):
+        """A unit at full duty whose supply follows its return is a real unit
+        doing its best. Every unit of `hall-double-gallery-water21` is
+        saturated and it agrees to 0,01 K."""
+        passed, _ = self.check([self.unit(f"fan{i}", 21.9, 21.9) for i in range(14)])
+        self.assertTrue(passed)
+
+    def test_the_tolerance_separates_the_two_by_a_wide_margin(self):
+        from aicfd.post import COIL_CLOSURE_TOLERANCE_K
+
+        self.assertGreaterEqual(COIL_CLOSURE_TOLERANCE_K, 0.05,
+                                "tighter than the noise of a closed loop")
+        self.assertLessEqual(COIL_CLOSURE_TOLERANCE_K, 0.25,
+                             "looser than this would pass a run that is out")
+
+    def test_the_check_is_in_the_list_and_says_what_to_do(self):
+        import inspect
+
+        source = inspect.getsource(post._checks)
+        self.assertIn('"coil_closure"', source)
+        self.assertIn("solver.coupling_passes", source)
+        self.assertIn("fanwall.supply_temp_c", source)
+        self.assertIn("that much optimistic", source)
+
+    def test_a_run_with_no_coil_has_nothing_to_close(self):
+        """A case that names no unit, or one whose sheet supports no coil."""
+        from aicfd.post import COIL_CLOSURE_TOLERANCE_K  # noqa: F401
+
+        rows = [f for f in ({"name": "fan1", "supply_temp_c": 20.0},)
+                if f.get("coil_supply_c") is not None]
+        self.assertEqual(rows, [])

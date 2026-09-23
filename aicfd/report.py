@@ -23,6 +23,7 @@ minimum; `aicfd run`, `aicfd post` and the checks never need it.
 
 from __future__ import annotations
 
+import re
 from datetime import date
 from pathlib import Path
 
@@ -233,6 +234,81 @@ def build(results_dir: str | Path, out_path: str | Path,
 
     doc.save(str(out))
     return out
+
+
+def _units(count: int) -> str:
+    """`unit` or `units`. A report that says "2 unit(s)" was written by a
+    program and reads like one."""
+    return "unit" if count == 1 else "units"
+
+
+def _grouped_warnings(warnings) -> list[str]:
+    """One line per distinct snap, naming every plane that took it.
+
+    A hall with seven contained aisles produces the same sentence about the
+    same 3,200 m plane seven times over -- once for each lid, and again for
+    the rack top, the row ends and the containment doors. Thirty-three bullets
+    of which four are distinct is not a list of findings; a reader skims it and
+    stops reading the section. Identical snaps are collapsed to the plane they
+    all landed on, with their subjects named, and repeated observations about
+    different aisles are collapsed the same way.
+
+    Nothing is dropped or reworded: every subject and every predicate here is
+    the one the builder wrote.
+    """
+    groups: dict[str, list[str]] = {}
+    order: list[str] = []
+    # A predicate that reads on from its subject ("rows F2/F3 FACE the same
+    # aisle") takes no colon; one that names a plane ("CRAC width: 2.553 m
+    # falls between") keeps the builder's own.
+    continues: set[str] = set()
+    for line in warnings:
+        subject, sep, predicate = line.partition(": ")
+        if not sep:
+            subject, predicate = "", line
+        # "rows F2 and F3 face the same ..." -- the pair is the subject of the
+        # observation, not part of it, so the four aisles that share a finding
+        # share a bullet.
+        rows = re.match(r"^rows (\S+) and (\S+) (.*)$", predicate)
+        if rows:
+            subject = f"{subject}: rows {rows.group(1)}/{rows.group(2)}".lstrip(": ")
+            predicate = rows.group(3)
+            continues.add(predicate)
+        if predicate not in groups:
+            groups[predicate] = []
+            order.append(predicate)
+        if subject and subject not in groups[predicate]:
+            groups[predicate].append(subject)
+    out = []
+    for predicate in order:
+        subjects = groups[predicate]
+        if not subjects:
+            out.append(predicate)
+            continue
+        joint = " " if predicate in continues else ": "
+        if len(subjects) == 1:
+            out.append(f"{subjects[0]}{joint}{predicate}")
+        else:
+            out.append(
+                f"{_and(_without_repeated_head(subjects))}{joint}{predicate}")
+    return out
+
+
+def _without_repeated_head(subjects: list[str]) -> list[str]:
+    """`floor plates: rows F2/F3, rows F6/F7` -- not the head four times over."""
+    heads = {s.split(": ")[0] for s in subjects if ": " in s}
+    if len(heads) != 1 or not all(": " in s for s in subjects):
+        return subjects
+    head = heads.pop()
+    return [f"{head}: {subjects[0].split(': ', 1)[1]}"] + [
+        s.split(": ", 1)[1] for s in subjects[1:]]
+
+
+def _and(items: list[str]) -> str:
+    """`a, b and c` -- a list an engineer would write, not `['a', 'b', 'c']`."""
+    if len(items) == 1:
+        return items[0]
+    return ", ".join(items[:-1]) + " and " + items[-1]
 
 
 def _hall_span(export: Export) -> tuple[float, float, float, float]:
@@ -543,15 +619,29 @@ def _introduction(doc) -> None:
              "segments reach the fixed point.")
 
     _heading(doc, "1.6  Acceptance", 2)
+    # THE RULE, NOT THIS RUN'S VERDICT. Section 1 is the method and prints the
+    # same words every time, so it cannot say how many checks applied or
+    # whether they passed: it said "Eleven identities" above a table of
+    # thirteen, and "all of them pass before a temperature in this document is
+    # quoted" on the front of a report whose cover said CHECKS FAILED. What
+    # belongs here is the rule the tool works to; the verdict belongs where
+    # the numbers are -- the cover, section 2, section 4.1 and section 5
+    # (ADR-123).
     _para(doc,
-          "A run is accepted on physical grounds. Eleven identities the "
-          "solution has to satisfy are evaluated on the converged field: mass "
-          "in against mass out, the heat the return air carries against the "
-          "load the racks release, the pressure drop across the racks against "
-          "the resistance they were given, the air each unit draws against "
-          "what it supplies, and seven more. Section 4.1 lists them with the "
-          "numbers that produced each verdict, and all of them pass before a "
-          "temperature in this document is quoted.")
+          "A run is accepted on physical grounds. Up to fourteen identities "
+          "the solution has to satisfy are evaluated on the converged field: "
+          "mass in against mass out, the heat the return air carries against "
+          "the load the racks release, the pressure drop across the racks "
+          "against the resistance they were given, the air each unit draws "
+          "against what it supplies, and the rest of the list in section 4.1, "
+          "which carries the numbers that produced each verdict. Which of "
+          "them apply follows from the arrangement — a hall with no raised "
+          "floor has no floor plates to judge.")
+    _para(doc,
+          "A run is accepted only when every check that applies passes. The "
+          "cover page carries this run's verdict in one line and section 4.1 "
+          "carries it check by check; where they say a check failed, nothing "
+          "in section 4 or 5 is a result until it is cleared.")
     _para(doc,
           "Four stations on the air loop — the units' supply, the cabinets' "
           "intakes, the ceiling the contained aisles discharge through, and "
@@ -610,7 +700,9 @@ def _summary(doc, export: Export, drawn: dict) -> None:
         _para(doc,
               f"The cooling plant is {len(model['fans'])} × "
               f"{unit.family} {unit.model}. The quantities below are that "
-              f"machine's own manufacturer selection. Section 3 gives the "
+              f"machine's own manufacturer selection, with the supply "
+              f"temperature this run produced beside the one it was selected "
+              f"at. Section 3 gives the "
               f"conditions it was taken at and the capacity the unit has "
               f"across the range of return air temperatures this hall "
               f"produces.",
@@ -620,7 +712,17 @@ def _summary(doc, export: Export, drawn: dict) -> None:
         ("Units installed", f"{len(model['fans'])}"),
         ("Airflow per unit", f"{_num(kpis['supply_flow_m3h'] / max(1, len(model['fans'])), 0)} m³/h"),
         ("Total airflow to the room", f"{_num(kpis['supply_flow_m3h'], 0)} m³/h"),
-        ("Supply air temperature", f"{_num(kpis['supply_temp_c'], 1)} °C"),
+        # TWO DIFFERENT TEMPERATURES, and this table used to print the solved
+        # one under a heading that says "the machine's own manufacturer
+        # selection" -- so section 2 said 23,2 degC and section 3's selection
+        # table said 18,8 degC, of the same machine, on the same plant.
+        *((("Supply air temperature, at the selection point",
+            f"{_num((unit.design or {}).get('supply_c'), 1)} °C"),)
+          if unit and (unit.design or {}).get("supply_c") is not None else ()),
+        ("Supply air temperature delivered in this run",
+         f"{_num(kpis['supply_temp_c'], 1)} °C"
+         + (" (solved, not selected)"
+            if unit and (unit.design or {}).get("supply_c") is not None else "")),
         ("Net sensible capacity per unit",
          f"{_num(fan.get('unit_capacity_kw'), 1)} kW"
          if fan.get("unit_capacity_kw") else "not given"),
@@ -635,7 +737,17 @@ def _summary(doc, export: Export, drawn: dict) -> None:
          + (" (interpolated on the unit's P-Q curve)"
             if fan.get("fan_curve") else " (the datasheet point)")
          if kpis.get("fan_static_pa") else "not given"),
-        ("Site elevation", f"{_num(site.get('altitude_m'), 0)} m"),
+        # TWO ELEVATIONS, and no label saying so: this said 0 m and the unit
+        # table said "selected at 25 m", of the same plant. One is where the
+        # hall is and fixes the air density the solve runs at; the other is
+        # where the manufacturer's selection was taken.
+        ("Site elevation, this hall",
+         f"{_num(site.get('altitude_m'), 0)} m"
+         + (f" (the selection was taken at "
+            f"{_num((unit.selection or {}).get('elevation_m'), 0)} m)"
+            if unit and (unit.selection or {}).get("elevation_m") is not None
+            and abs((unit.selection or {}).get("elevation_m", 0)
+                    - (site.get("altitude_m") or 0)) > 1 else "")),
         ("Operating pressure",
          f"{_num(site['pressure_pa'] / 1000, 1)} kPa" if "pressure_pa" in site else "—"),
         ("Supply air density", f"{_num(site.get('rho'), 3)} kg/m³"),
@@ -655,9 +767,15 @@ def _summary(doc, export: Export, drawn: dict) -> None:
          f"{_num(kpis['bulk_delta_t_k'], 2)} K above the supply"),
         ("Energy closure", f"{_num((kpis['energy_closure'] or 0) * 100, 1)} %",
          "heat carried out by the return air, against the installed load"),
-        ("Rise across the most loaded unit", f"{_num(kpis.get('fan_rise_pa'), 1)} Pa",
-         f"of the {_num(kpis.get('fan_static_pa'), 0)} Pa the unit can produce at "
-         "this airflow"
+        # THE SAME NUMBER SECTION 4.1 AND SECTION 5 QUOTE. This row used to
+        # carry the whole loop against the unit's external static, which reads
+        # 227 % on a hall whose units are at 54 % -- a headline contradicting
+        # the conclusion four pages later (ADR-115).
+        ("Room resistance, most loaded unit",
+         f"{_num(kpis.get('room_static_pa', kpis.get('fan_rise_pa')), 1)} Pa",
+         f"of the {_num(kpis.get('fan_static_pa'), 0)} Pa external static the "
+         f"unit offers; the whole loop is "
+         f"{_num(kpis.get('fan_rise_pa'), 1)} Pa"
          if kpis.get("fan_static_pa") else "no datasheet pressure given"),
     ]
     if hvac:
@@ -693,7 +811,10 @@ def _summary(doc, export: Export, drawn: dict) -> None:
                ["Station", "Mixed", "Range", "Flow", "Face velocity"],
                [(f"{s['label']}",
                  f"{_num(s.get('temp_c'), 2)} °C",
-                 (f"{_num(s.get('low_c'), 1)} – {_num(s.get('high_c'), 1)} °C"
+                 # THE SAME PRECISION AS THE MIXED VALUE BESIDE IT. At one
+                 # decimal the supply read "23,25 degC, range 23,2 - 23,2",
+                 # a mean outside its own range.
+                 (f"{_num(s.get('low_c'), 2)} – {_num(s.get('high_c'), 2)} °C"
                   if s.get("low_c") is not None else "—"),
                  (f"{s['flow_m3h']:,.0f} m³/h".replace(",", " ")
                   if s.get("flow_m3h") is not None else "—"),
@@ -870,7 +991,7 @@ def _methodology(doc, export: Export, drawn: dict) -> None:
     if model.get("warnings"):
         _para(doc, "Dimensions the mesh snapped to its nearest cell face:",
               size=9, colour=SECOND, space_after=2)
-        _bullets(doc, model["warnings"])
+        _bullets(doc, _grouped_warnings(model["warnings"]))
 
     _heading(doc, "Boundary conditions and models", 2)
     _table(doc, ["Feature", "How it is modelled"], [
@@ -1459,6 +1580,11 @@ def _results(doc, export: Export, drawn: dict) -> None:
           "not whether the answer means anything. Every run is therefore judged "
           "against identities the physics has to satisfy. All of them have to "
           "pass before a temperature is quoted.")
+    if not export.payload.get("valid"):
+        _para(doc,
+              "In this run they do not. Every row marked FAIL below is a "
+              "statement about the whole field, not about one number in it.",
+              bold=True, colour=BAD)
     _table(doc, ["Check", "Result", "What it catches"],
            [(c["name"],
              ("PASS" if c["passed"] else "FAIL") + (
@@ -1481,6 +1607,35 @@ def _results(doc, export: Export, drawn: dict) -> None:
               f"satisfies its balances while a volume is still filling is not "
               f"a steady answer, which is why this is measured separately from "
               f"the residuals.", size=9, colour=SECOND)
+
+    # TWO CONVERGENCES, and a report that showed only the first. The residuals
+    # and the stations say the FLOW settled; they say nothing about whether the
+    # units and the room agreed in the end, which is the other half of a
+    # coupled solve and the half that decides whether the supply temperature in
+    # this document is the plant's answer or the last guess before the pass cap
+    # (ADR-123).
+    coupling = kpis.get("coupling")
+    if coupling:
+        passes = coupling.get("passes") or 0
+        cap = coupling.get("max_passes") or passes
+        moved = coupling.get("moved_k")
+        closed = coupling.get("converged")
+        _para(doc,
+              f"The room and the units were solved together. The loop ran "
+              f"{passes} of the {cap} passes it was allowed"
+              + (f", and on the last one no unit's supply air temperature "
+                 f"moved more than {_num(moved, 3)} K"
+                 if moved is not None else "")
+              + (f" — inside the {_num(coupling.get('tolerance_k'), 2)} K it "
+                 f"closes on, so the supply temperature in this report is what "
+                 f"this plant produces at the return this room gives it."
+                 if closed else
+                 ". IT DID NOT CLOSE: the pass cap stopped it while the units "
+                 "were still moving, so the field carries a supply temperature "
+                 "the plant had not yet arrived at. Raise "
+                 "`solver.coupling_passes` and run it again."),
+              size=9, colour=SECOND if closed else BAD,
+              bold=not closed)
 
     _heading(doc, "4.3  Temperature field", 2)
     _para(doc, "All maps share one fixed colour band, 10 °C to 40 °C in 2,5 K "
@@ -1590,7 +1745,10 @@ def _results(doc, export: Export, drawn: dict) -> None:
         headers.append("Available")
         headers.append("Of available")
         widths = [1.5, 2.2, 2.0, 2.2, 2.0, 2.2, 2.2, 1.7]
-    headers.append("Rise")
+    # NOT "Rise": next to four temperature columns a bare "Rise" in pascals
+    # reads as a temperature rise. This is the static pressure the unit has to
+    # produce around the whole loop, cabinets included.
+    headers.append("Loop static")
     _table(doc, headers,
            [(f["name"].replace("fan", ""),
              f"{_num(f.get('return_temp_c'), 2)} °C",
@@ -1610,7 +1768,11 @@ def _results(doc, export: Export, drawn: dict) -> None:
                    "air temperature in the column beside it and the air flow "
                    "this unit is moving, from the coil in section 3 — and 'Of "
                    "available' is the one of the two that says whether this "
-                   "plant has reserve."
+                   "plant has reserve. 'Loop static' is the pressure that "
+                   "unit produces around the whole loop; the part of it that "
+                   "its external static pressure has to cover is the loop "
+                   "less the cabinets' own drop, in the summary table and in "
+                   "section 4.1."
                    if available else
                    " The capacity a coil actually has at the return temperature "
                    "it receives differs from that, and this run named no unit "
@@ -1628,6 +1790,7 @@ _CHECK_MEANING = {
     "plenum_resistance": "the same, for the supply plenum's grilles",
     "floor_resistance": "the same, for a raised floor's perforated plates",
     "fan_capacity": "the room costing more than the unit's datasheet offers",
+    "coil_closure": "a field solved with supply air the plant cannot make",
     "settled": "a field still moving between samples",
     "ashrae_inlet": "a rack breathing air above the recommended band",
     "plausible_velocity": "a velocity field no fan or buoyancy could produce",
@@ -1650,6 +1813,18 @@ def _conclusions(doc, export: Export) -> None:
     rating = (model.get("operating") or {}).get("unit_capacity_kw")
 
     _heading(doc, "5  Conclusions", 1)
+    # THE VERDICT FIRST. A reader who reads section 5 alone -- and on a report
+    # of this length most do -- used to get four paragraphs of findings and
+    # meet "every physical check does NOT pass" in the fifth. If the numbers
+    # below are not results, that is the first thing the section has to say
+    # (ADR-123).
+    if not export.payload.get("valid"):
+        _para(doc,
+              "THESE ARE NOT RESULTS. One or more of the physical checks in "
+              "section 4.1 failed, and until they are cleared nothing in this "
+              "section may be quoted. It is set out below so that the failure "
+              "can be diagnosed, not so that the numbers can be used.",
+              bold=True, colour=BAD)
     findings = []
     if margin >= 0:
         findings.append(
@@ -1680,7 +1855,7 @@ def _conclusions(doc, export: Export) -> None:
             + (f"No unit exceeds its catalogue rating of {_num(rating, 1)} kW; "
                f"the most loaded is at {_num(max(heats) / rating * 100, 0)} % of it."
                if not over else
-               f"{len(over)} unit(s) exceed the catalogue rating of "
+               f"{len(over)} {_units(len(over))} exceed the catalogue rating of "
                f"{_num(rating, 1)} kW, the worst at "
                f"{_num(max(heats) / rating * 100, 0)} %.")
         )
@@ -1706,7 +1881,8 @@ def _conclusions(doc, export: Export) -> None:
                 f"when a unit is lost"
             )
         sentence += (
-            f". {outside} unit(s) are drawing more than the coil can give at "
+            f". {outside} {_units(outside)} {'is' if outside == 1 else 'are'} "
+            f"drawing more than the coil can give at "
             f"their own return temperature."
             if outside else
             ". No unit is drawing more than its coil can give at the return "
@@ -1732,7 +1908,9 @@ def _conclusions(doc, export: Export) -> None:
         # unit's external static is what it offers the room outside itself
         # (ADR-115).
         cabinets = kpis.get("rack_drop_pa") or 0.0
-        room = max(kpis["fan_rise_pa"] - cabinets, 0.0)
+        room = kpis.get("room_static_pa")
+        if room is None:
+            room = max(kpis["fan_rise_pa"] - cabinets, 0.0)
         findings.append(
             f"The room outside the cabinets costs the most loaded unit "
             f"{_num(room, 1)} Pa of the {_num(kpis['fan_static_pa'], 0)} Pa the "
@@ -1760,10 +1938,14 @@ def _conclusions(doc, export: Export) -> None:
                 f"{'above' if closure > 100 else 'below'} the load the racks "
                 f"put in, which a steady field cannot be — this one is still "
                 f"settling. ")
-        + "Every physical check "
-        + ("passes, so the temperatures above may be quoted."
-           if export.payload["valid"]
-           else "does NOT pass; see section 4.1 before using any number here.")
+        # "Every physical check does NOT pass" reads as "each one fails",
+        # which is not what it meant, and the paragraph at the head of this
+        # section already carries the verdict. On a run that passed, the
+        # sentence is worth having here.
+        + ("Every physical check passes, so the temperatures above may be "
+           "quoted." if export.payload["valid"] else
+           "The checks are in section 4.1, and this run does not pass them "
+           "all.")
     )
     _bullets(doc, findings)
     for alert in kpis.get("alerts", []):
@@ -1773,20 +1955,20 @@ def _conclusions(doc, export: Export) -> None:
 def _annex(doc, export: Export) -> None:
     """Every rack position, for a reader looking one up.
 
-    Section 4.4 ranks the hall and shows the twelve that decide whether it
+    Section 4.5 ranks the hall and shows the twelve that decide whether it
     passes. A reader asking what one particular rack breathes needs the rest,
     and a table that lives in the document travels with it.
     """
     zones = export.kpis.get("zones") or []
     if len(zones) <= 12:
-        return  # section 4.4 already carries them all
+        return  # section 4.5 already carries them all
     ordered = sorted(zones, key=lambda z: (str(z.get("row") or ""),
                                            str(z.get("position") or ""),
                                            str(z.get("name") or "")))
     doc.add_page_break()
     _heading(doc, "Annex A  Rack intake temperature, every position", 1)
     _para(doc,
-          f"All {len(zones)} rack positions, by row. Section 4.4 ranks them "
+          f"All {len(zones)} rack positions, by row. Section 4.5 ranks them "
           f"and shows the twelve warmest.",
           size=9.5, colour=SECOND)
     _table(doc, ["Rack", "Row", "Intake, top of rack", "Intake, face mean",

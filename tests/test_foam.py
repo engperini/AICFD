@@ -261,3 +261,72 @@ class TheLogIsTheWholeRunTest(unittest.TestCase):
 
         self.assertIn("append: bool = False", inspect.getsource(run.run_command))
         self.assertNotIn("append=True", inspect.getsource(run.solve))
+
+
+class TheRunLeavesARecordOfHowTheLoopEndedTest(unittest.TestCase):
+    """Whether the coupled loop CLOSED decides whether the supply temperature
+    in the report is the plant's answer or the last guess before the pass cap
+    (ADR-123).
+
+    It was returned to the caller and nowhere else, so the only way to know
+    was to have watched the run. A reader of the report was not there.
+    """
+
+    def record(self, passes, **kw):
+        from aicfd.run import read_coupling_record, write_coupling_record
+
+        with tempfile.TemporaryDirectory() as tmp:
+            write_coupling_record(Path(tmp), passes, kw.get("max_passes", 5),
+                                  kw.get("tolerance", 0.02))
+            return read_coupling_record(Path(tmp))
+
+    def a_pass(self, number, moved, converged, saturated=()):
+        from aicfd.coupled import Pass
+
+        return Pass(number=number, iterations=300 * number,
+                    supplies_c={"fan1": 21.9}, returns_c={"fan1": 30.0},
+                    moved_k=moved, converged=converged,
+                    saturated=list(saturated))
+
+    def test_a_loop_that_closed_says_so(self):
+        got = self.record([self.a_pass(1, None, False),
+                           self.a_pass(2, 0.004, True)])
+        self.assertTrue(got["converged"])
+        self.assertEqual(got["passes"], 2)
+        self.assertEqual(got["moved_k"], 0.004)
+        self.assertEqual(len(got["history"]), 2)
+
+    def test_a_loop_stopped_by_its_cap_says_so(self):
+        got = self.record([self.a_pass(n, 1.2, False) for n in range(1, 6)],
+                          max_passes=5)
+        self.assertFalse(got["converged"])
+        self.assertEqual(got["passes"], got["max_passes"])
+
+    def test_a_run_that_never_coupled_leaves_nothing(self):
+        from aicfd.run import read_coupling_record
+
+        with tempfile.TemporaryDirectory() as tmp:
+            self.assertIsNone(read_coupling_record(Path(tmp)))
+
+    def test_a_damaged_record_is_not_an_exception(self):
+        from aicfd.run import COUPLING_RECORD, read_coupling_record
+
+        with tempfile.TemporaryDirectory() as tmp:
+            (Path(tmp) / COUPLING_RECORD).write_text("{not json")
+            self.assertIsNone(read_coupling_record(Path(tmp)))
+
+    def test_the_solve_writes_it(self):
+        import inspect
+
+        from aicfd import run
+
+        said = inspect.getsource(run.solve_coupled)
+        self.assertIn("write_coupling_record(case, passes", said)
+
+    def test_the_post_reads_it_into_the_export(self):
+        import inspect
+
+        from aicfd import post
+
+        self.assertIn('kpis["coupling"] = read_coupling_record(case)',
+                      inspect.getsource(post))

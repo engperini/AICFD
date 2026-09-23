@@ -163,6 +163,13 @@ RETURN_PATH_TOLERANCE = 1.5
 RESISTANCE_TOLERANCE = 0.25
 
 #: Below this, in pascals, a resistance check compares absolute pressures
+#: How far the air a unit DELIVERS may sit from the air its coil makes at the
+#: return it receives, in K. Measured across every tracked result: a coupled
+#: solve that closed agrees to 0,00-0,01 K, and one that stopped at its pass
+#: cap was 1,12 K out. A tenth of a kelvin is ten times the first and a tenth
+#: of the second, so nothing sane fails and nothing broken passes (ADR-123).
+COIL_CLOSURE_TOLERANCE_K = 0.1
+
 #: rather than their ratio.
 #:
 #: A ratio is the right test while there is something to divide. A surface
@@ -342,6 +349,18 @@ def _analyse(model: Model, case_dir: str | Path, time: str | None = None) -> Pod
     kpis["fan_rise_pa"] = round(max(rises), 3) if rises else None
     kpis["fan_rise_min_pa"] = round(min(rises), 3) if rises else None
     kpis["fan_rise_mean_pa"] = round(float(np.mean(rises)), 3) if rises else None
+    # WHAT THE ROOM COSTS THE UNIT, which is what its external static pressure
+    # is offered against. The loop above includes the cabinets' own drop, and
+    # in this model no rack has a fan (ADR-013), so the units drive that part
+    # too -- but a real cabinet's fans carry it, in series, and the unit's
+    # datasheet static is what it has left for the room OUTSIDE itself
+    # (ADR-115). Defined once here because the check, the summary table and
+    # the conclusions all quote it, and three copies of one subtraction is
+    # how a headline comes to contradict a conclusion in the same document.
+    kpis["room_static_pa"] = (
+        round(max(kpis["fan_rise_pa"] - (kpis.get("rack_drop_pa") or 0.0), 0.0), 3)
+        if kpis["fan_rise_pa"] is not None else None
+    )
     operating = model.fan_operating_point(kpis["fan_rise_pa"] or 0.0)
     if operating:
         kpis["fan_operating_m3h"], kpis["fan_operating_pa"] = operating
@@ -351,6 +370,11 @@ def _analyse(model: Model, case_dir: str | Path, time: str | None = None) -> Pod
         kpis["fan_margin"] = round(kpis["fan_rise_pa"] / available, 4)
     kpis.update(coil_capacity(model, fans, kpis))
     kpis["drift_k"] = drift(case)
+    # HOW THE COUPLED LOOP ENDED, if this run coupled at all (ADR-123). None
+    # for a plain solve, and the report says nothing where there is nothing.
+    from aicfd.run import read_coupling_record
+
+    kpis["coupling"] = read_coupling_record(case)
     kpis["hvac"] = model.hvac()
     kpis["hvac_lines"] = [line.strip() for line in _hvac_summary(model)]
     kpis["alerts"] = list(model.alerts) + _coil_alerts(kpis)
@@ -635,8 +659,10 @@ def _coil_alerts(kpis: dict) -> list[str]:
         net = coil_model["capacity_ceiling_kw"] - (
             kpis.get("coil_fan_power_kw") or 0.0)
         out.append(
-            f"{at_limit} unit(s) are at the COMPRESSOR limit, not the coil's: "
-            f"at the return they receive their evaporator would transfer more "
+            f"{at_limit} {'unit is' if at_limit == 1 else 'units are'} at the "
+            f"COMPRESSOR limit, not the coil's: at the return "
+            + ("it receives its" if at_limit == 1 else "they receive their")
+            + f" evaporator would transfer more "
             f"than the machine can lift, so the capacity is held at the "
             f"{coil_model['capacity_ceiling_kw']:,.1f} kW gross the selection "
             f"itself was taken at"
@@ -647,17 +673,72 @@ def _coil_alerts(kpis: dict) -> list[str]:
         )
     saturated = kpis.get("coil_saturated_units") or 0
     if saturated:
-        out.append(
-            f"{saturated} unit(s) cannot hold the "
-            f"{kpis['coil_supply_setpoint_c']:.1f} degC supply air this run "
-            f"imposed: with the "
-            f"{(kpis.get('coil_model') or {}).get('duty_label', 'water valve')} "
-            f"wide open their coil delivers "
-            f"{kpis['coil_supply_needed_c']:.1f} degC at the return they "
-            f"receive. Every temperature in this result is that much "
-            f"optimistic -- re-run at the higher supply temperature."
+        # WHAT THE FIELD ACTUALLY CARRIES, not what the case asked for. This
+        # alert quoted `coil_supply_setpoint_c` -- the setpoint typed in the
+        # spec -- as "the supply air this run imposed", and on a coupled run
+        # those are two different temperatures: the case asked for 18,8 degC
+        # and the field was solved at 23,25. It then told the reader to re-run
+        # warmer, which is what the coupled loop already does by itself.
+        #
+        # Whether saturation makes the result doubtful is not a matter of
+        # opinion: it is whether the air the units DELIVER is the air their
+        # coils MAKE, which is the same measurement `coil_closure` checks
+        # (ADR-123). A closed loop at full duty is a plant running at its
+        # limit and a result worth reading; an open one is a result that is
+        # optimistic by the gap.
+        apart = _coil_gap_k(kpis)
+        field = kpis.get("supply_temp_c")
+        duty = (kpis.get("coil_model") or {}).get("duty_label", "water valve")
+        one = saturated == 1
+        line = (
+            f"{saturated} {'unit is' if one else 'units are'} at "
+            f"full duty and cannot make the "
+            f"{kpis['coil_supply_setpoint_c']:.1f} degC the case asks for: at "
+            f"the return {'it receives its' if one else 'they receive their'} "
+            f"coil delivers {kpis['coil_supply_needed_c']:.1f} degC with the "
+            f"{duty} wide open. "
         )
+        if field is None:
+            # Nothing solved to compare the coil against: the alert says what
+            # the machine does and stops there.
+            line += (
+                "The supply temperature this study reports is that coil's "
+                "answer, not the setpoint, and this plant has no reserve left "
+                "at this load."
+            )
+        elif apart is not None and apart > COIL_CLOSURE_TOLERANCE_K:
+            line += (
+                f"The field was solved at {num(field, 2)} degC, which this "
+                f"plant does not produce -- every temperature in this result "
+                f"is {apart:.2f} K optimistic, and `coil_closure` in section "
+                f"4.1 fails for that reason. Raise `solver.coupling_passes` "
+                f"so the loop closes, or state a `fanwall.supply_temp_c` the "
+                f"plant can hold."
+            )
+        else:
+            line += (
+                f"The run was solved at the {num(field, 2)} degC this plant "
+                f"can actually make, so the temperatures here are that "
+                f"plant's and not the setpoint's. The supply temperature is a "
+                f"result of this study, not an input to it -- what this alert "
+                f"says is that the plant has no reserve left at this load."
+            )
+        out.append(line)
     return out
+
+
+def _coil_gap_k(kpis: dict) -> float | None:
+    """How far the air the units DELIVER sits from the air their coils MAKE.
+
+    One definition, read by the `coil_closure` check and by the alert beside
+    it, so the two cannot disagree about the same field (ADR-123).
+    """
+    apart = [
+        abs(f["supply_temp_c"] - f["coil_supply_c"])
+        for f in (kpis.get("fans") or [])
+        if f.get("supply_temp_c") is not None and f.get("coil_supply_c") is not None
+    ]
+    return round(max(apart), 3) if apart else None
 
 
 def grille_pressure_drop(step: str | Path, prefix: str = "grille") -> float | None:
@@ -1121,7 +1202,7 @@ def rack_temperatures(model: Model, grid: dict) -> list[dict]:
 
 
 def _resistance_verdict(delivered: float, asked: float, spread: float = 1.0,
-                        reverse: float = 0.0) -> tuple[bool, str]:
+                        reverse: float = 0.0) -> tuple[bool, str, float]:
     """Whether a surface's field drop agrees with its closed form, and why.
 
     Two regimes, one rule: a ratio while the pressures are worth dividing, an
@@ -1138,7 +1219,7 @@ def _resistance_verdict(delivered: float, asked: float, spread: float = 1.0,
         return True, (
             f" -- both under {NEGLIGIBLE_PRESSURE_PA:g} Pa, so this surface is "
             f"too open for the ratio to mean anything"
-        )
+        ), expected
     # A RATIO ON A PASCAL IS NOISE -- in ONE direction. 1,38 Pa where the
     # closed form asks 1,05 is 31 % out and three tenths of a pascal, below
     # what a conceptual mesh and a mixing-cup average tell apart, and it
@@ -1152,7 +1233,7 @@ def _resistance_verdict(delivered: float, asked: float, spread: float = 1.0,
     passed = (abs(delivered / expected - 1.0) <= RESISTANCE_TOLERANCE
               or 0.0 <= delivered - expected <= NEGLIGIBLE_PRESSURE_PA)
     if spread < 1.05:
-        return passed, ""
+        return passed, "", expected
     why = (
         f"; the air reaches it {spread:.1f} times harder than the rated face "
         f"velocity assumes, so its own K asks {expected:.2f} Pa of this field"
@@ -1162,7 +1243,7 @@ def _resistance_verdict(delivered: float, asked: float, spread: float = 1.0,
             f", and {reverse * 100:.0f}% of the mass crossing it is going back "
             f"the other way"
         )
-    return passed, why
+    return passed, why, expected
 
 
 def return_path_check(kpis: dict) -> "Check | None":
@@ -1318,16 +1399,17 @@ def _checks(model: Model, step: Path, kpis: dict, grid: dict) -> list[Check]:
     grille_drop, grille_asked = kpis.get("grille_drop_pa"), kpis.get("grille_drop_asked_pa")
     if grille_drop is not None and grille_asked:
         ratio = grille_drop / grille_asked
-        passed, why = _resistance_verdict(
+        passed, why, expected = _resistance_verdict(
             grille_drop, grille_asked, kpis.get("grille_spread", 1.0),
             kpis.get("grille_reverse", 0.0))
+        ratio = grille_drop / expected if expected else ratio
         checks.append(
             Check(
                 "grille_resistance",
                 passed,
                 f"the field drops {grille_drop:.2f} Pa across the return grilles "
                 f"where their K at {model.airflow_m3h:,.0f} m3/h asks for "
-                f"{grille_asked:.2f} Pa ({ratio * 100:.0f}%)" + why,
+                f"{grille_asked:.2f} Pa" + why + f" ({ratio * 100:.0f}%)",
             )
         )
 
@@ -1336,22 +1418,22 @@ def _checks(model: Model, step: Path, kpis: dict, grid: dict) -> list[Check]:
     if supply_drop is not None and supply_asked:
         ratio = supply_drop / supply_asked
         velocity = kpis.get("supply_face_velocity_ms")
-        passed, why = _resistance_verdict(
+        passed, why, expected = _resistance_verdict(
             supply_drop, supply_asked, kpis.get("supply_spread", 1.0),
             kpis.get("supply_reverse", 0.0))
+        ratio = supply_drop / expected if expected else ratio
         checks.append(
             Check(
                 "plenum_resistance",
                 passed,
                 f"the field drops {supply_drop:.2f} Pa across the supply grilles "
                 f"where their K at {model.airflow_m3h:,.0f} m3/h asks for "
-                f"{supply_asked:.2f} Pa ({ratio * 100:.0f}%)"
+                f"{supply_asked:.2f} Pa" + why + f" ({ratio * 100:.0f}%)"
                 # The velocity, with no verdict attached: what is high for
                 # one hall is ordinary in another, and the reader knows which
                 # they have (ADR-059).
                 + (f"; they run at {velocity:.1f} m/s on the face"
-                   if velocity is not None else "")
-                + why,
+                   if velocity is not None else ""),
             )
         )
 
@@ -1360,22 +1442,26 @@ def _checks(model: Model, step: Path, kpis: dict, grid: dict) -> list[Check]:
     if floor_drop is not None and floor_asked:
         ratio = floor_drop / floor_asked
         velocity = kpis.get("floor_face_velocity_ms")
-        passed, why = _resistance_verdict(
+        # THE RATIO THE VERDICT WAS TAKEN ON. Quoting the design figure's
+        # ratio put "PASS ... (148%)" on a plate field that agrees with its own
+        # K to 2 %, and a reader cannot be asked to find the correction three
+        # clauses later and redo the division (ADR-119).
+        passed, why, expected = _resistance_verdict(
             floor_drop, floor_asked, kpis.get("floor_spread", 1.0),
             kpis.get("floor_reverse", 0.0))
+        ratio = floor_drop / expected if expected else ratio
         checks.append(
             Check(
                 "floor_resistance",
                 passed,
                 f"the field drops {floor_drop:.2f} Pa across the "
                 f"{kpis.get('floor_tiles')} floor plates where their K at "
-                f"{model.airflow_m3h:,.0f} m3/h asks for {floor_asked:.2f} Pa "
-                f"({ratio * 100:.0f}%)"
+                f"{model.airflow_m3h:,.0f} m3/h asks for {floor_asked:.2f} Pa"
+                + why + f" ({ratio * 100:.0f}%)"
                 # The velocity, with no verdict attached, for the same reason
                 # the plenum's carries none (ADR-059).
                 + (f"; they run at {velocity:.2f} m/s on the face"
-                   if velocity is not None else "")
-                + why,
+                   if velocity is not None else ""),
             )
         )
 
@@ -1393,7 +1479,9 @@ def _checks(model: Model, step: Path, kpis: dict, grid: dict) -> list[Check]:
         # 219 % where the room outside the cabinets costs a quarter of that
         # (ADR-115).
         cabinets = kpis.get("rack_drop_pa") or 0.0
-        room = max(rise - cabinets, 0.0)
+        room = kpis.get("room_static_pa")
+        if room is None:
+            room = max(rise - cabinets, 0.0)
         checks.append(
             Check(
                 "fan_capacity",
@@ -1423,6 +1511,44 @@ def _checks(model: Model, step: Path, kpis: dict, grid: dict) -> list[Check]:
                     else ""
                 )
                 + ("" if room <= available else " -- the unit cannot deliver this airflow"),
+            )
+        )
+
+    # THE AIR THE UNITS DELIVER IS THE AIR THEIR COILS MAKE, or the field was
+    # solved against a boundary condition this plant does not produce -- and
+    # every temperature in it is wrong by the difference (ADR-123).
+    #
+    # This is not "is any unit saturated". A unit at full duty whose supply
+    # follows its return is a real unit doing its best, and a coupled solve
+    # that closed on that is a real answer: every tracked run with saturated
+    # units agrees here to a hundredth of a kelvin. What fails is the field
+    # and the machine disagreeing about what comes out of it.
+    delivered = [
+        (f["name"], f["supply_temp_c"], f["coil_supply_c"], f.get("return_temp_c"))
+        for f in (kpis.get("fans") or [])
+        if f.get("supply_temp_c") is not None and f.get("coil_supply_c") is not None
+    ]
+    if delivered:
+        worst = max(delivered, key=lambda row: abs(row[1] - row[2]))
+        apart = abs(worst[1] - worst[2])
+        checks.append(
+            Check(
+                "coil_closure",
+                apart <= COIL_CLOSURE_TOLERANCE_K,
+                (
+                    f"every unit delivers the air its coil makes at the return "
+                    f"it receives ({apart:.2f} K apart at worst, on "
+                    f"{worst[0]})"
+                    if apart <= COIL_CLOSURE_TOLERANCE_K else
+                    f"{worst[0]} delivers {worst[1]:.2f} degC where its coil "
+                    f"makes {worst[2]:.2f} degC at the "
+                    + (f"{worst[3]:.2f} degC " if worst[3] is not None else "")
+                    + f"return it receives ({apart:.2f} K apart) -- the field "
+                    f"was solved with supply air this plant does not produce, "
+                    f"so every temperature in it is that much optimistic. "
+                    f"Raise `solver.coupling_passes` so the loop closes, or "
+                    f"state a `fanwall.supply_temp_c` the plant can hold"
+                ),
             )
         )
 
@@ -2040,7 +2166,8 @@ def _coil_line(kpis: dict) -> str:
         line += f"; the catalogue figure at the selection point is {catalogue:,.0f} kW"
     line += _coil_provenance(kpis)
     if over:
-        line += f". {over} unit(s) are above their own coil's capacity"
+        line += (f". {over} {'unit is' if over == 1 else 'units are'} above "
+                 f"their own coil's capacity")
     water, design = (kpis.get("coil_water_out_c"),
                      kpis.get("coil_water_out_design_c"))
     if water and design and water > design + 0.5:
@@ -2354,6 +2481,7 @@ def _viewer_kpis(model: Model, results: PodResults) -> dict:
         "temp_max_c": k["peak_air_temp_c"],
         "speed_max_ms": k["peak_speed_ms"],
         "fan_rise_pa": k.get("fan_rise_pa"),
+        "room_static_pa": k.get("room_static_pa"),
         "fan_static_pa": k.get("fan_static_pa"),
         "rack_drop_pa": k.get("rack_drop_pa"),
         "grille_drop_pa": k.get("grille_drop_pa"),

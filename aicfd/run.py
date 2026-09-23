@@ -366,12 +366,63 @@ def solve_coupled(
         end += segment
         loop.set_end_time(case, end, latest=True)
 
+    # THE RECORD OF HOW THE LOOP ENDED, written where the post-processing can
+    # read it. Whether a result is the plant's own answer or the last guess
+    # before the pass cap decides whether its temperatures mean anything
+    # (ADR-123), and until this was written down the only way to know was to
+    # have watched the run. A reader of the report was not there.
+    write_coupling_record(case, passes, max_passes, tolerance)
+
     for entry in after:
         command, args, log_name = _entry(entry)
         if on_step:
             on_step(log_name or command)
         results.append(run_command(case, command, args=args, log_name=log_name))
     return results, passes
+
+
+COUPLING_RECORD = "coupling.json"
+
+
+def write_coupling_record(case_dir, passes, max_passes: int, tolerance: float):
+    """`<case>/coupling.json`: what the coupled loop did, for the report.
+
+    In the case directory rather than in the results, because it is a fact
+    about the solve and it has to survive a `post` that runs later, on another
+    machine, from the case alone.
+    """
+    import json
+
+    path = Path(case_dir) / COUPLING_RECORD
+    last = passes[-1] if passes else None
+    path.write_text(json.dumps({
+        "passes": len(passes),
+        "max_passes": max_passes,
+        "tolerance_k": tolerance,
+        "converged": bool(last.converged) if last else False,
+        "moved_k": last.moved_k if last else None,
+        "saturated": list(last.saturated) if last else [],
+        "history": [
+            {"number": p.number, "iterations": p.iterations,
+             "moved_k": p.moved_k, "converged": p.converged,
+             "saturated": len(p.saturated)}
+            for p in passes
+        ],
+    }, indent=2) + "\n")
+    return path
+
+
+def read_coupling_record(case_dir) -> dict | None:
+    """What `write_coupling_record` left, or None for a run that never coupled."""
+    import json
+
+    path = Path(case_dir) / COUPLING_RECORD
+    if not path.exists():
+        return None
+    try:
+        return json.loads(path.read_text())
+    except (ValueError, OSError):
+        return None
 
 
 def _split_at_solver(pipeline: tuple) -> tuple[list, object, list]:
