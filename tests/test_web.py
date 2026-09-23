@@ -775,3 +775,29 @@ class TheMachineOnThePageTest(unittest.TestCase):
         the case describes (ADR-046)."""
         self.assertIn("if (!downflow && !model.fan_depth_m) continue;",
                       self.body())
+
+
+class ThePlanDoesNotDimensionTheCageAisleTest(unittest.TestCase):
+    """A lone 6,00 m across the middle of the plan (ADR-116).
+
+    The aisle a cage wall stands in is `cage.aisle` wide because the
+    clearance is a gap on both of its faces. It is not the hall's cold aisle
+    and it is not a distance anybody sets out from — the cage's own clearance
+    is — so the band chain leaves it out.
+    """
+
+    def bands(self) -> str:
+        js = (WEB / "drawing.js").read_text()
+        block = js[js.index("function planBands("):]
+        return block[:block.index("\n}")]
+
+    def test_a_cold_aisle_with_a_cage_wall_in_it_is_skipped(self):
+        said = self.bands()
+        self.assertIn("cage_", said)
+        self.assertIn("lo < at && at < hi", said)
+
+    def test_every_other_cold_aisle_is_still_measured_once(self):
+        said = self.bands()
+        self.assertIn("add(lo, hi, 'cold aisle')", said)
+        self.assertIn("hot aisle", said)
+        self.assertIn("row depth", said)

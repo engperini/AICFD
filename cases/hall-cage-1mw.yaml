@@ -332,7 +332,7 @@ solver:
   residual_tolerance: 1.0e-4
   sensor_interval: 600
   warm_start: true
-  processors: 9
+  processors: 4
 
 plenum:
   enabled: false

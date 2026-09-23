@@ -235,6 +235,20 @@ def build(results_dir: str | Path, out_path: str | Path,
     return out
 
 
+def _hall_span(export: Export) -> tuple[float, float, float, float]:
+    """The whole room, galleries and all, with a margin for the labels.
+
+    What the basis of design is read against is the LAYOUT drawing, and the
+    reader is checking rows, aisles and where the plant stands -- not one
+    cabinet's name (ADR-116).
+    """
+    model = export.model
+    lo = model["domain"]["lo"] if "domain" in model else [0.0, 0.0, 0.0]
+    hi = model["domain"]["hi"] if "domain" in model else list(export.size)
+    margin = max(hi[0] - lo[0], hi[1] - lo[1]) * 0.015
+    return (lo[0] - margin, hi[0] + margin, lo[1] - margin, hi[1] + margin)
+
+
 def _zoom_span(export: Export) -> tuple[float, float, float, float]:
     """One pod of one block: five metres of row, and the pod it belongs to.
 
@@ -274,9 +288,13 @@ def _draw(export: Export, figures: Path, ramp: str | None = None) -> dict:
         # The three dimensioned drawings that used to stand beside it were
         # removed -- unreadable, and the model page draws the room properly
         # (ADR-102).
-        "geo_zoom": geometry(export, figures / "geo-zoom.png", 2,
-                             "Every cabinet, its name and its load",
-                             zoom=_zoom_span(export)),
+        # THE WHOLE DATA HALL, the way the model page draws it in plan. One
+        # pod at rack height answered a question nobody had -- the basis of
+        # design is where a reader checks the LAYOUT against their drawing,
+        # and for that they need the room (ADR-116).
+        "geo_hall": geometry(export, figures / "geo-hall.png", 2,
+                             "The data hall in plan",
+                             zoom=_hall_span(export)),
         "plan_mid": plan(export, figures / "plan-rack-mid.png", rack_top / 2,
                          f"Temperature at z = {rack_top / 2:.2f} m — rack mid-height",
                          ramp),
@@ -301,6 +319,27 @@ def _draw(export: Export, figures: Path, ramp: str | None = None) -> dict:
                             f"{(hot[0] + hot[1]) / 2:.2f} m — through a contained "
                             "hot aisle",
                             "x — along the hall (m)", ramp),
+        # WHERE THE AIR GOES AND WHAT IT COSTS. A study is read for three
+        # fields and only the first was ever drawn (ADR-116). The speed maps
+        # answer "is the aisle fed"; the pressure maps show the plenum, the
+        # drop across the cabinets and what the units have to produce.
+        "plan_speed": plan(export, figures / "plan-speed.png", rack_top / 2,
+                           f"Air speed at z = {rack_top / 2:.2f} m — rack "
+                           f"mid-height", ramp, field="speed"),
+        "cross_speed": section(export, figures / "section-speed.png", 0,
+                               (block[0] + block[1]) / 2,
+                               f"Air speed across the hall at x = "
+                               f"{(block[0] + block[1]) / 2:.2f} m",
+                               "y — across the hall (m)", ramp, field="speed"),
+        "plan_pressure": plan(export, figures / "plan-pressure.png",
+                              rack_top / 2,
+                              f"Static pressure at z = {rack_top / 2:.2f} m — "
+                              f"rack mid-height", ramp, field="P"),
+        "cross_pressure": section(export, figures / "section-pressure.png", 0,
+                                  (block[0] + block[1]) / 2,
+                                  f"Static pressure across the hall at x = "
+                                  f"{(block[0] + block[1]) / 2:.2f} m",
+                                  "y — across the hall (m)", ramp, field="P"),
         "racks": rack_map(export, figures / "rack-intake.png", ramp=ramp),
         "units": units(export, figures / "units.png"),
         "ashrae": ashrae(export, figures / "ashrae.png"),
@@ -966,13 +1005,12 @@ def _layout_section(doc, export: Export, drawn: dict) -> None:
          ", ".join(f"{w:g} m" for w in widths)),
     ], widths=[5.0, 2.4, 8.6])
 
-    if drawn.get("geo_zoom"):
-        _figure(doc, drawn["geo_zoom"],
-                "One pod of one block at rack height: every cabinet with its "
-                "name and the load it carries, the customer cage where the "
-                f"hall has one, and any {export.naming['noun']} standing in "
-                "the window. The room itself is drawn to scale, with the cut "
-                "where you put it, on the model page.")
+    if drawn.get("geo_hall"):
+        _figure(doc, drawn["geo_hall"],
+                "The data hall in plan, at rack height: every row and every "
+                "cabinet, the customer cage where the hall has one, and the "
+                f"{export.naming['plural']} in their galleries. The same "
+                "drawing the model page shows, to scale.")
 
 
 def _cage_verdict(doc, zones: list[dict], caged: set) -> None:
@@ -1477,7 +1515,32 @@ def _results(doc, export: Export, drawn: dict) -> None:
             "doing its job when this plane is hot from floor to ceiling. A "
             "containment leak shows first in the cold plane above.")
 
-    _heading(doc, "4.4  Rack intake temperature", 2)
+    _heading(doc, "4.4  Air speed and static pressure", 2)
+    _para(doc,
+          "The other two fields the solution carries. Both are fitted to this "
+          "run — the ends of each bar are the 1st and 99th percentile of the "
+          "whole field, so the room is readable and the unit's own discharge, "
+          "which is an order above anything in the room, sits past the "
+          "arrowhead.")
+    _figure(doc, drawn["plan_speed"],
+            "Air speed in plan at rack mid-height. This is the plane the "
+            "cabinets breathe from: an aisle the supply is not reaching shows "
+            "here as still air in front of a row.")
+    _figure(doc, drawn["cross_speed"],
+            "Air speed across the hall. The supply leaves the plenum through "
+            "the floor plates, crosses the cabinets and rises out of the "
+            "aisle — the three places a velocity is worth reading.")
+    _figure(doc, drawn["plan_pressure"],
+            "Static pressure in plan at rack mid-height, relative to the "
+            "reference cell. A contained aisle stands above the room it sits "
+            "in, and the difference is what drives air through the cabinets.")
+    _figure(doc, drawn["cross_pressure"],
+            "Static pressure across the hall. The supply plenum is the "
+            "highest pressure in the room and the gradient across each rack "
+            "row is the drop the porous zone delivers — the same number "
+            "`rack_resistance` checks in section 4.1.")
+
+    _heading(doc, "4.5  Rack intake temperature", 2)
     _figure(doc, drawn["racks"],
             "Every rack coloured by the temperature of the air it breathes, "
             "measured at the top of the rack. The scale here is FITTED to this "
@@ -1510,7 +1573,7 @@ def _results(doc, export: Export, drawn: dict) -> None:
             "Distribution of rack intake temperature against the ASHRAE class A1 "
             "envelope.")
 
-    _heading(doc, "4.5  Unit by unit", 2)
+    _heading(doc, "4.6  Unit by unit", 2)
     if drawn.get("units"):
         _figure(doc, drawn["units"],
                 "Return air temperature and heat removed, unit by unit. The "

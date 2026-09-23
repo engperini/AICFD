@@ -225,7 +225,8 @@ def nice_step(span: float, target: int = 16) -> float:
     return raw
 
 
-def fitted_scale(values, target: int = 8, ramp: str | None = None) -> dict:
+def fitted_scale(values, target: int = 8, ramp: str | None = None,
+                 marks: bool = True) -> dict:
     """A sequential scale fitted to ``values``, in round bands.
 
     Used where the question is "which of these is worst", not "is this air
@@ -248,7 +249,11 @@ def fitted_scale(values, target: int = 8, ramp: str | None = None) -> dict:
         "center": None,
         "edges": bands(lo, hi, step),
         "colours": band_colours(lo, hi, step, ramp or "sequential"),
-        "marks": tuple(m for m in ASHRAE_MARKS if lo < m < hi),
+        # The ASHRAE limits are a judgement about AIR TEMPERATURE. On a scale
+        # of pascals or metres per second, 18, 27 and 32 are three numbers
+        # that happen to be in range, and a line drawn at them says something
+        # untrue (ADR-116).
+        "marks": tuple(m for m in ASHRAE_MARKS if lo < m < hi) if marks else (),
     }
 
 

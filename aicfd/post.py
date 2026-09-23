@@ -449,6 +449,9 @@ def coil_capacity(model: Model, fans: list[dict], kpis: dict) -> dict:
         if point.saturated:
             saturated += 1
             warmest_supply = max(warmest_supply, point.supply_c)
+        # WHAT IS HOLDING THIS UNIT: its coil, or its compressors (ADR-118).
+        at_limit = getattr(coil, "at_compressor_limit", None)
+        fan["coil_at_limit"] = bool(at_limit(temperature, air)) if at_limit else False
     if not available:
         return {}
     return {
@@ -483,6 +486,10 @@ def coil_capacity(model: Model, fans: list[dict], kpis: dict) -> dict:
         # an output, and where the valve runs out it stops matching the one
         # the run imposed. Then every temperature in the result is optimistic.
         "coil_saturated_units": saturated,
+        # How many units the COMPRESSORS are holding back rather than the
+        # coil: past that return the evaporator would transfer more and the
+        # machine cannot lift it (ADR-118).
+        "coil_at_limit_units": sum(1 for f in fans if f.get("coil_at_limit")),
         "coil_supply_setpoint_c": round(setpoint, 2),
         "coil_supply_needed_c": round(warmest_supply, 2),
         "coil_return_span_c": [round(min(seen), 2), round(max(seen), 2)] if seen else None,
@@ -621,6 +628,22 @@ def _coil_alerts(kpis: dict) -> list[str]:
             f"whether the chiller, the pump and the valve can hold "
             f"{kpis['coil_model']['water_max_m3h']:g} m3/h at that rise is a "
             f"question this tool does not answer."
+        )
+    at_limit = kpis.get("coil_at_limit_units") or 0
+    coil_model = kpis.get("coil_model") or {}
+    if at_limit and coil_model.get("capacity_ceiling_kw"):
+        net = coil_model["capacity_ceiling_kw"] - (
+            kpis.get("coil_fan_power_kw") or 0.0)
+        out.append(
+            f"{at_limit} unit(s) are at the COMPRESSOR limit, not the coil's: "
+            f"at the return they receive their evaporator would transfer more "
+            f"than the machine can lift, so the capacity is held at the "
+            f"{coil_model['capacity_ceiling_kw']:,.1f} kW gross the selection "
+            f"itself was taken at"
+            + (f", at {coil_model['rated_ambient_c']:g} degC outdoor air"
+               if coil_model.get("rated_ambient_c") else "")
+            + ". A warmer day lowers it further, which this study does not "
+              "model."
         )
     saturated = kpis.get("coil_saturated_units") or 0
     if saturated:

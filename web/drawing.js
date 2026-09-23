@@ -803,7 +803,19 @@ function planBands(model, axis) {
     const rows = model.rows || [];
     for (const r of rows) add(r.band[0], r.band[1], 'row depth');
     for (const [lo, hi] of model.hot_aisles || []) add(lo, hi, 'hot aisle');
-    for (const [lo, hi] of model.cold_aisles || []) add(lo, hi, 'cold aisle');
+    // NOT THE AISLE THE CAGE WALL STANDS IN. That one is `cage.aisle` wide
+    // because the clearance is a gap on both faces of the wall (ADR-109), so
+    // it is neither the hall's cold aisle nor a distance anybody sets out
+    // from this drawing -- and dimensioned as one it printed a lone 6,00 m
+    // across the middle of the plan (ADR-116). The cage's own fields say
+    // where the wall is and what it keeps clear.
+    const cageWalls = (model.panels || [])
+      .filter((q) => q.name.startsWith('cage_') && q.axis === 1)
+      .map((q) => q.position);
+    for (const [lo, hi] of model.cold_aisles || []) {
+      if (cageWalls.some((at) => lo < at && at < hi)) continue;
+      add(lo, hi, 'cold aisle');
+    }
     const fan = (model.panels || []).find((q) => q.kind === 'fan');
     if (fan) add(fan.extent[0][0], fan.extent[0][1], unitNaming(model).noun);
   }

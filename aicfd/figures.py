@@ -210,6 +210,10 @@ class Export:
         ]
 
 
+#: How many cabinets a window can name before the names stop being readable.
+#: Two rows of a pod is what the detail figure shows; a hall is 156 (ADR-116).
+NAMES_FIT = 40
+
 #: How a customer cage is drawn: mesh is what you can see through, drywall is
 #: not, and a drawing that shows the same rectangle for both says nothing
 #: about the room (ADR-096). Dashed for mesh, solid for drywall.
@@ -243,6 +247,74 @@ def _cage(ax, export, h: int, v: int, width: float = 1.0) -> None:
 
 
 # --- field maps ---------------------------------------------------------------
+
+
+#: The fields a map can be drawn of, beyond the temperature the fixed scale
+#: was built for (ADR-116). A study is read for three things: how hot the air
+#: is, where it is going and what it costs to get there -- and the last two
+#: were only ever numbers in a table.
+#:
+#: `symmetric` puts zero in the middle of a diverging ramp, so the sign of a
+#: pressure is read off the colour and the neutral band IS atmospheric.
+FIELD_MAPS = {
+    "speed": {
+        "label": "Air speed (m/s)",
+        "ramp": "sequential",
+        "note": "fitted to this run",
+        "symmetric": False,
+    },
+    "P": {
+        "label": "Static pressure (Pa, gauge)",
+        "ramp": "diverging",
+        "note": "relative to the reference cell; fitted to this run",
+        "symmetric": True,
+    },
+}
+
+
+def field_scale(export: "Export", field: str) -> dict:
+    """The scale a non-temperature map is painted on.
+
+    Fitted to the WHOLE field rather than to the slice, so the plan and the
+    sections of one run can be compared with each other -- a colour means the
+    same number on every figure of the report, which is the property the
+    fixed temperature band exists to give (ADR-024).
+    """
+    spec = FIELD_MAPS[field]
+    values = export.fields[field]
+    # THE ROOM, NOT THE JET. The peak speed in a hall is inside the unit's
+    # own discharge and the peak pressure is under the deck -- both an order
+    # above anything in the room, and a scale stretched to reach them paints
+    # the whole room in one pale band. The ends are taken at the 1st and 99th
+    # percentile and the bar's arrowheads say what is past them (ADR-116).
+    low = float(np.percentile(values, 1))
+    high = float(np.percentile(values, 99))
+    ramp = spec["ramp"]
+    if spec["symmetric"]:
+        # A DIVERGING RAMP IS FOR A FIELD WITH TWO SIGNS. A hall's static
+        # pressure is the plenum pushing and the room near zero -- all of it
+        # one side of atmospheric -- and painted on a scale from -150 to +150
+        # the whole room fell in one band and half the bar stood empty. Two
+        # signs, and zero is the neutral band; one sign, and it is a sequential
+        # ramp from the floor of the range (ADR-116).
+        if low < -0.05 * max(abs(high), 1.0):
+            reach = max(abs(low), abs(high)) or 1.0
+            low, high = -reach, reach
+        else:
+            low, ramp = min(low, 0.0), "sequential"
+    return palette.fitted_scale([low, high], ramp=ramp, marks=False)
+
+
+def _field_mesh(plt, ax, x_edges, y_edges, values, scale):
+    """Paint any field in contour bands on the scale handed in."""
+    from matplotlib.colors import BoundaryNorm, ListedColormap
+
+    cmap = ListedColormap(scale["colours"]).with_extremes(
+        under=scale["colours"][0], over=scale["colours"][-1]
+    )
+    norm = BoundaryNorm(scale["edges"], cmap.N, clip=True)
+    return ax.pcolormesh(x_edges, y_edges, values, cmap=cmap, norm=norm,
+                         shading="flat")
 
 
 def _temperature_mesh(plt, ax, x_edges, y_edges, values, ramp=None):
@@ -415,7 +487,7 @@ def _fan_body(ax, x0, y0, dx, dy):
 
 
 def plan(export: Export, out: Path, z: float, title: str,
-         ramp: str | None = None) -> Path:
+         ramp: str | None = None, field: str = "T") -> Path:
     """Temperature in plan at height ``z``, with the room drawn over it.
 
     The plan turns when the room is longer across than along, for the same
@@ -426,7 +498,7 @@ def plan(export: Export, out: Path, z: float, title: str,
     """
     plt = _pyplot()
     model = export.model
-    values = export.slice("T", 2, z)  # [y, x]
+    values = export.slice(field, 2, z)  # [y, x]
     width, depth = export.size[0], export.size[1]
     turned = depth > 1.25 * width
     h, v = (1, 0) if turned else (0, 1)
@@ -435,8 +507,11 @@ def plan(export: Export, out: Path, z: float, title: str,
     span, rise = export.size[h], export.size[v]
 
     fig, ax, cax = _map_figure(plt, 7.2, min(8.4, 7.2 * rise / span))
-    mesh = _temperature_mesh(plt, ax, export.edges(h), export.edges(v), values,
-                             ramp)
+    scale = field_scale(export, field) if field != "T" else None
+    mesh = (_field_mesh(plt, ax, export.edges(h), export.edges(v), values, scale)
+            if scale else
+            _temperature_mesh(plt, ax, export.edges(h), export.edges(v), values,
+                              ramp))
 
     for rack in export.racks:
         _outline(ax, rack["lo"], rack["hi"], h, v,
@@ -503,22 +578,34 @@ def plan(export: Export, out: Path, z: float, title: str,
     ax.set_xlabel(labels[h])
     ax.set_ylabel(labels[v])
     ax.set_title(title, loc="left")
-    _temperature_bar(plt, fig, mesh, cax, ramp=ramp)
+    _bar_for(plt, fig, mesh, cax, field, scale, ramp)
     fig.savefig(out, dpi=DPI, bbox_inches="tight")
     plt.close(fig)
     return out
 
 
+def _bar_for(plt, fig, mesh, cax, field, scale, ramp):
+    """The colourbar this field is read against."""
+    if scale is None:
+        return _temperature_bar(plt, fig, mesh, cax, ramp=ramp)
+    spec = FIELD_MAPS[field]
+    return _temperature_bar(plt, fig, mesh, cax, label=spec["label"],
+                            scale=scale, note=spec["note"], ramp=ramp)
+
+
 def section(export: Export, out: Path, normal: int, at: float, title: str,
-            xlabel: str, ramp: str | None = None) -> Path:
+            xlabel: str, ramp: str | None = None, field: str = "T") -> Path:
     """A vertical section: normal 0 looks along the hall, normal 1 across it."""
     plt = _pyplot()
     h = 1 if normal == 0 else 0
-    values = export.slice("T", normal, at)  # [z, h]
+    values = export.slice(field, normal, at)  # [z, h]
     span, height = export.size[h], export.size[2]
     fig, ax, cax = _map_figure(plt, 7.2, max(1.3, 7.2 * height / span))
-    mesh = _temperature_mesh(plt, ax, export.edges(h), export.edges(2), values,
-                             ramp)
+    scale = field_scale(export, field) if field != "T" else None
+    mesh = (_field_mesh(plt, ax, export.edges(h), export.edges(2), values, scale)
+            if scale else
+            _temperature_mesh(plt, ax, export.edges(h), export.edges(2),
+                              values, ramp))
 
     for rack in export.racks:
         if rack["lo"][normal] - 1e-6 <= at <= rack["hi"][normal] + 1e-6:
@@ -605,7 +692,7 @@ def section(export: Export, out: Path, normal: int, at: float, title: str,
     ax.set_xlabel(xlabel)
     ax.set_ylabel("z — height (m)")
     ax.set_title(title, loc="left")
-    _temperature_bar(plt, fig, mesh, cax, ramp=ramp)
+    _bar_for(plt, fig, mesh, cax, field, scale, ramp)
     fig.savefig(out, dpi=DPI, bbox_inches="tight")
     plt.close(fig)
     return out
@@ -872,6 +959,21 @@ def capacity(export: Export, out: Path) -> Path | None:
                 label=f"the same coil, at the air flow this hall gives it "
                       f"({air / coil.air_fitted:.0%})")
 
+    # WHERE THE COMPRESSORS RUN OUT. The curve flattens there, and a reader
+    # is owed the reason: past this return the coil would transfer more and
+    # the machine cannot lift it (ADR-118).
+    ceiling = getattr(coil, "capacity_ceiling_kw", None)
+    if ceiling:
+        net = ceiling - coil.fan_power_kw
+        ax.axhline(net, color=MUTED, linewidth=1.0, linestyle=(0, (2, 2)),
+                   zorder=1)
+        ambient = getattr(coil, "rated_ambient_c", None)
+        ax.annotate(
+            f"compressors at their limit — {net:,.0f} kW net"
+            + (f", at {ambient:g} °C outdoor air" if ambient else ""),
+            xy=(low, net), xytext=(3, 3), textcoords="offset points",
+            fontsize=6.5, color=SECOND, va="bottom")
+
     if design.get("return_c") is not None:
         ax.scatter([design["return_c"]], [design["nscc_kw"]], s=46, marker="D",
                    color=FAN, edgecolor="white", linewidth=1.0, zorder=5,
@@ -971,15 +1073,24 @@ def geometry(export: Export, out: Path, axis: int, title: str,
             xy=((panel["lo"][h] + panel["hi"][h]) / 2,
                 (panel["lo"][v] + panel["hi"][v]) / 2),
             ha="center", va="center", fontsize=5.5, color=FAN)
-    for rack in export.racks:
-        x0, x1 = rack["lo"][h], rack["hi"][h]
-        y0, y1 = rack["lo"][v], rack["hi"][v]
-        if x1 <= lo_h or x0 >= hi_h or y1 <= lo_v or y0 >= hi_v:
-            continue
-        ax.text((x0 + x1) / 2, (y0 + y1) / 2,
-                f"{rack['name']}\n{rack.get('load_w', 0) / 1000:g} kW",
-                ha="center", va="center", fontsize=5.5, color=INK,
-                rotation=90 if (y1 - y0) > (x1 - x0) else 0, linespacing=1.5)
+    # A NAME PER CABINET, or a name per ROW. 156 cabinets in a window the
+    # width of the hall put 156 rotated labels on top of each other and left
+    # the drawing unreadable -- and the question a hall-wide plan is read for
+    # is which row is which, not which cabinet (ADR-116). The cut-off is the
+    # window, so the detail window keeps every name it always had.
+    inside = [r for r in export.racks
+              if not (r["hi"][h] <= lo_h or r["lo"][h] >= hi_h
+                      or r["hi"][v] <= lo_v or r["lo"][v] >= hi_v)]
+    if len(inside) > NAMES_FIT:
+        _row_labels(ax, export, h, v)
+    else:
+        for rack in inside:
+            x0, x1 = rack["lo"][h], rack["hi"][h]
+            y0, y1 = rack["lo"][v], rack["hi"][v]
+            ax.text((x0 + x1) / 2, (y0 + y1) / 2,
+                    f"{rack['name']}\n{rack.get('load_w', 0) / 1000:g} kW",
+                    ha="center", va="center", fontsize=5.5, color=INK,
+                    rotation=90 if (y1 - y0) > (x1 - x0) else 0, linespacing=1.5)
     # A margin, so a name against the edge of the window is not clipped by it.
     margin_h, margin_v = (hi_h - lo_h) * 0.02, (hi_v - lo_v) * 0.02
     ax.set_xlim(lo_h - margin_h, hi_h + margin_h)

@@ -222,12 +222,117 @@ class CouplingTest(unittest.TestCase):
         supply air stayed at whatever the case imposed."""
         self.assertTrue(self.supplies("independent"))
 
-    def test_the_networked_control_changes_the_answer(self):
-        """`control: team` used to change the case file and nothing else for a
-        DX plant. A unit on a network works to the worst return its gallery
-        sees, so it delivers colder air than one left to its own."""
+    def test_a_networked_dx_plant_holds_one_supply_temperature(self):
+        """A CRAC array is controlled on its SUPPLY AIR: the plant delivers
+        the coldest air its worst-placed unit can still make, and every other
+        unit holds that same temperature (ADR-117).
+
+        It used to share the compressor DUTY instead, which is what a
+        chilled-water array does with its valves -- and on a 1 MW hall it
+        drove the well-placed units to 15,9 degC against an 18,8 degC
+        setpoint.
+        """
+        team = self.supplies("team")
+        self.assertTrue(team)
+        span = max(team.values()) - min(team.values())
+        self.assertLess(span, 0.01,
+                        f"the network delivers {span:.2f} K of different air")
+
+    def test_the_networked_control_still_changes_the_answer(self):
+        """The plant is held by its worst unit, so the units that could go
+        colder do not: team air is never colder than independent air, and
+        somewhere it is warmer."""
         alone, team = self.supplies("independent"), self.supplies("team")
         self.assertEqual(set(alone), set(team))
         self.assertNotEqual(alone, team)
-        cooler = [n for n in alone if team[n] < alone[n] - 1e-6]
-        self.assertTrue(cooler, "no unit works harder for its team")
+        for name in alone:
+            with self.subTest(unit=name):
+                self.assertGreaterEqual(team[name], alone[name] - 1e-6,
+                                        "a unit on the network overcooled")
+        warmer = [n for n in alone if team[n] > alone[n] + 1e-6]
+        self.assertTrue(warmer, "the network is not held by its worst unit")
+
+    def test_a_chilled_water_network_still_shares_its_valves(self):
+        """The two plants are built differently and the model says so: a CRAH
+        array on one water loop shares the valve position, a CRAC array shares
+        the setpoint (ADR-064, ADR-117)."""
+        from aicfd import equipment as library
+
+        # A real chilled-water unit from the library, so this is the coil the
+        # tool actually builds for a CRAH and not one invented here.
+        unit = next(library.load(name) for name in library.SHIPPED
+                    if library.load(name).cooling == "chilled_water"
+                    and library.load(name).coil is not None)
+        coil = unit.coil
+        air = coil.air_fitted
+        # A setpoint this unit can hold on its own return with the valve part
+        # open: the case where sharing the valve has something to change.
+        alone = coil.operate(24.0, air, 22.0)
+        shared = coil.operate_shared(32.0, 24.0, air, 22.0)
+        self.assertLess(alone.valve, 1.0, "this unit was already flat out")
+        self.assertLess(shared.supply_c, alone.supply_c + 1e-6,
+                        "a CRAH told to open for its worst peer did not")
+        self.assertGreater(shared.capacity_kw, alone.capacity_kw,
+                           "and it took no more of the load for doing it")
+
+
+class TheCompressorsAreTheLimitTest(unittest.TestCase):
+    """An evaporator's e-NTU answer grows without limit as the return warms.
+    The machine does not: past some return the coil would transfer more than
+    the compressors can lift, and every commercial tool holds it there from
+    the manufacturer's capacity table (ADR-118).
+    """
+
+    def setUp(self):
+        self.unit = library.load("P3100DA")
+        self.coil = self.unit.coil
+
+    def air(self, return_c: float) -> float:
+        return air_capacity_rate(27500.0, return_c, 0.0)
+
+    def test_the_ceiling_is_the_selection_s_own_gross_total(self):
+        self.assertAlmostEqual(self.coil.capacity_ceiling_kw, 110.3, places=1)
+
+    def test_it_still_reproduces_the_selection_it_was_fitted_to(self):
+        """The cap must not move the point the fit was taken at."""
+        point = self.coil.operate(30.0, self.air(30.0))
+        self.assertAlmostEqual(point.ceiling_kw, 100.5, delta=1.0)
+        self.assertAlmostEqual(point.supply_c, 18.8, delta=0.2)
+
+    def test_a_warm_return_no_longer_buys_capacity_that_is_not_there(self):
+        """34 degC of return asked the coil for 122 kW net, which read as a
+        unit at 121 % of its plate."""
+        point = self.coil.operate(34.0, self.air(34.0))
+        self.assertLess(point.ceiling_kw, 102.0)
+        self.assertTrue(self.coil.at_compressor_limit(34.0, self.air(34.0)))
+
+    def test_below_the_limit_nothing_changed(self):
+        for ret in (20.0, 24.0, 26.4):
+            with self.subTest(return_c=ret):
+                self.assertFalse(
+                    self.coil.at_compressor_limit(ret, self.air(ret)))
+        point = self.coil.operate(26.4, self.air(26.4))
+        self.assertAlmostEqual(point.ceiling_kw, 81.0, delta=2.0)
+
+    def test_the_curve_never_falls_as_the_return_warms(self):
+        last = None
+        for ret in range(18, 41, 2):
+            now = self.coil.ceiling_kw(float(ret), self.air(float(ret)))
+            if last is not None:
+                self.assertGreaterEqual(now, last - 1e-6)
+            last = now
+
+    def test_a_unit_at_the_limit_still_holds_a_setpoint_it_can_reach(self):
+        point = self.coil.operate(34.0, self.air(34.0), setpoint_c=28.0)
+        self.assertAlmostEqual(point.supply_c, 28.0, places=2)
+        self.assertFalse(point.saturated)
+
+    def test_a_sheet_with_no_total_capacity_has_no_ceiling(self):
+        """Nothing is invented: a selection that does not state the total says
+        nothing about what the compressors can lift."""
+        thin = library.load("IDAV1911F")
+        self.assertIsNone(thin.coil.capacity_ceiling_kw)
+
+    def test_the_report_can_see_it(self):
+        described = self.coil.describe()
+        self.assertAlmostEqual(described["capacity_ceiling_kw"], 110.3, places=1)

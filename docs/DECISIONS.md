@@ -4954,3 +4954,90 @@ cabinets would draw 268.000, and with the cold aisles contained the excess is
 forced through the cabinets at 1,4 times their rated flow — which is what makes
 their drop 85 Pa in the first place. The check now measures the right thing;
 the model underneath is still the one ADR-013 describes.
+
+---
+
+## ADR-116 — What a report shows: the room in plan, and the other two fields
+
+**Decision.** Three changes to what the deliverable draws:
+
+* the **basis of design** carries the whole data hall in plan — the drawing the
+  model page shows — instead of one pod at rack height. Past `NAMES_FIT`
+  cabinets in the window, the rows are named and the cabinets are not;
+* the results gain **air speed and static pressure**, in plan and in section,
+  through the same `plan`/`section` figures with a `field` argument;
+* the plan's band chain leaves out the aisle a **cage wall** stands in.
+
+**Why.** Three readings of the same report.
+
+The basis of design is where a reader checks the LAYOUT against their drawing,
+and it showed them five metres of one pod. The answer to "does this match my
+plan" is the plan.
+
+A study is read for three fields and only the first was ever drawn. The speed
+maps answer "is the aisle fed"; the pressure maps show the plenum, the drop
+across the cabinets and what the units have to produce — the same 85 Pa
+`rack_resistance` checks, visible as a gradient instead of a number in a table.
+
+Both new fields are fitted to the run at the 1st and 99th percentile, because
+the peak speed is inside a unit's own discharge and the peak pressure is under
+the deck: a scale stretched to reach them paints the room in one pale band. A
+pressure field with one sign gets a sequential ramp — a diverging one wastes
+half its bar and puts the neutral band where nothing is — and the ASHRAE marks
+belong to a temperature scale, so they are off the others.
+
+The cage's aisle is `cage.aisle` wide because the clearance is a gap on both
+faces of the wall (ADR-109). It is neither the hall's cold aisle nor a distance
+anybody sets out from a drawing, and dimensioned as one it printed a lone
+6,00 m across the middle of the plan.
+
+---
+
+## ADR-117 — A CRAC network shares a setpoint; a CRAH network shares its valves
+
+**Decision.** `fanwall.control: team` means two different things, because the
+two plants are built two different ways:
+
+* **chilled water (CRAH).** What is shared is the VALVE. Every unit on the
+  loop opens as far as the worst-placed one has to, and then delivers what its
+  own coil gives at its own return. Unchanged (ADR-064).
+* **direct expansion (CRAC).** What is shared is the SUPPLY SETPOINT. The
+  plant delivers the coldest air its worst-placed unit can still make, and
+  every other unit holds that same temperature with its own compressors,
+  unloading as far as it needs to.
+
+**Why.** A CRAC is controlled on its supply air and a network of them holds one
+setpoint between them; a CRAH array on a common water loop is throttled by the
+valves the loop's control opens. Modelling the DX plant the chilled-water way
+drove the well-placed units to 15,9 °C of supply against an 18,8 °C setpoint —
+they were told to run at the worst unit's compressor duty and had nothing to do
+with it but overcool their own air. It also read as a plant at 100 % of its
+available capacity, because every unit was at its ceiling by construction.
+
+**Consequence.** For a DX plant, `team` and `independent` now agree wherever
+the worst-placed unit can hold the setpoint, and part company exactly when it
+cannot — which is the finding the control mode exists to show. A unit on the
+network is never colder than the same unit left alone.
+
+---
+
+## ADR-118 — The compressors are a ceiling, and the drawing says where
+
+**Decision.** A `DXCoil` carries `capacity_ceiling_kw` — the gross
+refrigeration the compressors can lift at the condensing condition the
+selection names, taken as that selection's own gross total. The coil's gross
+duty is held there, the capacity curve flattens at it, the figure draws the
+line and names it, and the alert says how many units are held by their
+compressors rather than by their coil. A selection that prints no total gets no
+ceiling and answers unbounded, as before.
+
+**Why.** An ε-NTU evaporator grows without limit as the return warms: at
+30,6 °C this machine's coil asked for 114 kW where its own selection is
+110,3 kW gross, and the report read it as a unit at 112 % of its plate. The
+coil really would transfer that. The compressors would not lift it, and holding
+capacity at the manufacturer's table is what every commercial tool does.
+
+**What is still not modelled.** The CONDENSING side. The ceiling is the one the
+selection was taken at — 37,6 °C of outdoor air on the sheet in hand — and a
+warmer day lowers it. One selection point is one point on a capacity table, and
+this tool holds it there and says so, in the limitations and beside the alert.

@@ -645,6 +645,18 @@ class DXCoil:
     it and one selection cannot say how much, so the result holds it there."""
     compressor_kw: float | None = None
     condenser_kw: float | None = None
+    capacity_ceiling_kw: float | None = None
+    """The refrigeration the COMPRESSORS can move at the condensing condition
+    this unit was selected at, gross, before the fans put their power back.
+
+    An evaporator's e-NTU answer grows without limit as the return warms: at
+    30,6 degC of return this machine's coil asks for 114 kW where its own
+    selection is 110,3 kW gross, and the report read it as a unit at 112 % of
+    its plate. The coil really would transfer that; the compressors would not
+    lift it, which is the limit every commercial tool applies from the
+    manufacturer's capacity table. One selection point is one point on that
+    table, so what is held is the total refrigeration at the ambient the
+    selection names -- and the result says it is held there (ADR-118)."""
     refrigerant: str | None = None
     assumptions: tuple[str, ...] = ()
     """What the fit had to assume because the selection did not print it. Said
@@ -662,15 +674,32 @@ class DXCoil:
         ua = self.ua * (air / self.air_fitted) ** AIR_EXPONENT
         return effectiveness(ua / air, 0.0)
 
+    def gross_kw(self, return_c: float, air: float, duty: float = 1.0) -> float:
+        """What the coil transfers, before the fans, at ``duty`` of cooling.
+
+        The evaporator's own answer, held at what the compressors can lift
+        (ADR-118).
+        """
+        gross = self.epsilon(air) * air * (return_c - self.adp_c) * duty
+        if self.capacity_ceiling_kw is not None:
+            gross = min(gross, self.capacity_ceiling_kw)
+        return gross
+
+    def at_compressor_limit(self, return_c: float, air: float) -> bool:
+        """Whether the coil is asking for more than the compressors can lift."""
+        if self.capacity_ceiling_kw is None:
+            return False
+        asked = self.epsilon(air) * air * (return_c - self.adp_c)
+        return asked > self.capacity_ceiling_kw + 1e-9
+
     def supply(self, return_c: float, air: float, duty: float = 1.0) -> float:
         """Air leaving the unit, fans included, at ``duty`` of full cooling."""
-        gross = self.epsilon(air) * air * (return_c - self.adp_c) * duty
+        gross = self.gross_kw(return_c, air, duty)
         return return_c - max(0.0, gross - self.fan_power_kw) / air
 
     def ceiling_kw(self, return_c: float, air: float) -> float:
         """Net sensible capacity with the compressors at full, at this return."""
-        gross = self.epsilon(air) * air * (return_c - self.adp_c)
-        return max(0.0, gross - self.fan_power_kw)
+        return max(0.0, self.gross_kw(return_c, air) - self.fan_power_kw)
 
     def leaving_water_c(self, capacity_kw: float) -> None:
         """There is no water. Said as None rather than left off the class, so
@@ -705,6 +734,12 @@ class DXCoil:
             wanted = air * (return_c - setpoint_c)
             duty = min(1.0, (wanted + self.fan_power_kw)
                        / max(1e-9, ceiling + self.fan_power_kw))
+            # `duty` is a fraction of the coil's own answer; where the
+            # compressors are the limit, that answer was held below it and a
+            # fraction of the held value asks for too little (ADR-118).
+            if self.at_compressor_limit(return_c, air):
+                asked = self.epsilon(air) * air * (return_c - self.adp_c)
+                duty *= (self.capacity_ceiling_kw or asked) / max(asked, 1e-9)
             supply, saturated = setpoint_c, False
         return Operating(
             return_c=return_c,
@@ -721,34 +756,30 @@ class DXCoil:
 
     def operate_shared(self, seen_c: float, return_c: float, air: float,
                        setpoint_c: float | None = None) -> Operating:
-        """What this unit does when its control reads ``seen_c``.
+        """What this unit does on a network holding ONE supply temperature.
 
-        Units on one network run to the worst return any of them sees: what is
-        shared is the reading, and what the reading buys is the compressor
-        duty. A unit whose own air is cool is told to work as hard as the
-        worst-placed unit has to, and then delivers what ITS coil gives at ITS
-        own return -- which is how a unit far from the load stops idling at
-        the setpoint and takes a share of it (ADR-064).
+        A DX ROOM UNIT IS CONTROLLED ON ITS SUPPLY AIR, and a network of them
+        holds one setpoint between them: the plant delivers the coldest air
+        its WORST-placed unit can still make, and every other unit holds that
+        same temperature with its own compressors, unloading as far as it
+        needs to. A unit with cool return does LESS work, not more.
+
+        That is the difference from a chilled-water network, which shares the
+        valve position instead (`Coil.operate_shared`, ADR-064) -- and it is
+        the arrangement each kind of plant is actually built with: a CRAH
+        array on a common water loop, a CRAC array on a common supply
+        setpoint (ADR-117).
+
+        Shared DUTY is what this used to do, and on a 1 MW hall it drove the
+        well-placed units to 15,9 degC of supply against an 18,8 degC
+        setpoint: they were told to run at the worst unit's compressor duty
+        and had nothing to do with it but overcool their own air.
         """
         if seen_c <= return_c:
             return self.operate(return_c, air, setpoint_c)
+        # What the worst-placed unit can hold -- the plant's common supply.
         ordered = self.operate(seen_c, air, setpoint_c)
-        if ordered.valve <= 0:
-            return self.operate(return_c, air, setpoint_c)
-        supply = min(self.supply(return_c, air, ordered.valve), return_c)
-        return Operating(
-            return_c=return_c,
-            supply_c=supply,
-            capacity_kw=air * (return_c - supply),
-            ceiling_kw=self.ceiling_kw(return_c, air),
-            effectiveness=self.epsilon(air),
-            valve=ordered.valve,
-            # About THIS unit: one working hard for a worse-placed peer is
-            # over-cooling, not failing. See `Coil.operate_shared`.
-            saturated=ordered.saturated and (
-                setpoint_c is not None and supply > setpoint_c + 1e-6),
-            water_m3h=0.0,
-        )
+        return self.operate(return_c, air, ordered.supply_c)
 
     # --- what a report says about it ------------------------------------------
 
@@ -763,6 +794,7 @@ class DXCoil:
             "rated_capacity_kw": self.rated_capacity_kw,
             "compressor_kw": self.compressor_kw,
             "condenser_kw": self.condenser_kw,
+            "capacity_ceiling_kw": self.capacity_ceiling_kw,
             "refrigerant": self.refrigerant,
             "assumptions": list(self.assumptions),
             "duty_label": "compressor duty",
@@ -865,5 +897,12 @@ def fit_dx(unit) -> DXCoil:
                        if design.get("compressor_kw") is not None else None),
         condenser_kw=(float(design["condenser_kw"])
                       if design.get("condenser_kw") is not None else None),
+        # WHAT THE COMPRESSORS CAN LIFT at the condensing condition this
+        # selection names: its own gross total refrigeration. A sheet that
+        # prints no total says nothing about the limit, and the coil answers
+        # unbounded as it did before (ADR-118).
+        capacity_ceiling_kw=(float(design["gross_total_kw"])
+                             if design.get("gross_total_kw") is not None
+                             else None),
         refrigerant=selection.get("refrigerant"),
     )
