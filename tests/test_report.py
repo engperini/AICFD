@@ -999,3 +999,27 @@ class TheReportDescribesThePlantItHasTest(unittest.TestCase):
         self.assertIn('"dx"', said)
         self.assertIn("compressors", said)
         self.assertIn("the water side", said)
+
+
+class TheConclusionsAgreeWithTheChecksTest(unittest.TestCase):
+    """Section 5 restates section 4.1 in words. When the two disagree the
+    reader has no way to tell which to believe (ADR-115)."""
+
+    def source(self) -> str:
+        import inspect
+
+        from aicfd import report
+
+        return inspect.getsource(report._conclusions)
+
+    def test_the_fan_sentence_takes_the_cabinets_out_too(self):
+        said = self.source()
+        self.assertIn("rack_drop_pa", said,
+                      "the conclusion still charges the unit for the cabinets")
+        self.assertIn("room outside the cabinets costs", said)
+        self.assertIn("cabinets' own fans carry", said)
+
+    def test_the_energy_sentence_does_not_say_matches_when_it_does_not(self):
+        said = self.source()
+        self.assertIn("abs(closure - 100) <= 2", said)
+        self.assertIn("still settling", said)

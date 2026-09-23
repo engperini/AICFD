@@ -1664,21 +1664,40 @@ def _conclusions(doc, export: Export) -> None:
             f"question outside this study."
         )
     if kpis.get("fan_rise_pa") and kpis.get("fan_static_pa"):
+        # THE SAME ARITHMETIC AS THE CHECK, or the conclusion contradicts
+        # section 4.1: the cabinets' drop is their own fans' work, and a
+        # unit's external static is what it offers the room outside itself
+        # (ADR-115).
+        cabinets = kpis.get("rack_drop_pa") or 0.0
+        room = max(kpis["fan_rise_pa"] - cabinets, 0.0)
         findings.append(
-            f"The room costs the most loaded unit {_num(kpis['fan_rise_pa'], 1)} Pa "
-            f"of the {_num(kpis['fan_static_pa'], 0)} Pa the unit can produce at "
-            f"the airflow it is moving "
-            f"({_num(kpis['fan_rise_pa'] / kpis['fan_static_pa'] * 100, 0)} %), "
-            f"and the least loaded {_num(kpis.get('fan_rise_min_pa'), 1)} Pa. "
+            f"The room outside the cabinets costs the most loaded unit "
+            f"{_num(room, 1)} Pa of the {_num(kpis['fan_static_pa'], 0)} Pa the "
+            f"unit can produce at the airflow it is moving "
+            f"({_num(room / kpis['fan_static_pa'] * 100, 0)} %)"
+            + (f" — the loop costs {_num(kpis['fan_rise_pa'], 1)} Pa and the "
+               f"cabinets' own fans carry {_num(cabinets, 1)} Pa of it"
+               if cabinets else "")
+            + f", and the least loaded unit {_num(kpis.get('fan_rise_min_pa'), 1)} Pa "
+            f"of loop. "
             "That is the resistance of the room, not of the coil and filters "
             "inside the machine, which the unit's external static pressure "
             "already accounts for."
         )
+    # A SENTENCE THAT SAYS "matches" WHILE QUOTING 106 % is a sentence that
+    # contradicts its own number. The heat the return carries can only exceed
+    # the load in a field still settling (ADR-115).
+    closure = (kpis["energy_closure"] or 0) * 100
     findings.append(
-        f"The energy balance closes at "
-        f"{_num((kpis['energy_closure'] or 0) * 100, 1)} %: the heat the return "
-        f"air carries out matches the load the racks put in. Every physical "
-        f"check "
+        f"The energy balance closes at {_num(closure, 1)} %: the heat the "
+        f"return air carries out "
+        + ("matches the load the racks put in. "
+           if abs(closure - 100) <= 2
+           else f"is {_num(abs(closure - 100), 1)} % "
+                f"{'above' if closure > 100 else 'below'} the load the racks "
+                f"put in, which a steady field cannot be — this one is still "
+                f"settling. ")
+        + "Every physical check "
         + ("passes, so the temperatures above may be quoted."
            if export.payload["valid"]
            else "does NOT pass; see section 4.1 before using any number here.")
