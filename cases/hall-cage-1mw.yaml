@@ -67,7 +67,9 @@ pods: 6                       # 6 x (row + contained hot aisle + row). Every
                               # room. The cage is pods 1 and 2, rows F1 to F4.
 
 aisles:
-  cold: 1.8                   # measured: B to C, 6,58 -> 7,78 m
+  cold: 1.2                   # measured: B to C, 6,58 -> 7,78 m. At 1,20 m
+                              # the aisle holds exactly two rows of 600 mm
+                              # plate between the cabinet faces.
   hot: 1.2                    # measured: the hatched HAC bands, 1,199 m
   perimeter: 1.2              # rack face to HALL wall. It is the outermost
                               # cold aisle as well as the clearance, and at
@@ -239,7 +241,7 @@ floor:
                               # velocity, which is what decides whether the
                               # far plates deliver -- so on a real study it is
                               # a number to ask for, not to inherit.
-  tiles_per_rack: 3           # Two plates in front of each cabinet. A 1,20 m
+  tiles_per_rack: 2           # Two plates in front of each cabinet. A 1,20 m
                               # cold aisle holds 1,20/0,60 = 2 rows of plate
                               # BETWEEN two facing rows, not two for each, so
                               # what is laid there is 2 and the summary says
