@@ -734,11 +734,22 @@ def _methodology(doc, export: Export, drawn: dict) -> None:
         else "a single mechanical gallery along one side"
     )
     raised = model.get("floor_height")
+    # WHICH AISLE IS CONTAINED, read off what was built rather than assumed.
+    # Every report said "hot-aisle containment", including this hall's, whose
+    # cold aisles are the contained ones -- the arrangement the whole air loop
+    # follows from (ADR-100, ADR-112).
+    lidded = any(p["name"].startswith("containment_lid")
+                 for p in export.panels("containment_lid"))
+    walled = any(p["name"].startswith("containment_wall")
+                 for p in export.panels("containment_wall"))
+    contained = ("cold-aisle containment" if lidded
+                 else "hot-aisle containment" if walled
+                 else "no containment")
     _para(doc,
           f"The room is derived from the case specification, not drawn: every "
           f"dimension below follows from the equipment sizes, the aisle widths "
           f"and the clearances the engineer typed. The arrangement is "
-          f"{arrangement}, with hot-aisle containment and a ceiling-plenum "
+          f"{arrangement}, with {contained} and a ceiling-plenum "
           f"return.")
     if raised:
         # The supply side is the half that differs, and a reader checking a

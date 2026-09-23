@@ -4913,3 +4913,44 @@ checking a drawing against the derivation could tell a rounding from an error.
 exactly as before. One whose parts are not now derives what the mesh builds,
 and the difference — up to half a cell — is named in the summary rather than
 found by a failing test.
+
+---
+
+## ADR-115 — A check compares like with like
+
+**Decision.** Two of the eleven physical checks were comparing quantities that
+are not the same quantity:
+
+* **`fan_capacity`** now judges the unit against **the room outside the
+  cabinets**: the fan rise the field shows, less the drop across one rack row.
+  The sentence names all three numbers, so the reader sees the loop, the
+  cabinets and the difference.
+* **`_resistance_verdict`** forgives a surface that costs up to
+  `NEGLIGIBLE_PRESSURE_PA` **more** than its closed form asks. The forgiveness
+  is one-directional: a surface delivering LESS than its K is the failure this
+  check exists for (ADR-082), however few pascals it is.
+
+**Why.** A 1 MW hall of fourteen direct-expansion CRACs failed both, and
+neither failure was about the room.
+
+`fan_capacity` compared the fan's rise across itself — which in this model is
+the WHOLE loop, because it has no rack fans (ADR-013): the units drive the air
+through the cabinets as well. A real cabinet's own fans do that part, in
+series, and a unit's external static pressure is what it offers the room
+outside itself: plenum, plates, aisles, grilles, gallery. On this hall the loop
+costs 109,5 Pa of which the cabinets are 85,1 — so the check read 219 % of a
+50 Pa machine, and said "the unit cannot deliver this airflow" about a room
+that costs it 24,4 Pa.
+
+`floor_resistance` failed at 142 %: 1,38 Pa where the plates' own K asks 1,05.
+Three tenths of a pascal, on a 0,30 m mesh, through a mixing-cup average. The
+existing escape — both numbers under half a pascal — did not reach it, because
+the EXPECTED figure was 1,05. A ratio is only a test while there is something
+to divide.
+
+**What this does not excuse.** The missing rack fans are still missing, and
+this hall shows why they matter: the plant moves 385.000 m³/h where the
+cabinets would draw 268.000, and with the cold aisles contained the excess is
+forced through the cabinets at 1,4 times their rated flow — which is what makes
+their drop 85 Pa in the first place. The check now measures the right thing;
+the model underneath is still the one ADR-013 describes.

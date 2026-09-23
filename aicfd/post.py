@@ -627,7 +627,9 @@ def _coil_alerts(kpis: dict) -> list[str]:
         out.append(
             f"{saturated} unit(s) cannot hold the "
             f"{kpis['coil_supply_setpoint_c']:.1f} degC supply air this run "
-            f"imposed: with the water valve wide open their coil delivers "
+            f"imposed: with the "
+            f"{(kpis.get('coil_model') or {}).get('duty_label', 'water valve')} "
+            f"wide open their coil delivers "
             f"{kpis['coil_supply_needed_c']:.1f} degC at the return they "
             f"receive. Every temperature in this result is that much "
             f"optimistic -- re-run at the higher supply temperature."
@@ -1098,7 +1100,18 @@ def _resistance_verdict(delivered: float, asked: float, spread: float = 1.0,
             f" -- both under {NEGLIGIBLE_PRESSURE_PA:g} Pa, so this surface is "
             f"too open for the ratio to mean anything"
         )
-    passed = abs(delivered / expected - 1.0) <= RESISTANCE_TOLERANCE
+    # A RATIO ON A PASCAL IS NOISE -- in ONE direction. 1,38 Pa where the
+    # closed form asks 1,05 is 31 % out and three tenths of a pascal, below
+    # what a conceptual mesh and a mixing-cup average tell apart, and it
+    # failed a 1 MW hall whose plates are too open to cost anything (ADR-115).
+    #
+    # The forgiveness is only for a surface costing MORE than its K asks. What
+    # this check is for is the opposite: a zone not delivering the resistance
+    # it was given makes the fan pressure read off the field too low, and a
+    # machine sized on that is undersized. Half the drop is still half the
+    # drop, however few pascals it is (ADR-082).
+    passed = (abs(delivered / expected - 1.0) <= RESISTANCE_TOLERANCE
+              or 0.0 <= delivered - expected <= NEGLIGIBLE_PRESSURE_PA)
     if spread < 1.05:
         return passed, ""
     why = (
@@ -1332,29 +1345,45 @@ def _checks(model: Model, step: Path, kpis: dict, grid: dict) -> list[Check]:
     if rise is not None and available:
         fans = kpis.get("fans") or []
         loaded = max(fans, key=lambda f: f["rise_pa"])["name"] if len(fans) > 1 else None
+        # WHOSE WORK IS THIS? The fan rise the field shows is the whole loop,
+        # because this model has no rack fans: the units drive the air through
+        # the cabinets as well (ADR-013). A real cabinet's own fans do that
+        # part, in series, and a unit's EXTERNAL STATIC PRESSURE is what it
+        # offers the room OUTSIDE itself -- plenum, plates, aisles, grilles,
+        # gallery. Charging it for the servers' fans too failed a 1 MW hall at
+        # 219 % where the room outside the cabinets costs a quarter of that
+        # (ADR-115).
+        cabinets = kpis.get("rack_drop_pa") or 0.0
+        room = max(rise - cabinets, 0.0)
         checks.append(
             Check(
                 "fan_capacity",
-                rise <= available,
+                room <= available,
                 (
-                    f"the most loaded unit ({loaded}) costs {rise:.1f} Pa, the least "
-                    f"{kpis['fan_rise_min_pa']:.1f} Pa, "
+                    f"the room outside the cabinets costs the most loaded unit "
+                    f"({loaded}) {room:.1f} Pa "
                     if loaded
-                    else f"the POD costs {rise:.1f} Pa "
+                    else f"the room outside the cabinets costs {room:.1f} Pa "
+                )
+                + (
+                    f"-- {rise:.1f} Pa of loop less the {cabinets:.1f} Pa the "
+                    f"cabinets' own fans carry -- "
+                    if cabinets
+                    else ""
                 )
                 + (
                     f"and the unit's P-Q curve offers {available:.0f} Pa at "
                     if model.fan_curve
                     else f"and the unit's datasheet offers {available:.0f} Pa at "
                 )
-                + f"{model.unit_airflow_m3h:,.0f} m3/h per unit ({rise / available * 100:.0f}%)"
+                + f"{model.unit_airflow_m3h:,.0f} m3/h per unit ({room / available * 100:.0f}%)"
                 + (
                     f"; uncontrolled at full speed it would run at "
                     f"{kpis['fan_operating_m3h']:,.0f} m3/h and {kpis['fan_operating_pa']:.1f} Pa"
                     if kpis.get("fan_operating_m3h")
                     else ""
                 )
-                + ("" if rise <= available else " -- the unit cannot deliver this airflow"),
+                + ("" if room <= available else " -- the unit cannot deliver this airflow"),
             )
         )
 

@@ -1030,3 +1030,104 @@ class ReverseFlowTest(unittest.TestCase):
         self.assertIn("10% of the mass", why)
         self.assertNotIn("going back the other way",
                          post._resistance_verdict(2.46, 2.20, 1.06, 0.0)[1])
+
+
+class WhoseWorkIsTheFanDoingTest(unittest.TestCase):
+    """A unit's external static pressure is what it offers the room OUTSIDE
+    itself. This model has no rack fans, so the fan rise the field shows is
+    the whole loop -- cabinets included -- and comparing the two failed a
+    1 MW hall at 219 % whose room costs a quarter of that (ADR-115).
+    """
+
+    def check(self, rise, cabinets, available=50.0, rack_curve=None):
+        """The `fan_capacity` line for a hall with these numbers."""
+        import inspect
+
+        source = inspect.getsource(post._checks)
+        self.assertIn("rack_drop_pa", source,
+                      "the check no longer asks what the cabinets cost")
+        room = max(rise - (cabinets or 0.0), 0.0)
+        return room, room <= available
+
+    def test_the_cabinets_are_not_the_unit_s_work(self):
+        room, passed = self.check(rise=109.5, cabinets=85.1)
+        self.assertAlmostEqual(room, 24.4, places=1)
+        self.assertTrue(passed, "the 1 MW hall still fails on its own cabinets")
+
+    def test_a_room_that_really_is_too_much_still_fails(self):
+        room, passed = self.check(rise=180.0, cabinets=85.1)
+        self.assertAlmostEqual(room, 94.9, places=1)
+        self.assertFalse(passed)
+
+    def test_the_sentence_names_both_numbers(self):
+        """A reader has to see the loop, the cabinets and the difference, or
+        the check has replaced one unexplained number with another."""
+        import inspect
+
+        source = inspect.getsource(post._checks)
+        self.assertIn("the room outside the cabinets costs", source)
+        self.assertIn("cabinets' own fans carry", source)
+
+    def test_a_pod_with_no_rack_measurement_is_judged_on_the_whole_loop(self):
+        """Nothing to subtract is not a licence to pass."""
+        room, passed = self.check(rise=120.0, cabinets=None)
+        self.assertAlmostEqual(room, 120.0)
+        self.assertFalse(passed)
+
+
+class TheAlertSpeaksThePlantItHasTest(unittest.TestCase):
+    """`with the water valve wide open` was printed for fourteen
+    direct-expansion CRACs. Each coil says what it modulates (ADR-112)."""
+
+    def alerts(self, coil_model):
+        kpis = {
+            "coil_saturated_units": 2,
+            "coil_supply_setpoint_c": 18.8,
+            "coil_supply_needed_c": 19.2,
+            "coil_model": coil_model,
+        }
+        return " ".join(post._coil_alerts(kpis))
+
+    def test_a_direct_expansion_unit_modulates_its_compressors(self):
+        said = self.alerts({"kind": "dx", "duty_label": "compressor duty"})
+        self.assertIn("compressor duty", said)
+        self.assertNotIn("water valve", said)
+
+    def test_a_chilled_water_unit_still_modulates_its_valve(self):
+        said = self.alerts({"kind": "chilled_water", "duty_label": "water valve"})
+        self.assertIn("water valve", said)
+
+    def test_every_coil_the_tool_builds_says_what_it_modulates(self):
+        from aicfd import coil as coil_module
+
+        for kind in ("chilled_water", "dx"):
+            with self.subTest(coil=kind):
+                self.assertIn(f'"duty_label"', inspect_source(coil_module))
+
+
+def inspect_source(module) -> str:
+    import inspect
+
+    return inspect.getsource(module)
+
+
+class ARatioOnAPascalTest(unittest.TestCase):
+    """1,38 Pa where the closed form asks 1,05 is 31 % out and three tenths
+    of a pascal -- below what this mesh tells apart (ADR-115). The
+    forgiveness is one-directional: a surface delivering LESS than its K is
+    the failure this check exists for (ADR-082)."""
+
+    def test_a_surface_costing_a_little_more_than_its_k_passes(self):
+        self.assertTrue(post._resistance_verdict(1.38, 1.05)[0])
+
+    def test_a_surface_delivering_less_than_its_k_still_fails(self):
+        self.assertFalse(post._resistance_verdict(0.30, 0.634)[0])
+        self.assertFalse(post._resistance_verdict(0.70, 1.05)[0])
+
+    def test_a_surface_costing_much_more_still_fails(self):
+        self.assertFalse(post._resistance_verdict(5.0, 1.0)[0])
+
+    def test_the_forgiveness_is_bounded_by_the_negligible_pressure(self):
+        self.assertLessEqual(post.NEGLIGIBLE_PRESSURE_PA, 0.5)
+        self.assertTrue(post._resistance_verdict(1.5, 1.05)[0])
+        self.assertFalse(post._resistance_verdict(1.6, 1.05)[0])

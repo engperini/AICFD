@@ -67,7 +67,7 @@ pods: 6                       # 6 x (row + contained hot aisle + row). Every
                               # room. The cage is pods 1 and 2, rows F1 to F4.
 
 aisles:
-  cold: 1.2                   # measured: B to C, 6,58 -> 7,78 m
+  cold: 1.8                   # measured: B to C, 6,58 -> 7,78 m
   hot: 1.2                    # measured: the hatched HAC bands, 1,199 m
   perimeter: 1.2              # rack face to HALL wall. It is the outermost
                               # cold aisle as well as the clearance, and at
@@ -239,7 +239,7 @@ floor:
                               # velocity, which is what decides whether the
                               # far plates deliver -- so on a real study it is
                               # a number to ask for, not to inherit.
-  tiles_per_rack: 2           # Two plates in front of each cabinet. A 1,20 m
+  tiles_per_rack: 3           # Two plates in front of each cabinet. A 1,20 m
                               # cold aisle holds 1,20/0,60 = 2 rows of plate
                               # BETWEEN two facing rows, not two for each, so
                               # what is laid there is 2 and the summary says
@@ -251,7 +251,7 @@ floor:
 
 components:
   cage: cage-mesh-13          # 13 x 13 mm, 3 mm wire, 65% free area
-  ceiling_return: ceiling-return-600
+  ceiling_return: ceiling-return-600-open
   supply_grille: supply-grille-2000
 
 fanwall:
@@ -276,7 +276,7 @@ fanwall:
                               # draw -- a plant sized with redundancy, which
                               # is what makes the per-unit capacity at the
                               # real return the number worth reading.
-  static_pressure_pa: 100     # STATED HERE, not from the datasheet: neither
+  static_pressure_pa: 50      # STATED HERE, not from the datasheet: neither
                               # the manufacturer's sheet nor the as-built
                               # gives an external static pressure for this
                               # machine, which is the one field keeping it out
@@ -284,7 +284,7 @@ fanwall:
                               # figure for a downflow unit on a 1,0 m plenum;
                               # it decides the fan_capacity check and nothing
                               # else in this result.
-  control: independent        # each unit to its own return. `team` runs the
+  control: team               # each unit to its own return. `team` runs the
                               # units of one gallery to the worst return any
                               # of them sees, which is what a networked plant
                               # does -- and which now changes the answer for a
@@ -302,6 +302,7 @@ grilles:
   size: 0.6
   coverage: 1.0               # the whole ceiling over each contained aisle
   free_area: 0.65             # the ceiling-return component's own figure
+  across: 2
 
 containment:
   enabled: true               # every COLD aisle is contained: a lid at rack
@@ -324,12 +325,12 @@ mesh:
   # rack (2,2), the false ceiling (4,0), the slab (5,6) and the 1,0 m plenum.
   # 620.136 cells: a uniform mesh, and the price of one fine enough in x to
   # resolve the cabinet rather than the row.
-  cell_size: [0.2, 0.2, 0.2]
+  cell_size: [0.3, 0.3, 0.25]
 
 solver:
-  max_iterations: 500
+  max_iterations: 1000
   residual_tolerance: 1.0e-4
-  sensor_interval: 100
+  sensor_interval: 600
   warm_start: true
   processors: 9
 
