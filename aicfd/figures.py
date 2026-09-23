@@ -968,11 +968,12 @@ def capacity(export: Export, out: Path) -> Path | None:
         ax.axhline(net, color=MUTED, linewidth=1.0, linestyle=(0, (2, 2)),
                    zorder=1)
         ambient = getattr(coil, "rated_ambient_c", None)
+        # At the RIGHT end: the legend sits upper-left and the two collided.
         ax.annotate(
             f"compressors at their limit — {net:,.0f} kW net"
             + (f", at {ambient:g} °C outdoor air" if ambient else ""),
-            xy=(low, net), xytext=(3, 3), textcoords="offset points",
-            fontsize=6.5, color=SECOND, va="bottom")
+            xy=(high, net), xytext=(-3, 4), textcoords="offset points",
+            fontsize=6.5, color=SECOND, va="bottom", ha="right")
 
     if design.get("return_c") is not None:
         ax.scatter([design["return_c"]], [design["nscc_kw"]], s=46, marker="D",
