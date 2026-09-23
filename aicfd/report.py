@@ -486,9 +486,10 @@ def _introduction(doc) -> None:
          "Every unit's mixed-mean return temperature and mass flow are taken "
          "from the solved field, unit by unit."),
         ("3 — each coil answers",
-         "That return goes through that unit's coil. Its water valve modulates "
-         "to hold the setpoint; at full water the supply air follows the "
-         "return."),
+         "That return goes through that unit's coil. What the unit modulates "
+         "holds the setpoint — a chilled-water unit's valve, a "
+         "direct-expansion unit's compressors — and once that is at its limit "
+         "the supply air follows the return."),
         ("4 — the field continues",
          "Each answer is written back as that unit's supply temperature and "
          "the solution carries on from the field already there."),

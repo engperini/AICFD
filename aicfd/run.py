@@ -336,9 +336,16 @@ def solve_coupled(
         moved = (max(abs(supplies[k] - previous[k]) for k in supplies if k in previous)
                  if previous else None)
         settled = moved is not None and moved <= tolerance
+        # WHAT THIS PLANT MODULATES, so the line the engineer watches for an
+        # hour speaks of the machine in front of them (ADR-112).
+        unit = getattr(model, "equipment", None)
+        coil = unit.coil if unit is not None else None
+        duty = (coil.describe().get("duty_label", "water valve")
+                if coil is not None else "water valve")
         record = loop.Pass(number=number, iterations=end, supplies_c=supplies,
                            returns_c=returns, moved_k=moved,
-                           converged=settled, saturated=saturated)
+                           converged=settled, saturated=saturated,
+                           duty_label=duty)
         passes.append(record)
         if on_pass:
             on_pass(record)

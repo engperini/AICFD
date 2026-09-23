@@ -584,3 +584,40 @@ class TeamControlTest(unittest.TestCase):
         point = coil.operate_shared(34.0, 15.0, air, 21.9)
         self.assertLessEqual(point.supply_c, 15.0)
         self.assertGreaterEqual(point.capacity_kw, 0.0)
+
+
+class TheProgressLineSpeaksThePlantTest(unittest.TestCase):
+    """`2 at full water` ran for an hour on a hall of fourteen
+    direct-expansion CRACs, which have no water in them (ADR-112)."""
+
+    def line(self, **kw):
+        from aicfd.coupled import Pass
+
+        return Pass(number=2, iterations=1200, supplies_c={"fan1": 19.03},
+                    returns_c={"fan1": 26.5}, moved_k=0.78, converged=False,
+                    saturated=["fan1", "fan2"], **kw).summary()
+
+    def test_a_direct_expansion_plant_runs_out_of_compressor(self):
+        said = self.line(duty_label="compressor duty")
+        self.assertIn("2 at full compressor duty", said)
+        self.assertNotIn("water", said)
+
+    def test_a_chilled_water_plant_runs_out_of_valve(self):
+        self.assertIn("2 at full water valve", self.line(duty_label="water valve"))
+
+    def test_the_solver_hands_the_label_over(self):
+        import inspect
+
+        from aicfd import run
+
+        source = inspect.getsource(run.solve_coupled)
+        self.assertIn("duty_label=duty", source)
+        self.assertIn('describe().get("duty_label"', source)
+
+    def test_a_pass_with_nothing_saturated_says_nothing_about_duty(self):
+        from aicfd.coupled import Pass
+
+        said = Pass(number=1, iterations=600, supplies_c={"fan1": 18.8},
+                    returns_c={}, moved_k=None, converged=False,
+                    saturated=[], duty_label="compressor duty").summary()
+        self.assertNotIn("duty", said)

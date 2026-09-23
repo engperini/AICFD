@@ -72,7 +72,13 @@ class Pass:
     started."""
     converged: bool
     saturated: list[str]
-    """Units whose valve is wide open: their supply is no longer a setpoint."""
+    """Units with nothing left to give: their supply is no longer a setpoint.
+    A chilled-water unit is there with its valve wide open, a
+    direct-expansion one with its compressors at full duty."""
+    duty_label: str = "water valve"
+    """What THIS plant modulates, from its own coil (ADR-112). A line saying
+    `at full water` ran for an hour on a hall of fourteen direct-expansion
+    CRACs, which have no water in them."""
 
     def summary(self) -> str:
         warm = max(self.supplies_c.values()) if self.supplies_c else 0.0
@@ -82,7 +88,8 @@ class Pass:
             + ("the first, nothing to compare against yet"
                if self.moved_k is None else f"moved {self.moved_k:.3f} K")
             + (" (converged)" if self.converged else "")
-            + (f", {len(self.saturated)} at full water" if self.saturated else "")
+            + (f", {len(self.saturated)} at full {self.duty_label}"
+               if self.saturated else "")
         )
 
 
