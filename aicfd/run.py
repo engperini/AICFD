@@ -267,24 +267,49 @@ def stop_requested(case_dir: str | Path) -> bool:
 # --- solving the room and the machine together ---------------------------------
 
 
+#: Iterations the solver runs between two readings of the coils. Numerics,
+#: not a setting: long enough for the return to follow a change of supply
+#: through the room, short enough that a pass is cheap (ADR-124).
+COUPLING_SEGMENT = 300
+#: The most passes the loop may take before it is declared NOT closed. A
+#: safety net against a plant that oscillates between two answers, never a
+#: target: every tracked run closed in two to five. Hitting it fails
+#: `coil_closure` (ADR-123), which is the right outcome for a loop that did
+#: not converge.
+COUPLING_PASS_LIMIT = 30
+#: The loop is closed when no unit's supply air moves more than this between
+#: passes, in K.
+COUPLING_TOLERANCE_K = 0.02
+
+
 def solve_coupled(
     case_dir: str | Path,
     pipeline: tuple,
     model,
-    segment: int = 300,
-    max_passes: int = 5,
-    tolerance: float = 0.02,
+    segment: int = COUPLING_SEGMENT,
+    max_passes: int = COUPLING_PASS_LIMIT,
+    tolerance: float = COUPLING_TOLERANCE_K,
     on_step=None,
     on_pass=None,
 ) -> tuple[list[StepResult], list]:
-    """Solve, then let each fan wall's coil set its own supply temperature.
+    """Solve, then let each unit's coil set its own supply temperature, and
+    keep going until the room and the machines agree.
 
     The first segment is the run as it would have been: the iteration cap the
     spec asks for, at the supply temperature it states. Every pass after it
     reads each unit's own return off the solved field, puts it through the
     unit's coil, writes the answer back as that unit's supply temperature and
     continues from the field already there. It stops when no unit's supply
-    moves more than `tolerance`.
+    moves more than `tolerance` -- and not before.
+
+    HOW MANY PASSES THAT TAKES IS NOT THE ENGINEER'S TO CHOOSE. The commercial
+    tools re-evaluate the unit inside every iteration and the user picks the
+    machine and its control, never the numerics; the pass count here is the
+    same numerics and it used to be a case setting, which put a convergence
+    parameter in front of an engineer as though it were a design decision
+    (ADR-124). `max_passes` is a safety limit against a loop that oscillates,
+    and a run that reaches it has NOT closed: the record says so and the
+    `coil_closure` check fails on it.
 
     So coupling is an addition to the run, never a reduction of it: the flow
     is solved exactly as far as before, and the passes are what it costs to
@@ -384,7 +409,7 @@ def solve_coupled(
 COUPLING_RECORD = "coupling.json"
 
 
-def write_coupling_record(case_dir, passes, max_passes: int, tolerance: float):
+def write_coupling_record(case_dir, passes, limit: int, tolerance: float):
     """`<case>/coupling.json`: what the coupled loop did, for the report.
 
     In the case directory rather than in the results, because it is a fact
@@ -397,7 +422,7 @@ def write_coupling_record(case_dir, passes, max_passes: int, tolerance: float):
     last = passes[-1] if passes else None
     path.write_text(json.dumps({
         "passes": len(passes),
-        "max_passes": max_passes,
+        "limit": limit,
         "tolerance_k": tolerance,
         "converged": bool(last.converged) if last else False,
         "moved_k": last.moved_k if last else None,
@@ -409,6 +434,20 @@ def write_coupling_record(case_dir, passes, max_passes: int, tolerance: float):
             for p in passes
         ],
     }, indent=2) + "\n")
+    return path
+
+
+def write_coupling_off(case_dir):
+    """The record for a run solved with `solver.couple: false`.
+
+    Written so that the post-processing can tell "the engineer turned the
+    coupling off" from "this run left no record" -- the first is a choice the
+    report has to state, the second is a run to repeat (ADR-124).
+    """
+    import json
+
+    path = Path(case_dir) / COUPLING_RECORD
+    path.write_text(json.dumps({"off": True, "passes": 0}, indent=2) + "\n")
     return path
 
 

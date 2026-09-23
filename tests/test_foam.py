@@ -276,7 +276,7 @@ class TheRunLeavesARecordOfHowTheLoopEndedTest(unittest.TestCase):
         from aicfd.run import read_coupling_record, write_coupling_record
 
         with tempfile.TemporaryDirectory() as tmp:
-            write_coupling_record(Path(tmp), passes, kw.get("max_passes", 5),
+            write_coupling_record(Path(tmp), passes, kw.get("limit", 30),
                                   kw.get("tolerance", 0.02))
             return read_coupling_record(Path(tmp))
 
@@ -298,9 +298,9 @@ class TheRunLeavesARecordOfHowTheLoopEndedTest(unittest.TestCase):
 
     def test_a_loop_stopped_by_its_cap_says_so(self):
         got = self.record([self.a_pass(n, 1.2, False) for n in range(1, 6)],
-                          max_passes=5)
+                          limit=5)
         self.assertFalse(got["converged"])
-        self.assertEqual(got["passes"], got["max_passes"])
+        self.assertEqual(got["passes"], got["limit"])
 
     def test_a_run_that_never_coupled_leaves_nothing(self):
         from aicfd.run import read_coupling_record
@@ -330,3 +330,33 @@ class TheRunLeavesARecordOfHowTheLoopEndedTest(unittest.TestCase):
 
         self.assertIn('kpis["coupling"] = read_coupling_record(case)',
                       inspect.getsource(post))
+
+    def test_a_run_told_not_to_couple_says_so_on_the_record(self):
+        """`solver.couple: false` is a choice, and the report has to state
+        it -- which it can only do if it can tell the choice from a run that
+        left no record at all (ADR-124)."""
+        from aicfd.run import read_coupling_record, write_coupling_off
+
+        with tempfile.TemporaryDirectory() as tmp:
+            write_coupling_off(Path(tmp))
+            got = read_coupling_record(Path(tmp))
+        self.assertTrue(got["off"])
+        self.assertEqual(got["passes"], 0)
+        self.assertNotIn("converged", got)
+
+    def test_the_limit_is_a_safety_net_not_a_target(self):
+        """Every tracked run closed in two to five passes; the limit has to
+        sit far above that, or it is a setting again by another name."""
+        from aicfd.run import COUPLING_PASS_LIMIT, COUPLING_TOLERANCE_K
+
+        self.assertGreaterEqual(COUPLING_PASS_LIMIT, 20)
+        self.assertLessEqual(COUPLING_TOLERANCE_K, 0.05)
+
+    def test_both_entry_points_leave_the_off_record(self):
+        import inspect
+
+        from aicfd import cli, server
+
+        self.assertIn("write_coupling_off(target)", inspect.getsource(cli))
+        self.assertIn("write_coupling_off(target)",
+                      inspect.getsource(server.start_run))

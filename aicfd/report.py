@@ -1615,14 +1615,22 @@ def _results(doc, export: Export, drawn: dict) -> None:
     # this document is the plant's answer or the last guess before the pass cap
     # (ADR-123).
     coupling = kpis.get("coupling")
-    if coupling:
+    if coupling and coupling.get("off"):
+        _para(doc,
+              "The room and the units were NOT solved together: this case "
+              "turns the coupling off (`solver.couple: false`), so the supply "
+              "air temperature is the one the case states and nothing in the "
+              "run asked the machines whether they can make it. The "
+              "`coil_closure` check in section 4.1 is what says whether they "
+              "can.",
+              size=9, colour=SECOND)
+    elif coupling:
         passes = coupling.get("passes") or 0
-        cap = coupling.get("max_passes") or passes
         moved = coupling.get("moved_k")
         closed = coupling.get("converged")
         _para(doc,
-              f"The room and the units were solved together. The loop ran "
-              f"{passes} of the {cap} passes it was allowed"
+              f"The room and the units were solved together. The loop took "
+              f"{passes} pass{'es' if passes != 1 else ''}"
               + (f", and on the last one no unit's supply air temperature "
                  f"moved more than {_num(moved, 3)} K"
                  if moved is not None else "")
@@ -1630,10 +1638,11 @@ def _results(doc, export: Export, drawn: dict) -> None:
                  f"closes on, so the supply temperature in this report is what "
                  f"this plant produces at the return this room gives it."
                  if closed else
-                 ". IT DID NOT CLOSE: the pass cap stopped it while the units "
-                 "were still moving, so the field carries a supply temperature "
-                 "the plant had not yet arrived at. Raise "
-                 "`solver.coupling_passes` and run it again."),
+                 f". IT DID NOT CLOSE: that is the safety limit of "
+                 f"{coupling.get('limit')} passes, and the units were still "
+                 f"moving when it was reached. A loop that does not close in "
+                 f"that many is a plant oscillating between two answers, and "
+                 f"the field carries one of them."),
               size=9, colour=SECOND if closed else BAD,
               bold=not closed)
 

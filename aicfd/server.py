@@ -1259,7 +1259,10 @@ def start_run(name: str) -> None:
     studies, and only one of them was the one the report describes (ADR-120).
     """
     from aicfd import case, post
-    from aicfd.run import FoamCommandFailed, solve, solve_coupled
+    from aicfd.run import (
+        COUPLING_SEGMENT, FoamCommandFailed, solve, solve_coupled,
+        write_coupling_off,
+    )
 
     def worker() -> None:
         try:
@@ -1298,32 +1301,33 @@ def start_run(name: str) -> None:
             sampler = post.Sampler(model, target)
             sampler.start()
 
-            passes = int(solver.get("coupling_passes", 5))
-            segment = int(solver.get("coupling_segment", 300))
-
             def pass_done(record) -> None:
                 # The line the CLI prints, on the page's own progress state.
                 # A COUPLED RUN GOES PAST `max_iterations`, and a reader who
                 # asked for 1600 and watched it carry on to 2800 with nothing
-                # said is owed the reason and the target (ADR-122).
+                # said is owed the reason and the target (ADR-122). There is
+                # no "of N": the loop runs until it closes (ADR-124).
                 more = (f" — solving on to iteration "
-                        f"{record.iterations + segment:,}"
-                        if record.number < passes and not record.converged
-                        else "")
+                        f"{record.iterations + COUPLING_SEGMENT:,}"
+                        if not record.converged else " — closed")
                 STATE.set(stage="solving", step="buoyantSimpleFoam",
-                          message=f"coil pass {record.number} of {passes}: "
+                          message=f"coil pass {record.number}: "
                                   f"{record.summary().split(': ', 1)[-1]}{more}")
 
             try:
                 if solver.get("couple", True):
+                    # The same call the CLI makes, with the same defaults: the
+                    # pass count and the segment are numerics and no case
+                    # sets them (ADR-124).
                     solve_coupled(
                         target, case.pipeline(processors), model,
-                        segment=int(solver.get("coupling_segment", 300)),
-                        max_passes=int(solver.get("coupling_passes", 5)),
                         on_step=step, on_pass=pass_done,
                     )
                 else:
                     solve(target, case.pipeline(processors), on_step=step)
+                    # The choice, on the record, so the report states it
+                    # rather than guessing at a missing file (ADR-124).
+                    write_coupling_off(target)
             finally:
                 sampler.stop()
             # Export here, not later and not by hand. A solve that leaves no

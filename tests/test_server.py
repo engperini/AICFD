@@ -886,11 +886,15 @@ class ThePageSolvesTheSameWayTheCommandLineDoesTest(unittest.TestCase):
         self.assertIn("solve_coupled(", said)
         self.assertIn("model,", said)
 
-    def test_it_honours_the_same_settings_the_cli_does(self):
+    def test_it_honours_the_one_coupling_setting_there_is(self):
+        """`solver.couple` turns the coupling on or off. The pass count and
+        the segment length were settings too, and are numerics now: no case
+        sets them and neither path reads them (ADR-124)."""
         said = self.source()
-        for key in ("couple", "coupling_segment", "coupling_passes"):
-            with self.subTest(setting=key):
-                self.assertIn(key, said)
+        self.assertIn("couple", said)
+        for gone in ("coupling_segment", "coupling_passes"):
+            with self.subTest(setting=gone):
+                self.assertNotIn(gone, said)
 
     def test_a_case_that_asks_for_no_coupling_still_gets_a_plain_solve(self):
         said = self.source()
@@ -910,9 +914,8 @@ class ThePageSolvesTheSameWayTheCommandLineDoesTest(unittest.TestCase):
 
         page = self.source()
         command = inspect.getsource(cli)
-        for fragment in ('solver.get("coupling_segment", 300)',
-                         'solver.get("coupling_passes", 5)',
-                         'solver.get("couple", True)'):
+        for fragment in ('solver.get("couple", True)',
+                         "solve_coupled("):
             with self.subTest(fragment=fragment):
                 self.assertIn(fragment, page)
                 self.assertIn(fragment, command)

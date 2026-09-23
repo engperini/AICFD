@@ -1,44 +1,24 @@
-# DATA HALL WITH A CUSTOMER CAGE AT ONE END -- 1 MW, direct expansion,
-# downflow CRACs on a raised floor.
+# THE SAME HALL AS `hall-cage-1mw`, COOLED BY FAN WALLS.
 #
-# What this case is here to show, and what makes it different from the other
-# halls in this folder:
+# The room is `hall-cage-1mw` -- the cage, its rack schedule, the aisles, the
+# mesh. What changes is the whole cooling architecture, which is what a fan
+# wall changes: there is NO raised floor, the units stand in the mechanical
+# galleries and blow through the dividing wall into the room, so the room is
+# the COLD side and it is the HOT aisles that are contained, discharging
+# through ceiling grilles into the return plenum that feeds both galleries.
 #
-#   A CAGE. One customer's rows are fenced off from the rest of the room. The
-#   cage here is at the EDGE of the hall: it occupies pods 1 and 2, the room
-#   closes it on three sides, and its only real wall is the one dividing it
-#   from the racks above. Leave `cage.sides` out and every side the room does
-#   not already close is built instead, which is a cage standing free in the
-#   middle (ADR-096, ADR-098).
+# WHY IT EXISTS. Every rule the software applies to a cooling unit -- the
+# coupled solve, `team` control, the coil at the return the room really
+# produces, the valve at its limit, the `coil_closure` check, the wording of
+# the report -- has to hold for a fan wall as it does for a downflow CRAC or
+# CRAH, on a room whose answer with the other two is already known. This is
+# the fan-wall third of that proof. Same room, different machine and
+# different air path: read all three reports.
 #
-#   A REAL RACK SCHEDULE INSIDE IT. 509,96 kW over 52 positions, cabinet by
-#   cabinet, as the customer's drawing lays them out: 20 kW cabinets at the
-#   ends of each row, 10 kW through the middle, five ODF positions carrying
-#   nothing at all, and twelve future positions at 8,33 kW. Outside the cage
-#   the remaining 488,8 kW is spread evenly over 104 positions at 4,7 kW --
-#   which is how a colocation hall really is, and what a single
-#   `racks.load_kw` cannot say.
-#
-#   A DIRECT-EXPANSION PLANT, MODELLED. The units are DX room units, not
-#   chilled-water fan walls, and their evaporator is fitted from the
-#   manufacturer's own selection (ADR-103): the run asks each machine what it
-#   does at the return this room gives it rather than holding it at the plate
-#   figure. What is still not modelled is the condensing side, which follows
-#   the outdoor air -- the report says so once, in its limitations.
-#
-#   A CONTAINED COLD AISLE, AND A CAGE WALL STANDING IN ONE. The aisle
-#   between rows F4 and F5 is the one the dividing wall crosses, so the
-#   containment does not reach it: each side closes with a side of its own
-#   and the rest of the clearance is the walkway to the cage (ADR-110).
-#
-# The geometry is taken from a real colocation layout and the room is real in
-# its proportions. The cage's loads are the project's own schedule with the
-# client's names taken off.
-#
-# The air loop: downflow units -> under-floor plenum -> floor plates in the
-# contained cold aisles -> racks -> the room, which is the hot side ->
-# ceiling grilles over the hot aisles -> return plenum -> back to the units.
-name: hall-cage-1mw
+# The air loop: fan walls -> woven mesh in the gallery wall -> the room, which
+# is the cold side -> racks -> contained hot aisles -> ceiling grilles ->
+# return plenum -> back to the galleries.
+name: hall-cage-1mw-fanwall
 
 site:
   altitude_m: 0.0             # sea level, which is the conservative choice
@@ -208,14 +188,12 @@ cage:
                               # sides, so the aisle the wall stands in is at
                               # least twice this (ADR-109).
                               #
-                              # It has to exceed `aisles.cold`, because this
-                              # hall is run with the COLD aisle contained: a
-                              # contained aisle cannot end on a cage wall, so
-                              # it closes with a side of its own and the rest
-                              # of the clearance is the walkway to the cage
-                              # (ADR-110). 1,20 m of contained aisle from each
-                              # row's faces leaves 1,20 m of walkway on each
-                              # face of the wall.
+                              # In this hall the cold aisles are the open
+                              # room, so the wall simply stands in a wide
+                              # aisle with 2,40 m of clear floor to the racks
+                              # on each face of it (ADR-109); compare
+                              # `hall-cage-1mw`, whose contained cold aisle
+                              # has to close short of the wall (ADR-110).
                               # On the three sides the room closes, neither
                               # applies: the rectangle is clipped to the hall
                               # so the wall that IS built runs wall to wall.
@@ -229,28 +207,9 @@ cage:
   # leave the racks with an exit and no entry (ADR-096).
   roof: false
 
-floor:
-  # SUPPLY THROUGH THE FLOOR. The units stand in the room and discharge DOWN
-  # through the deck; the air reaches the cold aisles through perforated
-  # plates in the floor and returns through the ceiling grilles over the
-  # contained hot aisles. That is the arrangement a downflow unit needs, and
-  # naming one without it is refused by name (ADR-072, ADR-076).
-  enabled: true
-  height: 1.0                 # ASSUMED: neither document gives the plenum
-                              # depth. 1,0 m is a common figure and it is four
-                              # 0,25 m z cells. It sets the underfloor
-                              # velocity, which is what decides whether the
-                              # far plates deliver -- so on a real study it is
-                              # a number to ask for, not to inherit.
-  tiles_per_rack: 2           # Two plates in front of each cabinet. A 1,20 m
-                              # cold aisle holds 1,20/0,60 = 2 rows of plate
-                              # BETWEEN two facing rows, not two for each, so
-                              # what is laid there is 2 and the summary says
-                              # so by aisle (ADR-108). State
-                              # `floor.tiles_across: 2` to say it outright, or
-                              # widen `aisles.cold` to 2,40 m to fit all four.
-                              # The aisle the cage wall stands in is wide
-                              # enough to take them.
+# NO `floor:` BLOCK. A fan wall stands in the gallery and blows through the
+# dividing wall into the room; a raised floor is the downflow unit's air path
+# and naming a fan wall with one is refused by name (ADR-072, ADR-076).
 
 components:
   cage: cage-mesh-13          # 13 x 13 mm, 3 mm wire, 65% free area
@@ -258,48 +217,32 @@ components:
   supply_grille: supply-grille-2000
 
 fanwall:
-  # THE EMERSON CRACs THAT ARE INSTALLED. Everything below comes from
-  # `equipment/P3100DA.yaml`, which carries the manufacturer's selection in
-  # full -- 27.500 m3/h, 100,5 kW NET sensible at 30,0 degC return, supplying
-  # 18,8 degC, at 37,6 degC of outdoor air on the condenser.
+  # VERTIV LIEBERT CWA CA80NEVGT, from `equipment/CA80NEVGT.yaml`: a
+  # chilled-water fan wall, 573,7 kW net sensible at 38,0 degC return and
+  # 140.165 m3/h, on 20/30 degC water, 150 Pa of external static pressure on
+  # its own sheet. The sibling of the CA80NPVG6 that `hall-double-gallery`
+  # runs fourteen of.
   #
-  # DIRECT EXPANSION, AND THE EVAPORATOR IS MODELLED (ADR-103). The coil is
-  # recovered from that selection's own psychrometry -- the 10,5 degC coil
-  # surface its sensible/total split implies -- so the run asks the machine
-  # what it does at the return THIS room produces instead of holding it at
-  # the plate figure. At 26 degC of return, for instance, a unit gives about
-  # 80 kW, not 100,5. What is still not modelled is the CONDENSING side: the
-  # capacity holds at the selection's 37,6 degC outdoor air, and the report
-  # says so in its limitations.
-  model: P3100DA
-  count: 14                   # what the project has installed: 7 a side, on
-                              # the two gallery walls. 14 x 100,5 = 1.407 kW
-                              # of rated capacity for 1.000 kW of IT, and
-                              # 385.000 m3/h against the 268.500 the racks
-                              # draw -- a plant sized with redundancy, which
-                              # is what makes the per-unit capacity at the
-                              # real return the number worth reading.
-  static_pressure_pa: 50      # STATED HERE, not from the datasheet: neither
-                              # the manufacturer's sheet nor the as-built
-                              # gives an external static pressure for this
-                              # machine, which is the one field keeping it out
-                              # of `equipment.SHIPPED`. 50 Pa is a low figure
-                              # for a downflow unit on a 1,0 m plenum and is
-                              # deliberately conservative; it decides the
-                              # fan_capacity check and nothing else.
-  control: team               # each unit to its own return. `team` runs the
-                              # units of one gallery to the worst return any
-                              # of them sees, which is what a networked plant
-                              # does -- and which now changes the answer for a
-                              # DX plant too, because its coil is modelled
-                              # (ADR-064, ADR-103).
-  airflow_m3h: 27500
-  capacity_kw: 100.5
-  power_kw: 7.5
-  width: 2.553
-  height: 1.97
-  depth: 0.873
-  supply_temp_c: 18.8
+  # FOUR UNITS AT REDUCED SPEED, which is how an N+1 fan-wall plant actually
+  # stands: two a side, all running, each at the airflow that gives the room
+  # what it draws with a margin. 4 x 75.000 = 300.000 m3/h against the
+  # 268.500 the racks draw (112 %), and 4 x 573,7 = 2.295 kW of coil for
+  # 1.000 kW of IT -- lose one unit and the other three still carry it. The
+  # coil is evaluated at the airflow the unit is really moving, not at its
+  # selection (the report's capacity curve draws both).
+  model: CA80NEVGT
+  count: 4                    # 2 a side, on the two gallery walls
+  control: team               # shared VALVE position, as every chilled-water
+                              # plant here (ADR-117)
+  airflow_m3h: 75000          # per unit, at 53 % of the selection's 140.165:
+                              # EC fans modulated to the room's demand
+  capacity_kw: 573.7
+  power_kw: 29.4
+  width: 3.96
+  height: 3.67
+  depth: 1.48
+  supply_temp_c: 23.0         # the setpoint the plant is asked to hold; the
+                              # coupled solve decides whether it can
 
 grilles:
   size: 0.6
@@ -308,13 +251,12 @@ grilles:
   across: 2
 
 containment:
-  enabled: true               # every COLD aisle is contained: a lid at rack
-  aisle: cold                 # height and a door at each end, so the room
-                              # around the rows is the hot one and the ceiling
-                              # grilles take the return from it (ADR-100).
-                              # Where the cage wall stands in one, the
-                              # containment stops short of it and closes with
-                              # a side of its own (ADR-110).
+  enabled: true               # every HOT aisle is contained -- the default,
+                              # and the only arrangement a fan wall blowing
+                              # into the room can have: the room is the cold
+                              # side, the aisle between the racks' backs is
+                              # the hot one, and the ceiling grilles over it
+                              # take the return (ADR-100).
 
 mesh:
   # 0,30 m in plan and 0,25 m in height: 229.216 cells, which a 16-core

@@ -711,9 +711,7 @@ def _coil_alerts(kpis: dict) -> list[str]:
                 f"The field was solved at {num(field, 2)} degC, which this "
                 f"plant does not produce -- every temperature in this result "
                 f"is {apart:.2f} K optimistic, and `coil_closure` in section "
-                f"4.1 fails for that reason. Raise `solver.coupling_passes` "
-                f"so the loop closes, or state a `fanwall.supply_temp_c` the "
-                f"plant can hold."
+                f"4.1 fails for that reason. " + _closure_remedy(kpis) + "."
             )
         else:
             line += (
@@ -725,6 +723,47 @@ def _coil_alerts(kpis: dict) -> list[str]:
             )
         out.append(line)
     return out
+
+
+def _closure_remedy(kpis: dict) -> str:
+    """What to do about a field the plant cannot produce -- which depends on
+    WHY it was produced, and the coupling record says why (ADR-124).
+
+    There is no pass count to raise: the loop runs until it closes. What is
+    left is a run that was never coupled, or one that could not close.
+    """
+    record = kpis.get("coupling")
+    if record and record.get("off"):
+        return (
+            "This run was solved with the coupling off, so nothing ever asked "
+            "the machines whether they can make this air: turn "
+            "`solver.couple` on, or state a `fanwall.supply_temp_c` the plant "
+            "can hold"
+        )
+    if not record:
+        # Coupling on, and no record of it: a run from before the record
+        # existed, or one that was stopped before the loop wrote it. Saying
+        # "the coupling was off" here would be a false statement about the
+        # run, so it says what it knows.
+        return (
+            "This run left no record of its coupled loop -- it predates the "
+            "record or was stopped before the loop finished -- so run it "
+            "again; the loop runs until the units and the room agree"
+        )
+    if not record.get("converged"):
+        return (
+            f"The coupled loop took its safety limit of {record.get('limit')} "
+            f"passes and did not close -- the last one still moved "
+            f"{(record.get('moved_k') or 0):.2f} K -- which is a plant "
+            f"oscillating between two answers, not a loop that needed longer. "
+            f"Section 4.2 has the pass history; look at what the units at "
+            f"their limit are doing"
+        )
+    return (
+        "The loop reported closed and the field disagrees with it, which is a "
+        "defect in the software and not in the case: report it with the "
+        "solver log"
+    )
 
 
 def _coil_gap_k(kpis: dict) -> float | None:
@@ -1546,8 +1585,7 @@ def _checks(model: Model, step: Path, kpis: dict, grid: dict) -> list[Check]:
                     + f"return it receives ({apart:.2f} K apart) -- the field "
                     f"was solved with supply air this plant does not produce, "
                     f"so every temperature in it is that much optimistic. "
-                    f"Raise `solver.coupling_passes` so the loop closes, or "
-                    f"state a `fanwall.supply_temp_c` the plant can hold"
+                    + _closure_remedy(kpis)
                 ),
             )
         )

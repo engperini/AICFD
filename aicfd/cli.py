@@ -331,14 +331,15 @@ def _run(args) -> int:
         def pass_done(record):
             print(f"  coil: {record.summary()}", flush=True)
 
+        # No pass count and no segment length from the case: the loop runs
+        # until the room and the machines agree, and how many passes that
+        # takes is numerics, not a setting (ADR-124).
         steps, passes = run_module.solve_coupled(
             target, case.pipeline(options["processors"]), model,
-            segment=int(solver.get("coupling_segment", 300)),
-            max_passes=int(solver.get("coupling_passes", 5)),
             on_step=step,
             on_pass=pass_done if solver.get("couple", True) else None,
         ) if solver.get("couple", True) else (
-            solve(target, case.pipeline(options["processors"]), on_step=step), []
+            _solve_uncoupled(target, case.pipeline(options["processors"]), step), []
         )
     except (FoamNotInstalled, FoamCommandFailed) as error:
         print(f"error: {error}", file=sys.stderr)
@@ -644,3 +645,14 @@ def _tail(path: Path, lines: int = 20) -> None:
 
 if __name__ == "__main__":
     sys.exit(main())
+
+
+def _solve_uncoupled(target, pipeline, on_step):
+    """`solver.couple: false`: the plain solve, and a record saying the
+    coupling was OFF -- so the report states the choice instead of guessing
+    at the missing record (ADR-124)."""
+    from aicfd.run import solve, write_coupling_off
+
+    steps = solve(target, pipeline, on_step=on_step)
+    write_coupling_off(target)
+    return steps

@@ -52,8 +52,6 @@ BEYOND_THE_FORM = {
     "components.gallery_mesh",
     "solver.residual_tolerance",
     "solver.couple",
-    "solver.coupling_passes",
-    "solver.coupling_segment",
 }
 
 #: A reference-table row: a backticked key, then type, range and source. The

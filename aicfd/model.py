@@ -1426,6 +1426,19 @@ def build_model(spec: dict) -> Model:
     # worst way to lose one (ADR-098).
     model.warnings = (list(layout.row_notes) + floor_notes + cage_notes
                       + check_mesh_alignment(model))
+    # A SETTING THAT IS NOT ONE ANY MORE. The coupled loop runs until the room
+    # and the machines agree; how many passes that takes, and how long each
+    # is, are numerics and no case chooses them (ADR-124). A case that still
+    # carries the old keys is told so by name rather than silently obeyed or
+    # silently ignored.
+    for gone in ("coupling_passes", "coupling_segment"):
+        if gone in (spec.get("solver") or {}):
+            model.warnings.insert(0, (
+                f"`solver.{gone}` is not a setting any more and was ignored: "
+                f"the coupled loop runs until every unit's supply air stops "
+                f"moving, and a case chooses the machine and its control, not "
+                f"the numerics (ADR-124). Remove the line."
+            ))
     # The fan placement snaps the unit's width itself (so units can be packed
     # without overlapping), so the alignment check never sees the nominal one.
     nominal = float(fan["width"]) if "width" in fan else None

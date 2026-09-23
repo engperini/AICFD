@@ -318,8 +318,6 @@ or three.
 | `solver.warm_start` | bool | | seed the loop's topology (ADR-019). Leave it true |
 | `solver.processors` | int | 1 to 64 | cores. More than the machine has is refused by MPI, not by AICFD |
 | `solver.couple` | bool | | re-solve the coil against the return air the room actually produces. True by default |
-| `solver.coupling_passes` | int | | how many times, at most |
-| `solver.coupling_segment` | int | | iterations per coupling pass |
 
 ---
 
@@ -570,7 +568,7 @@ FAIL is usually a statement about your inputs:
 | `plenum_resistance` | the same, for the supply plenum |
 | `floor_resistance` | the same, for the raised floor plates |
 | `fan_capacity` | the units cannot do what the case asks of them |
-| `coil_closure` | the field was solved with supply air the plant does not make: raise `solver.coupling_passes` so the loop closes, or state a `fanwall.supply_temp_c` the plant can hold |
+| `coil_closure` | the field was solved with supply air the plant does not make. With `solver.couple: false` nothing ever asked the machines: turn it on, or state a `fanwall.supply_temp_c` the plant can hold. With the coupling on, the loop reached its safety limit without closing, and section 4.2 of the report has the pass history |
 | `settled` | not converged; raise `max_iterations` |
 | `ashrae_inlet` | rack intake temperatures outside the envelope — a real result, not necessarily a modelling fault |
 | `plausible_velocity` | a velocity nothing in a data hall produces; look for a geometry error |

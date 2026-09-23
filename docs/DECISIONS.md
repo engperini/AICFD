@@ -5291,3 +5291,57 @@ returned to the caller and written down nowhere — so the only way to know was
 to have watched the run, and a reader of the report was not there. The solve
 now leaves `coupling.json` in the case, and section 4.2 says how many passes
 ran, how far the last one moved, and whether that closed.
+
+---
+
+## ADR-124 — The coupled loop runs until it closes; how many passes that takes is not a setting
+
+**Decision.** `solver.coupling_passes` and `solver.coupling_segment` are gone
+from the case, the page and the manual. The coupled solve runs passes until
+no unit's supply air moves more than 0,02 K, and stops early only at a safety
+limit of thirty, which a run reaching has **not closed** — the record says so
+and `coil_closure` fails on it. A case that still carries the old keys is told
+by name that they were ignored.
+
+**Why.** An engineer asked the right question: *do the commercial tools ask the
+user to handle the coupling? Shouldn't it be part of every iteration? How
+would I choose the coupling for another plant?*
+
+They do not, it should, and you would not. In 6SigmaDCX, in FloTHERM, in every
+tool of that kind, the cooling unit is re-evaluated inside the iteration loop
+and the user chooses the **machine** (its selection), its **control** (supply
+setpoint, return setpoint, capacity-limited) and its **limits**. Nobody
+chooses how many times the unit and the room talk to each other, because that
+is convergence, and convergence is the solver's job.
+
+Here the coupling was built as *solve a segment → stop → read → write back →
+restart* (ADR-040), and the pass count and the segment length leaked out of
+that implementation into the case file as though they were design decisions.
+A 1 MW hall then stopped at its default of five passes with the units still
+moving 1,12 K, and the remedy the software offered — "raise
+`solver.coupling_passes`" — asked the engineer to tune a convergence
+parameter they had no way to judge. That is the software handing its own job
+to its user.
+
+**What is the engineer's and what is not:**
+
+| decision | whose |
+|---|---|
+| the machine, its setpoint, `team` or `independent`, its ceilings | the engineer's — it stays in the case |
+| how often the coil is re-read, how many times, when it has converged | nobody's — it is numerics and it is gone |
+
+**The safety limit is not a target.** Every tracked run closed in two to five
+passes. A loop that has not closed in thirty is a plant oscillating between
+two answers — a `team` plant flipping which unit is worst, a saturated unit
+handing its return back and forth — and the field carries one of them. That
+is a finding about the plant, the record and section 4.2 of the report say
+so, and no number of further passes would have made it a result.
+
+**What this does not do, and why.** The right implementation re-evaluates the
+coil *inside* the solver, every N iterations, with no stop and no restart — a
+function object on the supply patches. OpenFOAM's `coded*` mechanisms do that
+through run-time compilation, and the Debian `openfoam` package this image
+installs ships no `wmake` and no headers, so they are not available without
+rebuilding the image around a development install. Until then the loop is
+outside the solver and the record of it is written down; the interface the
+engineer sees is already the one the commercial tools have.

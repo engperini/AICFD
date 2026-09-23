@@ -1,44 +1,26 @@
-# DATA HALL WITH A CUSTOMER CAGE AT ONE END -- 1 MW, direct expansion,
-# downflow CRACs on a raised floor.
+# THE SAME HALL AS `hall-cage-1mw`, COOLED BY CHILLED-WATER CRAHs.
 #
-# What this case is here to show, and what makes it different from the other
-# halls in this folder:
+# Everything about the room is `hall-cage-1mw` -- the cage, its rack schedule,
+# the raised floor, the contained cold aisles, the mesh. What changes is the
+# machine: the fourteen direct-expansion Emerson units become fourteen
+# Uniflair HXCV5000F-HT downflow CRAHs on 20/30 degC chilled water, selected
+# at 100,0 kW net sensible and 31.550 m3/h, which is the closest one-for-one
+# swap the catalogue offers (the Emerson gives 100,5 kW at 27.500 m3/h).
 #
-#   A CAGE. One customer's rows are fenced off from the rest of the room. The
-#   cage here is at the EDGE of the hall: it occupies pods 1 and 2, the room
-#   closes it on three sides, and its only real wall is the one dividing it
-#   from the racks above. Leave `cage.sides` out and every side the room does
-#   not already close is built instead, which is a cage standing free in the
-#   middle (ADR-096, ADR-098).
+# WHY IT EXISTS. Every rule the software applies to a cooling unit -- the
+# coupled solve, `team` control, the coil at the return the room really
+# produces, the compressor or valve at its limit, the `coil_closure` check,
+# the wording of the report -- has to hold for a chilled-water machine as it
+# does for a DX one, and the two behave differently at the limit: a CRAH at
+# full duty has its VALVE wide open and shares that position with the plant
+# (ADR-117), where a CRAC shares a setpoint and has a compressor ceiling
+# (ADR-118). This case is the CRAH half of that proof, on a room whose DX
+# answer is already known. Same room, different machine, read both reports.
 #
-#   A REAL RACK SCHEDULE INSIDE IT. 509,96 kW over 52 positions, cabinet by
-#   cabinet, as the customer's drawing lays them out: 20 kW cabinets at the
-#   ends of each row, 10 kW through the middle, five ODF positions carrying
-#   nothing at all, and twelve future positions at 8,33 kW. Outside the cage
-#   the remaining 488,8 kW is spread evenly over 104 positions at 4,7 kW --
-#   which is how a colocation hall really is, and what a single
-#   `racks.load_kw` cannot say.
-#
-#   A DIRECT-EXPANSION PLANT, MODELLED. The units are DX room units, not
-#   chilled-water fan walls, and their evaporator is fitted from the
-#   manufacturer's own selection (ADR-103): the run asks each machine what it
-#   does at the return this room gives it rather than holding it at the plate
-#   figure. What is still not modelled is the condensing side, which follows
-#   the outdoor air -- the report says so once, in its limitations.
-#
-#   A CONTAINED COLD AISLE, AND A CAGE WALL STANDING IN ONE. The aisle
-#   between rows F4 and F5 is the one the dividing wall crosses, so the
-#   containment does not reach it: each side closes with a side of its own
-#   and the rest of the clearance is the walkway to the cage (ADR-110).
-#
-# The geometry is taken from a real colocation layout and the room is real in
-# its proportions. The cage's loads are the project's own schedule with the
-# client's names taken off.
-#
-# The air loop: downflow units -> under-floor plenum -> floor plates in the
-# contained cold aisles -> racks -> the room, which is the hot side ->
-# ceiling grilles over the hot aisles -> return plenum -> back to the units.
-name: hall-cage-1mw
+# The air loop is the DX case's: downflow units -> under-floor plenum -> floor
+# plates in the contained cold aisles -> racks -> the room, which is the hot
+# side -> ceiling grilles over the hot aisles -> return plenum -> the units.
+name: hall-cage-1mw-crah
 
 site:
   altitude_m: 0.0             # sea level, which is the conservative choice
@@ -258,48 +240,39 @@ components:
   supply_grille: supply-grille-2000
 
 fanwall:
-  # THE EMERSON CRACs THAT ARE INSTALLED. Everything below comes from
-  # `equipment/P3100DA.yaml`, which carries the manufacturer's selection in
-  # full -- 27.500 m3/h, 100,5 kW NET sensible at 30,0 degC return, supplying
-  # 18,8 degC, at 37,6 degC of outdoor air on the condenser.
+  # UNIFLAIR HXCV5000F-HT, from `equipment/HXCV5000F-HT.yaml`: a downflow
+  # chilled-water room unit, 100,0 kW net sensible at 34,0 degC return and
+  # 31.550 m3/h, on 20/30 degC water, 50 Pa of external static pressure on
+  # its own sheet -- so nothing is stated here that the sheet already says.
   #
-  # DIRECT EXPANSION, AND THE EVAPORATOR IS MODELLED (ADR-103). The coil is
-  # recovered from that selection's own psychrometry -- the 10,5 degC coil
-  # surface its sensible/total split implies -- so the run asks the machine
-  # what it does at the return THIS room produces instead of holding it at
-  # the plate figure. At 26 degC of return, for instance, a unit gives about
-  # 80 kW, not 100,5. What is still not modelled is the CONDENSING side: the
-  # capacity holds at the selection's 37,6 degC outdoor air, and the report
-  # says so in its limitations.
-  model: P3100DA
-  count: 14                   # what the project has installed: 7 a side, on
-                              # the two gallery walls. 14 x 100,5 = 1.407 kW
-                              # of rated capacity for 1.000 kW of IT, and
-                              # 385.000 m3/h against the 268.500 the racks
-                              # draw -- a plant sized with redundancy, which
-                              # is what makes the per-unit capacity at the
-                              # real return the number worth reading.
-  static_pressure_pa: 50      # STATED HERE, not from the datasheet: neither
-                              # the manufacturer's sheet nor the as-built
-                              # gives an external static pressure for this
-                              # machine, which is the one field keeping it out
-                              # of `equipment.SHIPPED`. 50 Pa is a low figure
-                              # for a downflow unit on a 1,0 m plenum and is
-                              # deliberately conservative; it decides the
-                              # fan_capacity check and nothing else.
-  control: team               # each unit to its own return. `team` runs the
-                              # units of one gallery to the worst return any
-                              # of them sees, which is what a networked plant
-                              # does -- and which now changes the answer for a
-                              # DX plant too, because its coil is modelled
-                              # (ADR-064, ADR-103).
-  airflow_m3h: 27500
-  capacity_kw: 100.5
-  power_kw: 7.5
-  width: 2.553
-  height: 1.97
-  depth: 0.873
-  supply_temp_c: 18.8
+  # CHILLED WATER, AND THE COIL IS MODELLED as a counterflow heat exchanger
+  # fitted to that one selection (ADR-063): the run asks each unit what it
+  # does at the return THIS room gives it. Its limit is the valve, not a
+  # compressor: at full water the supply follows the return.
+  model: HXCV5000F-HT
+  count: 14                   # the same fourteen positions as the DX plant:
+                              # 7 a side on the two gallery walls.
+                              # 14 x 100,0 = 1.400 kW for 1.000 kW of IT, and
+                              # 441.700 m3/h against the 268.500 the racks
+                              # draw -- more air than the DX plant moves, so
+                              # a smaller temperature rise across the room.
+  control: team               # a CRAH plant shares the VALVE POSITION: the
+                              # unit with the hardest job sets how far open
+                              # every valve is, and each unit delivers what
+                              # its own coil gives at its own return
+                              # (ADR-117). Compare `hall-cage-1mw`, where the
+                              # same word shares a SETPOINT.
+  airflow_m3h: 31550
+  capacity_kw: 100.0
+  power_kw: 3.5
+  width: 2.58
+  height: 3.15
+  depth: 1.07
+  supply_temp_c: 22.5         # the setpoint the plant is asked to hold. The
+                              # coupled solve decides whether it can: a unit
+                              # that cannot has its valve wide open and its
+                              # supply follows its return, and the report
+                              # says which ones.
 
 grilles:
   size: 0.6

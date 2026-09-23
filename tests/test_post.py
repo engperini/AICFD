@@ -1277,9 +1277,13 @@ class TheAirTheUnitsDeliverIsTheAirTheirCoilsMakeTest(unittest.TestCase):
 
         source = inspect.getsource(post._checks)
         self.assertIn('"coil_closure"', source)
-        self.assertIn("solver.coupling_passes", source)
-        self.assertIn("fanwall.supply_temp_c", source)
+        self.assertIn("_closure_remedy(kpis)", source)
         self.assertIn("that much optimistic", source)
+        remedy = inspect.getsource(post._closure_remedy)
+        self.assertIn("fanwall.supply_temp_c", remedy)
+        self.assertIn("solver.couple", remedy)
+        self.assertNotIn("coupling_passes", remedy,
+                         "there is no pass count to raise any more")
 
     def test_a_run_with_no_coil_has_nothing_to_close(self):
         """A case that names no unit, or one whose sheet supports no coil."""
@@ -1288,3 +1292,35 @@ class TheAirTheUnitsDeliverIsTheAirTheirCoilsMakeTest(unittest.TestCase):
         rows = [f for f in ({"name": "fan1", "supply_temp_c": 20.0},)
                 if f.get("coil_supply_c") is not None]
         self.assertEqual(rows, [])
+
+
+class TheRemedyMatchesWhyTheLoopIsOpenTest(unittest.TestCase):
+    """There is no pass count to raise (ADR-124); what is left is WHY the
+    field carries air the plant does not make, and the record says why."""
+
+    def test_the_coupling_was_off(self):
+        said = post._closure_remedy({"coupling": {"off": True, "passes": 0}})
+        self.assertIn("coupling off", said)
+        self.assertIn("solver.couple", said)
+
+    def test_the_loop_hit_its_safety_limit(self):
+        said = post._closure_remedy({"coupling": {
+            "passes": 30, "limit": 30, "converged": False, "moved_k": 0.8}})
+        self.assertIn("safety limit of 30", said)
+        self.assertIn("oscillating", said)
+        self.assertIn("0.80 K", said)
+
+    def test_a_run_with_no_record_is_told_to_run_again(self):
+        said = post._closure_remedy({"coupling": None})
+        self.assertIn("no record", said)
+        self.assertNotIn("coupling off", said,
+                         "a missing record is not evidence the engineer "
+                         "turned the coupling off")
+
+    def test_nothing_tells_the_engineer_to_raise_a_pass_count(self):
+        import inspect
+
+        for source in (inspect.getsource(post._closure_remedy),
+                       inspect.getsource(post._coil_alerts),
+                       inspect.getsource(post._checks)):
+            self.assertNotIn("coupling_passes", source)
