@@ -369,7 +369,16 @@ def solve_coupled(
                 break
         moved = (max(abs(supplies[k] - previous[k]) for k in supplies if k in previous)
                  if previous else None)
-        settled = moved is not None and moved <= tolerance
+        supply_settled = moved is not None and moved <= tolerance
+        # THE ROOM HAS TO HAVE FILLED BEHIND THE MACHINES. The supply can stop
+        # moving while the room is still warming towards it, and a loop that
+        # stopped on the supply alone left a field carrying 86 % of its load
+        # 300 iterations after a 1 K step (ADR-127).
+        from aicfd.post import ENERGY_TOLERANCE
+
+        with reconstruction_lock(case):
+            closure = loop.energy_closure(model, case / time)
+        settled = loop.loop_closed(supply_settled, closure, ENERGY_TOLERANCE)
         # WHAT THIS PLANT MODULATES, so the line the engineer watches for an
         # hour speaks of the machine in front of them (ADR-112).
         unit = getattr(model, "equipment", None)
@@ -379,12 +388,13 @@ def solve_coupled(
         record = loop.Pass(number=number, iterations=end, supplies_c=supplies,
                            returns_c=returns, moved_k=moved,
                            converged=settled, saturated=saturated,
-                           duty_label=duty)
+                           duty_label=duty, closure=closure,
+                           settling=supply_settled and not settled)
         passes.append(record)
         if on_pass:
             on_pass(record)
         previous = supplies
-        if settled or number == max_passes or _diverging(passes):
+        if settled or number == max_passes or _diverging(passes, tolerance):
             break
         with reconstruction_lock(case):
             loop.apply_supplies(case, time, supplies)
@@ -397,7 +407,7 @@ def solve_coupled(
     # (ADR-123), and until this was written down the only way to know was to
     # have watched the run. A reader of the report was not there.
     write_coupling_record(case, passes, max_passes, tolerance,
-                          diverged=_diverging(passes))
+                          diverged=_diverging(passes, tolerance))
 
     for entry in after:
         command, args, log_name = _entry(entry)
@@ -416,13 +426,17 @@ COUPLING_RECORD = "coupling.json"
 DIVERGENCE_PASSES = 4
 
 
-def _diverging(passes) -> bool:
+def _diverging(passes, tolerance: float = COUPLING_TOLERANCE_K) -> bool:
     """True when the last `DIVERGENCE_PASSES` steps never shrank.
 
-    Read on the supply movement each pass records. The first pass has no
-    movement to compare, so the earliest this can fire is pass five.
+    Read on the supply movement each pass records, and only on steps above
+    the closing tolerance: a run settling its field takes several passes
+    whose supply barely moves, and four of those in a row are convergence,
+    never a runaway. The first pass has no movement to compare, so the
+    earliest this can fire is pass five.
     """
-    moved = [p.moved_k for p in passes if p.moved_k is not None]
+    moved = [p.moved_k for p in passes
+             if p.moved_k is not None and p.moved_k > tolerance]
     if len(moved) < DIVERGENCE_PASSES + 1:
         return False
     recent = moved[-(DIVERGENCE_PASSES + 1):]
@@ -450,9 +464,12 @@ def write_coupling_record(case_dir, passes, limit: int, tolerance: float,
         "diverged": bool(diverged),
         "moved_k": last.moved_k if last else None,
         "saturated": list(last.saturated) if last else [],
+        "closure": last.closure if last else None,
+        "settling_passes": sum(1 for p in passes if p.settling),
         "history": [
             {"number": p.number, "iterations": p.iterations,
-             "moved_k": p.moved_k, "converged": p.converged,
+             "moved_k": p.moved_k, "closure": p.closure,
+             "settling": p.settling, "converged": p.converged,
              "saturated": len(p.saturated)}
             for p in passes
         ],

@@ -621,3 +621,40 @@ class TheProgressLineSpeaksThePlantTest(unittest.TestCase):
                     returns_c={}, moved_k=None, converged=False,
                     saturated=[], duty_label="compressor duty").summary()
         self.assertNotIn("duty", said)
+
+
+class TheLoopClosesWhenTheRoomHasFilledTest(unittest.TestCase):
+    """The supply can stop moving while the room is still warming towards it.
+    A loop that stopped on the supply alone left a 1 MW hall carrying 86 %
+    of its load 300 iterations after a 1 K step (ADR-127)."""
+
+    def test_a_settled_supply_over_an_unfilled_room_is_open(self):
+        from aicfd.coupled import loop_closed
+
+        self.assertFalse(loop_closed(True, 0.86, 0.05))
+
+    def test_a_settled_supply_over_a_filled_room_is_closed(self):
+        from aicfd.coupled import loop_closed
+
+        self.assertTrue(loop_closed(True, 0.996, 0.05))
+        self.assertTrue(loop_closed(True, 1.03, 0.05))
+
+    def test_a_moving_supply_is_open_whatever_the_room_says(self):
+        from aicfd.coupled import loop_closed
+
+        self.assertFalse(loop_closed(False, 1.0, 0.05))
+
+    def test_a_case_with_no_load_to_balance_closes_on_the_supply(self):
+        from aicfd.coupled import loop_closed
+
+        self.assertTrue(loop_closed(True, None, 0.05))
+
+    def test_the_progress_line_says_the_room_is_filling(self):
+        from aicfd.coupled import Pass
+
+        line = Pass(number=3, iterations=2600, supplies_c={"fan1": 23.9},
+                    returns_c={"fan1": 33.0}, moved_k=0.01, converged=False,
+                    saturated=[], closure=0.86, settling=True).summary()
+        self.assertIn("return air carrying 86% of the load", line)
+        self.assertIn("supply settled, the room is still filling", line)
+        self.assertNotIn("(converged)", line)

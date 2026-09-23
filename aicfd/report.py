@@ -673,8 +673,10 @@ def _introduction(doc) -> None:
          "the solution carries on from the field already there."),
         ("5 — the loop closes",
          "It ends when no unit's supply air temperature shifts by more than "
-         "0.02 K between segments, which is convergence of the room and the "
-         "machines together."),
+         "0.02 K between segments AND the return air carries the installed "
+         "load to within the energy check's tolerance — the machines have "
+         "stopped moving and the room has filled behind them, which is "
+         "convergence of the two together."),
     ], widths=[4.0, 12.0],
         note="The room fixes its own temperature rise — load over mass flow — "
              "so a change in supply moves the return one for one and the coil "
@@ -1791,12 +1793,19 @@ def _results(doc, export: Export, drawn: dict) -> None:
         passes = coupling.get("passes") or 0
         moved = coupling.get("moved_k")
         closed = coupling.get("converged")
+        settling = coupling.get("settling_passes") or 0
+        closure = coupling.get("closure")
         _para(doc,
               f"The room and the units were solved together. The loop took "
               f"{passes} pass{'es' if passes != 1 else ''}"
+              + (f", the last {settling} of them with the supply already "
+                 f"settled and the room filling behind it"
+                 if settling else "")
               + (f", and on the last one no unit's supply air temperature "
                  f"moved more than {_num(moved, 3)} K"
                  if moved is not None else "")
+              + (f" while the return air carried {_num(closure * 100, 1)} % of "
+                 f"the installed load" if closure is not None else "")
               + (f" — inside the {_num(coupling.get('tolerance_k'), 2)} K it "
                  f"closes on, so the supply temperature in this report is what "
                  f"this plant produces at the return this room gives it."

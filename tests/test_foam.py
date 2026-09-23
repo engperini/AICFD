@@ -409,3 +409,34 @@ class ALoopWhoseStepDoesNotShrinkIsStoppedTest(unittest.TestCase):
                                              "moved_k": 1.12}})
         self.assertIn("kept moving by about 1.12 K every pass", said)
         self.assertIn("chasing its own return", said)
+
+
+class SettlingPassesAreNeverARunawayTest(unittest.TestCase):
+    def test_four_small_steps_in_a_row_are_convergence(self):
+        """A room filling behind a settled supply takes passes whose supply
+        barely moves; four of those are the loop closing (ADR-127)."""
+        from aicfd.coupled import Pass
+        from aicfd.run import _diverging
+
+        passes = [Pass(number=i + 1, iterations=300, supplies_c={}, returns_c={},
+                       moved_k=m, converged=False, saturated=[])
+                  for i, m in enumerate([None, 1.0, 0.3, 0.01, 0.01, 0.012, 0.011])]
+        self.assertFalse(_diverging(passes, 0.02))
+
+    def test_the_record_carries_the_closure_and_the_settling_count(self):
+        from aicfd.coupled import Pass
+        from aicfd.run import read_coupling_record, write_coupling_record
+
+        passes = [Pass(number=1, iterations=1600, supplies_c={}, returns_c={},
+                       moved_k=None, converged=False, saturated=[], closure=0.86),
+                  Pass(number=2, iterations=1900, supplies_c={}, returns_c={},
+                       moved_k=0.01, converged=False, saturated=[], closure=0.91,
+                       settling=True),
+                  Pass(number=3, iterations=2200, supplies_c={}, returns_c={},
+                       moved_k=0.005, converged=True, saturated=[], closure=0.99)]
+        with tempfile.TemporaryDirectory() as tmp:
+            write_coupling_record(Path(tmp), passes, 30, 0.02)
+            got = read_coupling_record(Path(tmp))
+        self.assertEqual(got["settling_passes"], 1)
+        self.assertAlmostEqual(got["closure"], 0.99)
+        self.assertTrue(got["converged"])

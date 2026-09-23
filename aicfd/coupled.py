@@ -79,6 +79,14 @@ class Pass:
     """What THIS plant modulates, from its own coil (ADR-112). A line saying
     `at full water` ran for an hour on a hall of fourteen direct-expansion
     CRACs, which have no water in them."""
+    closure: float | None = None
+    """How much of the installed load the return air carried at the end of
+    this segment, as a fraction. The supply can stop moving while the room is
+    still warming towards it, and a loop that stopped there left a field
+    carrying 86 % of its load (ADR-127)."""
+    settling: bool = False
+    """A pass run because the supply had stopped moving but the field had
+    not yet filled: the machines' answer stands and the room catches up."""
 
     def summary(self) -> str:
         warm = max(self.supplies_c.values()) if self.supplies_c else 0.0
@@ -87,10 +95,39 @@ class Pass:
             f"{warm:.2f} degC, "
             + ("the first, nothing to compare against yet"
                if self.moved_k is None else f"moved {self.moved_k:.3f} K")
-            + (" (converged)" if self.converged else "")
+            + (f", return air carrying {self.closure * 100:.0f}% of the load"
+               if self.closure is not None else "")
+            + (" (converged)" if self.converged else
+               " (supply settled, the room is still filling)" if self.settling
+               else "")
             + (f", {len(self.saturated)} at full {self.duty_label}"
                if self.saturated else "")
         )
+
+
+def energy_closure(model, step: str | Path) -> float | None:
+    """The fraction of the installed load the return air carries, read off
+    the field the same way the `energy_closure` check reads it."""
+    from aicfd.post import recovered_load_w
+
+    if not getattr(model, "total_load_w", None):
+        return None
+    return recovered_load_w(step, model) / model.total_load_w
+
+
+def loop_closed(supply_settled: bool, closure: float | None,
+                tolerance: float) -> bool:
+    """The coupled loop is closed when the machines have stopped moving AND
+    the room has filled behind them.
+
+    The first alone stopped a 1 MW hall 300 iterations after a 1 K step in
+    supply, with the return air carrying 86 % of the load: the units had
+    agreed with each other and the room had not caught up. Both are read off
+    the same field, so both are asked (ADR-127).
+    """
+    if not supply_settled:
+        return False
+    return closure is None or abs(closure - 1.0) <= tolerance
 
 
 def supply_temperatures(model, step: str | Path) -> tuple[dict, dict, list]:

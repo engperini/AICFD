@@ -5507,3 +5507,33 @@ to count on, and now it says that. The limitations section keeps stating what
 the model leaves out, because that is what a limitations section is for; it
 does so as "lies outside the model" and "enters through these two numbers"
 rather than as a list of nots.
+
+---
+
+## ADR-127 — The loop closes when the machines have stopped moving AND the room has filled
+
+**Decision.** `solve_coupled` ends a pass as converged only when both hold:
+no unit's supply moved more than 0,02 K, **and** the return air carries the
+installed load to within the energy check's tolerance, read off the same
+field. A pass whose supply has settled over a room that has not yet filled is
+recorded as `settling` and the loop runs on; the record and section 4.2 count
+those passes.
+
+**Why.** With the fixed-setpoint law (ADR-125) the DX hall's loop converged in
+two passes: the saturated units moved their supply about 1 K once, and on the
+next reading it moved 0,01 K. The loop stopped there, 300 iterations after the
+step — and the `energy_closure` check failed at 86 %: the units had agreed
+with each other and the room had not caught up. The engineer running it
+added iterations and it made no difference, because the iterations that were
+missing were the ones AFTER the last change of supply, and the loop was the
+thing deciding how many of those there would be.
+
+Under the old five-pass default this was hidden: the loop always ran four
+more passes after the first, 1.200 iterations of settling by accident. Making
+the loop stop when it closed (ADR-124) removed the accident and exposed that
+"closed" had been defined on the machines alone. Convergence of a coupled
+problem is convergence of both halves, and both are one read of the field.
+
+The divergence guard (ADR-125) now looks only at steps above the closing
+tolerance: settling passes move the supply by hundredths of a kelvin, and four
+of those in a row are a loop closing, never one running away.
