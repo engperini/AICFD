@@ -111,12 +111,19 @@ def run_command(
     args: list[str] | None = None,
     check: bool = True,
     log_name: str | None = None,
+    append: bool = False,
 ) -> StepResult:
     """Run one OpenFOAM utility in ``case_dir``, teeing its output to ``log.<cmd>``.
 
     ``log_name`` names the log after the program that matters when ``command``
     is only a launcher: ``mpirun ... buoyantSimpleFoam`` logs to
     ``log.buoyantSimpleFoam``, where everything that reads a solver log looks.
+
+    ``append`` keeps what is already in that log. A coupled solve runs the
+    solver once per pass, and truncating the log each time threw away every
+    iteration but the last segment's: an engineer watching the file saw it
+    empty and start again, and the report's convergence figure showed 300
+    iterations of a 2.800-iteration run (ADR-122).
     """
     import time
 
@@ -129,7 +136,7 @@ def run_command(
 
     log_path = case / f"log.{log_name or command}"
     started = time.monotonic()
-    with log_path.open("w") as log:
+    with log_path.open("a" if append else "w") as log:
         process = subprocess.run(
             [command, *(args or [])],
             cwd=case,
@@ -309,7 +316,9 @@ def solve_coupled(
         command, args, log_name = _entry(solver)
         if on_step:
             on_step(log_name or command)
-        results.append(run_command(case, command, args=args, log_name=log_name))
+        # THE LOG IS THE RUN, not the last segment of it (ADR-122).
+        results.append(run_command(case, command, args=args, log_name=log_name,
+                                   append=number > 1))
         # Reconstructed before it is read: a decomposed run keeps its fields
         # per processor, and every reader downstream works on whole patches.
         #

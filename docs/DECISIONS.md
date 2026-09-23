@@ -5158,3 +5158,36 @@ stating `offset` and `pitch` puts them where its drawing has them.
 An offset finer than the cell cannot survive the mesh — 240 mm does not exist
 on a 300 mm grid — and the alignment check says so by name (ADR-074), as it
 does for every other plane.
+
+---
+
+## ADR-122 — The solver log is the whole run, and the page says where it is going
+
+**Decision.** `run_command` takes `append`, and `solve_coupled` uses it for
+every solver pass after the first: one log holds every iteration of the run.
+The page's progress line names the pass, of how many, and the iteration the
+next segment is solving to.
+
+**Why.** A coupled solve runs the solver once per pass, and each pass opened
+`log.buoyantSimpleFoam` with `"w"`. Two things followed, and an engineer
+watching a run found both:
+
+* **The log emptied and started again at every pass.** Tailing it, the
+  iteration counter fell back and climbed again — which is exactly what a
+  solver restarting from zero looks like. It was not restarting; the record of
+  it was being thrown away.
+* **The report's convergence figure showed 300 iterations of a 2.800-iteration
+  run.** Section 4.2 is where a reader judges whether the residuals settled,
+  and it was drawing the last segment as though it were the run.
+
+Both are the same defect, and neither is about the solve: the field, the
+checks and every number in section 4 were right. What was lost was the history
+that says whether to believe them.
+
+The second half is a consequence of the page coupling at all (ADR-120). A run
+started from the page now goes past `max_iterations` — that is what a coupled
+solve costs (ADR-040) — and the page said nothing about it. Asking for 1600
+iterations and watching the run carry on to 2800 with no explanation is a tool
+doing something behind its user. It now says which pass it is on, how many
+there are, and where the next one ends. A case that wants the old behaviour
+sets `solver.coupling_passes: 1`, or `solver.couple: false` to turn it off.

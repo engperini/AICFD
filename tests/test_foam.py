@@ -200,3 +200,64 @@ class AFailureSaysWhatToDoTest(unittest.TestCase):
 
         failed = FoamCommandFailed("mpirun", 1, Path("/nowhere/log.x"))
         self.assertIn("exited 1", str(failed))
+
+
+class TheLogIsTheWholeRunTest(unittest.TestCase):
+    """A coupled solve runs the solver once per pass, and the log has to hold
+    all of them (ADR-122).
+
+    Truncating it each pass threw away every iteration but the last segment's.
+    An engineer watching the file saw it empty and start again -- which is
+    what a solver restarting from zero looks like -- and the report's
+    convergence figure showed 300 iterations of a 2.800-iteration run.
+    """
+
+    def setUp(self):
+        import shutil
+        import tempfile
+        from pathlib import Path
+
+        self.case = Path(tempfile.mkdtemp())
+        self.echo = shutil.which("echo", path="/usr/bin:/bin")
+
+    def run_echo(self, text: str, append: bool):
+        from aicfd import run
+
+        return run.run_command(self.case, "echo", args=[text],
+                               log_name="buoyantSimpleFoam", append=append)
+
+    @unittest.skipIf(not __import__("shutil").which("echo", path="/usr/bin:/bin"),
+                     "no echo on the foam PATH")
+    def test_a_second_pass_keeps_what_the_first_wrote(self):
+        self.run_echo("Time = 300", append=False)
+        self.run_echo("Time = 600", append=True)
+        text = (self.case / "log.buoyantSimpleFoam").read_text()
+        self.assertIn("Time = 300", text)
+        self.assertIn("Time = 600", text)
+
+    @unittest.skipIf(not __import__("shutil").which("echo", path="/usr/bin:/bin"),
+                     "no echo on the foam PATH")
+    def test_a_fresh_run_still_starts_from_an_empty_log(self):
+        """A new run must not inherit the last one's iterations."""
+        self.run_echo("Time = 300", append=False)
+        self.run_echo("Time = 100", append=False)
+        text = (self.case / "log.buoyantSimpleFoam").read_text()
+        self.assertNotIn("Time = 300", text)
+        self.assertIn("Time = 100", text)
+
+    def test_the_coupled_solve_appends_every_pass_after_the_first(self):
+        import inspect
+
+        from aicfd import run
+
+        source = inspect.getsource(run.solve_coupled)
+        self.assertIn("append=number > 1", source)
+
+    def test_the_meshing_steps_still_overwrite(self):
+        """blockMesh's log is that blockMesh's, not every blockMesh ever."""
+        import inspect
+
+        from aicfd import run
+
+        self.assertIn("append: bool = False", inspect.getsource(run.run_command))
+        self.assertNotIn("append=True", inspect.getsource(run.solve))

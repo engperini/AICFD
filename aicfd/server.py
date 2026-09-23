@@ -1298,11 +1298,21 @@ def start_run(name: str) -> None:
             sampler = post.Sampler(model, target)
             sampler.start()
 
+            passes = int(solver.get("coupling_passes", 5))
+            segment = int(solver.get("coupling_segment", 300))
+
             def pass_done(record) -> None:
-                # The line the CLI prints, on the page's own progress state:
-                # a coupled run takes passes and the reader is owed them.
+                # The line the CLI prints, on the page's own progress state.
+                # A COUPLED RUN GOES PAST `max_iterations`, and a reader who
+                # asked for 1600 and watched it carry on to 2800 with nothing
+                # said is owed the reason and the target (ADR-122).
+                more = (f" — solving on to iteration "
+                        f"{record.iterations + segment:,}"
+                        if record.number < passes and not record.converged
+                        else "")
                 STATE.set(stage="solving", step="buoyantSimpleFoam",
-                          message=f"coil: {record.summary()}")
+                          message=f"coil pass {record.number} of {passes}: "
+                                  f"{record.summary().split(': ', 1)[-1]}{more}")
 
             try:
                 if solver.get("couple", True):
