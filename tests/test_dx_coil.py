@@ -222,35 +222,38 @@ class CouplingTest(unittest.TestCase):
         supply air stayed at whatever the case imposed."""
         self.assertTrue(self.supplies("independent"))
 
-    def test_a_networked_dx_plant_holds_one_supply_temperature(self):
-        """A CRAC array is controlled on its SUPPLY AIR: the plant delivers
-        the coldest air its worst-placed unit can still make, and every other
-        unit holds that same temperature (ADR-117).
+    def test_a_networked_dx_plant_holds_the_setpoint_it_was_given(self):
+        """A CRAC array is controlled on its SUPPLY AIR, and a network of
+        them holds ONE FIXED setpoint -- the one the case states -- on every
+        unit that can reach it. The units that cannot deliver what they can,
+        so their supply is warmer (ADR-125).
 
-        It used to share the compressor DUTY instead, which is what a
-        chilled-water array does with its valves -- and on a 1 MW hall it
-        drove the well-placed units to 15,9 degC against an 18,8 degC
-        setpoint.
+        It used to set every unit to the supply the WORST unit could make,
+        which has unit gain on the room and ran a 1 MW hall from 19,8 to
+        48 degC in twenty-five passes (ADR-125). Before that it shared the
+        compressor DUTY, which drove well-placed units to 15,9 degC.
         """
         team = self.supplies("team")
         self.assertTrue(team)
-        span = max(team.values()) - min(team.values())
-        self.assertLess(span, 0.01,
-                        f"the network delivers {span:.2f} K of different air")
+        setpoint = 18.8
+        holding = [n for n, t in team.items() if abs(t - setpoint) < 1e-6]
+        short = [n for n, t in team.items() if t > setpoint + 1e-6]
+        self.assertTrue(holding, "no unit holds the setpoint it was given")
+        self.assertTrue(short, "the fixture no longer has a unit at its ceiling")
+        self.assertFalse([n for n, t in team.items() if t < setpoint - 1e-6],
+                         "a unit on the network overcooled")
 
-    def test_the_networked_control_still_changes_the_answer(self):
-        """The plant is held by its worst unit, so the units that could go
-        colder do not: team air is never colder than independent air, and
-        somewhere it is warmer."""
+    def test_the_network_changes_nothing_in_a_steady_field(self):
+        """Staging and fan coordination are what a DX network does, and a
+        steady field does not see them: `team` and `independent` give the
+        same supply on every unit of a supply-controlled DX plant, and the
+        report says so rather than describing a control that does not exist
+        (ADR-125)."""
         alone, team = self.supplies("independent"), self.supplies("team")
         self.assertEqual(set(alone), set(team))
-        self.assertNotEqual(alone, team)
         for name in alone:
             with self.subTest(unit=name):
-                self.assertGreaterEqual(team[name], alone[name] - 1e-6,
-                                        "a unit on the network overcooled")
-        warmer = [n for n in alone if team[n] > alone[n] + 1e-6]
-        self.assertTrue(warmer, "the network is not held by its worst unit")
+                self.assertAlmostEqual(team[name], alone[name], places=6)
 
     def test_a_chilled_water_network_still_shares_its_valves(self):
         """The two plants are built differently and the model says so: a CRAH
@@ -336,3 +339,40 @@ class TheCompressorsAreTheLimitTest(unittest.TestCase):
     def test_the_report_can_see_it(self):
         described = self.coil.describe()
         self.assertAlmostEqual(described["capacity_ceiling_kw"], 110.3, places=1)
+
+
+class ADXNetworkHoldsTheSetpointItWasGivenTest(unittest.TestCase):
+    """A network of supply-controlled DX units holds ONE FIXED setpoint -- the
+    one the engineer typed -- on every unit (ADR-125).
+
+    It used to set every unit to the supply the worst-placed unit could still
+    make. That law has unit gain on the room: the plant's supply rises, the
+    room's return rises by the same amount, the worst unit's achievable
+    supply rises again, and the coupled loop on a 1 MW hall climbed 1,2 K a
+    pass from 19,8 to 48 degC with nothing to stop it.
+    """
+
+    def setUp(self):
+        self.coil = library.load("P3100DA").coil
+        self.air = self.coil.air_fitted
+
+    def test_a_unit_that_can_hold_the_setpoint_holds_it_whatever_its_peers_see(self):
+        alone = self.coil.operate(26.0, self.air, 18.8)
+        shared = self.coil.operate_shared(35.0, 26.0, self.air, 18.8)
+        self.assertAlmostEqual(shared.supply_c, 18.8, places=6)
+        self.assertAlmostEqual(shared.supply_c, alone.supply_c, places=6)
+        self.assertAlmostEqual(shared.capacity_kw, alone.capacity_kw, places=6)
+
+    def test_a_unit_that_cannot_delivers_what_it_can_and_says_so(self):
+        shared = self.coil.operate_shared(35.0, 35.0, self.air, 18.8)
+        self.assertGreater(shared.supply_c, 18.8)
+        self.assertTrue(shared.saturated)
+        self.assertAlmostEqual(shared.valve, 1.0, places=6)
+
+    def test_the_setpoint_is_never_raised_to_what_the_worst_unit_makes(self):
+        """The runaway, in one line: the worst unit's supply is 24,4 degC and
+        a well-placed unit must NOT be told to deliver 24,4."""
+        worst = self.coil.operate(35.0, self.air, 18.8)
+        self.assertGreater(worst.supply_c, 23.0, "the fixture no longer saturates")
+        shared = self.coil.operate_shared(35.0, 26.0, self.air, 18.8)
+        self.assertLess(shared.supply_c, worst.supply_c - 3.0)

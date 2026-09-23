@@ -5426,3 +5426,57 @@ that rise in an annex column and concluded nothing. Section 5 now counts the
 cabinets rising by more than twice the design ΔT, names the worst, and says
 what the number means in the model and in the room. It is what the commercial
 tools report as an airflow deficit, and it is the cabinet to look at first.
+
+---
+
+## ADR-125 — A DX network holds the setpoint it was given; a loop whose step does not shrink is stopped
+
+**Decision.** `DXCoil.operate_shared` runs every unit to the **fixed** supply
+setpoint the case states. A unit whose return is too warm for its compressors
+delivers what it can and its supply follows its return; the rest hold the
+setpoint. The "plant delivers what its worst unit can make" law of ADR-117 is
+withdrawn. The coupled loop now also stops when the supply movement has failed
+to shrink for four passes running, records `diverged`, and `coil_closure`
+names a runaway as a runaway.
+
+**Why.** Re-running the 1 MW DX hall with the loop free to run until it closed
+(ADR-124) showed it never would:
+
+```
+pass  1: warmest supply 19,83 degC
+pass  2: 20,89   moved 1,06 K
+pass  3: 21,97   moved 1,08 K
+  …
+pass 25: 48,04   moved 1,24 K
+```
+
+Not an oscillation — a **runaway**, 1,1 to 1,2 K a pass without bound. The
+law behind it: every unit was set to the supply the worst-placed unit could
+still make. That unit is at its compressor ceiling, so its supply is its
+return less a constant. Raise the plant's supply by Δ and the room's return
+rises by Δ; the worst unit's achievable supply rises by Δ; the setpoint
+follows it by Δ. A fixed-point iteration with unit gain has no fixed point,
+and the 1,12 K at pass five that `coil_closure` first caught (ADR-123) was the
+fifth step of this, read as a loop that needed longer.
+
+The physics of the room was right throughout; the control law was invented.
+No BMS raises a common setpoint to what its weakest machine can reach. A
+Liebert iCOM "teamwork" network of supply-controlled units holds the setpoint
+the operator typed on every unit; the units that cannot reach it saturate,
+the others hold, and the network's work — staging compressors, coordinating
+fan speed — is dynamic and invisible to a steady field. So in steady state
+`team` and `independent` give the same answer for a supply-controlled DX
+plant, and the report says so instead of describing a control that does not
+exist. ADR-117's chilled-water half — a CRAH network shares the **valve
+position** and each unit delivers what its own coil gives at its own return
+(ADR-064) — stands: that IS how a common water loop behaves, and the CRAH and
+fan-wall twins closed in six and four passes on it.
+
+**The divergence stop.** The safety limit of thirty passes (ADR-124) would
+have taken this run to 10.300 iterations — two hours — to fail a check that
+pass five could already have failed. A converging fixed-point iteration takes
+smaller steps each time; one whose step holds or grows for four passes in a
+row is running away, and the loop now stops there, writes `diverged` on the
+record, and the remedy says "the supply air kept moving by about 1,2 K every
+pass instead of settling: the plant's control is chasing its own return"
+rather than sending the reader to look for an oscillation.

@@ -287,12 +287,14 @@ fanwall:
                               # for a downflow unit on a 1,0 m plenum and is
                               # deliberately conservative; it decides the
                               # fan_capacity check and nothing else.
-  control: team               # each unit to its own return. `team` runs the
-                              # units of one gallery to the worst return any
-                              # of them sees, which is what a networked plant
-                              # does -- and which now changes the answer for a
-                              # DX plant too, because its coil is modelled
-                              # (ADR-064, ADR-103).
+  control: team               # a networked DX plant holds ONE FIXED supply
+                              # setpoint -- the `supply_temp_c` below -- on
+                              # every unit; a unit whose return is too warm
+                              # for its compressors delivers what it can and
+                              # the rest hold. In a steady field that is what
+                              # `independent` does too (ADR-125); the word
+                              # matters on a chilled-water plant, which shares
+                              # the valve position (ADR-064).
   airflow_m3h: 27500
   capacity_kw: 100.5
   power_kw: 7.5

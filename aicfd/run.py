@@ -384,7 +384,7 @@ def solve_coupled(
         if on_pass:
             on_pass(record)
         previous = supplies
-        if settled or number == max_passes:
+        if settled or number == max_passes or _diverging(passes):
             break
         with reconstruction_lock(case):
             loop.apply_supplies(case, time, supplies)
@@ -396,7 +396,8 @@ def solve_coupled(
     # before the pass cap decides whether its temperatures mean anything
     # (ADR-123), and until this was written down the only way to know was to
     # have watched the run. A reader of the report was not there.
-    write_coupling_record(case, passes, max_passes, tolerance)
+    write_coupling_record(case, passes, max_passes, tolerance,
+                          diverged=_diverging(passes))
 
     for entry in after:
         command, args, log_name = _entry(entry)
@@ -407,9 +408,30 @@ def solve_coupled(
 
 
 COUPLING_RECORD = "coupling.json"
+#: Passes over which the step has to keep failing to shrink before the loop
+#: is declared DIVERGING and stopped. A fixed-point iteration that converges
+#: takes smaller steps each time; one whose step holds or grows is running
+#: away, and thirty passes of it is two hours of solver to learn what four
+#: already said (ADR-125).
+DIVERGENCE_PASSES = 4
 
 
-def write_coupling_record(case_dir, passes, limit: int, tolerance: float):
+def _diverging(passes) -> bool:
+    """True when the last `DIVERGENCE_PASSES` steps never shrank.
+
+    Read on the supply movement each pass records. The first pass has no
+    movement to compare, so the earliest this can fire is pass five.
+    """
+    moved = [p.moved_k for p in passes if p.moved_k is not None]
+    if len(moved) < DIVERGENCE_PASSES + 1:
+        return False
+    recent = moved[-(DIVERGENCE_PASSES + 1):]
+    return all(later >= earlier - 1e-6
+               for earlier, later in zip(recent, recent[1:]))
+
+
+def write_coupling_record(case_dir, passes, limit: int, tolerance: float,
+                          diverged: bool = False):
     """`<case>/coupling.json`: what the coupled loop did, for the report.
 
     In the case directory rather than in the results, because it is a fact
@@ -425,6 +447,7 @@ def write_coupling_record(case_dir, passes, limit: int, tolerance: float):
         "limit": limit,
         "tolerance_k": tolerance,
         "converged": bool(last.converged) if last else False,
+        "diverged": bool(diverged),
         "moved_k": last.moved_k if last else None,
         "saturated": list(last.saturated) if last else [],
         "history": [

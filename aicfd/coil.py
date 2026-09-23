@@ -756,30 +756,31 @@ class DXCoil:
 
     def operate_shared(self, seen_c: float, return_c: float, air: float,
                        setpoint_c: float | None = None) -> Operating:
-        """What this unit does on a network holding ONE supply temperature.
+        """What this unit does on a network holding ONE supply setpoint.
 
         A DX ROOM UNIT IS CONTROLLED ON ITS SUPPLY AIR, and a network of them
-        holds one setpoint between them: the plant delivers the coldest air
-        its WORST-placed unit can still make, and every other unit holds that
-        same temperature with its own compressors, unloading as far as it
-        needs to. A unit with cool return does LESS work, not more.
+        holds one setpoint between them: THE SETPOINT THE ENGINEER TYPED, on
+        every unit. A unit whose return is too warm for its compressors
+        delivers what it can and its supply follows its return; every other
+        unit holds the setpoint with its own compressors, unloading as far as
+        it needs to. In steady state that is what every unit does on its own
+        as well, so for a supply-controlled DX plant `team` and `independent`
+        give the same answer -- the network's work is in staging and fan
+        coordination, which a steady field does not see (ADR-125).
 
-        That is the difference from a chilled-water network, which shares the
-        valve position instead (`Coil.operate_shared`, ADR-064) -- and it is
-        the arrangement each kind of plant is actually built with: a CRAH
-        array on a common water loop, a CRAC array on a common supply
-        setpoint (ADR-117).
-
-        Shared DUTY is what this used to do, and on a 1 MW hall it drove the
-        well-placed units to 15,9 degC of supply against an 18,8 degC
-        setpoint: they were told to run at the worst unit's compressor duty
-        and had nothing to do with it but overcool their own air.
+        WHAT THIS USED TO DO, AND WHY IT IS GONE. It set every unit to the
+        supply the WORST-placed unit could still make -- "the plant delivers
+        what its worst unit can" (ADR-117) -- and that is a control law with
+        unit gain on the room: the plant's supply rises, the room's return
+        rises by the same amount, the worst unit's achievable supply rises by
+        the same amount again, and the coupled loop climbed 1,2 K a pass from
+        19,8 to 48 degC with nothing to stop it. No BMS raises a common
+        setpoint to what its weakest machine can reach. `seen_c` is kept in
+        the signature because the chilled-water network really does read the
+        worst return (`Coil.operate_shared`, ADR-064).
         """
-        if seen_c <= return_c:
-            return self.operate(return_c, air, setpoint_c)
-        # What the worst-placed unit can hold -- the plant's common supply.
-        ordered = self.operate(seen_c, air, setpoint_c)
-        return self.operate(return_c, air, ordered.supply_c)
+        del seen_c  # the network shares the setpoint, and the setpoint is fixed
+        return self.operate(return_c, air, setpoint_c)
 
     # --- what a report says about it ------------------------------------------
 

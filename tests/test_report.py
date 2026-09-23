@@ -1159,8 +1159,9 @@ class TheSnapListIsReadableTest(unittest.TestCase):
 
 
 class TeamControlIsDescribedForTheMachineItRunsOnTest(unittest.TestCase):
-    """`team` shares a SETPOINT on a DX plant and a VALVE POSITION on a
-    chilled-water one (ADR-117). The report said the first of every plant."""
+    """`team` holds one fixed SETPOINT on a DX plant and shares the VALVE
+    POSITION on a chilled-water one (ADR-064, ADR-125). The report described
+    a third law, of neither."""
 
     def render(self, kind: str, control: str = "team") -> str:
         import docx
@@ -1176,10 +1177,10 @@ class TeamControlIsDescribedForTheMachineItRunsOnTest(unittest.TestCase):
         report._control_section(doc, Export())
         return "\n".join(p.text for p in doc.paragraphs)
 
-    def test_a_dx_team_shares_the_setpoint(self):
+    def test_a_dx_team_holds_one_fixed_setpoint(self):
         said = self.render("dx")
-        self.assertIn("deliver the same supply temperature", said)
-        self.assertIn("common setpoint", said)
+        self.assertIn("NETWORKED on one supply air setpoint", said)
+        self.assertIn("give the same steady answer", said)
         self.assertNotIn("valve", said)
 
     def test_a_chilled_water_team_shares_the_valve(self):

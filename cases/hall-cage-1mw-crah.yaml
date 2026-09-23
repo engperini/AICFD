@@ -260,8 +260,10 @@ fanwall:
                               # unit with the hardest job sets how far open
                               # every valve is, and each unit delivers what
                               # its own coil gives at its own return
-                              # (ADR-117). Compare `hall-cage-1mw`, where the
-                              # same word shares a SETPOINT.
+                              # (ADR-064). Compare `hall-cage-1mw`, where the
+                              # same word holds one fixed SETPOINT on every
+                              # unit and changes nothing in a steady field
+                              # (ADR-125).
   airflow_m3h: 31550
   capacity_kw: 100.0
   power_kw: 3.5

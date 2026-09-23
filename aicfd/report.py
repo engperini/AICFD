@@ -1392,14 +1392,15 @@ def _control_section(doc, export: Export) -> None:
     noun = as_a_label(export.naming["noun"])
     _heading(doc, "How the units are controlled", 2)
     if team and dx:
-        how = (f"The {units} units are NETWORKED: they run as one plant. Each "
-               f"pass of the coupled loop finds the warmest return any unit "
-               f"sees and controls every unit to the supply temperature the "
-               f"unit receiving it can make, so they deliver the same supply "
-               f"temperature and the plant is judged by the unit that has the "
-               f"hardest job. This is what a networked {noun} plant does under "
-               f"a common setpoint, and it is what `fanwall.control: team` in "
-               f"the case asks for.")
+        how = (f"The {units} units are NETWORKED on one supply air setpoint: "
+               f"every unit holds the same {_num(export.kpis.get('coil_supply_setpoint_c'), 1)} °C "
+               f"with its own compressors, and a unit whose return is too warm "
+               f"for its compressors delivers the coldest air it can, so its "
+               f"supply follows its return while the rest hold the setpoint. "
+               f"In a steady field that is also what each unit does on its "
+               f"own; the network's work — staging and fan coordination — is "
+               f"dynamic, so `fanwall.control: team` and `independent` give "
+               f"the same steady answer for a supply-controlled {noun} plant.")
     elif team:
         how = (f"The {units} units are NETWORKED: they run as one plant. Each "
                f"pass of the coupled loop finds the warmest return any unit "
@@ -1803,11 +1804,15 @@ def _results(doc, export: Export, drawn: dict) -> None:
                  f"closes on, so the supply temperature in this report is what "
                  f"this plant produces at the return this room gives it."
                  if closed else
-                 f". IT DID NOT CLOSE: that is the safety limit of "
-                 f"{coupling.get('limit')} passes, and the units were still "
-                 f"moving when it was reached. A loop that does not close in "
-                 f"that many is a plant oscillating between two answers, and "
-                 f"the field carries one of them."),
+                 (f". IT DID NOT CLOSE: the loop was stopped because the supply "
+                  f"air kept moving by about {_num(moved, 2)} K every pass "
+                  f"instead of settling — the plant's control is chasing its "
+                  f"own return, and the field carries the last value it "
+                  f"reached." if coupling.get("diverged") else
+                  f". IT DID NOT CLOSE: that is the safety limit of "
+                  f"{coupling.get('limit')} passes, and the supply air was "
+                  f"still moving when it was reached. The plant is swinging "
+                  f"between two answers and the field carries one of them.")),
               size=9, colour=SECOND if closed else BAD,
               bold=not closed)
 

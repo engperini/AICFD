@@ -360,3 +360,52 @@ class TheRunLeavesARecordOfHowTheLoopEndedTest(unittest.TestCase):
         self.assertIn("write_coupling_off(target)", inspect.getsource(cli))
         self.assertIn("write_coupling_off(target)",
                       inspect.getsource(server.start_run))
+
+
+class ALoopWhoseStepDoesNotShrinkIsStoppedTest(unittest.TestCase):
+    """A fixed-point iteration that converges takes smaller steps; one whose
+    step holds or grows is running away, and thirty passes of it is two
+    hours of solver to learn what four already said (ADR-125)."""
+
+    def passes(self, moved):
+        from aicfd.coupled import Pass
+
+        return [Pass(number=i + 1, iterations=300, supplies_c={}, returns_c={},
+                     moved_k=m, converged=False, saturated=[])
+                for i, m in enumerate(moved)]
+
+    def test_a_runaway_is_caught_after_four_steps_that_never_shrank(self):
+        from aicfd.run import _diverging
+
+        self.assertTrue(_diverging(self.passes([None, 1.06, 1.08, 1.09, 1.10, 1.12])))
+
+    def test_a_converging_loop_is_left_alone(self):
+        from aicfd.run import _diverging
+
+        self.assertFalse(_diverging(self.passes([None, 0.22, 0.063, 0.048, 0.043, 0.009])))
+        self.assertFalse(_diverging(self.passes([None, 1.06, 1.08])),
+                         "too early to tell")
+
+    def test_a_step_that_shrinks_once_resets_the_count(self):
+        from aicfd.run import _diverging
+
+        self.assertFalse(_diverging(self.passes([None, 1.0, 1.1, 0.9, 1.0, 1.1])))
+
+    def test_the_record_says_diverged(self):
+        from aicfd.run import read_coupling_record, write_coupling_record
+
+        with tempfile.TemporaryDirectory() as tmp:
+            write_coupling_record(Path(tmp), self.passes([None, 1.0, 1.1]), 30,
+                                  0.02, diverged=True)
+            got = read_coupling_record(Path(tmp))
+        self.assertTrue(got["diverged"])
+        self.assertFalse(got["converged"])
+
+    def test_the_remedy_calls_a_runaway_a_runaway(self):
+        from aicfd.post import _closure_remedy
+
+        said = _closure_remedy({"coupling": {"passes": 6, "limit": 30,
+                                             "converged": False, "diverged": True,
+                                             "moved_k": 1.12}})
+        self.assertIn("kept moving by about 1.12 K every pass", said)
+        self.assertIn("chasing its own return", said)

@@ -1307,7 +1307,7 @@ class TheRemedyMatchesWhyTheLoopIsOpenTest(unittest.TestCase):
         said = post._closure_remedy({"coupling": {
             "passes": 30, "limit": 30, "converged": False, "moved_k": 0.8}})
         self.assertIn("safety limit of 30", said)
-        self.assertIn("oscillating", said)
+        self.assertIn("swinging between two answers", said)
         self.assertIn("0.80 K", said)
 
     def test_a_run_with_no_record_is_told_to_run_again(self):

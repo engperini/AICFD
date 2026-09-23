@@ -770,14 +770,22 @@ def _closure_remedy(kpis: dict) -> str:
             "record or was stopped before the loop finished -- so run it "
             "again; the loop runs until the units and the room agree"
         )
+    if record.get("diverged"):
+        return (
+            f"The coupled loop was stopped after {record.get('passes')} passes "
+            f"because the supply air kept moving by about "
+            f"{(record.get('moved_k') or 0):.2f} K every pass instead of "
+            f"settling: the plant's control is chasing its own return. "
+            f"Section 4.2 has the pass history"
+        )
     if not record.get("converged"):
         return (
             f"The coupled loop took its safety limit of {record.get('limit')} "
-            f"passes and did not close -- the last one still moved "
-            f"{(record.get('moved_k') or 0):.2f} K -- which is a plant "
-            f"oscillating between two answers, not a loop that needed longer. "
-            f"Section 4.2 has the pass history; look at what the units at "
-            f"their limit are doing"
+            f"passes and the supply air was still moving "
+            f"{(record.get('moved_k') or 0):.2f} K a pass: the plant is "
+            f"swinging between two answers and the field carries one of "
+            f"them. Section 4.2 has the pass history; look at what the units "
+            f"at their limit are doing"
         )
     return (
         "The loop reported closed and the field disagrees with it, which is a "

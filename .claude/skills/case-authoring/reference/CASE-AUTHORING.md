@@ -188,9 +188,15 @@ is **refused**: the supply is outside it and the ceiling grilles over its own
 hot aisles still let air out, so the racks have an exit and no entry.
 
 **Whether the units run independently or as a team.** `fanwall.control: team`
-makes the units sharing a gallery all run to the worst return any of them sees,
-which is what a networked control system does (ADR-064). Default is
-`independent`. Read this off the controls specification, not off the unit.
+runs the units as one networked plant, and what the network shares depends on
+the machine. A chilled-water plant (CRAH, fan wall) shares the **valve
+position**: the unit with the hardest job sets how far open every valve is,
+and each unit then delivers what its own coil gives at its own return
+(ADR-064). A direct-expansion plant holds **one fixed supply setpoint** — the
+`supply_temp_c` you state — on every unit; a unit whose return is too warm for
+its compressors delivers what it can and the rest hold, which in a steady
+field is also what `independent` gives (ADR-125). Default is `independent`.
+Read this off the controls specification, not off the unit.
 
 ---
 
