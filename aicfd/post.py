@@ -732,20 +732,36 @@ def flow_spread(step: str | Path, prefix: str = "grille") -> float:
     phi_path = Path(step) / "phi"
     names = [n for n in patch_names(phi_path)
              if n.endswith("_below") and n.startswith(prefix)]
-    total, weighted = 0.0, 0.0
-    for below in names:
-        flux = read_patch_field(phi_path, below)
-        net = float(flux.sum())
-        gross = float(np.abs(flux).sum())
-        # A surface with no net flow has no rated face velocity to be measured
-        # against -- the ratio would be a division by nearly zero, and what it
-        # would be describing is a surface that is passing nothing.
-        if flux.size < 2 or not gross or abs(net) < 0.01 * gross:
-            continue
-        rated = net / flux.size
-        total += abs(net)
-        weighted += abs(net) * float((flux**2).mean() / rated**2)
-    return round(weighted / total, 3) if total else 1.0
+    if not names:
+        return 1.0
+    # ONE SURFACE, NOT 286 OF THEM. This used to measure each plate against
+    # its OWN rated velocity and average the results, which is the variation
+    # INSIDE a plate -- a couple of cells, so 1,09 on a raised floor. What
+    # costs the pressure is the variation BETWEEN the plates: on a 1 MW hall
+    # they run from 0,08 to 1,14 m/s, because a plate over the CRAC's
+    # discharge and a plate at the end of the plenum are not the same plate.
+    # Every face of the kind is one population, against the face velocity the
+    # drawing rates them all at (ADR-119).
+    fluxes = [read_patch_field(phi_path, below) for below in names]
+    flux = np.concatenate(fluxes) if fluxes else np.array([])
+    net, gross = float(flux.sum()), float(np.abs(flux).sum())
+    # A surface with no net flow has no rated face velocity to be measured
+    # against -- the ratio would be a division by nearly zero, and what it
+    # would be describing is a surface that is passing nothing.
+    if flux.size < 2 or not gross or abs(net) < 0.01 * gross:
+        return 1.0
+    # WEIGHTED THE WAY THE DROP IS. `grille_pressure_drop` reports the
+    # flow-weighted mean of the jump, so the closed form it is judged against
+    # has to be the flow-weighted mean of `K rho u^2 / 2` over the same faces.
+    # Judged against the second moment instead, an evenly-built floor read 20%
+    # out; against this, 0,5% (ADR-119).
+    #
+    # The faces of one kind of surface all have the same area in a structured
+    # hexahedral block, which is the only mesh this tool builds, so the flux
+    # per face is the face velocity in another unit and the ratio is the same.
+    rated = net / flux.size
+    weight = np.abs(flux)
+    return round(float((weight * flux**2).sum() / weight.sum() / rated**2), 3)
 
 
 def reverse_fraction(step: str | Path, prefix: str = "grille") -> float:

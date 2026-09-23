@@ -929,12 +929,22 @@ class FlowSpreadTest(unittest.TestCase):
         self.write([0.2] * 16)
         self.assertAlmostEqual(post.flow_spread(self.step, "supply"), 1.0, places=3)
 
-    def test_the_spread_is_mean_of_the_square_over_the_square_of_the_mean(self):
-        """Half the faces at twice the flux: mean 0.75, mean of squares 0.625,
-        so the surface costs 1,11 times what its mean face velocity asks."""
+    def test_the_spread_is_weighted_the_way_the_drop_is_measured(self):
+        """Half the faces at twice the flux.
+
+        `grille_pressure_drop` reports the FLOW-WEIGHTED mean of the jump --
+        the pressure the average kilogram of air pays, which is what the fan
+        has to produce -- so the closed form it is judged against is the
+        flow-weighted mean of `K rho u^2 / 2` over the same faces. Weighted by
+        area instead, an evenly-built floor read 20 % out (ADR-119).
+
+        Here: sum|phi| = 12, sum|phi|phi^2 = 9, so the weighted mean square is
+        0,75 against a rated 0,75 -- and the surface costs 1,33 times what its
+        rated face velocity asks.
+        """
         self.write([0.5] * 8 + [1.0] * 8)
         self.assertAlmostEqual(
-            post.flow_spread(self.step, "supply"), 0.625 / 0.75**2, places=3
+            post.flow_spread(self.step, "supply"), 0.75 / 0.75**2, places=3
         )
 
     def test_a_surface_no_flow_reaches_is_not_divided_by_zero(self):
@@ -1005,15 +1015,16 @@ class ReverseFlowTest(unittest.TestCase):
         the mean magnitude is 0,175 and the net per face 0,125, and a
         resistance follows the second."""
         self.write([0.2] * 12 + [-0.1] * 4)
-        mean_square = (12 * 0.2**2 + 4 * 0.1**2) / 16
+        # Flow-weighted, as the drop is measured (ADR-119).
+        weighted = (12 * 0.2 * 0.2**2 + 4 * 0.1 * 0.1**2) / (12 * 0.2 + 4 * 0.1)
         self.assertAlmostEqual(
             post.flow_spread(self.step, "supply"),
-            mean_square / (2.0 / 16) ** 2, places=3,
+            weighted / (2.0 / 16) ** 2, places=3,
         )
         # and it is emphatically not the mean-magnitude answer
         self.assertNotAlmostEqual(
             post.flow_spread(self.step, "supply"),
-            mean_square / 0.175**2, places=2,
+            weighted / 0.175**2, places=2,
         )
 
     def test_a_surface_that_only_churns_has_no_rated_velocity(self):
@@ -1131,3 +1142,73 @@ class ARatioOnAPascalTest(unittest.TestCase):
         self.assertLessEqual(post.NEGLIGIBLE_PRESSURE_PA, 0.5)
         self.assertTrue(post._resistance_verdict(1.5, 1.05)[0])
         self.assertFalse(post._resistance_verdict(1.6, 1.05)[0])
+
+
+class AnUnevenlyFedSurfaceIsJudgedOnItsOwnFieldTest(unittest.TestCase):
+    """A raised floor's plates do not all pass the same air, and the check
+    has to know that (ADR-119).
+
+    On a 1 MW hall the 286 plates run from 0,08 to 1,14 m/s: a plate over a
+    CRAC's discharge and a plate at the end of the plenum are not the same
+    plate. `flow_spread` measured the variation INSIDE one plate -- a couple
+    of cells, so 1,09 -- and the check read 145 % of a floor that delivers its
+    own K to half a per cent.
+    """
+
+    def setUp(self):
+        self.case = Path(tempfile.mkdtemp())
+        self.step = self.case / "100"
+        self.step.mkdir()
+
+    def write(self, per_tile: list[list[float]], drops: list[float]):
+        """Four faces per tile, and the drop each tile shows."""
+        phi, pressure = {}, {}
+        for i, (flux, drop) in enumerate(zip(per_tile, drops)):
+            phi[f"tile_{i}_below"] = flux
+            phi[f"tile_{i}_above"] = [-f for f in flux]
+            pressure[f"tile_{i}_below"] = [drop] * len(flux)
+            pressure[f"tile_{i}_above"] = [0.0] * len(flux)
+        field(self.step / "phi", "phi", "0", phi)
+        field(self.step / "p_rgh", "p_rgh", "0", pressure)
+
+    def test_an_evenly_fed_floor_has_no_spread(self):
+        self.write([[0.25] * 4] * 6, [1.0] * 6)
+        self.assertAlmostEqual(post.flow_spread(self.step, "tile_"), 1.0, places=2)
+
+    def test_the_variation_between_plates_is_what_counts(self):
+        """Each plate even in itself, the plates wildly different."""
+        self.write([[1.0] * 4, [0.2] * 4, [0.6] * 4, [0.2] * 4], [1.0] * 4)
+        self.assertGreater(post.flow_spread(self.step, "tile_"), 1.3,
+                           "the check still only looks inside one plate")
+
+    def test_a_floor_delivering_its_own_k_reads_as_delivering_it(self):
+        """THE WHOLE POINT. Give every face exactly `K rho u^2 / 2` at its own
+        velocity and the verdict has to be 100 %, however unevenly the air
+        arrives."""
+        rho, k, area = 1.2, 3.35, 0.36
+        flows = [1.00, 0.20, 0.60, 0.20, 0.85, 0.45]
+        per_tile = [[f / 4] * 4 for f in flows]
+        drops = [k * 0.5 * rho * (f / (rho * area)) ** 2 for f in flows]
+        self.write(per_tile, drops)
+
+        measured = post.grille_pressure_drop(self.step, "tile_")
+        spread = post.flow_spread(self.step, "tile_")
+        rated = sum(flows) / len(flows) / (rho * area)
+        asked = k * 0.5 * rho * rated ** 2
+        passed, why = post._resistance_verdict(measured, asked, spread)
+        self.assertTrue(passed, f"{measured:.3f} Pa against {asked * spread:.3f}")
+        self.assertAlmostEqual(measured / (asked * spread), 1.0, places=2)
+        self.assertIn("times harder", why)
+
+    def test_a_floor_that_really_under_delivers_still_fails(self):
+        """The correction is for the flow, not for the resistance."""
+        rho, k, area = 1.2, 3.35, 0.36
+        flows = [1.00, 0.20, 0.60, 0.20, 0.85, 0.45]
+        per_tile = [[f / 4] * 4 for f in flows]
+        drops = [0.5 * k * 0.5 * rho * (f / (rho * area)) ** 2 for f in flows]
+        self.write(per_tile, drops)
+        rated = sum(flows) / len(flows) / (rho * area)
+        self.assertFalse(post._resistance_verdict(
+            post.grille_pressure_drop(self.step, "tile_"),
+            k * 0.5 * rho * rated ** 2,
+            post.flow_spread(self.step, "tile_"))[0])

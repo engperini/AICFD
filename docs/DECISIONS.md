@@ -5041,3 +5041,49 @@ capacity at the manufacturer's table is what every commercial tool does.
 selection was taken at — 37,6 °C of outdoor air on the sheet in hand — and a
 warmer day lowers it. One selection point is one point on a capacity table, and
 this tool holds it there and says so, in the limitations and beside the alert.
+
+---
+
+## ADR-119 — A surface is judged on the field it is in, face by face
+
+**Decision.** `flow_spread` is the FLOW-WEIGHTED second moment of the flux over
+every face of that kind of surface, against the rated face velocity — the same
+weighting `grille_pressure_drop` uses to report the drop. It was the variation
+inside a single patch, averaged over the patches.
+
+**Why.** A 510 kW study, fully converged — `settled` at 0,01 K, `energy_closure`
+at 100 %, every other check green — failed `floor_resistance` at 140 %: the
+field dropped 3,22 Pa across 208 plates where their K at the rated velocity
+asks 2,30. Measured on the tracked 1 MW run, plate by plate:
+
+| | |
+|---|---|
+| each plate's drop against `K rho u²/2` at ITS OWN velocity | **1,015** |
+| the same field against the K at the rated velocity | 1,44 |
+| face velocities across the plates | 0,076 to 1,144 m/s |
+
+The plates deliver what they were given to one and a half per cent. What the
+check was doing was comparing a flow-weighted measurement of an unevenly fed
+surface against a closed form evaluated at one uniform velocity, and correcting
+it by the variation INSIDE one plate — two cells, so 1,09, where the variation
+BETWEEN the plates is 1,44.
+
+A plate over a CRAC's discharge and a plate at the far end of the plenum are
+not the same plate. That is the oldest fact about a raised floor, it is exactly
+what a CFD study is run to see, and the check was treating it as a modelling
+error.
+
+**The rule, stated once.** Measure the field one way and compute the
+expectation the same way. Whatever weighting the reported number uses — and
+flow-weighted is the right one, because it is the pressure the average kilogram
+of air pays and therefore what the fan has to produce — the closed form is
+evaluated with that weighting over the same faces.
+
+**Consequence.** On the tracked run the floor goes from 145 % to 100,7 %, and
+the sentence now says why the ratio against the rated velocity is 145 %: *the
+air reaches it 1,4 times harder than the rated face velocity assumes, so its
+own K asks 1,40 Pa of this field*. The ceiling grilles, the supply grilles and
+the plenum mesh are measured the same way and were always nearly even, so
+nothing there moves. The reverse-flow denominator of ADR-082 is unchanged: the
+rated velocity is still the NET over the faces, so recirculation still counts
+against the surface.
