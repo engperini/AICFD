@@ -174,10 +174,29 @@ def _num(value, decimals=1, dash="—"):
 # --- the report ---------------------------------------------------------------
 
 
+#: Words a case slug carries that are not words: the machine kinds, the units
+#: and the abbreviations an engineer writes in capitals. `str.capitalize`
+#: made "Crah" and "1mw" of them, on the cover.
+_TITLE_WORDS = {
+    "crac": "CRAC", "crah": "CRAH", "fanwall": "Fan Wall", "fw": "FW",
+    "dx": "DX", "cw": "CW", "cac": "CAC", "hac": "HAC", "pod": "POD",
+    "dh": "DH", "mw": "MW", "kw": "kW", "ups": "UPS", "pdu": "PDU",
+    "it": "IT", "hvac": "HVAC", "ashrae": "ASHRAE",
+}
+
+
 def title_of(case: str) -> str:
     """A case slug as a title: ``hall-double-gallery`` -> ``Hall Double
-    Gallery``. Replaced by ``--title`` when the room has a real name."""
-    return " ".join(word.capitalize() for word in case.replace("_", "-").split("-"))
+    Gallery``, ``hall-cage-1mw-crah`` -> ``Hall Cage 1 MW CRAH``. Replaced
+    by ``--title`` when the room has a real name."""
+    words = []
+    for word in case.replace("_", "-").split("-"):
+        number = re.match(r"^(\d+(?:[.,]\d+)?)([a-z]+)$", word)
+        if number and number.group(2) in _TITLE_WORDS:
+            words.append(f"{number.group(1)} {_TITLE_WORDS[number.group(2)]}")
+        else:
+            words.append(_TITLE_WORDS.get(word, word.capitalize()))
+    return " ".join(words)
 
 
 def build(results_dir: str | Path, out_path: str | Path,
@@ -234,6 +253,50 @@ def build(results_dir: str | Path, out_path: str | Path,
 
     doc.save(str(out))
     return out
+
+
+def _containment_of(export: Export) -> str | None:
+    """`"cold"`, `"hot"` or None, read off the panels that were BUILT.
+
+    One answer for the whole document. The methodology already read it this
+    way; the geometry table said "Contained hot aisles" and the figure
+    captions said "contained hot aisle" on a hall whose cold aisles are the
+    contained ones (ADR-100, ADR-112).
+    """
+    if any(p["name"].startswith("containment_lid")
+           for p in export.panels("containment_lid")):
+        return "cold"
+    if any(p["name"].startswith("containment_wall")
+           for p in export.panels("containment_wall")):
+        return "hot"
+    return None
+
+
+def _aisle_rows(export: Export, model: dict, blocks) -> list[tuple[str, str]]:
+    """The hot and cold aisle counts, with "contained" on the one that is."""
+    which = _containment_of(export)
+    rows = []
+    for kind, key in (("hot", "hot_aisles"), ("cold", "cold_aisles")):
+        count = len(model.get(key) or [])
+        if which == kind:
+            rows.append((f"Contained {kind} aisles", f"{count} in plan"
+                         + (f", {count * len(blocks)} separate containment "
+                            f"volumes" if len(blocks) > 1 else "")))
+        else:
+            rows.append((f"{kind.capitalize()} aisles", f"{count}"))
+    return rows
+
+
+def _widths_as_specified(model: dict, built) -> str:
+    """AS SPECIFIED, AND AS MESHED. The built width is the mesh's, and a
+    basis-of-design table that says 0,9 m of an 800 mm cabinet is wrong to
+    the reader who specified it."""
+    spec = ((model.get("spec") or {}).get("racks") or {})
+    size = spec.get("size")
+    stated = float(size[0]) if isinstance(size, (list, tuple)) and size else None
+    if stated is not None and len(built) == 1 and abs(built[0] - stated) > 1e-6:
+        return f"{stated:g} m as specified, meshed as {built[0]:g} m"
+    return ", ".join(f"{w:g} m" for w in built)
 
 
 def _units(count: int) -> str:
@@ -732,7 +795,12 @@ def _summary(doc, export: Export, drawn: dict) -> None:
         ("External static pressure, at the rated airflow",
          f"{_num(fan.get('fan_static_pa'), 0)} Pa"
          if fan.get("fan_static_pa") else "not given"),
-        ("Static pressure available at the modelled airflow",
+        # A P-Q CURVE IS THE FAN AT FULL SPEED. A unit selected at 50 Pa with
+        # its fans at 67 % has 604 Pa on its curve at the same airflow, and a
+        # row that printed both without saying so read as a contradiction.
+        ("Static pressure available at the modelled airflow, fans at full speed"
+         if fan.get("fan_curve") else
+         "Static pressure available at the modelled airflow",
          f"{_num(kpis.get('fan_static_pa'), 0)} Pa"
          + (" (interpolated on the unit's P-Q curve)"
             if fan.get("fan_curve") else " (the datasheet point)")
@@ -774,8 +842,9 @@ def _summary(doc, export: Export, drawn: dict) -> None:
         ("Room resistance, most loaded unit",
          f"{_num(kpis.get('room_static_pa', kpis.get('fan_rise_pa')), 1)} Pa",
          f"of the {_num(kpis.get('fan_static_pa'), 0)} Pa external static the "
-         f"unit offers; the whole loop is "
-         f"{_num(kpis.get('fan_rise_pa'), 1)} Pa"
+         + ("fans offer at full speed at this airflow" if fan.get("fan_curve")
+            else "unit offers")
+         + f"; the whole loop is {_num(kpis.get('fan_rise_pa'), 1)} Pa"
          if kpis.get("fan_static_pa") else "no datasheet pressure given"),
     ]
     if hvac:
@@ -899,13 +968,8 @@ def _methodology(doc, export: Export, drawn: dict) -> None:
     # Every report said "hot-aisle containment", including this hall's, whose
     # cold aisles are the contained ones -- the arrangement the whole air loop
     # follows from (ADR-100, ADR-112).
-    lidded = any(p["name"].startswith("containment_lid")
-                 for p in export.panels("containment_lid"))
-    walled = any(p["name"].startswith("containment_wall")
-                 for p in export.panels("containment_wall"))
-    contained = ("cold-aisle containment" if lidded
-                 else "hot-aisle containment" if walled
-                 else "no containment")
+    which = _containment_of(export)
+    contained = f"{which}-aisle containment" if which else "no containment"
     _para(doc,
           f"The room is derived from the case specification, not drawn: every "
           f"dimension below follows from the equipment sizes, the aisle widths "
@@ -952,10 +1016,7 @@ def _methodology(doc, export: Export, drawn: dict) -> None:
                       + (f" — {len(model['rows']) // max(1, len(blocks))} rows "
                          f"in {len(blocks)} blocks" if len(blocks) > 1 else "")),
         ("Rack positions", f"{len(export.racks)}"),
-        ("Contained hot aisles", f"{len(model['hot_aisles'])} in plan"
-                                 + (f", {len(model['hot_aisles']) * len(blocks)} "
-                                    "separate containment volumes" if len(blocks) > 1 else "")),
-        ("Cold aisles", f"{len(model['cold_aisles'])}"),
+        *(_aisle_rows(export, model, blocks)),
         *([("Customer cage",
             f"{model['cage']} around {len(model.get('cage_racks') or [])} "
             f"cabinets"
@@ -1066,11 +1127,16 @@ def _methodology(doc, export: Export, drawn: dict) -> None:
     _unit_section(doc, export, drawn)
 
     _heading(doc, "How the airflow per unit is obtained", 2)
-    per_unit = kpis["supply_flow_m3h"] / max(1, len(model["fans"]))
+    # THE STATED AIRFLOW, not the measured one divided back: a table whose
+    # step 3 is step 1 times step 2 has to multiply out, and 14 x 31.550 is
+    # 441.700, not the 441.699 the field's mass flow rounds to.
+    units = max(1, len(model["fans"]))
+    per_unit = ((model.get("operating") or {}).get("unit_airflow_m3h")
+                or kpis["supply_flow_m3h"] / units)
     _table(doc, ["Step", "Value"], [
         ("1 — the unit's airflow, from the datasheet", f"{_num(per_unit, 0)} m³/h"),
-        ("2 — units installed", f"{len(model['fans'])}"),
-        ("3 — total delivered to the room", f"{_num(kpis['supply_flow_m3h'], 0)} m³/h"),
+        ("2 — units installed", f"{units}"),
+        ("3 — total delivered to the room", f"{_num(per_unit * units, 0)} m³/h"),
         ("4 — at the supply density",
          f"{_num((model.get('site') or {}).get('rho'), 3)} kg/m³"),
         ("5 — mass flow imposed at each unit",
@@ -1122,8 +1188,7 @@ def _layout_section(doc, export: Export, drawn: dict) -> None:
          "solid plates across the row. No air crosses them, which the "
          "sealed-envelope check confirms."
          if blanks else "none in this layout"),
-        ("Cabinet widths", f"{len(widths)}",
-         ", ".join(f"{w:g} m" for w in widths)),
+        ("Cabinet widths", f"{len(widths)}", _widths_as_specified(model, widths)),
     ], widths=[5.0, 2.4, 8.6])
 
     if drawn.get("geo_hall"):
@@ -1529,8 +1594,8 @@ def _unit_section(doc, export: Export, drawn: dict) -> None:
         _para(doc,
               "The pressure–flow curve used to find the static pressure "
               "available at the modelled airflow is representative of an EC "
-              "fan array, anchored to the unit's selected external static "
-              "pressure. It decides the uncontrolled operating point alone; "
+              "fan array at full speed, anchored to the one point the unit's "
+              "sheet gives. It decides the uncontrolled operating point alone; "
               "every capacity and temperature in this report is independent "
               "of it.",
               size=9, colour=MUTED, italic=True)
@@ -1714,17 +1779,29 @@ def _results(doc, export: Export, drawn: dict) -> None:
             "lines are the customer cage where the hall has one; the blue bars "
             f"are the {export.naming['plural']}, tagged "
             f"{export.unit_tag(0)} onwards.")
+    which = _containment_of(export)
     _figure(doc, drawn["plan_top"],
-            "Plan just below the top of the racks, at the mouth of the contained "
-            "hot aisles — where recirculating or leaking air arrives first.")
+            "Plan just below the top of the racks, "
+            + ("at the mouth of the contained hot aisles — where recirculating "
+               "or leaking air arrives first."
+               if which == "hot" else
+               "over the lids of the contained cold aisles — where the hot room "
+               "above them would show first in a leak."
+               if which == "cold" else
+               "at the mouth of the hot aisles — where recirculating air "
+               "arrives first."))
     _figure(doc, drawn["plan_plenum"],
             "Plan inside the return plenum, above the false ceiling. "
             + ("One volume across the whole hall, feeding every gallery."
                if len(model.get("galleries") or [1]) > 1
                else "Collecting from every hot aisle on its way to the gallery."))
     _figure(doc, drawn["cross"],
-            "Section across the hall, through a rack block: cold aisle, rack row, "
-            "contained hot aisle and the chimney up to the false ceiling.")
+            "Section across the hall, through a rack block: "
+            + ("cold aisle, rack row, contained hot aisle and the chimney up "
+               "to the false ceiling." if which == "hot" else
+               "contained cold aisle under its lid, rack row, and the open hot "
+               "aisle rising to the ceiling grilles." if which == "cold" else
+               "cold aisle, rack row and hot aisle."))
     _figure(doc, drawn["long_cold"],
             "Section along the hall, through a cold aisle: the supply air "
             "leaving the units, the length it has to travel, and the mechanical "
@@ -1732,7 +1809,14 @@ def _results(doc, export: Export, drawn: dict) -> None:
     _figure(doc, drawn["long_hot"],
             "The same section through a contained hot aisle. The containment is "
             "doing its job when this plane is hot from floor to ceiling. A "
-            "containment leak shows first in the cold plane above.")
+            "containment leak shows first in the cold plane above."
+            if which == "hot" else
+            "The same section through a hot aisle, which in this hall is the "
+            "open room: it is hot from the rack tops to the ceiling grilles, "
+            "and the contained cold aisle in the section above stays cold "
+            "under its lid. A containment leak shows first as warm air in "
+            "that cold plane." if which == "cold" else
+            "The same section through a hot aisle.")
 
     _heading(doc, "4.4  Air speed and static pressure", 2)
     _para(doc,
@@ -1754,8 +1838,11 @@ def _results(doc, export: Export, drawn: dict) -> None:
             "reference cell. A contained aisle stands above the room it sits "
             "in, and the difference is what drives air through the cabinets.")
     _figure(doc, drawn["cross_pressure"],
-            "Static pressure across the hall. The supply plenum is the "
-            "highest pressure in the room and the gradient across each rack "
+            ("Static pressure across the hall. The supply plenum is the "
+             if model.get("floor_height") else
+             "Static pressure across the hall. The gallery side of the "
+             "dividing wall is the ")
+            + "highest pressure in the room and the gradient across each rack "
             "row is the drop the porous zone delivers — the same number "
             "`rack_resistance` checks in section 4.1.")
 

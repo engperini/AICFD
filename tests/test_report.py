@@ -1225,3 +1225,68 @@ class TheWaterPlantIsAStatedLimitTest(unittest.TestCase):
         said = inspect.getsource(report._coil_section)
         self.assertIn("Entering water the capacity is held at", said)
         self.assertIn("Water flow at full valve", said)
+
+
+class TheSameReportReadsRightOnAnyMachineTest(unittest.TestCase):
+    """Reading the CRAH twin of a DX hall found wording that was only true of
+    the DX one, or of a hot-aisle hall, or of a program (ADR-124)."""
+
+    def test_the_title_keeps_acronyms_and_units(self):
+        from aicfd.report import title_of
+
+        self.assertEqual(title_of("hall-cage-1mw-crah"), "Hall Cage 1 MW CRAH")
+        self.assertEqual(title_of("hall-cage-1mw-fanwall"), "Hall Cage 1 MW Fan Wall")
+        self.assertEqual(title_of("hall-10mw"), "Hall 10 MW")
+        self.assertEqual(title_of("hall-double-gallery"), "Hall Double Gallery")
+
+    def test_the_geometry_table_says_which_aisle_is_contained(self):
+        from aicfd.report import _aisle_rows
+
+        class Cold:
+            def panels(self, prefix):
+                return [{"name": "containment_lid_c1"}] if prefix == "containment_lid" else []
+
+        class Hot:
+            def panels(self, prefix):
+                return [{"name": "containment_wall_1"}] if prefix == "containment_wall" else []
+
+        model = {"hot_aisles": [1] * 6, "cold_aisles": [1] * 7}
+        self.assertEqual(dict(_aisle_rows(Cold(), model, [1])),
+                         {"Hot aisles": "6", "Contained cold aisles": "7 in plan"})
+        self.assertEqual(dict(_aisle_rows(Hot(), model, [1])),
+                         {"Contained hot aisles": "6 in plan", "Cold aisles": "7"})
+
+    def test_the_captions_follow_the_contained_aisle(self):
+        import inspect
+
+        from aicfd import report
+
+        said = inspect.getsource(report._results)
+        self.assertIn("which = _containment_of(export)", said)
+        self.assertIn("over the lids of the contained cold aisles", said)
+        self.assertIn("at the mouth of the contained hot aisles", said)
+
+    def test_cabinet_widths_are_stated_as_specified_and_as_meshed(self):
+        from aicfd.report import _widths_as_specified
+
+        model = {"spec": {"racks": {"size": [0.8, 1.2, 2.2]}}}
+        self.assertEqual(_widths_as_specified(model, [0.9]),
+                         "0.8 m as specified, meshed as 0.9 m")
+        self.assertEqual(_widths_as_specified(model, [0.8]), "0.8 m")
+        self.assertEqual(_widths_as_specified({}, [0.6, 0.8]), "0.6 m, 0.8 m")
+
+    def test_the_airflow_table_multiplies_out(self):
+        import inspect
+
+        from aicfd import report
+
+        said = inspect.getsource(report._methodology)
+        self.assertIn('("3 — total delivered to the room", f"{_num(per_unit * units, 0)} m³/h")', said)
+
+    def test_a_full_speed_curve_is_labelled_as_one(self):
+        import inspect
+
+        from aicfd import report
+
+        said = inspect.getsource(report._summary)
+        self.assertIn("fans at full speed", said)

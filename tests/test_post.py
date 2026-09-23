@@ -1324,3 +1324,31 @@ class TheRemedyMatchesWhyTheLoopIsOpenTest(unittest.TestCase):
                        inspect.getsource(post._coil_alerts),
                        inspect.getsource(post._checks)):
             self.assertNotIn("coupling_passes", source)
+
+
+class ThePlantAlertsSpeakOfUnitsNotOfMixedAirTest(unittest.TestCase):
+    """Found on the CRAH twin of a DX hall (ADR-124)."""
+
+    def test_a_unit_at_its_coil_to_the_rounding_is_not_over_it(self):
+        """All fourteen at 100 % of available and 'four units are drawing
+        more than the coil can give' -- the noise of a mixing-cup mean."""
+        import inspect
+
+        said = inspect.getsource(post.coil_capacity)
+        self.assertIn('(f.get("of_available_pct") or 0) > 101', said)
+
+    def test_the_water_flow_in_the_alert_is_per_unit(self):
+        import inspect
+
+        self.assertIn("m3/h per unit at that", inspect.getsource(post._coil_alerts))
+
+    def test_the_saturation_alert_names_each_units_air_not_the_mixed_figure(self):
+        k = {"coil_saturated_units": 6, "coil_supply_setpoint_c": 22.5,
+             "coil_supply_needed_c": 24.1, "supply_temp_c": 22.69,
+             "coil_model": {"duty_label": "water valve"},
+             "fans": [{"supply_temp_c": 21.98, "coil_supply_c": 21.98},
+                      {"supply_temp_c": 24.05, "coil_supply_c": 24.05}]}
+        said = " ".join(post._coil_alerts(k))
+        self.assertIn("21.98 to 24.05 degC across the units, 22.69 degC mixed", said)
+        self.assertIn("water valve wide open", said)
+        self.assertNotIn("solved at the 22.69", said)

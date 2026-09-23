@@ -487,8 +487,13 @@ def coil_capacity(model: Model, fans: list[dict], kpis: dict) -> dict:
         "rated_nscc_kw": (unit.design or {}).get("nscc_kw"),
         "available_kw": round(available, 1),
         "utilisation_pct": round(removed / available * 100, 1),
+        # ABOVE ITS OWN COIL BY MORE THAN THE ROUNDING. A plant with every
+        # valve wide open delivers exactly its available capacity, to the
+        # noise of a mixing-cup average -- and "4 units are drawing more than
+        # the coil can give" appeared under a table showing all fourteen at
+        # 100 %. A per cent is the resolution the table prints.
         "units_over_capacity": sum(
-            1 for f in fans if (f.get("of_available_pct") or 0) > 100
+            1 for f in fans if (f.get("of_available_pct") or 0) > 101
         ),
         # Named so nobody has to guess whether a number is the catalogue's or
         # the room's: the catalogue figure is the same machine at its selection
@@ -650,8 +655,8 @@ def _coil_alerts(kpis: dict) -> list[str]:
             f"at {water:.1f} degC against the {design:g} degC of the "
             f"selection. The heat exchanger really does that at this return; "
             f"whether the chiller, the pump and the valve can hold "
-            f"{kpis['coil_model']['water_max_m3h']:g} m3/h at that rise is a "
-            f"question this tool does not answer."
+            f"{kpis['coil_model']['water_max_m3h']:g} m3/h per unit at that "
+            f"rise is a question this tool does not answer."
         )
     at_limit = kpis.get("coil_at_limit_units") or 0
     coil_model = kpis.get("coil_model") or {}
@@ -714,9 +719,18 @@ def _coil_alerts(kpis: dict) -> list[str]:
                 f"4.1 fails for that reason. " + _closure_remedy(kpis) + "."
             )
         else:
+            # EACH UNIT'S OWN AIR, not the mixed figure: on a shared-valve
+            # plant the units deliver different supplies, and "solved at
+            # 22,69 degC" named a temperature no unit produces.
+            own = [f["supply_temp_c"] for f in (kpis.get("fans") or [])
+                   if f.get("supply_temp_c") is not None]
+            span = (f"{min(own):.2f} to {max(own):.2f} degC across the units, "
+                    f"{num(field, 2)} degC mixed"
+                    if own and max(own) - min(own) > 0.05
+                    else f"{num(field, 2)} degC")
             line += (
-                f"The run was solved at the {num(field, 2)} degC this plant "
-                f"can actually make, so the temperatures here are that "
+                f"The run was solved with each unit delivering what its coil "
+                f"makes -- {span} -- so the temperatures here are that "
                 f"plant's and not the setpoint's. The supply temperature is a "
                 f"result of this study, not an input to it -- what this alert "
                 f"says is that the plant has no reserve left at this load."

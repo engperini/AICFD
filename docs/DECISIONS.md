@@ -5363,3 +5363,33 @@ had: the DX plant's limitations say the condenser is not modelled and the
 capacity is held at the selection's outdoor air; the chilled-water plant's
 now say the chiller, the pumps and the distribution are not, and the capacity
 is held at the selection's entering water and flow.
+
+### The CRAH twin, read end to end
+
+`hall-cage-1mw-crah` solved and closed its loop on its own in six passes,
+every check passing — which is what ADR-124 was for. Reading its report the
+way the DX one was read found eleven more places where the document was
+written for one machine, one arrangement, or by a program:
+
+* the cover said `Hall Cage 1mw Crah`; acronyms and units survive the slug now;
+* the geometry table said "Contained hot aisles" and three figure captions
+  said "contained hot aisle" on a hall whose COLD aisles are the contained
+  ones — one helper reads which aisle was built with a lid, and every sentence
+  asks it;
+* "Static pressure available … 604 Pa" sat beside "external static … 50 Pa"
+  with nothing saying the first is the fan curve at FULL SPEED and the second
+  the selection at 67 %;
+* "Cabinet widths 0,9 m" in the basis of design, of an 800 mm cabinet the
+  mesh carries as 900 — it says both now;
+* an airflow table whose step 3 is step 1 × step 2 printed 441.699 for
+  14 × 31.550;
+* "4 units are drawing more than the coil can give" under a table showing all
+  fourteen at 100 % — the noise of a mixing-cup mean above a strict `> 100`;
+* the saturation alert said the run was "solved at 22,69 °C", the mixed
+  figure, on a shared-valve plant whose units deliver 21,98 to 24,05 — no unit
+  produces 22,69;
+* the water alert quoted the unit's flow as though it were the plant's;
+* the pressure-curve note said "anchored to the selected external static"
+  where this sheet anchors it on the maximum;
+* the static-pressure caption named "the supply plenum" on halls that have
+  none.
