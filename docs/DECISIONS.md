@@ -5087,3 +5087,35 @@ the plenum mesh are measured the same way and were always nearly even, so
 nothing there moves. The reverse-flow denominator of ADR-082 is unchanged: the
 rated velocity is still the NET over the faces, so recirculation still counts
 against the surface.
+
+---
+
+## ADR-120 — The page runs the same solve the command line runs
+
+**Decision.** `server.start_run` calls `solve_coupled`, with the same
+`solver.couple`, `solver.coupling_segment` and `solver.coupling_passes` the CLI
+reads, and puts each pass's summary on the page's progress state. It called
+`solve`.
+
+**Why.** A run started from the page never coupled the coil to the room. The
+supply air stayed at the temperature the case states, from the first iteration
+to the last; no pass ever read a return or asked a coil anything; and
+`fanwall.control` — `team` or `independent` — changed nothing whatsoever,
+because the control only exists inside a pass that never ran.
+
+An engineer testing the two control modes on the page found exactly that, said
+so, and was told the coil model was the thing to fix. The coil model did need
+fixing (ADR-103, ADR-117), and none of it reached a run started from the page.
+
+The evidence in the end was one line on a cover sheet: *solved to iteration
+2000*, where 2000 is the case's `max_iterations`. A coupled run ends at
+`max_iterations + passes × segment` and never at the cap itself. Every unit in
+that run delivered the same 22,0 °C the case asked for, while the coil's own
+answer at the returns the room produced was 23,3 °C — which is how a report
+came to show two units removing more heat than their machine can make.
+
+**Consequence.** A page run is now the run the report describes. It takes the
+coupling passes' extra iterations, which is what ADR-040 already says a coupled
+solve costs, and the page shows them as they happen. A case with
+`solver.couple: false` gets the plain solve, on the page as on the command
+line.

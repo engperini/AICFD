@@ -862,3 +862,57 @@ class ApplyKeepsTheFileTest(unittest.TestCase):
         spec.pop("solver")
         server.save_spec(self.CASE, spec)
         self.assertNotIn("solver", server.load_spec(self.CASE))
+
+
+class ThePageSolvesTheSameWayTheCommandLineDoesTest(unittest.TestCase):
+    """A run started from the page never coupled the coil (ADR-120).
+
+    `start_run` called `solve`; `aicfd run` calls `solve_coupled`. So the
+    page's supply air stayed at the temperature the case states from the
+    first iteration to the last, no pass ever read a return, and
+    `fanwall.control` changed nothing -- which is exactly what an engineer
+    testing `team` against `independent` on the page found.
+    """
+
+    def source(self) -> str:
+        import inspect
+
+        from aicfd import server
+
+        return inspect.getsource(server.start_run)
+
+    def test_the_page_runs_the_coupled_solve(self):
+        said = self.source()
+        self.assertIn("solve_coupled(", said)
+        self.assertIn("model,", said)
+
+    def test_it_honours_the_same_settings_the_cli_does(self):
+        said = self.source()
+        for key in ("couple", "coupling_segment", "coupling_passes"):
+            with self.subTest(setting=key):
+                self.assertIn(key, said)
+
+    def test_a_case_that_asks_for_no_coupling_still_gets_a_plain_solve(self):
+        said = self.source()
+        self.assertIn("solve(target, case.pipeline(processors), on_step=step)", said)
+
+    def test_the_passes_reach_the_page(self):
+        """A coupled run takes passes and the reader is owed them."""
+        said = self.source()
+        self.assertIn("on_pass=pass_done", said)
+        self.assertIn("record.summary()", said)
+
+    def test_both_paths_take_the_same_arguments(self):
+        """The CLI and the page must not drift into two different solves."""
+        import inspect
+
+        from aicfd import cli
+
+        page = self.source()
+        command = inspect.getsource(cli)
+        for fragment in ('solver.get("coupling_segment", 300)',
+                         'solver.get("coupling_passes", 5)',
+                         'solver.get("couple", True)'):
+            with self.subTest(fragment=fragment):
+                self.assertIn(fragment, page)
+                self.assertIn(fragment, command)

@@ -1243,9 +1243,18 @@ def stop_run(name: str) -> dict:
 
 
 def start_run(name: str) -> None:
-    """Solve in a worker thread so the page stays responsive."""
+    """Solve in a worker thread so the page stays responsive.
+
+    THE SAME SOLVE THE COMMAND LINE DOES. This called `solve` and nothing
+    else, so a run started from the page never coupled the coil to the room:
+    the supply air stayed at the temperature the case states, from the first
+    iteration to the last, and `fanwall.control` changed nothing at all
+    because no pass ever read a return or asked a coil anything. A hall run
+    from the page and the same hall run with `aicfd run` were two different
+    studies, and only one of them was the one the report describes (ADR-120).
+    """
     from aicfd import case, post
-    from aicfd.run import FoamCommandFailed, solve
+    from aicfd.run import FoamCommandFailed, solve, solve_coupled
 
     def worker() -> None:
         try:
@@ -1283,8 +1292,23 @@ def start_run(name: str) -> None:
             # the fields once they have been measured.
             sampler = post.Sampler(model, target)
             sampler.start()
+
+            def pass_done(record) -> None:
+                # The line the CLI prints, on the page's own progress state:
+                # a coupled run takes passes and the reader is owed them.
+                STATE.set(stage="solving", step="buoyantSimpleFoam",
+                          message=f"coil: {record.summary()}")
+
             try:
-                solve(target, case.pipeline(processors), on_step=step)
+                if solver.get("couple", True):
+                    solve_coupled(
+                        target, case.pipeline(processors), model,
+                        segment=int(solver.get("coupling_segment", 300)),
+                        max_passes=int(solver.get("coupling_passes", 5)),
+                        on_step=step, on_pass=pass_done,
+                    )
+                else:
+                    solve(target, case.pipeline(processors), on_step=step)
             finally:
                 sampler.stop()
             # Export here, not later and not by hand. A solve that leaves no
