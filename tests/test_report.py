@@ -438,7 +438,11 @@ class UnitReportTest(_UnitReport):
         model's own: what it was fitted to, and what the valve can draw."""
         limits = self.text[self.text.index("6  Limitations"):]
         self.assertNotIn("catalogue", limits)
-        self.assertNotIn("water", limits)
+        # The one thing the section DOES say about water is the plant this
+        # study cannot see -- the chiller, the pumps -- which is the same half
+        # the DX report already declared for its condenser (ADR-124).
+        self.assertIn("CHILLED-WATER PLANT is not", limits)
+        self.assertNotIn("rated water", limits)
 
     def test_the_coil_model_is_described_where_its_numbers_are_used(self):
         """The method belongs in the document. Every margin in section 4 rests
@@ -1152,3 +1156,72 @@ class TheSnapListIsReadableTest(unittest.TestCase):
 
         plain = "the cage wall at 12.00 m stands in a contained cold aisle."
         self.assertEqual(_grouped_warnings([plain]), [plain])
+
+
+class TeamControlIsDescribedForTheMachineItRunsOnTest(unittest.TestCase):
+    """`team` shares a SETPOINT on a DX plant and a VALVE POSITION on a
+    chilled-water one (ADR-117). The report said the first of every plant."""
+
+    def render(self, kind: str, control: str = "team") -> str:
+        import docx
+
+        from aicfd import report
+
+        class Export:
+            payload = {"model": {"fans": [{}, {}], "fan_control": control}}
+            kpis = {"coil_model": {"kind": kind}}
+            naming = {"noun": "CRAC" if kind == "dx" else "CRAH"}
+
+        doc = docx.Document()
+        report._control_section(doc, Export())
+        return "\n".join(p.text for p in doc.paragraphs)
+
+    def test_a_dx_team_shares_the_setpoint(self):
+        said = self.render("dx")
+        self.assertIn("deliver the same supply temperature", said)
+        self.assertIn("common setpoint", said)
+        self.assertNotIn("valve", said)
+
+    def test_a_chilled_water_team_shares_the_valve(self):
+        said = self.render("chilled_water")
+        self.assertIn("same valve position", said)
+        self.assertIn("do not share a supply temperature", said)
+        self.assertNotIn("deliver the same supply temperature", said)
+
+    def test_independent_is_the_same_for_both(self):
+        """The first paragraph, that is: the second names what the control
+        moves, which IS different machinery (ADR-111)."""
+        first = lambda text: text.split("\n")[1]
+        self.assertEqual(first(self.render("dx", "independent")),
+                         first(self.render("chilled_water", "independent")))
+        self.assertIn("INDEPENDENTLY", first(self.render("dx", "independent")))
+
+
+class TheWaterPlantIsAStatedLimitTest(unittest.TestCase):
+    """The DX report says its condenser is not modelled; the chilled-water
+    one said nothing about its chiller, which is the same half of the same
+    machine."""
+
+    def test_the_limitations_name_the_chiller(self):
+        from aicfd import report
+
+        class Export:
+            payload = {"model": {"floor_height": 1.0},
+                       "kpis": {"unit_model": "HXCV5000F-HT",
+                                "coil_model": {"kind": "chilled_water",
+                                               "water_c": 20.0,
+                                               "water_max_m3h": 17.2}}}
+
+        said = " ".join(report._model_limits(Export()))
+        self.assertIn("CHILLED-WATER PLANT is not", said)
+        self.assertIn("20.0 °C", said)
+        self.assertIn("17.2 m³/h", said)
+
+    def test_the_coil_table_says_what_the_water_is_held_at(self):
+        import inspect
+
+        from aicfd import report
+
+        said = inspect.getsource(report._coil_section)
+        self.assertIn("Entering water the capacity is held at", said)
+        self.assertIn("Water flow at full valve", said)

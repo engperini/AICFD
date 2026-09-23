@@ -1268,24 +1268,48 @@ def _control_section(doc, export: Export) -> None:
     if units < 2:
         return
     team = str(model.get("fan_control") or "independent").strip().lower() == "team"
+    # WHAT A NETWORKED PLANT SHARES IS NOT THE SAME THING IN THE TWO MACHINES
+    # (ADR-117). A chilled-water plant shares the VALVE POSITION: the unit
+    # with the hardest job sets how far open every valve is, and each unit
+    # then delivers what its own coil gives at its own return -- so they do
+    # NOT deliver the same supply temperature. A direct-expansion plant
+    # shares the SETPOINT: every unit is controlled to the supply the worst
+    # one can make, so they do. This paragraph said the second of every
+    # plant, which on a CRAH or a fan-wall hall described a control that was
+    # not running.
+    cold = export.kpis.get("coil_model") or {}
+    dx = cold.get("kind") == "dx"
+    noun = as_a_label(export.naming["noun"])
     _heading(doc, "How the units are controlled", 2)
-    _para(doc,
-          (f"The {units} units are NETWORKED: they run as one plant. Each pass "
-           "of the coupled loop finds the warmest return any unit sees and "
-           "controls every unit to it, so they deliver the same supply "
-           "temperature and the plant is judged by the unit that has the "
-           "hardest job. This is what a real BMS does with a fan-wall array, "
-           "and it is what `fanwall.control: team` in the case asks for."
-           if team else
-           f"The {units} units run INDEPENDENTLY: each controls to the return "
-           "air reaching its own intake, so a unit fed warmer air works harder "
-           "and they do not deliver the same supply temperature. Set "
-           "`fanwall.control: team` to run them as one networked plant "
-           "instead."))
+    if team and dx:
+        how = (f"The {units} units are NETWORKED: they run as one plant. Each "
+               f"pass of the coupled loop finds the warmest return any unit "
+               f"sees and controls every unit to the supply temperature the "
+               f"unit receiving it can make, so they deliver the same supply "
+               f"temperature and the plant is judged by the unit that has the "
+               f"hardest job. This is what a networked {noun} plant does under "
+               f"a common setpoint, and it is what `fanwall.control: team` in "
+               f"the case asks for.")
+    elif team:
+        how = (f"The {units} units are NETWORKED: they run as one plant. Each "
+               f"pass of the coupled loop finds the warmest return any unit "
+               f"sees, opens the water valve as far as THAT unit needs, and "
+               f"gives every unit the same valve position. Each unit then "
+               f"delivers what its own coil gives at its own return — so a "
+               f"unit fed cooler air delivers cooler air, and they do not "
+               f"share a supply temperature; what they share is the water. "
+               f"This is what a real BMS does with a chilled-water plant, and "
+               f"it is what `fanwall.control: team` in the case asks for.")
+    else:
+        how = (f"The {units} units run INDEPENDENTLY: each controls to the "
+               f"return air reaching its own intake, so a unit fed warmer air "
+               f"works harder and they do not deliver the same supply "
+               f"temperature. Set `fanwall.control: team` to run them as one "
+               f"networked plant instead.")
+    _para(doc, how)
     # WHAT THE CONTROL MOVES is not the same machinery in the two plants,
     # and naming the water side of a direct-expansion unit describes a pipe
     # that is not there (ADR-111).
-    cold = export.kpis.get("coil_model") or {}
     side = ("how hard the compressors work"
             if cold.get("kind") == "dx" else "the water side")
     _para(doc,
@@ -1352,6 +1376,26 @@ def _model_limits(export: Export) -> list[str]:
                 f"The coil fit for {kpis.get('unit_model')} assumed that "
                 f"{assumption}."
             )
+    elif coil.get("kind") == "chilled_water":
+        # THE SAME SENTENCE THE DX PLANT GETS, for the half of a chilled-water
+        # plant this study cannot see. The condenser's counterpart is the
+        # chiller: the coil answers at any return, and it does so on water
+        # held at the selection's entering temperature and flow, which is a
+        # plant somewhere else that this report assumes can deliver them.
+        limits.append(
+            f"{kpis.get('unit_model')} is a chilled-water unit and its COIL "
+            f"is modelled: the capacities here are that coil at the air each "
+            f"unit received, on water entering at "
+            f"{_num(coil.get('water_c'), 1)} °C"
+            + (f" and at most {_num(coil.get('water_max_m3h'), 1)} m³/h per "
+               f"unit" if coil.get("water_max_m3h") else "")
+            + ". The CHILLED-WATER PLANT is not: the chiller, the pumps and "
+            "the distribution are taken to hold that water whatever the "
+            "coils draw, and a unit past its selection asks the water to "
+            "leave warmer than the plant was sized for — section 5 says "
+            "where that happens. The valve is taken as modulating "
+            "continuously."
+        )
     elif kpis.get("rated_return_c") and kpis.get("coil_problem"):
         limits.append(
             f"{kpis.get('unit_model')}'s coil is not modelled: "
@@ -1552,6 +1596,14 @@ def _coil_section(doc, export: Export) -> None:
         ("Design return air",
          f"{_num(coil['design_return_c'], 1)} °C"
          if coil.get("design_return_c") is not None else "not in this export"),
+        # THE SAME TWO ROWS THE DX TABLE HAS for its condenser: what the
+        # capacity is held at, and what the plant is assumed to deliver.
+        ("Entering water the capacity is held at",
+         f"{_num(coil.get('water_c'), 1)} °C"
+         if coil.get("water_c") is not None else "not in this export"),
+        ("Water flow at full valve",
+         f"{_num(coil.get('water_max_m3h'), 1)} m³/h per unit"
+         if coil.get("water_max_m3h") else "not in this export"),
         ("Resistance on the air side",
          f"{split} % (water side {100 - split} %)"
          if split is not None else "not in this export"),
@@ -1559,9 +1611,12 @@ def _coil_section(doc, export: Export) -> None:
          f"{share} %" if share else "—"),
     ]
     _table(doc, ["Property of the coil", "Value"], rows, widths=[8.0, 8.0],
-           note="The resistance split is the usual one for a finned coil of "
-                "this kind, and it is an input where the manufacturer states "
-                "the unit's own.")
+           note="The chilled-water plant is not modelled: the water is held "
+                "at the entering temperature above, and the valve modulates "
+                "the flow up to the figure given. The resistance split is the "
+                "usual one for a finned coil of this kind, and it is an input "
+                "where the manufacturer states the unit's own. Section 6 says "
+                "what that means.")
 
 
 # --- 3 results ----------------------------------------------------------------

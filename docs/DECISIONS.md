@@ -5345,3 +5345,21 @@ installs ships no `wmake` and no headers, so they are not available without
 rebuilding the image around a development install. Until then the loop is
 outside the solver and the record of it is written down; the interface the
 engineer sees is already the one the commercial tools have.
+
+### Found on the way: the report described `team` as a CRAC whatever the plant
+
+Putting every rule on a CRAH and a fan wall as well as a CRAC (the two new
+cases) turned up one sentence that was only ever true of one of them. Section
+3's control paragraph said a networked plant "controls every unit to the
+warmest return, so they deliver the same supply temperature" — which is the
+shared **setpoint** a DX plant runs to (ADR-118), and not what a chilled-water
+plant does: that one shares the **valve position**, and each unit then
+delivers what its own coil gives at its own return (ADR-117). On a CRAH or a
+fan-wall hall the report described a control that was not running. It now
+says which of the two the plant in front of it has.
+
+The same read added to the chilled-water report the half the DX report already
+had: the DX plant's limitations say the condenser is not modelled and the
+capacity is held at the selection's outdoor air; the chilled-water plant's
+now say the chiller, the pumps and the distribution are not, and the capacity
+is held at the selection's entering water and flow.
