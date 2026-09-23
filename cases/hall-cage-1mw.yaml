@@ -328,11 +328,11 @@ mesh:
   cell_size: [0.3, 0.3, 0.25]
 
 solver:
-  max_iterations: 1000
+  max_iterations: 1600
   residual_tolerance: 1.0e-4
-  sensor_interval: 600
+  sensor_interval: 100
   warm_start: true
-  processors: 4
+  processors: 16
 
 plenum:
   enabled: false
