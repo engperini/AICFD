@@ -532,7 +532,7 @@ def _contents(doc) -> None:
         ("3", "Methodology",
          "Geometry, mesh, models, boundary conditions and the cooling unit"),
         ("4", "Results", "Verification, temperature and airflow fields, unit by unit"),
-        ("5", "Conclusions", "Findings and what they do and do not support"),
+        ("5", "Conclusions", "Findings, and what each one supports"),
         ("6", "Limitations",
          "Where the model represents the room differently from the room"),
         ("A", "Annex", "Rack intake temperature, every position"),
@@ -703,8 +703,8 @@ def _introduction(doc) -> None:
     _para(doc,
           "A run is accepted only when every check that applies passes. The "
           "cover page carries this run's verdict in one line and section 4.1 "
-          "carries it check by check; where they say a check failed, nothing "
-          "in section 4 or 5 is a result until it is cleared.")
+          "carries it check by check; where they say a check failed, sections 4 "
+          "and 5 are diagnostic material until it is cleared.")
     _para(doc,
           "Four stations on the air loop — the units' supply, the cabinets' "
           "intakes, the ceiling the contained aisles discharge through, and "
@@ -747,7 +747,8 @@ def _summary(doc, export: Export, drawn: dict) -> None:
         "Establish the temperature of the air entering each rack, and check it "
         "against the ASHRAE class A1 recommended range of 18 °C to 27 °C.",
         f"Confirm that the air loop closes: that the {export.naming['plural']} "
-        "move the mass they are given, that nothing leaks through a wall or "
+        "move the mass they are given, that every wall holds and every intake "
+        "draws forward, and "
         "reverses through an "
         "intake, and that the return air carries the installed load.",
         "Quantify the resistance the room presents to the units, against the "
@@ -784,7 +785,7 @@ def _summary(doc, export: Export, drawn: dict) -> None:
           if unit and (unit.design or {}).get("supply_c") is not None else ()),
         ("Supply air temperature delivered in this run",
          f"{_num(kpis['supply_temp_c'], 1)} °C"
-         + (" (solved, not selected)"
+         + (" (solved)"
             if unit and (unit.design or {}).get("supply_c") is not None else "")),
         ("Net sensible capacity per unit",
          f"{_num(fan.get('unit_capacity_kw'), 1)} kW"
@@ -869,12 +870,12 @@ def _summary(doc, export: Export, drawn: dict) -> None:
     if stations:
         _heading(doc, "The air loop, station by station", 3)
         _para(doc,
-              "Each row is the whole stream crossing that surface, not a "
-              "probe in it: the temperature is the mixing cup, weighted by "
+              "Each row is the whole stream crossing that surface: the "
+              "temperature is the mixing cup, weighted by "
               "what each part of the surface carries, and the range is what "
               "the air at it actually spans. A room whose cabinets carry "
-              "different loads has no single temperature at any station, so "
-              "the range is part of the reading and not an error bar.",
+              "different loads has a different temperature at every point of "
+              "a station, and the range is that spread.",
               size=9, colour=SECOND)
         _table(doc,
                ["Station", "Mixed", "Range", "Flow", "Face velocity"],
@@ -896,7 +897,7 @@ def _summary(doc, export: Export, drawn: dict) -> None:
         "All physical checks pass. The numbers below may be quoted."
         if export.payload["valid"]
         else "ONE OR MORE PHYSICAL CHECKS FAILED. The temperatures below are "
-             "not a result and must not be quoted; see section 4.1."
+             "diagnostic material; section 4.1 names the check that failed."
     )
     _para(doc, verdict, bold=True, colour=INK if export.payload["valid"] else BAD)
     for alert in kpis.get("alerts", []):
@@ -971,7 +972,7 @@ def _methodology(doc, export: Export, drawn: dict) -> None:
     which = _containment_of(export)
     contained = f"{which}-aisle containment" if which else "no containment"
     _para(doc,
-          f"The room is derived from the case specification, not drawn: every "
+          f"The room is derived from the case specification: every "
           f"dimension below follows from the equipment sizes, the aisle widths "
           f"and the clearances the engineer typed. The arrangement is "
           f"{arrangement}, with {contained} and a ceiling-plenum "
@@ -1047,7 +1048,7 @@ def _methodology(doc, export: Export, drawn: dict) -> None:
           f"the containment panels, the false ceiling, the row ends and tops, the "
           f"return grilles and the {export.naming['plural']}. The room's air "
           f"loop closes inside "
-          f"the box, so none of those surfaces is a domain boundary.")
+          f"the box, so every one of those surfaces is internal to the domain.")
     across, through, tall = _cells_per_rack(export)
     _para(doc,
           "The cell sizes differ by axis on purpose. In plan the mesh is sized "
@@ -1070,7 +1071,7 @@ def _methodology(doc, export: Export, drawn: dict) -> None:
         (as_a_label(export.naming["noun"]),
          "A pair of patches on the same internal faces: air leaves the "
          "gallery through the intake and re-enters the cold aisle "
-         "through the supply. Both are set by MASS flow, not volume — "
+         "through the supply. Both are set by MASS flow — "
          "the air leaving is warmer and thinner than the air arriving, "
          "and in a closed loop a 1 % mismatch has nowhere to go."),
         ("Rack", "A Darcy–Forchheimer cell zone with a volumetric enthalpy "
@@ -1083,20 +1084,19 @@ def _methodology(doc, export: Export, drawn: dict) -> None:
                  "by orders of magnitude, which is the cabinet's side panels "
                  "and top. The rack has no fan: what passes through it is an "
                  "outcome of the room's pressure field, so the temperature rise "
-                 "across a rack is a result and not an input."),
+                 "across a rack is a result of the solve."),
         ("Blanking panel", "A solid, adiabatic wall on the cabinets' own face, "
                            "closing the position across the full height of the "
                            "row. No air crosses it. The volume behind it is left "
                            "open to the contained aisle, which is what the space "
                            "behind a blanking plate is; the sealed-envelope "
                            "check confirms it carries zero flow."),
-        ("Cabinet at zero load", "NOT a blanking panel. It is the same porous "
+        ("Cabinet at zero load", "The same porous "
                                  "zone with the same resistance as its "
                                  "neighbours and no heat source: an empty "
                                  "cabinet still breathes and still costs the fan "
-                                 "what the row costs. The two are different "
-                                 "things and the case says which each position "
-                                 "is."),
+                                 "what the row costs. A blanking panel is the row "
+                                 "above; the case says which each position is."),
         ("Perforated surface", "Every grille, mesh and plate is a cyclic pair on "
                                "the same internal faces, carrying a pressure "
                                "jump Δp = ½·K·ρ·u_n², where u_n is the velocity "
@@ -1120,12 +1120,12 @@ def _methodology(doc, export: Export, drawn: dict) -> None:
                         "13 x 13 mm woven mesh as on the return, across the "
                         "opening the units blow through, and no plenum. It is "
                         "a uniform resistance in series with the units, so it "
-                        "changes no flow and is not a surface in the mesh; its "
-                        "pressure is added to the fan duty from its loss "
-                        "coefficient and the check says so."),
+                        "leaves the flow unchanged and enters the model as "
+                        "pressure added to the fan duty from its loss "
+                        "coefficient, and the check says so."),
         ("Containment, false ceiling, row ends", "Two-sided adiabatic wall "
-                                                 "baffles. A row not closed on "
-                                                 "five sides leaks most of its "
+                                                 "baffles. Closing a row on "
+                                                 "five sides is what keeps its air in the aisle; open on any side it leaks most of its "
                                                  "air sideways."),
         ("Building envelope", "No-slip, adiabatic. Conservative for sizing the "
                               "plant: no heat is assumed to leave through it."),
@@ -1407,14 +1407,14 @@ def _control_section(doc, export: Export) -> None:
                f"sees, opens the water valve as far as THAT unit needs, and "
                f"gives every unit the same valve position. Each unit then "
                f"delivers what its own coil gives at its own return — so a "
-               f"unit fed cooler air delivers cooler air, and they do not "
-               f"share a supply temperature; what they share is the water. "
+               f"unit fed cooler air delivers cooler air, each at its own supply "
+               f"temperature; what they share is the water. "
                f"This is what a real BMS does with a chilled-water plant, and "
                f"it is what `fanwall.control: team` in the case asks for.")
     else:
         how = (f"The {units} units run INDEPENDENTLY: each controls to the "
                f"return air reaching its own intake, so a unit fed warmer air "
-               f"works harder and they do not deliver the same supply "
+               f"works harder and each delivers its own supply "
                f"temperature. Set `fanwall.control: team` to run them as one "
                f"networked plant instead.")
     _para(doc, how)
@@ -1426,7 +1426,7 @@ def _control_section(doc, export: Export) -> None:
     _para(doc,
           f"Either way every unit is given the same MASS flow. What the "
           f"control changes is {side} — how much each coil is asked to "
-          f"transfer — not the air each unit moves.",
+          f"transfer — and the air each unit moves stays the same.",
           size=9, colour=SECOND)
 
 
@@ -1443,10 +1443,10 @@ def _model_limits(export: Export) -> list[str]:
     for component_id, sentence in (
         ("pdu-distribution-loss",
          "Heat released outside the racks — PDU and other ancillary losses, "
-         "typically about 2 % of the IT load — is not included."),
+         "typically about 2 % of the IT load — lies outside the model."),
         ("containment-panel",
          "Containment is modelled as perfect: the panels are solid walls in the "
-         "mesh and their leakage figure is not read. Real containment leaks, "
+         "mesh, sealed, and their leakage figure stays unused. Real containment leaks, "
          "and the leak is what decides the top-of-rack temperature in a "
          "marginal design."),
     ):
@@ -1459,7 +1459,7 @@ def _model_limits(export: Export) -> list[str]:
     if not model.get("floor_height"):
         limits.append(
             "Cable management, containment framing and anything else that "
-            "obstructs an aisle is not in the geometry. The room is the "
+            "obstructs an aisle lies outside the geometry, which is the "
             "cabinets, the aisles, the containment and the plant."
         )
     # WHAT A DIRECT-EXPANSION PLANT STILL DOES NOT ANSWER. Its evaporator is
@@ -1474,7 +1474,7 @@ def _model_limits(export: Export) -> list[str]:
             f"EVAPORATOR is modelled: the capacities here are its coil at the "
             f"air each unit received, measured from the "
             f"{_num(coil.get('adp_c'), 1)} °C coil surface its selection "
-            f"implies. Its CONDENSING side is not. Capacity follows the "
+            f"implies. Its CONDENSING side enters through one number: capacity follows the "
             f"outdoor air the condenser rejects into, and this result holds "
             f"that at the selection's own"
             + (f" {_num(ambient, 1)} °C" if ambient is not None else " value")
@@ -1500,7 +1500,7 @@ def _model_limits(export: Export) -> list[str]:
             f"{_num(coil.get('water_c'), 1)} °C"
             + (f" and at most {_num(coil.get('water_max_m3h'), 1)} m³/h per "
                f"unit" if coil.get("water_max_m3h") else "")
-            + ". The CHILLED-WATER PLANT is not: the chiller, the pumps and "
+            + ". The CHILLED-WATER PLANT enters through those two numbers: the chiller, the pumps and "
             "the distribution are taken to hold that water whatever the "
             "coils draw, and a unit past its selection asks the water to "
             "leave warmer than the plant was sized for — section 5 says "
@@ -1509,12 +1509,11 @@ def _model_limits(export: Export) -> list[str]:
         )
     elif kpis.get("rated_return_c") and kpis.get("coil_problem"):
         limits.append(
-            f"{kpis.get('unit_model')}'s coil is not modelled: "
+            f"{kpis.get('unit_model')} is carried at its plate figure: "
             f"{kpis.get('coil_problem')}. So this result is the room at the "
             f"unit's RATED point — {_num(kpis.get('rated_nscc_kw'), 1)} kW at "
             f"{_num(kpis.get('rated_return_c'), 1)} °C return — with the "
-            f"supply temperature held there rather than re-solved against the "
-            f"return the room produces, and the capacity quoted in this "
+            f"supply temperature held there, and the capacity quoted in this "
             f"report is that plate figure."
         )
     return limits
@@ -1553,8 +1552,8 @@ def _resolution_verdict(across: float, through: float) -> str:
     if plan < 2:
         return ("At this resolution a cabinet is a single cell in plan. The "
                 "ranking of racks and the hall-scale pressure field are "
-                "supported; a single rack's intake is not, to better than "
-                "1 to 2 K.")
+                "supported; a single rack's intake carries 1 to 2 K of "
+                "uncertainty.")
     if plan < 4:
         return ("At this resolution the flow around a cabinet is resolved well "
                 "enough for the ranking of racks, the aisle-to-aisle "
@@ -1562,9 +1561,8 @@ def _resolution_verdict(across: float, through: float) -> str:
                 "rack's intake carries roughly 1 K of uncertainty.")
     return ("At this resolution the cabinet and the aisle around it are "
             "resolved, so a single rack's intake is supported as well as the "
-            "ranking and the hall-scale fields. What remains is the modelling, "
-            "not the mesh: the limitations in section 6 are what bound this "
-            "result.")
+            "ranking and the hall-scale fields. What bounds this result is the "
+            "modelling, and the limitations in section 6 say where.")
 
 
 def _unit_section(doc, export: Export, drawn: dict) -> None:
@@ -1669,7 +1667,7 @@ def _coil_section(doc, export: Export) -> None:
               "between sensible and total capacity implies. That coil gives "
               "this unit's capacity at every condition this hall produced; "
               "the compressors modulate to hold the supply temperature until "
-              "there is nothing left to give.",
+              "the compressors are at full duty.",
               size=9.5)
         rows = [
             ("Design return air",
@@ -1686,8 +1684,8 @@ def _coil_section(doc, export: Export) -> None:
         ]
         _table(doc, ["Property of the evaporator", "Value"], rows,
                widths=[8.0, 8.0],
-               note="The condensing side is not modelled: capacity is held at "
-                    "the outdoor air above. Section 6 says what that means.")
+               note="Capacity is held at the outdoor air above, which is the "
+                    "whole of the condensing side in this model. Section 6 says what that means.")
         for assumption in coil.get("assumptions") or []:
             _para(doc, f"Assumed, because the selection does not print it: "
                        f"{assumption}.", size=9, colour=MUTED, italic=True)
@@ -1722,9 +1720,9 @@ def _coil_section(doc, export: Export) -> None:
          f"{share} %" if share else "—"),
     ]
     _table(doc, ["Property of the coil", "Value"], rows, widths=[8.0, 8.0],
-           note="The chilled-water plant is not modelled: the water is held "
-                "at the entering temperature above, and the valve modulates "
-                "the flow up to the figure given. The resistance split is the "
+           note="The water is held at the entering temperature above and the "
+                "valve modulates the flow up to the figure given, which is the "
+                "whole of the chilled-water plant in this model. The resistance split is the "
                 "usual one for a finned coil of this kind, and it is an input "
                 "where the manufacturer states the unit's own. Section 6 says "
                 "what that means.")
@@ -1743,13 +1741,13 @@ def _results(doc, export: Export, drawn: dict) -> None:
     _heading(doc, "4.1  Verification — the checks the field has to pass", 2)
     _para(doc,
           "A steady solver's residuals say how much the last iteration moved, "
-          "not whether the answer means anything. Every run is therefore judged "
+          "and whether the answer means anything is a separate question. Every run is therefore judged "
           "against identities the physics has to satisfy. All of them have to "
           "pass before a temperature is quoted.")
     if not export.payload.get("valid"):
         _para(doc,
-              "In this run they do not. Every row marked FAIL below is a "
-              "statement about the whole field, not about one number in it.",
+              "In this run some fail. Every row marked FAIL below is a "
+              "statement about the whole field.",
               bold=True, colour=BAD)
     _table(doc, ["Check", "Result", "What it catches"],
            [(c["name"],
@@ -1770,8 +1768,8 @@ def _results(doc, export: Export, drawn: dict) -> None:
         _para(doc,
               f"The largest move any station made between the last "
               f"two samples was {_num(kpis['drift_k'], 3)} K. A field that "
-              f"satisfies its balances while a volume is still filling is not "
-              f"a steady answer, which is why this is measured separately from "
+              f"satisfies its balances while a volume is still filling is still "
+              f"moving, which is why this is measured separately from "
               f"the residuals.", size=9, colour=SECOND)
 
     # TWO CONVERGENCES, and a report that showed only the first. The residuals
@@ -1783,10 +1781,9 @@ def _results(doc, export: Export, drawn: dict) -> None:
     coupling = kpis.get("coupling")
     if coupling and coupling.get("off"):
         _para(doc,
-              "The room and the units were NOT solved together: this case "
-              "turns the coupling off (`solver.couple: false`), so the supply "
-              "air temperature is the one the case states and nothing in the "
-              "run asked the machines whether they can make it. The "
+              "The room was solved at the supply air temperature the case states: "
+              "this case turns the coupling off (`solver.couple: false`), so "
+              "the machines were never asked whether they can make it. The "
               "`coil_closure` check in section 4.1 is what says whether they "
               "can.",
               size=9, colour=SECOND)
@@ -1804,12 +1801,12 @@ def _results(doc, export: Export, drawn: dict) -> None:
                  f"closes on, so the supply temperature in this report is what "
                  f"this plant produces at the return this room gives it."
                  if closed else
-                 (f". IT DID NOT CLOSE: the loop was stopped because the supply "
+                 (f". THE LOOP STAYED OPEN: it was stopped because the supply "
                   f"air kept moving by about {_num(moved, 2)} K every pass "
                   f"instead of settling — the plant's control is chasing its "
                   f"own return, and the field carries the last value it "
                   f"reached." if coupling.get("diverged") else
-                  f". IT DID NOT CLOSE: that is the safety limit of "
+                  f". THE LOOP STAYED OPEN: that is the safety limit of "
                   f"{coupling.get('limit')} passes, and the supply air was "
                   f"still moving when it was reached. The plant is swinging "
                   f"between two answers and the field carries one of them.")),
@@ -1877,7 +1874,7 @@ def _results(doc, export: Export, drawn: dict) -> None:
           "arrowhead.")
     _figure(doc, drawn["plan_speed"],
             "Air speed in plan at rack mid-height. This is the plane the "
-            "cabinets breathe from: an aisle the supply is not reaching shows "
+            "cabinets breathe from: an aisle starved of supply shows "
             "here as still air in front of a row.")
     _figure(doc, drawn["cross_speed"],
             "Air speed across the hall. The supply leaves the plenum through "
@@ -1984,9 +1981,9 @@ _CHECK_MEANING = {
     "mass_balance": "the units supplying and drawing different masses",
     "sealed_envelope": "any wall or baffle passing air",
     "no_backflow": "air reversing through a fan intake",
-    "energy_closure": "the return air not carrying the installed load",
+    "energy_closure": "return air carrying less than the installed load",
     "return_path": "a volume still filling — the plenum, usually",
-    "rack_resistance": "the porous zones not delivering the pressure drop given",
+    "rack_resistance": "porous zones delivering a different drop from the one given",
     "grille_resistance": "the same, for the ceiling grilles",
     "plenum_resistance": "the same, for the supply plenum's grilles",
     "floor_resistance": "the same, for a raised floor's perforated plates",
@@ -2021,10 +2018,10 @@ def _conclusions(doc, export: Export) -> None:
     # (ADR-123).
     if not export.payload.get("valid"):
         _para(doc,
-              "THESE ARE NOT RESULTS. One or more of the physical checks in "
+              "THIS SECTION IS DIAGNOSTIC MATERIAL. One or more of the physical checks in "
               "section 4.1 failed, and until they are cleared nothing in this "
               "section may be quoted. It is set out below so that the failure "
-              "can be diagnosed, not so that the numbers can be used.",
+              "can be diagnosed.",
               bold=True, colour=BAD)
     findings = []
     if margin >= 0:
@@ -2151,9 +2148,9 @@ def _conclusions(doc, export: Export) -> None:
                if cabinets else "")
             + f", and the least loaded unit {_num(kpis.get('fan_rise_min_pa'), 1)} Pa "
             f"of loop. "
-            "That is the resistance of the room, not of the coil and filters "
-            "inside the machine, which the unit's external static pressure "
-            "already accounts for."
+            "That is the resistance of the room; the coil and filters inside "
+            "the machine are already inside the unit's external static "
+            "pressure."
         )
     # A SENTENCE THAT SAYS "matches" WHILE QUOTING 106 % is a sentence that
     # contradicts its own number. The heat the return carries can only exceed
@@ -2174,8 +2171,7 @@ def _conclusions(doc, export: Export) -> None:
         # sentence is worth having here.
         + ("Every physical check passes, so the temperatures above may be "
            "quoted." if export.payload["valid"] else
-           "The checks are in section 4.1, and this run does not pass them "
-           "all.")
+           "Section 4.1 names the check this run fails.")
     )
     _bullets(doc, findings)
     for alert in kpis.get("alerts", []):
@@ -2248,9 +2244,10 @@ def _limits(doc, export: Export) -> None:
         limits.append(
             f"A conceptual-design mesh: {_cells(plan_cells)} across a cabinet "
             "in plan. "
-            "Trust the ranking of racks and the hall-scale fields, not a single "
-            "rack's intake to better than "
-            + ("1 to 2 K." if plan_cells < 2 else "about 1 K.")
+            "Trust the ranking of racks and the hall-scale fields; a single "
+            "rack's intake carries "
+            + ("1 to 2 K" if plan_cells < 2 else "about 1 K")
+            + " of uncertainty."
         )
     _bullets(doc, limits)
     _para(doc,

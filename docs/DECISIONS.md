@@ -5480,3 +5480,30 @@ row is running away, and the loop now stops there, writes `diverged` on the
 record, and the remedy says "the supply air kept moving by about 1,2 K every
 pass instead of settling: the plant's control is chasing its own return"
 rather than sending the reader to look for an oscillation.
+
+---
+
+## ADR-126 — The report says what things are
+
+**Decision.** Every sentence in the report and in the alerts that said what
+something is *not* now says what it is. "The range is part of the reading and
+not an error bar" became "the range is that spread"; "the room is derived from
+the case specification, not drawn" lost its second half; "NOT a blanking
+panel" became "the same porous zone as its neighbours, with no heat source";
+"the plate is not the capacity this room has" became "the capacity to count on
+in this room"; "THESE ARE NOT RESULTS" became "THIS SECTION IS DIAGNOSTIC
+MATERIAL"; "the condensing side is not modelled" became "capacity is held at
+the outdoor air above, which is the whole of the condensing side in this
+model". Forty-odd sentences, in `report.py` and `post.py`.
+
+**Why.** The engineer reading the reports put it exactly: a machine has the
+habit of writing what things are not, and nobody opens a report to learn what
+something is not. Every one of those negations was written to head off a
+misreading the author imagined; the reader had not imagined it, and the
+sentence made them wonder who had. Where a sentence's whole content was a
+negation — an alert whose point was "the plate is not the capacity" — the
+question to ask was what it was FOR: that alert exists to say which capacity
+to count on, and now it says that. The limitations section keeps stating what
+the model leaves out, because that is what a limitations section is for; it
+does so as "lies outside the model" and "enters through these two numbers"
+rather than as a list of nots.

@@ -626,7 +626,7 @@ def _coil_alerts(kpis: dict) -> list[str]:
             f"{num(abs(actual - rated_at), 1)} K "
             + ("below" if actual < rated_at else "above")
             + " it. The capacity quoted above is the plate figure, and this "
-            "unit's file does not carry what its coil would need to answer "
+            "unit's file carries the plate figure alone, and its coil would need more to answer "
             "at the return the room gives it."
         )
     # A UNIT WITH A COIL ANSWERS FOR ITSELF. It used to say "ask the
@@ -648,9 +648,9 @@ def _coil_alerts(kpis: dict) -> list[str]:
             + " it. At the return this run produced"
             + (f", and at {share:.0f} % of the selection's air MASS flow,"
                if share is not None and abs(share - 100) > 5 else "")
-            + f" its coil gives {num(per_unit, 1)} kW per unit, "
-            f"{num(per_unit / rated * 100, 0)}% of the plate figure. The plate "
-            f"is not the capacity this room has; the number above is."
+            + f" each unit delivers {num(per_unit, 1)} kW -- "
+            f"{num(per_unit / rated * 100, 0)}% of the plate figure, and the "
+            f"capacity to count on in this room."
         )
     water, design = kpis.get("coil_water_out_c"), kpis.get("coil_water_out_design_c")
     if water and design and water > design + 0.5:
@@ -662,7 +662,7 @@ def _coil_alerts(kpis: dict) -> list[str]:
             f"selection. The heat exchanger really does that at this return; "
             f"whether the chiller, the pump and the valve can hold "
             f"{kpis['coil_model']['water_max_m3h']:g} m3/h per unit at that "
-            f"rise is a question this tool does not answer."
+            f"rise is a question for the chilled-water plant's own design."
         )
     at_limit = kpis.get("coil_at_limit_units") or 0
     coil_model = kpis.get("coil_model") or {}
@@ -671,7 +671,7 @@ def _coil_alerts(kpis: dict) -> list[str]:
             kpis.get("coil_fan_power_kw") or 0.0)
         out.append(
             f"{at_limit} {'unit is' if at_limit == 1 else 'units are'} at the "
-            f"COMPRESSOR limit, not the coil's: at the return "
+            f"COMPRESSOR limit: at the return "
             + ("it receives its" if at_limit == 1 else "they receive their")
             + f" evaporator would transfer more "
             f"than the machine can lift, so the capacity is held at the "
@@ -679,8 +679,7 @@ def _coil_alerts(kpis: dict) -> list[str]:
             f"itself was taken at"
             + (f", at {coil_model['rated_ambient_c']:g} degC outdoor air"
                if coil_model.get("rated_ambient_c") else "")
-            + ". A warmer day lowers it further, which this study does not "
-              "model."
+            + ". A warmer day lowers it further; this study holds the outdoor air fixed."
         )
     saturated = kpis.get("coil_saturated_units") or 0
     if saturated:
@@ -714,13 +713,13 @@ def _coil_alerts(kpis: dict) -> list[str]:
             # the machine does and stops there.
             line += (
                 "The supply temperature this study reports is that coil's "
-                "answer, not the setpoint, and this plant has no reserve left "
+                "answer, and this plant has no reserve left "
                 "at this load."
             )
         elif apart is not None and apart > COIL_CLOSURE_TOLERANCE_K:
             line += (
                 f"The field was solved at {num(field, 2)} degC, which this "
-                f"plant does not produce -- every temperature in this result "
+                f"plant cannot make -- every temperature in this result "
                 f"is {apart:.2f} K optimistic, and `coil_closure` in section "
                 f"4.1 fails for that reason. " + _closure_remedy(kpis) + "."
             )
@@ -737,8 +736,8 @@ def _coil_alerts(kpis: dict) -> list[str]:
             line += (
                 f"The run was solved with each unit delivering what its coil "
                 f"makes -- {span} -- so the temperatures here are that "
-                f"plant's and not the setpoint's. The supply temperature is a "
-                f"result of this study, not an input to it -- what this alert "
+                f"plant's own. The supply temperature is a "
+                f"result of this study -- what this alert "
                 f"says is that the plant has no reserve left at this load."
             )
         out.append(line)
@@ -755,8 +754,8 @@ def _closure_remedy(kpis: dict) -> str:
     record = kpis.get("coupling")
     if record and record.get("off"):
         return (
-            "This run was solved with the coupling off, so nothing ever asked "
-            "the machines whether they can make this air: turn "
+            "This run was solved with the coupling off, so the supply was imposed "
+            "and the machines were never asked whether they can make it: turn "
             "`solver.couple` on, or state a `fanwall.supply_temp_c` the plant "
             "can hold"
         )
@@ -789,7 +788,7 @@ def _closure_remedy(kpis: dict) -> str:
         )
     return (
         "The loop reported closed and the field disagrees with it, which is a "
-        "defect in the software and not in the case: report it with the "
+        "defect in the software: report it with the "
         "solver log"
     )
 
@@ -1346,7 +1345,7 @@ def return_path_check(kpis: dict) -> "Check | None":
     high = exit_station and exit_station.get("high_c")
     uneven = (
         f"; the air crossing the ceiling spans {low:.1f} to {high:.1f} degC, "
-        "which is the room being uneven, not the path leaking"
+        "which is the room being uneven; the path holds"
         if low is not None and high is not None
         and high - low > RETURN_PATH_TOLERANCE
         else ""
@@ -1354,12 +1353,12 @@ def return_path_check(kpis: dict) -> "Check | None":
     return Check(
         "return_path",
         spread <= RETURN_PATH_TOLERANCE,
-        "nothing heats or cools the air between the containment and the fan "
-        f"intake, so these have to agree: the aisles pass {leaving:.1f} degC "
+        "the path from the containment to the fan intake is adiabatic, so "
+        f"these have to agree: the aisles pass {leaving:.1f} degC "
         f"through the ceiling and the units draw {arriving:.1f} degC "
         f"({spread:.2f} K apart)"
         + (uneven if spread <= RETURN_PATH_TOLERANCE else
-           " -- air is joining the return path, or the field has not filled; "
+           " -- air is joining the return path, or the field is still filling; "
            "energy_closure and settled say which"),
     )
 
@@ -1420,7 +1419,7 @@ def _checks(model: Model, step: Path, kpis: dict, grid: dict) -> list[Check]:
             f"{kpis['load_kw']:.2f} kW installed ({closure * 100:.0f}%)"
         )
         if closure < 1 - ENERGY_TOLERANCE:
-            detail += " -- the field has not filled; run more iterations"
+            detail += " -- the field is still filling; run more iterations"
     checks.append(
         Check(
             "energy_closure",
@@ -1611,7 +1610,7 @@ def _checks(model: Model, step: Path, kpis: dict, grid: dict) -> list[Check]:
                     f"makes {worst[2]:.2f} degC at the "
                     + (f"{worst[3]:.2f} degC " if worst[3] is not None else "")
                     + f"return it receives ({apart:.2f} K apart) -- the field "
-                    f"was solved with supply air this plant does not produce, "
+                    f"was solved with supply air this plant cannot make, "
                     f"so every temperature in it is that much optimistic. "
                     + _closure_remedy(kpis)
                 ),
@@ -1623,7 +1622,7 @@ def _checks(model: Model, step: Path, kpis: dict, grid: dict) -> list[Check]:
         Check(
             "settled",
             moved is not None and moved <= STEADY_TOLERANCE,
-            "not enough samples to tell whether anything is still moving"
+            "too few samples to tell whether anything is still moving"
             if moved is None
             else f"the stations moved at most {moved:.2f} K since the previous "
             f"sample (settled below {STEADY_TOLERANCE:.2f} K)",

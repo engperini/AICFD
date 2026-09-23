@@ -441,7 +441,7 @@ class UnitReportTest(_UnitReport):
         # The one thing the section DOES say about water is the plant this
         # study cannot see -- the chiller, the pumps -- which is the same half
         # the DX report already declared for its condenser (ADR-124).
-        self.assertIn("CHILLED-WATER PLANT is not", limits)
+        self.assertIn("CHILLED-WATER PLANT enters through those two numbers", limits)
         self.assertNotIn("rated water", limits)
 
     def test_the_coil_model_is_described_where_its_numbers_are_used(self):
@@ -1186,7 +1186,7 @@ class TeamControlIsDescribedForTheMachineItRunsOnTest(unittest.TestCase):
     def test_a_chilled_water_team_shares_the_valve(self):
         said = self.render("chilled_water")
         self.assertIn("same valve position", said)
-        self.assertIn("do not share a supply temperature", said)
+        self.assertIn("each at its own supply temperature", said)
         self.assertNotIn("deliver the same supply temperature", said)
 
     def test_independent_is_the_same_for_both(self):
@@ -1214,7 +1214,7 @@ class TheWaterPlantIsAStatedLimitTest(unittest.TestCase):
                                                "water_max_m3h": 17.2}}}
 
         said = " ".join(report._model_limits(Export()))
-        self.assertIn("CHILLED-WATER PLANT is not", said)
+        self.assertIn("CHILLED-WATER PLANT enters through those two numbers", said)
         self.assertIn("20.0 °C", said)
         self.assertIn("17.2 m³/h", said)
 
