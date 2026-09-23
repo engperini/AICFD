@@ -649,7 +649,9 @@ def _coil_alerts(kpis: dict) -> list[str]:
             + " it. At the return this run produced"
             + (f", and at {share:.0f} % of the selection's air MASS flow,"
                if share is not None and abs(share - 100) > 5 else "")
-            + f" each unit delivers {num(per_unit, 1)} kW -- "
+            + f" the coils deliver {kpis.get('available_kw', 0):,.0f} kW "
+            f"between {len(kpis.get('fans') or [])} units -- "
+            f"{num(per_unit, 1)} kW per unit on average, "
             f"{num(per_unit / rated * 100, 0)}% of the plate figure, and the "
             f"capacity to count on in this room."
         )
@@ -2569,6 +2571,11 @@ def _viewer_kpis(model: Model, results: PodResults) -> dict:
         # column read "--" on every row of every report.
         "floor_face_velocity_ms": k.get("floor_face_velocity_ms"),
         "supply_face_velocity_ms": k.get("supply_face_velocity_ms"),
+        # How the coupled loop ended (ADR-123, ADR-127). Written to the case
+        # by the solve and read into the KPIs, and then left out of this list
+        # -- so section 4.2 had nothing to say on three reports that had a
+        # record to say it from.
+        "coupling": k.get("coupling"),
         "catalogue_kw": k.get("catalogue_kw"),
         "coil_model": k.get("coil_model"),
         "coil_saturated_units": k.get("coil_saturated_units"),

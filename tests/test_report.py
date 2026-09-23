@@ -1324,6 +1324,8 @@ class TheFanWallReportDescribesTheRoomItHasTest(unittest.TestCase):
         source = inspect.getsource(post)
         self.assertIn('"floor_face_velocity_ms": k.get("floor_face_velocity_ms")', source)
         self.assertIn('"supply_face_velocity_ms": k.get("supply_face_velocity_ms")', source)
+        self.assertIn('"coupling": k.get("coupling")', source,
+                      "the record the solve wrote never reached the report")
 
     def test_an_operated_airflow_is_not_called_the_datasheets(self):
         import inspect
