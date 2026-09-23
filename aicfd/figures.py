@@ -860,6 +860,15 @@ def ashrae(export: Export, out: Path) -> Path:
     return out
 
 
+def _pass_boundaries(export: Export) -> list[int]:
+    """The iterations at which a coupled pass ended and the next began."""
+    record = (export.kpis.get("coupling") or {}) if hasattr(export, "kpis") else {}
+    history = record.get("history") or []
+    ends = [p.get("iterations") for p in history if p.get("iterations")]
+    # The last pass's end is the end of the run, which needs no line.
+    return [int(e) for e in ends[:-1]]
+
+
 def convergence(export: Export, out: Path) -> Path:
     """Residuals, and the loop stations that were watched while they fell.
 
@@ -885,6 +894,16 @@ def convergence(export: Export, out: Path) -> Path:
         axes[0].semilogy(iterations[: len(series)],
                          [v if v and v > 0 else np.nan for v in series],
                          linewidth=1.0, label=name)
+    # WHERE THE SOLVER RESTARTED. Each pass of the coupled loop writes new
+    # supply temperatures and continues the solve, and the first iteration
+    # after a restart renormalises the initial residual -- a spike to 1 on
+    # p_rgh that reads as a blow-up to anyone who was not told (ADR-127). The
+    # boundary is drawn where it happened, on both panels, so the spike and
+    # the step in the station traces have a cause on the page.
+    for boundary in _pass_boundaries(export):
+        for axis in axes:
+            axis.axvline(boundary, color="0.55", linewidth=0.6,
+                         linestyle=(0, (2, 3)), zorder=0)
     axes[0].set_xlabel("iteration")
     axes[0].set_ylabel("initial residual")
     axes[0].set_title("Residuals", loc="left")

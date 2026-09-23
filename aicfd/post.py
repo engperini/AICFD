@@ -625,9 +625,10 @@ def _coil_alerts(kpis: dict) -> list[str]:
             + f" at {num(rated_at, 1)} degC -- "
             f"{num(abs(actual - rated_at), 1)} K "
             + ("below" if actual < rated_at else "above")
-            + " it. The capacity quoted above is the plate figure, and this "
-            "unit's file carries the plate figure alone, and its coil would need more to answer "
-            "at the return the room gives it."
+            + " it. The capacity quoted above is the plate figure: the unit's "
+            "file carries that one point, and the coil that would answer at "
+            "the return the room gives it needs the sheet's total capacity "
+            "beside it."
         )
     # A UNIT WITH A COIL ANSWERS FOR ITSELF. It used to say "ask the
     # manufacturer for its capacity at 26,4 degC", which is the one thing a

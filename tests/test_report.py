@@ -1391,3 +1391,34 @@ class StarvedCabinetsAreAFindingTest(unittest.TestCase):
     def test_an_empty_cabinet_cannot_be_starved(self):
         said = self.render([self.zone("F2-10", 24.0, 60.0, load=0)])
         self.assertNotIn("rises by more than", said)
+
+
+class PassBoundariesAreOnTheConvergenceFigureTest(unittest.TestCase):
+    """A restart renormalises the initial residual for one iteration: a spike
+    to 1 on p_rgh that an engineer read as a blow-up (ADR-127)."""
+
+    def test_the_boundaries_are_every_pass_end_but_the_last(self):
+        from aicfd.figures import _pass_boundaries
+
+        class Export:
+            kpis = {"coupling": {"history": [
+                {"iterations": 2000}, {"iterations": 2300}, {"iterations": 2600}]}}
+
+        self.assertEqual(_pass_boundaries(Export()), [2000, 2300])
+
+    def test_a_run_that_never_coupled_draws_none(self):
+        from aicfd.figures import _pass_boundaries
+
+        class Export:
+            kpis = {"coupling": None}
+
+        self.assertEqual(_pass_boundaries(Export()), [])
+
+    def test_the_caption_explains_the_spike_only_when_there_were_passes(self):
+        import inspect
+
+        from aicfd import report
+
+        said = inspect.getsource(report._results)
+        self.assertIn("spike on p_rgh at a boundary is that restart", said)
+        self.assertIn('.get("passes", 0) > 1', said)

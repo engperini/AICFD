@@ -112,7 +112,7 @@ class SaysWhatIsNotAnsweredTest(unittest.TestCase):
         said = " ".join(report._model_limits(Stub()))
         self.assertIn("X1", said)
         self.assertIn("EVAPORATOR is modelled", said)
-        self.assertIn("CONDENSING side is not", said)
+        self.assertIn("CONDENSING side enters through one number", said)
         self.assertIn("37.6", said)
         self.assertNotIn("ask the manufacturer", said)
 
@@ -210,7 +210,7 @@ class RatingAgainstTheRoomTest(unittest.TestCase):
             "return_temp_c": 21.8,
         }))
         self.assertIn("plate figure", said)
-        self.assertIn("does not carry", said)
+        self.assertIn("carries that one point", said)
 
     def test_a_chilled_water_result_never_gets_this_alert(self):
         self.assertFalse(post._coil_alerts({

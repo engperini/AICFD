@@ -1765,7 +1765,14 @@ def _results(doc, export: Export, drawn: dict) -> None:
             "of the air loop — supply, rack intake, aisle exit and unit "
             "return — recorded while the field settled, each drawn as its "
             "mixing-cup temperature with the range the air spans shaded "
-            "behind it.")
+            "behind it."
+            + (" The dashed verticals are the passes of the coupled loop: at "
+               "each one the units' supply temperatures were rewritten and the "
+               "solver restarted from the field already there, which "
+               "renormalises the initial residual for one iteration — the "
+               "spike on p_rgh at a boundary is that restart, and it falls "
+               "back within a few iterations."
+               if (kpis.get("coupling") or {}).get("passes", 0) > 1 else ""))
     if kpis.get("drift_k") is not None:
         _para(doc,
               f"The largest move any station made between the last "
