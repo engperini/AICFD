@@ -999,6 +999,19 @@ def turbulence_initial_values(model: Model) -> tuple[float, float]:
 # the same iterations -- and it costs one extra field write per sample.
 
 
+def written_end(max_iterations: int, sensor_interval: int) -> int:
+    """The first iteration at or past `max_iterations` that the solver WRITES.
+
+    A steady solver writes every `writeInterval` iterations and nowhere else:
+    asked for 1600 with a 500 write interval it stops at 1600 and the newest
+    field on disk is 1500 -- a hundred iterations solved and thrown away, and
+    every reader downstream (the coupled loop, the post, the report's "solved
+    to iteration") working on a field older than the run (ADR-128).
+    """
+    interval = max(1, int(sensor_interval))
+    return int(-(-int(max_iterations) // interval) * interval)
+
+
 def control_dict(model: Model, max_iterations: int, sensor_interval: int = 100) -> str:
     return f"""{_header(model, "dictionary", "controlDict")}
 application     buoyantSimpleFoam;
@@ -1007,7 +1020,7 @@ startTime       0;
 stopAt          endTime;
 // An iteration cap, not a target: fvSolution's residualControl should stop the
 // run first. Reaching this number means the case did not converge.
-endTime         {max_iterations};
+endTime         {written_end(max_iterations, sensor_interval)};
 deltaT          1;
 writeControl    timeStep;
 // How often the run reports. Every write is a sample: the places, the mass

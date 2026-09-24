@@ -299,6 +299,17 @@ def _widths_as_specified(model: dict, built) -> str:
     return ", ".join(f"{w:g} m" for w in built)
 
 
+def _shortfall(kpis: dict) -> str:
+    """`, 43 kW short of it -- the field is still filling`, when the balance
+    is off by more than the rounding and inside the check (ADR-128)."""
+    closure = kpis.get("energy_closure")
+    if closure is None or abs(closure - 1.0) <= 0.02:
+        return ""
+    gap = (kpis.get("load_kw") or 0.0) - (kpis.get("recovered_kw") or 0.0)
+    return (f"; {abs(gap):,.0f} kW {'short of' if gap > 0 else 'over'} it "
+            f"— the field is still filling")
+
+
 def _units(count: int) -> str:
     """`unit` or `units`. A report that says "2 unit(s)" was written by a
     program and reads like one."""
@@ -750,9 +761,7 @@ def _summary(doc, export: Export, drawn: dict) -> None:
         "against the ASHRAE class A1 recommended range of 18 °C to 27 °C.",
         f"Confirm that the air loop closes: that the {export.naming['plural']} "
         "move the mass they are given, that every wall holds and every intake "
-        "draws forward, and "
-        "reverses through an "
-        "intake, and that the return air carries the installed load.",
+        "draws forward, and that the return air carries the installed load.",
         "Quantify the resistance the room presents to the units, against the "
         "external static pressure their datasheet offers.",
         "Size the plant against the design office's rules — installed capacity "
@@ -837,7 +846,8 @@ def _summary(doc, export: Export, drawn: dict) -> None:
         ("Mixed return air temperature", f"{_num(kpis['return_temp_c'], 2)} °C",
          f"{_num(kpis['bulk_delta_t_k'], 2)} K above the supply"),
         ("Energy closure", f"{_num((kpis['energy_closure'] or 0) * 100, 1)} %",
-         "heat carried out by the return air, against the installed load"),
+         "heat carried out by the return air, against the installed load"
+         + _shortfall(kpis)),
         # THE SAME NUMBER SECTION 4.1 AND SECTION 5 QUOTE. This row used to
         # carry the whole loop against the unit's external static, which reads
         # 227 % on a hall whose units are at 54 % -- a headline contradicting
@@ -1052,8 +1062,12 @@ def _methodology(doc, export: Export, drawn: dict) -> None:
           f"loop closes inside "
           f"the box, so every one of those surfaces is internal to the domain.")
     across, through, tall = _cells_per_rack(export)
+    sizes = model.get("cell_size") or []
+    uniform = len(sizes) == 3 and max(sizes) - min(sizes) < 1e-9
     _para(doc,
-          "The cell sizes differ by axis on purpose. In plan the mesh is sized "
+          ("One cell size on all three axes. " if uniform else
+           "The cell sizes differ by axis on purpose. ")
+          + "In plan the mesh is sized "
           f"on the cabinet: {_cells(across)} across a rack's face and "
           f"{_num(through, 0)} through its depth, which is what decides how well "
           "the porous zone reproduces its own pressure curve. In the vertical "
@@ -1393,32 +1407,54 @@ def _control_section(doc, export: Export) -> None:
     dx = cold.get("kind") == "dx"
     noun = as_a_label(export.naming["noun"])
     _heading(doc, "How the units are controlled", 2)
+    kpis = export.kpis
+    setpoint = kpis.get("coil_supply_setpoint_c")
+    short = kpis.get("coil_saturated_units") or 0
+    needed = kpis.get("coil_supply_needed_c")
+    own = [f["supply_temp_c"] for f in (kpis.get("fans") or [])
+           if f.get("supply_temp_c") is not None]
+    # WHAT THIS RUN DID, in this run's numbers -- the paragraph used to
+    # explain how `team` and `independent` compare, which is the manual's
+    # job; a reader of the report wants to know how this plant was run.
     if team and dx:
-        how = (f"The {units} units are NETWORKED on one supply air setpoint: "
-               f"every unit holds the same {_num(export.kpis.get('coil_supply_setpoint_c'), 1)} °C "
-               f"with its own compressors, and a unit whose return is too warm "
-               f"for its compressors delivers the coldest air it can, so its "
-               f"supply follows its return while the rest hold the setpoint. "
-               f"In a steady field that is also what each unit does on its "
-               f"own; the network's work — staging and fan coordination — is "
-               f"dynamic, so `fanwall.control: team` and `independent` give "
-               f"the same steady answer for a supply-controlled {noun} plant.")
+        how = (f"The {units} units run as one networked plant on a common "
+               f"supply air setpoint"
+               + (f" of {_num(setpoint, 1)} °C" if setpoint is not None else "")
+               + ": each unit holds it with its own compressors, and a unit "
+               "whose return is too warm for its compressors delivers the "
+               "coldest air it can, its supply following its return. "
+               + (f"In this run {short} unit{'s' if short != 1 else ''} "
+                  f"{'are' if short != 1 else 'is'} in that condition, "
+                  f"delivering {_num(needed, 1)} °C; the other "
+                  f"{units - short} hold the setpoint."
+                  if short and needed is not None else
+                  "In this run every unit holds the setpoint."))
     elif team:
-        how = (f"The {units} units are NETWORKED: they run as one plant. Each "
-               f"pass of the coupled loop finds the warmest return any unit "
-               f"sees, opens the water valve as far as THAT unit needs, and "
-               f"gives every unit the same valve position. Each unit then "
-               f"delivers what its own coil gives at its own return — so a "
-               f"unit fed cooler air delivers cooler air, each at its own supply "
-               f"temperature; what they share is the water. "
-               f"This is what a real BMS does with a chilled-water plant, and "
-               f"it is what `fanwall.control: team` in the case asks for.")
+        how = (f"The {units} units run as one networked plant on a common "
+               f"chilled-water loop: each pass of the coupled loop finds the "
+               f"warmest return any unit sees, opens the water valve as far as "
+               f"that unit needs, and gives every unit the same valve "
+               f"position. Each unit then delivers what its own coil gives at "
+               f"its own return. "
+               + (f"In this run {short} unit{'s' if short != 1 else ''} "
+                  f"{'have' if short != 1 else 'has'} the valve wide open and "
+                  f"still deliver{'s' if short == 1 else ''} above the "
+                  f"{_num(setpoint, 1)} °C setpoint"
+                  if short and setpoint is not None else
+                  f"In this run every unit holds the "
+                  f"{_num(setpoint, 1)} °C setpoint" if setpoint is not None
+                  else "")
+               + (f"; the plant's supply spans {min(own):.2f} to "
+                  f"{max(own):.2f} °C." if len(own) > 1 else "."))
     else:
-        how = (f"The {units} units run INDEPENDENTLY: each controls to the "
-               f"return air reaching its own intake, so a unit fed warmer air "
-               f"works harder and each delivers its own supply "
-               f"temperature. Set `fanwall.control: team` to run them as one "
-               f"networked plant instead.")
+        how = (f"The {units} units run independently: each controls to the "
+               f"return air reaching its own intake"
+               + (f", to a {_num(setpoint, 1)} °C supply setpoint"
+                  if setpoint is not None else "")
+               + ", so a unit fed warmer air works harder and each delivers "
+               "its own supply temperature"
+               + (f" — {min(own):.2f} to {max(own):.2f} °C in this run."
+                  if len(own) > 1 else "."))
     _para(doc, how)
     # WHAT THE CONTROL MOVES is not the same machinery in the two plants,
     # and naming the water side of a direct-expansion unit describes a pipe
@@ -2178,15 +2214,18 @@ def _conclusions(doc, export: Export) -> None:
         + ("matches the load the racks put in. "
            if abs(closure - 100) <= 2
            else f"is {_num(abs(closure - 100), 1)} % "
+                f"({abs((kpis.get('load_kw') or 0) - (kpis.get('recovered_kw') or 0)):,.0f} kW) "
                 f"{'above' if closure > 100 else 'below'} the load the racks "
-                f"put in, which a steady field cannot be — this one is still "
-                f"settling. ")
+                f"put in: the field is still filling. ")
         # "Every physical check does NOT pass" reads as "each one fails",
         # which is not what it meant, and the paragraph at the head of this
         # section already carries the verdict. On a run that passed, the
         # sentence is worth having here.
-        + ("Every physical check passes, so the temperatures above may be "
-           "quoted." if export.payload["valid"] else
+        + (("Every physical check passes, so the temperatures above may be "
+            "quoted." if abs(closure - 100) <= 2 else
+            "Every physical check passes within its tolerance; quote the "
+            "temperatures above as a room that is that much short of steady.")
+           if export.payload["valid"] else
            "Section 4.1 names the check this run fails.")
     )
     _bullets(doc, findings)

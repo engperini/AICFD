@@ -5537,3 +5537,46 @@ problem is convergence of both halves, and both are one read of the field.
 The divergence guard (ADR-125) now looks only at steps above the closing
 tolerance: settling passes move the supply by hundredths of a kelvin, and four
 of those in a row are a loop closing, never one running away.
+
+---
+
+## ADR-128 — Every pass ends on a written time, and a balance that is short is said
+
+**Decision.** The end of a run is rounded up to the next iteration the solver
+writes (`written_end`), each coupled pass is a multiple of the write
+interval, and a pass that finds no newer field than the pass before is an
+error. The energy balance, when it is inside the check's 5 % but off by more
+than 2 %, is an alert, the summary row names the kilowatts short, and the
+conclusions quote the temperatures "as a room that is that much short of
+steady". Section 3's control paragraph describes how *this* plant was run,
+in this run's numbers.
+
+**Why.** An engineer ran the 1 MW hall on a 0,1 m mesh — five million cells —
+with 1600 iterations and `sensor_interval: 500`, and the report said "solved
+to iteration 1500", "energy closure 95,7 %" in a table, and all checks
+passed. Three things had gone wrong and none was visible:
+
+* A steady solver writes every `writeInterval` iterations and nowhere else.
+  Asked for 1600 with a 500 write interval, it stopped at 1600 and the newest
+  field on disk was 1500: a hundred iterations solved and thrown away, and
+  every reader downstream working on a field older than the run.
+* The coupled loop's 300-iteration passes under that 500 write interval left
+  no new field at all. The loop read the same time directory on its second
+  pass, found the supply had moved 0,00 K, and declared itself converged on a
+  room it had not solved since the pass before. Every pass now ends on a
+  written time, and a pass that sees no newer field stops the run with the
+  reason rather than converging on it.
+* 4,3 % of the load — 43 kW — was not yet in the return air, which is the
+  field still filling, and the report's only trace of it was the number
+  95,7 % in a table. The check's 5 % tolerance is right for PASS/FAIL; it is
+  the wrong threshold for silence. Past 2 % the shortfall is an alert, the
+  summary row says "43 kW short of it — the field is still filling", and the
+  closing sentence of the conclusions stops saying "may be quoted" and says
+  what to quote them as.
+
+The same reading found the control paragraph explaining how `team` and
+`independent` compare — the manual's job — where the reader wanted to know
+how this plant was run: it now says the setpoint, how many units hold it, and
+how many deliver what they can and at what temperature. A dangling fragment
+the ADR-126 rewrite left in the objectives, and a mesh paragraph saying the
+cell sizes "differ by axis" of a 0,1 × 0,1 × 0,1 m mesh, went with it.

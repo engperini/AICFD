@@ -440,3 +440,43 @@ class SettlingPassesAreNeverARunawayTest(unittest.TestCase):
         self.assertEqual(got["settling_passes"], 1)
         self.assertAlmostEqual(got["closure"], 0.99)
         self.assertTrue(got["converged"])
+
+
+class EveryPassEndsOnAWrittenTimeTest(unittest.TestCase):
+    """A 300-iteration segment under a 500 write interval left no new field;
+    the loop read the same time twice, saw 0,00 K of movement and declared a
+    room converged that had not been solved since the pass before (ADR-128)."""
+
+    def test_the_end_of_a_run_is_a_written_iteration(self):
+        from aicfd.case import written_end
+
+        self.assertEqual(written_end(1600, 500), 2000)
+        self.assertEqual(written_end(1600, 100), 1600)
+        self.assertEqual(written_end(1600, 300), 1800)
+
+    def test_the_segment_is_rounded_up_to_the_write_interval(self):
+        import inspect
+
+        from aicfd import run
+
+        said = inspect.getsource(run.solve_coupled)
+        self.assertIn("interval = _write_interval(case)", said)
+        self.assertIn("segment = -(-segment // interval) * interval", said)
+
+    def test_a_pass_that_saw_no_new_field_is_an_error_not_a_convergence(self):
+        import inspect
+
+        from aicfd import run
+
+        said = inspect.getsource(run.solve_coupled)
+        self.assertIn("if time == previous_time:", said)
+        self.assertIn("wrote no new field on coupling pass", said)
+
+    def test_the_write_interval_is_read_from_the_control_dict(self):
+        from aicfd.run import _write_interval
+
+        with tempfile.TemporaryDirectory() as tmp:
+            (Path(tmp) / "system").mkdir()
+            (Path(tmp) / "system" / "controlDict").write_text(
+                "endTime         1600;\nwriteInterval   500;\n")
+            self.assertEqual(_write_interval(Path(tmp)), 500)

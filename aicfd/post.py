@@ -377,7 +377,7 @@ def _analyse(model: Model, case_dir: str | Path, time: str | None = None) -> Pod
     kpis["coupling"] = read_coupling_record(case)
     kpis["hvac"] = model.hvac()
     kpis["hvac_lines"] = [line.strip() for line in _hvac_summary(model)]
-    kpis["alerts"] = list(model.alerts) + _coil_alerts(kpis)
+    kpis["alerts"] = list(model.alerts) + _balance_alerts(kpis) + _coil_alerts(kpis)
     history = read_history(case)
     kpis["stations_now"] = history[-1]["stations"] if history else []
     return PodResults(
@@ -581,6 +581,37 @@ def _coil_provenance(kpis: dict) -> str:
                  f" -- that was read out of the sheet, and the capacity here "
                  f"follows from it")
     return line
+
+
+#: Beyond this the energy balance is said in the alerts, though the check
+#: still passes up to ENERGY_TOLERANCE. A closed loop on a settled field
+#: lands within a per cent; 4 % short of a 1 MW hall is 40 kW that the return
+#: air has not yet collected, and it passed with nothing on the page but a
+#: number in a table (ADR-128).
+BALANCE_NOTE = 0.02
+
+
+def _balance_alerts(kpis: dict) -> list[str]:
+    """The energy balance, where it is inside the check's tolerance and still
+    worth a sentence."""
+    closure = kpis.get("energy_closure")
+    if closure is None or abs(closure - 1.0) <= BALANCE_NOTE:
+        return []
+    if abs(closure - 1.0) > ENERGY_TOLERANCE:
+        return []  # the check itself fails; one statement of it is enough
+    missing = (kpis.get("load_kw") or 0.0) - (kpis.get("recovered_kw") or 0.0)
+    drift = kpis.get("drift_k")
+    return [
+        f"The return air carries {closure * 100:.1f}% of the installed load, "
+        + (f"{missing:,.0f} kW short" if missing > 0
+           else f"{-missing:,.0f} kW over")
+        + f": the field is still filling"
+        + (f" (the stations moved {drift:.2f} K between the last two samples)"
+           if drift is not None else "")
+        + f". The check passes at {ENERGY_TOLERANCE * 100:.0f}%, so the "
+        f"temperatures here stand -- read them as a room that is that much "
+        f"short of steady, and run further if the margin matters."
+    ]
 
 
 def _coil_alerts(kpis: dict) -> list[str]:

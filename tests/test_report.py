@@ -1179,15 +1179,37 @@ class TeamControlIsDescribedForTheMachineItRunsOnTest(unittest.TestCase):
 
     def test_a_dx_team_holds_one_fixed_setpoint(self):
         said = self.render("dx")
-        self.assertIn("NETWORKED on one supply air setpoint", said)
-        self.assertIn("give the same steady answer", said)
+        self.assertIn("one networked plant on a common supply air setpoint", said)
+        self.assertIn("its supply following its return", said)
         self.assertNotIn("valve", said)
+        self.assertNotIn("independent", said,
+                         "the report describes this run, the manual compares")
 
     def test_a_chilled_water_team_shares_the_valve(self):
         said = self.render("chilled_water")
-        self.assertIn("same valve position", said)
-        self.assertIn("each at its own supply temperature", said)
+        self.assertIn("gives every unit the same valve position", said)
+        self.assertIn("what its own coil gives at its own return", said)
         self.assertNotIn("deliver the same supply temperature", said)
+
+    def test_the_paragraph_carries_this_runs_numbers(self):
+        import docx
+
+        from aicfd import report
+
+        class Export:
+            payload = {"model": {"fans": [{}] * 14, "fan_control": "team"}}
+            kpis = {"coil_model": {"kind": "dx"}, "coil_supply_setpoint_c": 22.0,
+                    "coil_saturated_units": 2, "coil_supply_needed_c": 22.98,
+                    "fans": [{"supply_temp_c": 22.0}] * 12
+                            + [{"supply_temp_c": 22.98}] * 2}
+            naming = {"noun": "CRAC"}
+
+        doc = docx.Document()
+        report._control_section(doc, Export())
+        said = "\n".join(p.text for p in doc.paragraphs)
+        self.assertIn("setpoint of 22.0 °C", said)
+        self.assertIn("In this run 2 units are in that condition, delivering 23.0 °C; "
+                      "the other 12 hold the setpoint.", said)
 
     def test_independent_is_the_same_for_both(self):
         """The first paragraph, that is: the second names what the control
@@ -1195,7 +1217,7 @@ class TeamControlIsDescribedForTheMachineItRunsOnTest(unittest.TestCase):
         first = lambda text: text.split("\n")[1]
         self.assertEqual(first(self.render("dx", "independent")),
                          first(self.render("chilled_water", "independent")))
-        self.assertIn("INDEPENDENTLY", first(self.render("dx", "independent")))
+        self.assertIn("run independently", first(self.render("dx", "independent")))
 
 
 class TheWaterPlantIsAStatedLimitTest(unittest.TestCase):
@@ -1424,3 +1446,34 @@ class PassBoundariesAreOnTheConvergenceFigureTest(unittest.TestCase):
         said = inspect.getsource(report._results)
         self.assertIn("spike on p_rgh at a boundary is that restart", said)
         self.assertIn('.get("passes", 0) > 1', said)
+
+
+class AShortBalanceIsSaidTest(unittest.TestCase):
+    """95,7 % closure passed a 5 % tolerance with nothing on the page but a
+    number in a table -- 43 kW of a 1 MW hall not yet in the return air
+    (ADR-128)."""
+
+    def test_the_summary_row_names_the_shortfall(self):
+        from aicfd.report import _shortfall
+
+        self.assertIn("43 kW short of it", _shortfall(
+            {"energy_closure": 0.957, "load_kw": 998.76, "recovered_kw": 956.15}))
+        self.assertEqual(_shortfall({"energy_closure": 0.996, "load_kw": 999,
+                                     "recovered_kw": 995}), "")
+
+    def test_the_objectives_bullet_reads(self):
+        import inspect
+
+        from aicfd import report
+
+        said = inspect.getsource(report._summary)
+        self.assertNotIn('"reverses through an "', said)
+        self.assertIn("every intake draws forward, and that the return air", said)
+
+    def test_a_uniform_mesh_is_not_said_to_differ_by_axis(self):
+        import inspect
+
+        from aicfd import report
+
+        said = inspect.getsource(report._methodology)
+        self.assertIn('"One cell size on all three axes. " if uniform else', said)

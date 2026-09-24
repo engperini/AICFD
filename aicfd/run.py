@@ -336,7 +336,15 @@ def solve_coupled(
         results.append(run_command(case, command, args=args, log_name=log_name))
 
     end = _end_time(case)
-    passes, previous = [], None
+    # EVERY PASS HAS TO END ON A WRITTEN TIME. The solver writes every
+    # `writeInterval` iterations and nowhere else, so a 300-iteration segment
+    # under a 500 write interval leaves no new field: the loop read the same
+    # time directory twice, found the supply had "moved" 0,00 K, and declared
+    # itself converged on a room that had not been solved since the pass
+    # before (ADR-128).
+    interval = _write_interval(case)
+    segment = -(-segment // interval) * interval
+    passes, previous, previous_time = [], None, None
     for number in range(1, max_passes + 1):
         command, args, log_name = _entry(solver)
         if on_step:
@@ -362,6 +370,15 @@ def solve_coupled(
             time = loop.latest_time(case)
             if time is None:
                 break
+            if time == previous_time:
+                raise RuntimeError(
+                    f"the solver wrote no new field on coupling pass {number}: "
+                    f"the newest time is still {time}. The write interval "
+                    f"({interval}) and the segment ({segment}) disagree, which "
+                    f"the loop is meant to prevent -- report this run's "
+                    f"controlDict"
+                )
+            previous_time = time
             supplies, returns, saturated = loop.supply_temperatures(
                 model, case / time
             )
@@ -513,6 +530,13 @@ def _split_at_solver(pipeline: tuple) -> tuple[list, object, list]:
         if (log_name or command).endswith("Foam"):
             return list(pipeline[:i]), entry, list(pipeline[i + 1:])
     raise ValueError("this pipeline has no solver to couple to")
+
+
+def _write_interval(case_dir: str | Path) -> int:
+    """How often the solver writes a field, from the case's controlDict."""
+    text = (Path(case_dir) / "system" / "controlDict").read_text()
+    found = re.search(r"^writeInterval\s+(\S+);", text, re.MULTILINE)
+    return max(1, int(float(found.group(1)))) if found else 1
 
 
 def _end_time(case_dir: str | Path) -> int:

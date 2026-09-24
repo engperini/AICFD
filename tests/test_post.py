@@ -1368,3 +1368,19 @@ class ThePlateAlertNamesTheAirflowTooTest(unittest.TestCase):
              "fans": [{}] * 14, "coil_air_share_pct": 100}
         said = " ".join(post._coil_alerts(k))
         self.assertNotIn("air MASS flow", said)
+
+
+class ABalanceInsideToleranceButShortIsAnAlertTest(unittest.TestCase):
+    def test_four_per_cent_short_is_said(self):
+        said = " ".join(post._balance_alerts({"energy_closure": 0.957, "load_kw": 998.76,
+                                              "recovered_kw": 956.15, "drift_k": 0.16}))
+        self.assertIn("95.7% of the installed load, 43 kW short", said)
+        self.assertIn("moved 0.16 K", said)
+        self.assertIn("run further if the margin matters", said)
+
+    def test_within_the_rounding_says_nothing(self):
+        self.assertEqual(post._balance_alerts({"energy_closure": 0.996}), [])
+
+    def test_a_failing_balance_is_the_checks_to_say(self):
+        self.assertEqual(post._balance_alerts({"energy_closure": 0.86, "load_kw": 1,
+                                               "recovered_kw": 0.86}), [])
