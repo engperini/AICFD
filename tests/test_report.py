@@ -1260,6 +1260,7 @@ class TheSameReportReadsRightOnAnyMachineTest(unittest.TestCase):
         self.assertEqual(title_of("hall-cage-1mw-crah"), "Hall Cage 1 MW CRAH")
         self.assertEqual(title_of("hall-cage-1mw-fanwall"), "Hall Cage 1 MW Fan Wall")
         self.assertEqual(title_of("hall-10mw"), "Hall 10 MW")
+        self.assertEqual(title_of("hall-cage-1mw-n1"), "Hall Cage 1 MW N−1")
         self.assertEqual(title_of("hall-double-gallery"), "Hall Double Gallery")
 
     def test_the_geometry_table_says_which_aisle_is_contained(self):

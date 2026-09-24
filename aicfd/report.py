@@ -182,6 +182,8 @@ _TITLE_WORDS = {
     "dx": "DX", "cw": "CW", "cac": "CAC", "hac": "HAC", "pod": "POD",
     "dh": "DH", "mw": "MW", "kw": "kW", "ups": "UPS", "pdu": "PDU",
     "it": "IT", "hvac": "HVAC", "ashrae": "ASHRAE",
+    # The failure scenarios, as a case is named for them.
+    "n1": "N−1", "n2": "N−2",
 }
 
 

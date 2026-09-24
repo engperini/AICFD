@@ -1459,7 +1459,9 @@ def _checks(model: Model, step: Path, kpis: dict, grid: dict) -> list[Check]:
     )
 
     reverse = kpis["backflow_kg_s"]
-    units = len(kpis.get("fans", [])) or 1
+    # The units IN SERVICE: a unit out of service is a wall, and "0 kg/s
+    # reverses through 14 units" of a 13-unit plant miscounts it (ADR-129).
+    units = len([f for f in kpis.get("fans", []) if not f.get("off")]) or 1
     checks.append(
         Check(
             "no_backflow",

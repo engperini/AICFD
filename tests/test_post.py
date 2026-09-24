@@ -1404,3 +1404,9 @@ class UnitsOutOfServiceAreLeftOutOfTheAveragesTest(unittest.TestCase):
         source = inspect.getsource(post)
         self.assertIn('rises = [f["rise_pa"] for f in fans if not f.get("off")]', source)
         self.assertIn('fan["off"] = fan["name"] in model.fans_off', source)
+
+    def test_the_backflow_check_counts_the_units_in_service(self):
+        import inspect
+
+        self.assertIn('units = len([f for f in kpis.get("fans", []) if not f.get("off")]) or 1',
+                      inspect.getsource(post._checks))
