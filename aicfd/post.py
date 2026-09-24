@@ -247,9 +247,16 @@ def _intakes(step: str | Path, field: str) -> np.ndarray:
     parts = []
     for intake, _ in fan_pairs(step):
         flux = read_patch_field(step / "phi", intake)
-        if flux.size <= 1:
+        # `uniform 0` on the first write, a list of 52 round-off zeros
+        # (1e-21) after a restart: both are the same wall, and neither
+        # carries air. A gram a second is far below any unit and far above
+        # round-off.
+        if flux.size <= 1 or float(np.abs(flux).sum()) < 1e-3:
             continue
-        parts.append(flux if field == "phi" else read_patch_field(step / field, intake))
+        values = flux if field == "phi" else read_patch_field(step / field, intake)
+        if values.size != flux.size:
+            continue  # a patch with no per-face value has nothing to weight
+        parts.append(values)
     return np.concatenate(parts) if parts else np.zeros(0)
 
 

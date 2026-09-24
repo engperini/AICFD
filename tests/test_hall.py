@@ -993,6 +993,21 @@ class AnIntakeThatIsAWallIsLeftOutOfTheReadTest(unittest.TestCase):
             self.assertEqual(phi.size, temperature.size)
             self.assertEqual(phi.size, 3)
 
+    def test_a_wall_written_as_a_list_of_zeros_is_still_a_wall(self):
+        """After a restart the solver writes the wall's flux per face -- 52
+        zeros -- and its T still has no value; the shapes came out 728 and
+        676 on the fifth pass of the first N-1 run."""
+        with tempfile.TemporaryDirectory() as tmp:
+            step = Path(tmp)
+            zeros = " ".join(["0"] * 52)
+            (step / "phi").write_text(_phi_with_wall().replace(
+                "fan1Intake\n    {\n        type calculated;\n        value uniform 0;",
+                f"fan1Intake\n    {{\n        type calculated;\n"
+                f"        value nonuniform List<scalar> 52\n({zeros})\n;"))
+            (step / "T").write_text(_T_with_wall())
+            self.assertEqual(post._intakes(step, "phi").size, 3)
+            self.assertEqual(post._intakes(step, "T").size, 3)
+
 
 def _phi_with_wall() -> str:
     return (HEADER.format(time="2000", obj="phi", internal="0")
