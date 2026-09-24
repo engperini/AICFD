@@ -234,9 +234,22 @@ def _is_fan_patch(name: str) -> bool:
 
 
 def _intakes(step: str | Path, field: str) -> np.ndarray:
-    """One array of the patch values across every fan intake."""
+    """One array of the patch values across every fan intake THAT CARRIES AIR.
+
+    A unit out of service is a wall under the intake's name (ADR-129): its
+    `phi` is `uniform 0` -- one value -- and its `T` is `zeroGradient` -- no
+    value at all. Concatenated blindly, the two arrays came out 677 and 676
+    long and the energy balance died on the shapes. A patch whose flux is a
+    single uniform value is a wall, and a wall is left out of every field
+    read here, so the arrays stay face-for-face aligned.
+    """
     step = Path(step)
-    parts = [read_patch_field(step / field, intake) for intake, _ in fan_pairs(step)]
+    parts = []
+    for intake, _ in fan_pairs(step):
+        flux = read_patch_field(step / "phi", intake)
+        if flux.size <= 1:
+            continue
+        parts.append(flux if field == "phi" else read_patch_field(step / field, intake))
     return np.concatenate(parts) if parts else np.zeros(0)
 
 

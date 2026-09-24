@@ -976,3 +976,40 @@ class AUnitOutOfServiceTest(unittest.TestCase):
         self.assertIn("fan1Supply", off)
         self.assertEqual(on.count("type    patch;"), 2)
         self.assertIn("flowRateInletVelocity", on)
+
+
+class AnIntakeThatIsAWallIsLeftOutOfTheReadTest(unittest.TestCase):
+    """The off unit's `phi` is `uniform 0` and its `T` is `zeroGradient`;
+    concatenated blindly the intake arrays came out 677 and 676 long and the
+    energy balance died on the shapes (ADR-129)."""
+
+    def test_the_intake_arrays_stay_aligned(self):
+        with tempfile.TemporaryDirectory() as tmp:
+            step = Path(tmp)
+            (step / "phi").write_text(_phi_with_wall())
+            (step / "T").write_text(_T_with_wall())
+            phi = post._intakes(step, "phi")
+            temperature = post._intakes(step, "T")
+            self.assertEqual(phi.size, temperature.size)
+            self.assertEqual(phi.size, 3)
+
+
+def _phi_with_wall() -> str:
+    return (HEADER.format(time="2000", obj="phi", internal="0")
+            + "    fan1Intake\n    {\n        type calculated;\n        value uniform 0;\n    }\n"
+            + "    fan1Supply\n    {\n        type calculated;\n        value uniform 0;\n    }\n"
+            + "    fan2Intake\n    {\n        type calculated;\n"
+              "        value nonuniform List<scalar> 3\n(1 2 3)\n;\n    }\n"
+            + "    fan2Supply\n    {\n        type calculated;\n"
+              "        value nonuniform List<scalar> 3\n(-1 -2 -3)\n;\n    }\n"
+            + "}\n")
+
+
+def _T_with_wall() -> str:
+    return (HEADER.format(time="2000", obj="T", internal="300")
+            + "    fan1Intake\n    {\n        type zeroGradient;\n    }\n"
+            + "    fan1Supply\n    {\n        type zeroGradient;\n    }\n"
+            + "    fan2Intake\n    {\n        type inletOutlet;\n        inletValue uniform 291.95;\n"
+              "        value nonuniform List<scalar> 3\n(300 301 302)\n;\n    }\n"
+            + "    fan2Supply\n    {\n        type fixedValue;\n        value uniform 291.95;\n    }\n"
+            + "}\n")
