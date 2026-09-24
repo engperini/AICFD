@@ -103,7 +103,10 @@ commissioned to answer and AICFD cannot yet say.
   the page says it is not yet read by the solver. What is missing is the
   panels becoming porous baffles instead of walls, and `sealed_envelope`
   learning that a containment carrying flow is the design rather than a
-  fault.
+  fault. The colocation requirement (below) splits the 5 % in two: **3 %
+  rack leakage**, distributed around the rack and between servers, and **2 %
+  containment leakage**, evenly above the racks and at the joins — two
+  different places, so two different porous surfaces.
 - **Rack fans.** A rack is a resistance today, so a rack in a pressure trough
   passes less air than its load needs instead of pulling harder. The 10 MW hall
   shows this at the first rack of every row. Momentum sources would fix it.
@@ -112,14 +115,21 @@ commissioned to answer and AICFD cannot yet say.
 - **Per-rack loads from a DCIM export**, instead of one load for the hall.
   Unloaded positions are porous media without a source, and where they sit
   decides how evenly the units load.
-- **Ancillary heat that is not in a rack** — PDU dissipation as a share of the
-  IT load, released in its own zone. The figure is stated — 2 %, on the
+- **Ancillary heat that is not in a rack** — PDU/RPP dissipation as a share of
+  the IT load, released in its own zone. The figure is stated — 2 %, on the
   components page, editable — and marked as not yet read by the solver. Two
-  per cent of a 5 MW hall is 100 kW, a fan wall's worth, so a model that
-  counts only rack load undercounts the room by about one unit. What is
-  missing is a zone for the distribution equipment and a source in it: the
-  heat arrives in the room rather than at a rack face, so it reaches a rack
-  inlet only through the room.
+  per cent of a 1 MW hall is about 110 kW (the figure the mechanical team
+  uses for DH04), a unit's worth, so a model that counts only rack load
+  undercounts the room by about one unit. What is missing is a zone for the
+  distribution equipment and a source in it: the heat arrives in the room
+  rather than at a rack face, so it reaches a rack inlet only through the
+  room. Same family, same TODO: **the envelope**. Every wall is adiabatic
+  today (stated in the limitations); the mechanical load sheet for the same
+  hall carries 25,7 kW through the walls, 11,3 kW through the roof, 5,6 kW
+  through partitions, 1 kW of lighting, 1,7 kW of people and 17 kW of
+  ventilation against 1.045 kW of IT — 6 % on top of the racks. Wall and
+  roof become heat-flux boundaries from `U·A·ΔT` or from a stated load, and
+  lighting, people and fresh-air load become room sources.
 - **A refinement study upward** from the working mesh: the coarse-versus-fine
   comparison so far went *coarser* and agreed, which is evidence but not a
   convergence study.
@@ -133,6 +143,120 @@ commissioned to answer and AICFD cannot yet say.
   before it can be judged in such a hall.
 - **BIM import.** IFC from a federated Revit model, filtered to the categories
   that affect airflow, into a spec. Loads still come from DCIM, never Revit.
+
+## Requirements from a colocation client's CFD specification (Rev 1.2.1)
+
+A hyperscale colocation client issues its CFD consultants a requirements
+document (Rev 00 Aug-2023, Rev 01 Apr-2024, read here at Rev 1.2.1). It lists
+OpenFOAM among its approved tools, and it is the closest thing to an
+acceptance specification this project has been measured against. What
+follows is every internal-CFD requirement in it, against what AICFD does
+today. The external (wind, generator plume) and transient studies it also
+asks for are outside this tool's scope and stay so (see Non-goals); they are
+listed at the end so the gap is on record.
+
+**Already met.**
+
+- *Pass criterion at the server inlet with N units.* The report ranks every
+  rack by top-of-rack intake and judges it; the ASHRAE A1 recommended limit is
+  the current threshold. See the TODO on the threshold below.
+- *Hot-aisle containment as the default.* It is (ADR-100); cold-aisle
+  containment is available where the design has it.
+- *Supply fan heat gain, from the manufacturer.* The unit's net sensible
+  capacity nets the fan heat off the selection sheet (ADR-070, ADR-073), and
+  the report states the fan power beside it.
+- *Room cooling equipment schedule per unit* — airflow, sensible capacity,
+  supply/return air, chilled water supply and return. Section 4.6 and the
+  coil tables carry these; the water temperatures are in the selection rows.
+- *Floor grille specification appended* — free area, K, face velocity, and
+  the drop the field shows against the drop the datasheet asks (the
+  `floor_resistance` check and the surfaces table).
+- *Planes at mid-rack height, at top-rack height, above the false ceiling,
+  and vertical cross-sections*, for temperature, velocity and pressure —
+  sections 4.3 and 4.4. Their 2 m AFFL plane is our top-of-rack plane; see
+  the sensor-height TODO.
+- *A unit that cannot hold its setpoint delivers what it can.* The feedback
+  put it as: "if the maximum return is 30 °C and the ΔT is 12 K, a unit
+  seeing 32 °C delivers 20 °C, not 18 — otherwise the CFD passes while the
+  fan wall rejects more heat than the machine supports, which is a physical
+  incoherence." That is exactly what the coupled solve does: each unit's
+  coil answers at the return it receives, a unit at full valve or at its
+  compressor ceiling delivers `return − capacity/(m·cp)` and the field is
+  re-solved with that supply (ADR-063, ADR-103, ADR-118, ADR-125), and the
+  `coil_closure` check fails any field solved with air the plant cannot make
+  (ADR-123). On the 1 MW DX hall two units saturate and deliver 20,4 °C
+  against an 18,8 °C setpoint, and the report says so. The ΔT is the coil's
+  own at that return rather than a fixed 12 K, which is the stronger
+  statement of the same rule.
+
+**TODO — inputs the requirement fixes and the case should take by name.**
+
+- [ ] **Leakage 5 % = 3 % rack + 2 % containment**, as two porous surfaces
+  (see *Leakage* above). Today: containment perfect, racks sealed.
+- [ ] **BMS cold-aisle sensor at 2.000 mm AFFL.** Today the report reads the
+  intake at the top of the rack (2,2 m on a 48U cabinet) and as the face
+  mean. Add a `sensors.bms_height_m` station: the temperature at 2,0 m on
+  the cold-aisle face, per rack and per aisle, reported beside the top-of-
+  rack figure — it is what the plant's control will actually see.
+- [ ] **Airflow 170 CFM/kW at the unit supply = 162 through the servers +
+  8 leakage.** Today `racks.airflow_cfm_per_kw` is one figure (158 default)
+  and the racks have no leakage path. Take the two figures and route the
+  8 CFM/kW through the rack-leakage surface.
+- [ ] **Rack 48U, 600 × 1066,8 × 2299 mm**, uniform load in the cabinet.
+  Today's default is 0,6 × 1,2 × 2,2 m; the case can already state it, and
+  a `racks.preset: colo-48u` would save retyping it.
+- [ ] **90 % of contracted IT** as the modelled load, stated on the cover and
+  in the basis of design as a utilisation factor rather than folded into the
+  per-rack kW.
+- [ ] **Pass threshold as a case input**: 29,4 °C (85 °F) for this client's
+  general cooling types, 33,3 °C for evaporative with CMxC, with the ASHRAE
+  A1 27 °C staying the default. The check and the figures' marked limits
+  follow it.
+- [ ] **PDU/RPP losses, 2 % of the hall load, in their own zone**, and **the
+  envelope gains** (see *Ancillary heat* above).
+- [ ] **Design day from the ASHRAE n = 50 sheet**, worst DB (air-cooled
+  plant) or worst WB (evaporative), stated in the basis of design and used
+  for the DX condenser ambient (ADR-118 holds it at the selection's today).
+
+**TODO — scenarios the requirement runs and the tool should script.**
+
+- [ ] **I1 → I2: N+1 with all units, then each unit out in turn to find the
+  worst N.** This is the *failure scenario* item above, with the search over
+  which unit to remove automated and the worst case carried forward as the
+  baseline.
+- [ ] **I3 / I3.a: maximum-density racks packed into the worst airflow spot
+  of each row found in I2**, without and then with spacing. Needs the
+  per-rack airflow-deficit finding (section 5 now names the worst cabinet)
+  to pick the spot, and per-position loads (the cage schedule already does
+  this by hand).
+- [ ] **I4 / I4.a: one cold aisle at maximum density, the rest at average.**
+  Per-position loads again.
+- [ ] **Two scenarios compared on one mesh and one colour scale** (already
+  listed above) — every case of the set is a delta from I2.
+
+**TODO — outputs the requirement asks for that the report lacks.**
+
+- [ ] **SIT bin table**: racks counted into ≤ 29,4 / 29,4–32,2 / 32,2–35 /
+  35–37 / … / > 45 °C, one column per scenario. The ranking exists; the
+  binning and the side-by-side do not.
+- [ ] **Max, min and average on every plane plot**, printed on the figure.
+- [ ] **Temperature streamlines** (planned; stage 1 = section + plenum plan
+  coloured by temperature, stage 2 = capture index).
+- [ ] **Velocity vector plots** marking low-pressure / back-pressure zones
+  and recirculation — the pressure plan exists; vectors do not.
+- [ ] **Floor grille airflow and discharge temperature, graphically**, per
+  grille — the numbers exist per plate in the post; a figure does not.
+- [ ] **Thermal mass inputs listed** (slab, rack steel at 5 kg/RU, servers at
+  ≤ 15 kg and 500 J/kg·K, effectiveness 0,8, units, ceiling, walls) — only
+  meaningful with a transient solve; record them in the case so the
+  hand-off to a transient tool has them.
+
+**Out of scope, on record.** External CFD (wind roses, generator exhaust
+contaminant, intake uplift bins, equipment de-rate) and transient CFD
+(utility-to-generator transfer, chiller restart, 295 s above threshold,
+thermal stores). AICFD is a steady internal tool by design; where a project
+needs these, they are a separate study, and the steady result here is its
+starting state.
 
 ## Non-goals
 
