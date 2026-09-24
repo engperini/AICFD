@@ -310,6 +310,19 @@ def _shortfall(kpis: dict) -> str:
             f"— the field is still filling")
 
 
+def _off_units(export: Export) -> list[str]:
+    """The units out of service, as the report tags them (`CRAC-01`)."""
+    names = export.model.get("fans") or []
+    off = export.model.get("fans_off") or []
+    return [export.unit_tag(names.index(n)) for n in off if n in names]
+
+
+def _plant_line(export: Export) -> str:
+    """`14 × P3100DA` or `14 × P3100DA · 1 out of service (CRAC-01)`."""
+    off = _off_units(export)
+    return (f" · {len(off)} out of service ({', '.join(off)})" if off else "")
+
+
 def _units(count: int) -> str:
     """`unit` or `units`. A report that says "2 unit(s)" was written by a
     program and reads like one."""
@@ -522,8 +535,8 @@ def _cover(doc, export: Export, client, author, title_text: str) -> None:
         # machine's, read off the coil its selection characterises. A reader
         # who disagrees with the unit can stop here.
         _para(doc,
-              f"Cooling plant · {len(export.model['fans'])} × "
-              f"{unit.family} {unit.model}".strip(),
+              (f"Cooling plant · {len(export.model['fans'])} × "
+               f"{unit.family} {unit.model}").strip() + _plant_line(export),
               size=9, colour=SECOND, space_after=4)
     _para(doc,
           f"Case {export.payload['case']} · solved to iteration "
@@ -750,7 +763,9 @@ def _summary(doc, export: Export, drawn: dict) -> None:
         "and to establish whether the cooling plant removes the heat the "
         "equipment releases.",
         f"The hall carries {len(zones)} rack positions in {len(model['rows'])} "
-        f"row segments and {len(model['fans'])} {export.naming['noun']} units, "
+        f"row segments and {len(model['fans'])} {export.naming['noun']} units"
+        + (f" ({len(model.get('fans_off') or [])} out of service)"
+           if model.get("fans_off") else "") + ", "
         f"against an "
         f"installed IT load of {_num(kpis['total_load_w'] / 1000, 0)} kW.",
     ])
@@ -785,7 +800,12 @@ def _summary(doc, export: Export, drawn: dict) -> None:
     _table(doc, ["Quantity", "Value"], [
         ("Unit", f"{unit.family} {unit.model}".strip() if unit else "not named"),
         ("Units installed", f"{len(model['fans'])}"),
-        ("Airflow per unit", f"{_num(kpis['supply_flow_m3h'] / max(1, len(model['fans'])), 0)} m³/h"),
+        *((("Units in operation",
+            f"{len(model['fans']) - len(model.get('fans_off') or [])} — "
+            f"{', '.join(_off_units(export))} out of service"),)
+          if model.get("fans_off") else ()),
+        ("Airflow per unit",
+         f"{_num(kpis['supply_flow_m3h'] / max(1, len(model['fans']) - len(model.get('fans_off') or [])), 0)} m³/h"),
         ("Total airflow to the room", f"{_num(kpis['supply_flow_m3h'], 0)} m³/h"),
         # TWO DIFFERENT TEMPERATURES, and this table used to print the solved
         # one under a heading that says "the machine's own manufacturer
@@ -1047,7 +1067,11 @@ def _methodology(doc, export: Export, drawn: dict) -> None:
             + (f", K = {_num(model.get('cage_k'), 2)} each way"
                if model.get("cage_k") else ""))]
           if model.get("cage") else []),
-        (f"{as_a_label(export.naming['noun'])} units", f"{len(model['fans'])}"),
+        (f"{as_a_label(export.naming['noun'])} units",
+         f"{len(model['fans'])}"
+         + (f" installed, {len(model['fans']) - len(model.get('fans_off') or [])} "
+            f"in operation ({', '.join(_off_units(export))} out of service)"
+            if model.get("fans_off") else "")),
     ]
     _table(doc, ["Feature", "As built in the model"], rows, widths=[7.0, 9.0])
 
@@ -1157,7 +1181,8 @@ def _methodology(doc, export: Export, drawn: dict) -> None:
     # THE STATED AIRFLOW, not the measured one divided back: a table whose
     # step 3 is step 1 times step 2 has to multiply out, and 14 x 31.550 is
     # 441.700, not the 441.699 the field's mass flow rounds to.
-    units = max(1, len(model["fans"]))
+    off = len(model.get("fans_off") or [])
+    units = max(1, len(model["fans"]) - off)
     per_unit = ((model.get("operating") or {}).get("unit_airflow_m3h")
                 or kpis["supply_flow_m3h"] / units)
     selected = ((export.equipment.design or {}).get("airflow_m3h")
@@ -1179,7 +1204,8 @@ def _methodology(doc, export: Export, drawn: dict) -> None:
                         else ""))
     _table(doc, ["Step", "Value"], [
         (step_one, f"{_num(per_unit, 0)} m³/h"),
-        ("2 — units installed", f"{units}"),
+        ("2 — units in operation" if off else "2 — units installed",
+         f"{units}" + (f" of {units + off} installed" if off else "")),
         ("3 — total delivered to the room", f"{_num(per_unit * units, 0)} m³/h"),
         ("4 — at the supply density",
          f"{_num((model.get('site') or {}).get('rho'), 3)} kg/m³"),
@@ -1390,7 +1416,7 @@ def _control_section(doc, export: Export) -> None:
     of the two produced it (ADR-064).
     """
     model = export.payload["model"]
-    units = len(model.get("fans") or [])
+    units = len(model.get("fans") or []) - len(model.get("fans_off") or [])
     if units < 2:
         return
     team = str(model.get("fan_control") or "independent").strip().lower() == "team"
@@ -1621,7 +1647,9 @@ def _unit_section(doc, export: Export, drawn: dict) -> None:
     facts = [
         ("Manufacturer and family", unit.family or "—"),
         ("Model", unit.model),
-        ("Units installed", f"{len(export.model['fans'])}"),
+        ("Units installed", f"{len(export.model['fans'])}"
+         + (f" ({len(_off_units(export))} out of service: "
+            f"{', '.join(_off_units(export))})" if _off_units(export) else "")),
         ("Unit dimensions (w × d × h)",
          " × ".join(f"{v:.2f}" for v in unit.size) + " m"),
     ]
@@ -1999,16 +2027,22 @@ def _results(doc, export: Export, drawn: dict) -> None:
     # reads as a temperature rise. This is the static pressure the unit has to
     # produce around the whole loop, cabinets included.
     headers.append("Loop static")
-    _table(doc, headers,
-           [(f["name"].replace("fan", ""),
-             f"{_num(f.get('return_temp_c'), 2)} °C",
-             f"{_num(f.get('intake_kg_s'), 1)} kg/s",
-             f"{_num(f.get('heat_kw'), 0)} kW",
-             f"{_num((f.get('heat_kw') or 0) / rating * 100, 0)} %" if rating else "—",
-             *((f"{_num(f.get('available_kw'), 0)} kW",
-                f"{_num(f.get('of_available_pct'), 0)} %") if available else ()),
-             f"{_num(f.get('rise_pa'), 1)} Pa")
-            for f in fans],
+    def unit_row(f):
+        if f.get("off"):
+            # OUT OF SERVICE: the row says so once, across, rather than
+            # printing zero heat at an undefined return (ADR-129).
+            return (f["name"].replace("fan", ""), "out of service",
+                    *[""] * (len(headers) - 2))
+        return (f["name"].replace("fan", ""),
+                f"{_num(f.get('return_temp_c'), 2)} °C",
+                f"{_num(f.get('intake_kg_s'), 1)} kg/s",
+                f"{_num(f.get('heat_kw'), 0)} kW",
+                f"{_num((f.get('heat_kw') or 0) / rating * 100, 0)} %" if rating else "—",
+                *((f"{_num(f.get('available_kw'), 0)} kW",
+                   f"{_num(f.get('of_available_pct'), 0)} %") if available else ()),
+                f"{_num(f.get('rise_pa'), 1)} Pa")
+
+    _table(doc, headers, [unit_row(f) for f in fans],
            widths=widths,
            note="Heat removed is the enthalpy the air carries out of each unit, "
                 "mass flow × cp × (return − supply). 'Of the rating' compares it "
@@ -2056,7 +2090,7 @@ def _conclusions(doc, export: Export) -> None:
     zones = kpis["zones"]
     warmest = max(zones, key=lambda z: z["inlet_top_c"] or -999)
     margin = 27.0 - (warmest["inlet_top_c"] or 0)
-    fans = kpis.get("fans", [])
+    fans = [f for f in kpis.get("fans", []) if not f.get("off")]
     returns = [f.get("return_temp_c") for f in fans if f.get("return_temp_c") is not None]
     spread = (max(returns) - min(returns)) if returns else None
     heats = [f.get("heat_kw") for f in fans if f.get("heat_kw") is not None]
@@ -2076,6 +2110,16 @@ def _conclusions(doc, export: Export) -> None:
               "can be diagnosed.",
               bold=True, colour=BAD)
     findings = []
+    off = _off_units(export)
+    if off:
+        installed = len(export.model.get("fans") or [])
+        findings.append(
+            f"This is an N−{len(off)} scenario: {', '.join(off)} "
+            f"{'is' if len(off) == 1 else 'are'} out of service and the "
+            f"remaining {installed - len(off)} of {installed} units carry the "
+            f"hall at their own rated airflow. Every figure below is that "
+            f"plant's."
+        )
     if margin >= 0:
         findings.append(
             f"The air delivered to the IT equipment is within the ASHRAE class A1 "

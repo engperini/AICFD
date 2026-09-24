@@ -637,16 +637,21 @@ def _downflow_baffles(model: Model, fan: Panel, k: float,
     # supply face that is the plenum, so the supply is the master; under the
     # return face it is the unit's own body, and the gallery it draws from is
     # above, so there the intake is the slave.
+    # A UNIT OUT OF SERVICE IS A BOX. Both faces are walls -- it moves no
+    # air and cools nothing -- under the same patch names, so every reader
+    # downstream finds the unit and measures zero through it (ADR-129).
+    off = fan.name in model.fans_off
     out = []
     for zone, master, slave, note in (
         (f"{fan.name}_supply",
-         (supply, supply_fields, "patch"),
+         (supply, wall, "wall") if off else (supply, supply_fields, "patch"),
          (f"{fan.name}SupplyBack", wall, "wall"),
-         f"delivers into the plenum below it, at {model.supply_temp_c:g} degC"),
+         ("is OUT OF SERVICE: a wall" if off else
+          f"delivers into the plenum below it, at {model.supply_temp_c:g} degC")),
         (f"{fan.name}_return",
          (f"{fan.name}IntakeBack", wall, "wall"),
-         (intake, intake_fields, "patch"),
-         "draws from the gallery above it"),
+         (intake, wall, "wall") if off else (intake, intake_fields, "patch"),
+         "is OUT OF SERVICE: a wall" if off else "draws from the gallery above it"),
     ):
         out.append(f"""    {zone}
     {{
@@ -726,6 +731,12 @@ def _fan_baffle(model: Model, fan: Panel, k: float, epsilon: float) -> str:
     # without swapping the conditions would build a unit that supplies into
     # its own return -- and it would still read as converged.
     side = "the gallery is at lower x" if fan.sign > 0 else "the gallery is at higher x"
+    # A UNIT OUT OF SERVICE IS A WALL on both faces, under the same patch
+    # names, so everything downstream finds it and measures zero (ADR-129).
+    off = fan.name in model.fans_off
+    if off:
+        wall = _wall_patch_fields(k, epsilon, p0)
+        intake_fields, supply_fields = wall, wall
     pairs = (
         ((intake, intake_fields), (supply, supply_fields))
         if fan.sign > 0
@@ -735,7 +746,7 @@ def _fan_baffle(model: Model, fan: Panel, k: float, epsilon: float) -> str:
         f"""            {role}
             {{
                 name    {name};
-                type    patch;
+                type    {'wall' if off else 'patch'};
 {fields}
             }}"""
         for role, (name, fields) in zip(("master", "slave"), pairs)
@@ -851,6 +862,8 @@ def check_fan_orientation(case_dir: str | Path, model: Model | None = None) -> l
     fans = list(model.fans) if model is not None else [None]
     problems = []
     for (intake, supply), fan in zip(pairs, fans):
+        if fan is not None and fan.name in getattr(model, "fans_off", ()):
+            continue  # a wall has no direction to get wrong
         if fan is not None and fan.return_z is not None:
             # A DOWNFLOW UNIT IS THE SAME TEST TURNED ON ITS SIDE. Its two
             # faces are normal to z: the return is the top one and its cells

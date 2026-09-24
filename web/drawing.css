@@ -23,6 +23,7 @@
 .dw-wall{fill:var(--containment);stroke:var(--containment);stroke-width:1}
 .dw-opening{fill:var(--hot);stroke:var(--hot);stroke-width:1}
 .dw-fan{fill:var(--cold);stroke:var(--cold);stroke-width:1}
+.dw-fan-off{fill:none;stroke:var(--muted,#888);stroke-width:1.2;stroke-dasharray:3 2}
 /* The customer cage: a security boundary round one customer's rows, and
    neither containment nor a grille. Violet, so a reader looking for it on the
    plan finds it at once -- it was drawn in the containment green and read as

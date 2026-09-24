@@ -909,3 +909,70 @@ class TheArrangementDecidesTheDefaultTest(unittest.TestCase):
                 self.assertTrue(
                     any(abs(centre - a) < 2.0 for a in aisles),
                     "a fan wall no longer stands in front of an aisle")
+
+
+class AUnitOutOfServiceTest(unittest.TestCase):
+    """`fanwall.out_of_service` names the units that fail -- the N-of-N+1
+    scenario a plant is sized on (ADR-129). The machine stays where it is,
+    its faces are walls, and the units left in service carry the room at
+    their own rated airflow."""
+
+    def fans(self, count=14):
+        from aicfd.model import Panel
+
+        return [Panel(name=f"fan{i + 1}", kind="fan", axis=0, position=1.0,
+                      extent=((0.0, 1.0), (0.0, 1.0))) for i in range(count)]
+
+    def test_units_are_named_by_number_tag_or_panel(self):
+        from aicfd.model import out_of_service
+
+        fans = self.fans()
+        self.assertEqual(out_of_service({"out_of_service": [1]}, fans), ("fan1",))
+        self.assertEqual(out_of_service({"out_of_service": ["CRAC-03", "fan5", "7"]}, fans),
+                         ("fan3", "fan5", "fan7"))
+        self.assertEqual(out_of_service({"out_of_service": 2}, fans), ("fan2",))
+        self.assertEqual(out_of_service({}, fans), ())
+        self.assertEqual(out_of_service({"out_of_service": []}, fans), ())
+
+    def test_a_unit_that_does_not_exist_is_refused_by_name(self):
+        from aicfd.model import out_of_service
+
+        with self.assertRaises(ValueError) as caught:
+            out_of_service({"out_of_service": [15]}, self.fans())
+        self.assertIn("unit 15 does not exist", str(caught.exception))
+        with self.assertRaises(ValueError):
+            out_of_service({"out_of_service": ["the one on the left"]}, self.fans())
+
+    def test_every_unit_off_is_refused(self):
+        from aicfd.model import out_of_service
+
+        with self.assertRaises(ValueError):
+            out_of_service({"out_of_service": [1, 2]}, self.fans(2))
+
+    def test_the_model_counts_the_units_in_service(self):
+        """13 units move 13 x 27.500 m3/h; the sizing ratios follow them."""
+        model = build(fanwall__out_of_service=[1], fanwall__control="team")
+        self.assertEqual(model.fans_off, ("fan1",))
+        self.assertEqual(len(model.fans), len(model.fans_on) + 1)
+        self.assertEqual(model.fan_count, len(model.fans) - 1)
+        self.assertAlmostEqual(model.airflow_m3h,
+                               float(SPEC["fanwall"]["airflow_m3h"]) * model.fan_count)
+        self.assertEqual(model.hvac()["units_installed"], len(model.fans))
+        self.assertEqual(model.hvac()["units_off"], ["fan1"])
+        self.assertNotIn("fan1", model.team_of("fan2"))
+        self.assertTrue(any("out of service" in w for w in model.warnings))
+
+    def test_the_off_unit_is_a_wall_on_both_faces(self):
+        from aicfd.case import _fan_baffle
+
+        model = build(fanwall__out_of_service=[1])
+        fan1 = next(f for f in model.fans if f.name == "fan1")
+        fan2 = next(f for f in model.fans if f.name == "fan2")
+        off = _fan_baffle(model, fan1, 0.1, 0.1)
+        on = _fan_baffle(model, fan2, 0.1, 0.1)
+        self.assertEqual(off.count("type    wall;"), 2)
+        self.assertNotIn("flowRateInletVelocity", off)
+        self.assertIn("fan1Intake", off)
+        self.assertIn("fan1Supply", off)
+        self.assertEqual(on.count("type    patch;"), 2)
+        self.assertIn("flowRateInletVelocity", on)

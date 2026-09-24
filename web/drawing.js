@@ -217,7 +217,11 @@ const klass = (panel, model) =>
       // on top of it stays the thing being read.
       : isDeck(panel) ? 'dw-deck'
         : panel.kind === 'wall' ? 'dw-wall'
-          : panel.kind === 'fan' ? 'dw-fan' : 'dw-opening';
+          : panel.kind === 'fan'
+            // A unit out of service is drawn struck through: the failure
+            // scenario has to be legible on the drawing (ADR-129).
+            ? (model?.fans_off?.includes(panel.name) ? 'dw-fan dw-fan-off' : 'dw-fan')
+            : 'dw-opening';
 
 function el(tag, attrs = {}, text) {
   const node = document.createElementNS(NS, tag);

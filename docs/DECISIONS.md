@@ -5580,3 +5580,33 @@ how this plant was run: it now says the setpoint, how many units hold it, and
 how many deliver what they can and at what temperature. A dangling fragment
 the ADR-126 rewrite left in the objectives, and a mesh paragraph saying the
 cell sizes "differ by axis" of a 0,1 × 0,1 × 0,1 m mesh, went with it.
+
+---
+
+## ADR-129 — Units out of service, by name
+
+**Decision.** `fanwall.out_of_service` names the units that fail — one or
+several, by the number the report gives them (`1`), by tag (`CRAC-01`) or by
+panel (`fan1`). The machine stays where it stands; both its faces become
+walls under the same patch names, so every reader downstream finds it and
+measures zero through it. The units left in service keep their own rated
+airflow, so the plant's total airflow falls by the failed units' share.
+`fan_count`, the sizing ratios, the team, the per-unit averages, the ranking
+of loop pressure and the coil reading all count the units in service; the
+installed count is reported beside them. The report says so on the cover, in
+the basis of design, in the unit table (one row reading "out of service") and
+as the first finding of the conclusions; the drawings hatch the unit and mark
+it OFF. The page takes the list as text.
+
+**Why.** The first thing the roadmap owed: a plant is sized on N of N+1, and
+a study that reports the normal condition and calls the margin ample has not
+tested the margin. The engineer wanted to choose which unit fails — the most
+loaded one first — and see the room the other thirteen leave.
+
+Total airflow is **not** held constant across the scenario. A DX room unit
+runs at its rated airflow whatever its neighbours do, and thirteen units at
+27.500 m³/h move 357.500, so the return warms by the missing unit's share and
+the units near the failed one see more of the load. That is the failure. A
+plant whose fans would speed up to hold the room's airflow is a different
+control, and a case that has it states a higher `airflow_m3h` per unit for
+the scenario.

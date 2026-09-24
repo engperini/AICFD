@@ -919,3 +919,24 @@ class ThePageSolvesTheSameWayTheCommandLineDoesTest(unittest.TestCase):
             with self.subTest(fragment=fragment):
                 self.assertIn(fragment, page)
                 self.assertIn(fragment, command)
+
+
+class TheUnitsOutOfServiceFieldTest(unittest.TestCase):
+    """The page takes the failure scenario as text: `1`, `1, 3`, or the
+    tags; empty puts every unit back (ADR-129)."""
+
+    def test_the_field_is_editable_and_typed(self):
+        from aicfd.server import EDITABLE
+
+        path, caster, _limits = EDITABLE["fan_out_of_service"]
+        self.assertEqual(path, ("fanwall", "out_of_service"))
+        self.assertEqual(caster, "unit_list")
+
+    def test_the_caster_parses_numbers_and_tags(self):
+        import inspect
+
+        from aicfd import server
+
+        said = inspect.getsource(server)
+        self.assertIn('if caster == "unit_list":', said)
+        self.assertIn("names no unit", said)

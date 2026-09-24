@@ -113,6 +113,10 @@ EDITABLE = {
     # is an airflow decision (ADR-121).
     "fan_offset": (("fanwall", "offset"), float, (0.0, 20.0)),
     "fan_pitch": (("fanwall", "pitch"), float, (0.1, 30.0)),
+    # WHICH UNITS FAIL: the N-of-N+1 scenario, by unit number or tag, one or
+    # several. The machine stays where it is; its faces become walls
+    # (ADR-129).
+    "fan_out_of_service": (("fanwall", "out_of_service"), "unit_list", None),
     # --- return grilles -----------------------------------------------------
     "grille_size": (("grilles", "size"), float, (0.1, 3.0)),
     "grille_count": (("grilles", "count"), int, (1, 200)),
@@ -467,6 +471,24 @@ def apply_changes(spec: dict, changes: dict) -> tuple[dict, list[str]]:
             # A checkbox, stored as the word the spec uses, so a case reads
             # `control: team` rather than `control: true`.
             _place(spec, path, "team" if raw else "independent")
+            continue
+        if caster == "unit_list":
+            # "3" or "1, 3" or "CRAC-01, CRAC-03": the units out of service.
+            # Empty puts every unit back in service. The model checks the
+            # numbers against the plant it builds (ADR-129).
+            items = [v.strip() for v in str(raw or "").replace(";", ",").split(",")
+                     if v.strip()]
+            if not items:
+                _place(spec, path, None)
+                continue
+            bad = [v for v in items if not re.search(r"\d+\s*$", v)]
+            if bad:
+                rejected.append(
+                    f"{key}: {', '.join(repr(v) for v in bad)} names no unit; "
+                    f"write the unit's number (1, 3) or its tag (CRAC-01)"
+                )
+                continue
+            _place(spec, path, [int(v) if v.isdigit() else v for v in items])
             continue
         if caster == "choice":
             # One of a named set of words, as the spec writes them. A range

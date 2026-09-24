@@ -187,6 +187,15 @@ drywall cage costs 3.5% more fan rise and puts the peak speed up 10.4%
 is **refused**: the supply is outside it and the ceiling grilles over its own
 hot aisles still let air out, so the racks have an exit and no entry.
 
+**Which units are out of service.** `fanwall.out_of_service: [1]` — or
+`[CRAC-01, CRAC-08]`, by the number the report gives the units along the
+gallery wall — takes those units out: the machine stays where it stands, both
+its faces become walls, and the units left in service carry the room at their
+own rated airflow, so the plant's total airflow falls by the failed units'
+share. This is the N-of-N+1 scenario a plant is sized on; run the normal
+case first, take out the most loaded unit the report names, and read the
+room the rest leave (ADR-129). Every unit out is refused.
+
 **Whether the units run independently or as a team.** `fanwall.control: team`
 runs the units as one networked plant, and what the network shares depends on
 the machine. A chilled-water plant (CRAH, fan wall) shares the **valve
@@ -265,6 +274,7 @@ or three.
 | `fanwall.supply_temp_c` | float | -10 to 40 | supply air at the selection point |
 | `fanwall.offset` | float | 0 to 20 | from the start of the gallery wall to the FACE of the first unit. With `pitch`, the row is laid exactly there; on its own, the row ends the same distance from the far end and shares what is between (ADR-121) |
 | `fanwall.pitch` | float | 0.1 to 30 | centre to centre between units. On its own the row is centred on the wall. At least the unit's width, or the build refuses it by name |
+| `fanwall.out_of_service` | list of unit numbers or tags | 1 … count, never all | the failure scenario; §4 |
 | `fanwall.static_pressure_pa` | float | 0 to 2000 | external static pressure the unit was selected at |
 | `fanwall.control` | `team` or `independent` | | §4 |
 | `fanwall.curve` | list of `[m3h, Pa]` | | the unit's P-Q curve. Anchor it on the selection point |

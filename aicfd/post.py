@@ -282,6 +282,11 @@ def _analyse(model: Model, case_dir: str | Path, time: str | None = None) -> Pod
 
     flows = patch_flows(step)
     fans = fan_flows(step, flows, model.supply_temp_c)
+    # WHICH UNITS ARE OUT OF SERVICE, on every per-unit record: they move
+    # nothing, and every figure that averages or ranks the units has to
+    # leave them out rather than count a zero (ADR-129).
+    for fan in fans:
+        fan["off"] = fan["name"] in model.fans_off
     supply = sum(f["supply_kg_s"] for f in fans)  # stated positive, into the hall
     intake = sum(f["intake_kg_s"] for f in fans)
 
@@ -345,7 +350,7 @@ def _analyse(model: Model, case_dir: str | Path, time: str | None = None) -> Pod
     kpis["floor_height"] = model.floor_height
     # The rise that sizes the machine is the one the most loaded unit has to
     # produce; a hall's units do not all see the same resistance.
-    rises = [f["rise_pa"] for f in fans]
+    rises = [f["rise_pa"] for f in fans if not f.get("off")]
     kpis["fan_rise_pa"] = round(max(rises), 3) if rises else None
     kpis["fan_rise_min_pa"] = round(min(rises), 3) if rises else None
     kpis["fan_rise_mean_pa"] = round(float(np.mean(rises)), 3) if rises else None
@@ -440,6 +445,8 @@ def coil_capacity(model: Model, fans: list[dict], kpis: dict) -> dict:
     # worked out the supply it imposed (ADR-064).
     by_name = {f["name"]: f.get("return_temp_c") for f in fans}
     for fan in fans:
+        if fan.get("off"):
+            continue  # moves nothing, cools nothing, and is not a coil to read
         temperature = fan.get("return_temp_c")
         if temperature is None:
             continue
@@ -665,7 +672,8 @@ def _coil_alerts(kpis: dict) -> list[str]:
     # manufacturer for its capacity at 26,4 degC", which is the one thing a
     # model of the machine exists to avoid -- so it says what the machine
     # does there, and how that compares with the plate (ADR-103).
-    per_unit = (kpis.get("available_kw") or 0) / max(1, len(kpis.get("fans") or []))
+    running = [f for f in (kpis.get("fans") or []) if not f.get("off")]
+    per_unit = (kpis.get("available_kw") or 0) / max(1, len(running))
     # A fan wall at 53 % of its selection's air flow gives less for that as
     # much as for the return, and an alert that named the return alone sent
     # the reader looking for a temperature effect that is half an airflow one.
@@ -681,7 +689,7 @@ def _coil_alerts(kpis: dict) -> list[str]:
             + (f", and at {share:.0f} % of the selection's air MASS flow,"
                if share is not None and abs(share - 100) > 5 else "")
             + f" the coils deliver {kpis.get('available_kw', 0):,.0f} kW "
-            f"between {len(kpis.get('fans') or [])} units -- "
+            f"between {len(running)} units -- "
             f"{num(per_unit, 1)} kW per unit on average, "
             f"{num(per_unit / rated * 100, 0)}% of the plate figure, and the "
             f"capacity to count on in this room."
@@ -1569,7 +1577,9 @@ def _checks(model: Model, step: Path, kpis: dict, grid: dict) -> list[Check]:
     available = model.fan_available_pa()
     if rise is not None and available:
         fans = kpis.get("fans") or []
-        loaded = max(fans, key=lambda f: f["rise_pa"])["name"] if len(fans) > 1 else None
+        running = [f for f in fans if not f.get("off")]
+        loaded = (max(running, key=lambda f: f["rise_pa"])["name"]
+                  if len(running) > 1 else None)
         # WHOSE WORK IS THIS? The fan rise the field shows is the whole loop,
         # because this model has no rack fans: the units drive the air through
         # the cabinets as well (ADR-013). A real cabinet's own fans do that
@@ -2015,6 +2025,11 @@ def measure(model: Model, step: str | Path, iteration: int) -> dict:
     grid = read_grid(model, step)
     flows = patch_flows(step)
     fans = fan_flows(step, flows, model.supply_temp_c)
+    # WHICH UNITS ARE OUT OF SERVICE, on every per-unit record: they move
+    # nothing, and every figure that averages or ranks the units has to
+    # leave them out rather than count a zero (ADR-129).
+    for fan in fans:
+        fan["off"] = fan["name"] in model.fans_off
     supply = sum(f["supply_kg_s"] for f in fans)
     intake = sum(f["intake_kg_s"] for f in fans)
     recovered = recovered_load_w(step, model)

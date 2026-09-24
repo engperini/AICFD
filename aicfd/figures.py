@@ -474,14 +474,22 @@ def fan_body_box(panel: dict, depth: float | None):
     return tuple(lo), tuple(hi)
 
 
-def _fan_body(ax, x0, y0, dx, dy):
+def _fan_body(ax, x0, y0, dx, dy, off: bool = False):
     """The unit's envelope, set back into the gallery behind its face.
 
     Outlined rather than filled: it sits over a temperature field, and a
-    translucent rectangle would tint the temperatures underneath it.
+    translucent rectangle would tint the temperatures underneath it. A unit
+    OUT OF SERVICE is hatched through and marked, so the failure scenario is
+    legible on the drawing itself (ADR-129).
     """
     from matplotlib.patches import Rectangle
 
+    if off:
+        ax.add_patch(Rectangle((x0, y0), dx, dy, fill=False, edgecolor="0.35",
+                               linewidth=0.9, hatch="////"))
+        ax.text(x0 + dx / 2, y0 + dy / 2, "OFF", ha="center", va="center",
+                fontsize=5, color="0.25", fontweight="bold")
+        return
     ax.add_patch(Rectangle((x0, y0), dx, dy, fill=False, edgecolor=FAN,
                            linewidth=0.7, linestyle=(0, (3, 2))))
 
@@ -546,12 +554,13 @@ def plan(export: Export, out: Path, z: float, title: str,
         # came out at x = 1,0 m, a stack of short lines inside one gallery
         # with the other gallery's seven among them (ADR-111).
         box = fan_body_box(panel, depth)
+        off = panel.get("name") in (export.model.get("fans_off") or [])
         if box:
             (x0, y0, _), (x1, y1, _) = box
             if turned:
-                _fan_body(ax, y0, x0, y1 - y0, x1 - x0)
+                _fan_body(ax, y0, x0, y1 - y0, x1 - x0, off=off)
             else:
-                _fan_body(ax, x0, y0, x1 - x0, y1 - y0)
+                _fan_body(ax, x0, y0, x1 - x0, y1 - y0, off=off)
         if panel["axis"] != 2:
             # The face itself: the plane the solver sees, seen edge-on.
             line = ([lo, hi], [at, at]) if turned else ([at, at], [lo, hi])
@@ -672,7 +681,8 @@ def section(export: Export, out: Path, normal: int, at: float, title: str,
             box = fan_body_box(panel, depth)
             if box:
                 top = box[1][2]
-                _fan_body(ax, lo, z0, hi - lo, top - z0)
+                _fan_body(ax, lo, z0, hi - lo, top - z0,
+                          off=panel.get("name") in (export.model.get("fans_off") or []))
                 ax.plot([lo, hi], [top, top], color=FAN, linewidth=1.6,
                         solid_capstyle="butt")
             ax.plot([lo, hi], [z0, z0], color=FAN, linewidth=2.4,
@@ -683,7 +693,8 @@ def section(export: Export, out: Path, normal: int, at: float, title: str,
         # being looked down, so there is nothing to draw.
         box = fan_body_box(panel, depth)
         if box and h == 0:
-            _fan_body(ax, box[0][0], z0, box[1][0] - box[0][0], z1 - z0)
+            _fan_body(ax, box[0][0], z0, box[1][0] - box[0][0], z1 - z0,
+                      off=panel.get("name") in (export.model.get("fans_off") or []))
         _outline(ax, (lo, 0, z0), (hi, 0, z1), 0, 2,
                  edgecolor=FAN, linewidth=1.0)
     ax.set_xlim(0, span)

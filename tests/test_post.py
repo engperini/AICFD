@@ -1384,3 +1384,23 @@ class ABalanceInsideToleranceButShortIsAnAlertTest(unittest.TestCase):
     def test_a_failing_balance_is_the_checks_to_say(self):
         self.assertEqual(post._balance_alerts({"energy_closure": 0.86, "load_kw": 1,
                                                "recovered_kw": 0.86}), [])
+
+
+class UnitsOutOfServiceAreLeftOutOfTheAveragesTest(unittest.TestCase):
+    """A unit moving nothing is marked, and every figure that averages or
+    ranks the units leaves it out rather than counting a zero (ADR-129)."""
+
+    def test_the_plate_alert_averages_over_the_units_running(self):
+        k = {"rated_return_c": 30.0, "return_temp_c": 26.6, "rated_nscc_kw": 100.5,
+             "unit_model": "P3100DA", "available_kw": 13 * 83.3,
+             "fans": [{"off": True}] + [{}] * 13, "coil_air_share_pct": 100}
+        said = " ".join(post._coil_alerts(k))
+        self.assertIn("between 13 units -- 83.3 kW per unit on average", said)
+
+    def test_the_source_skips_an_off_unit_where_it_reads_the_coil_and_the_rise(self):
+        import inspect
+
+        self.assertIn('if fan.get("off"):', inspect.getsource(post.coil_capacity))
+        source = inspect.getsource(post)
+        self.assertIn('rises = [f["rise_pa"] for f in fans if not f.get("off")]', source)
+        self.assertIn('fan["off"] = fan["name"] in model.fans_off', source)

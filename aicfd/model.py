@@ -25,6 +25,7 @@ from __future__ import annotations
 
 import dataclasses
 import math
+import re
 from dataclasses import dataclass, field, replace
 
 RHO_AIR = 1.19
@@ -315,6 +316,12 @@ class Model:
     how much it transfers at the return temperature the room actually
     produces (ADR-036, ADR-063)."""
     fan_control: str = "independent"
+    fans_off: tuple[str, ...] = ()
+    """Units OUT OF SERVICE, by panel name (`fan3`). The machine stands where
+    it stands and its faces are walls: it moves no air and cools nothing,
+    and the units left in service carry the room at their own rated airflow.
+    This is the failure scenario a plant is sized on -- N of N+1 -- and the
+    engineer names which unit fails (ADR-129)."""
     """`independent` -- every unit runs to its own return, which is what a
     unit with no network does. `team` -- the units of one mechanical gallery
     share the worst return any of them sees, so a unit far from the load
@@ -404,11 +411,19 @@ class Model:
 
     @property
     def fans(self) -> list[Panel]:
+        """Every unit the hall has, in service or not."""
         return [p for p in self.panels if p.kind == "fan"]
 
     @property
+    def fans_on(self) -> list[Panel]:
+        """The units in service: the ones moving air (ADR-129)."""
+        return [p for p in self.fans if p.name not in self.fans_off]
+
+    @property
     def fan_count(self) -> int:
-        return max(1, len(self.fans))
+        """Units IN SERVICE. Every per-unit figure and every sizing ratio is
+        about the machines that are running."""
+        return max(1, len(self.fans_on))
 
     @property
     def unit_airflow_m3h(self) -> float:
@@ -458,6 +473,8 @@ class Model:
         demand = self.rack_demand_m3h
         return {
             "units": self.fan_count,
+            "units_installed": len(self.fans),
+            "units_off": list(self.fans_off),
             "unit_capacity_kw": self.unit_capacity_kw,
             "unit_airflow_m3h": self.unit_airflow_m3h,
             "unit_power_kw": self.unit_power_kw,
@@ -697,7 +714,7 @@ class Model:
         a list somebody has to keep in step with the layout (ADR-064).
         """
         groups: dict[float, list[str]] = {}
-        for panel in self.fans:
+        for panel in self.fans_on:
             groups.setdefault(round(panel.position, 6), []).append(panel.name)
         return [names for _at, names in sorted(groups.items())]
 
@@ -1064,6 +1081,47 @@ def fan_depth(spec: dict) -> float | None:
     return float(stated) if stated else None
 
 
+
+def out_of_service(fan: dict, fans) -> tuple[str, ...]:
+    """Which units `fanwall.out_of_service` takes out, as panel names.
+
+    The engineer writes the units as the report numbers them -- `3`, or the
+    tag `CRAC-03` / `FW-03` / `CRAH-03`, or the panel name `fan3` -- one or
+    several. Unit N is the Nth unit along the gallery wall, which is the
+    order the report's tables and the page's drawing use (ADR-129).
+    """
+    asked = fan.get("out_of_service")
+    if asked in (None, "", [], ()):
+        return ()
+    if not isinstance(asked, (list, tuple)):
+        asked = [asked]
+    names = [p.name for p in fans]
+    out: list[str] = []
+    for item in asked:
+        text = str(item).strip()
+        found = re.search(r"(\d+)\s*$", text)
+        if not found:
+            raise ValueError(
+                f"fanwall.out_of_service: {item!r} names no unit. Write the "
+                f"unit's number as the report shows it (1 to {len(names)}), "
+                f"or its tag such as CRAC-01"
+            )
+        number = int(found.group(1))
+        if not 1 <= number <= len(names):
+            raise ValueError(
+                f"fanwall.out_of_service: unit {number} does not exist; this "
+                f"plant has {len(names)} units, numbered 1 to {len(names)}"
+            )
+        name = names[number - 1]
+        if name not in out:
+            out.append(name)
+    if len(out) >= len(names):
+        raise ValueError(
+            "fanwall.out_of_service: every unit is out of service, which "
+            "leaves nothing to cool the room"
+        )
+    return tuple(out)
+
 def wanted_arrangement(spec: dict) -> str:
     """Which kind of machine THIS ROOM is fed by.
 
@@ -1359,8 +1417,12 @@ def build_model(spec: dict) -> Model:
         rows=layout.rows,
         racks=racks,
         panels=panels,
-        # The spec's airflow is per unit, as the datasheet gives it.
-        airflow_m3h=float(fan["airflow_m3h"]) * max(1, len(layout.fans)),
+        # The spec's airflow is per unit, as the datasheet gives it, and the
+        # total is what the units IN SERVICE move: a unit out of service moves
+        # nothing and the rest keep their own rated airflow (ADR-129).
+        airflow_m3h=float(fan["airflow_m3h"])
+        * max(1, len(layout.fans) - len(out_of_service(fan, layout.fans))),
+        fans_off=out_of_service(fan, layout.fans),
         supply_temp_c=supply_c,
         cell_size=cell,
         unit_capacity_kw=float(fan["capacity_kw"]) if "capacity_kw" in fan else None,
@@ -1426,6 +1488,14 @@ def build_model(spec: dict) -> Model:
     # worst way to lose one (ADR-098).
     model.warnings = (list(layout.row_notes) + floor_notes + cage_notes
                       + check_mesh_alignment(model))
+    if model.fans_off:
+        model.warnings.insert(0, (
+            f"Units out of service: {', '.join(model.fans_off)} -- "
+            f"{len(model.fans_off)} of {len(model.fans)}. Their faces are "
+            f"walls and the {len(model.fans_on)} in service carry the room at "
+            f"their own rated airflow, {model.airflow_m3h:,.0f} m3/h in all "
+            f"(ADR-129)."
+        ))
     # A SETTING THAT IS NOT ONE ANY MORE. The coupled loop runs until the room
     # and the machines agree; how many passes that takes, and how long each
     # is, are numerics and no case chooses them (ADR-124). A case that still
@@ -4036,6 +4106,7 @@ def to_dict(model: Model, spec: dict) -> dict:
             for row in model.rows
         ],
         "fans": [p.name for p in model.fans],
+        "fans_off": list(model.fans_off),
         "fan_sides": [p.sign for p in model.fans],
         # What to CALL them, decided once here rather than by each drawing
         # and each caption for itself (ADR-102).

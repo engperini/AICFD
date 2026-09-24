@@ -1477,3 +1477,43 @@ class AShortBalanceIsSaidTest(unittest.TestCase):
 
         said = inspect.getsource(report._methodology)
         self.assertIn('"One cell size on all three axes. " if uniform else', said)
+
+
+class TheReportSaysWhichUnitsAreOutOfServiceTest(unittest.TestCase):
+    """An N-1 study has to read as one from the cover down (ADR-129)."""
+
+    def export(self, off):
+        class Export:
+            model = {"fans": [f"fan{i}" for i in range(1, 15)], "fans_off": off}
+            naming = {"noun": "CRAC", "plural": "CRACs", "tag": "CRAC"}
+
+            def unit_tag(self, i):
+                return f"CRAC-{i + 1:02d}"
+
+        return Export()
+
+    def test_the_cover_line_and_the_tags(self):
+        from aicfd.report import _off_units, _plant_line
+
+        self.assertEqual(_off_units(self.export(["fan1"])), ["CRAC-01"])
+        self.assertEqual(_plant_line(self.export(["fan1", "fan8"])),
+                         " · 2 out of service (CRAC-01, CRAC-08)")
+        self.assertEqual(_plant_line(self.export([])), "")
+
+    def test_the_unit_table_says_out_of_service_across_the_row(self):
+        import inspect
+
+        from aicfd import report
+
+        said = inspect.getsource(report._results)
+        self.assertIn('"out of service"', said)
+        self.assertIn('if f.get("off"):', said)
+
+    def test_the_conclusions_open_with_the_scenario(self):
+        import inspect
+
+        from aicfd import report
+
+        said = inspect.getsource(report._conclusions)
+        self.assertIn("This is an N−{len(off)} scenario", said)
+        self.assertIn('if not f.get("off")]', said)

@@ -144,6 +144,11 @@ const SECTIONS = [
         step: 0.05, optional: true },
       { key: 'fan_pitch', label: 'Unit pitch, centre to centre', unit: 'm',
         step: 0.1, optional: true },
+      // The failure scenario: which units are out of service, by the number
+      // the report and the drawing give them, one or several. Empty means
+      // every unit runs (ADR-129).
+      { key: 'fan_out_of_service', label: 'Units out of service (e.g. 1 or 1, 3)',
+        text: true, optional: true },
       { key: 'fan_static_pa', label: 'External static pressure', unit: 'Pa', step: 5, optional: true },
     ],
   },
