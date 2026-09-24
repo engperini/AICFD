@@ -1468,7 +1468,7 @@ class AShortBalanceIsSaidTest(unittest.TestCase):
 
         said = inspect.getsource(report._summary)
         self.assertNotIn('"reverses through an "', said)
-        self.assertIn("every intake draws forward, and that the return air", said)
+        self.assertIn("draws forward, and that the return air carries", said)
 
     def test_a_uniform_mesh_is_not_said_to_differ_by_axis(self):
         import inspect

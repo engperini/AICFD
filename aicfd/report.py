@@ -1462,7 +1462,7 @@ def _control_section(doc, export: Export) -> None:
     side = ("how hard the compressors work"
             if cold.get("kind") == "dx" else "the water side")
     _para(doc,
-          f"Either way every unit is given the same MASS flow. What the "
+          f"Every unit is given the same MASS flow. What the "
           f"control changes is {side} — how much each coil is asked to "
           f"transfer — and the air each unit moves stays the same.",
           size=9, colour=SECOND)
