@@ -221,6 +221,7 @@ or three.
 |---|---|---|---|
 | `name` | str | | the case's own name; must match the file name |
 | `site.altitude_m` | float | 0 to 5000 | the site's elevation. It sets air density, so it changes every mass flow in the model. The fan wall selection states the elevation it was taken at — use that one, and if it differs from the site's, that disagreement is the finding |
+| `figures` | list | | the drawings the case was built from, as `[{file, caption}]` with paths relative to the case file: the layout plan, the 3D model, the sections an extraction tool such as `aicfd-hall-from-dwg` writes. Copied into the result at export and printed in the report's basis of design, so the reader meets what is simulated before any number (ADR-130). A file that is missing is a warning, not a refusal |
 
 ### The room
 

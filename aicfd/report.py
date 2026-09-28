@@ -1269,6 +1269,34 @@ def _layout_section(doc, export: Export, drawn: dict) -> None:
                 "cabinet, the customer cage where the hall has one, and the "
                 f"{export.naming['plural']} in their galleries. The same "
                 "drawing the model page shows, to scale.")
+    _drawings_section(doc, export)
+
+
+def _drawings_section(doc, export: Export) -> None:
+    """The drawings the case was built from, before any result is quoted.
+
+    A case extracted from a layout drawing carries the pictures that
+    extraction produced -- the plan with every cabinet, its load and its
+    front, the 3D model, the sections with the heights -- and a reader
+    checking this study against the project should meet them here, in the
+    basis of design, not have to ask for them (ADR-130). Every figure is the
+    export's own copy, so the document is built from the result and nothing
+    else, as the rest of it is.
+    """
+    figures = [f for f in (export.payload.get("figures") or [])
+               if (export.dir / f.get("file", "")).is_file()]
+    if not figures:
+        return
+    _heading(doc, "Basis of design — the drawings the model was built from", 2)
+    _para(doc,
+          "The following figures were produced when the case was read from "
+          "the project's layout drawing. They show what is being simulated: "
+          "the cabinets as placed and loaded, the containment, the perforated "
+          "surfaces and the cooling units, and the heights the model carries. "
+          "The numbers in the tables above are read from the same model.",
+          size=9.5, colour=SECOND)
+    for f in figures:
+        _figure(doc, export.dir / f["file"], f.get("caption") or f["file"])
 
 
 def _cage_verdict(doc, zones: list[dict], caged: set) -> None:

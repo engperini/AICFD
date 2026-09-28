@@ -52,6 +52,9 @@ BEYOND_THE_FORM = {
     "components.gallery_mesh",
     "solver.residual_tolerance",
     "solver.couple",
+    # The drawings a case was built from: a list of file + caption pairs,
+    # read at export and printed in the report (ADR-130).
+    "figures",
 }
 
 #: A reference-table row: a backticked key, then type, range and source. The

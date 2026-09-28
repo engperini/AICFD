@@ -795,3 +795,34 @@ class ColdAisleContainmentTest(unittest.TestCase):
         self.assertIsNone(built.contained)
         self.assertFalse([p for p in built.panels
                           if p.name.startswith("containment")])
+
+
+class BlankedRowTest(unittest.TestCase):
+    """A row every position of which is a blanking panel -- one row of a pair
+    the project has not built yet -- has no cabinets and still has a band, and
+    the cage wall beside it is placed from that band (ADR-130)."""
+
+    def test_a_hall_with_a_fully_blanked_row_beside_the_cage_wall_builds(self):
+        spec = yaml.safe_load(
+            """
+name: h
+gallery: {depth: 3.0}
+hall: {height: 8.0, ceiling: 6.5}
+pods: 2
+aisles: {cold: 1.8, hot: 1.2, perimeter: 1.8}
+racks:
+  per_row: 4
+  load_kw: 10.0
+  size: [0.6, 1.2, 2.2]
+  blanks: [F1-01, F1-02, F1-03, F1-04]
+fanwall: {width: 1.8, height: 4.0, airflow_m3h: 20000, supply_temp_c: 20.0,
+          static_pressure_pa: 100}
+grilles: {size: 0.6, loss_coefficient: 2.4, free_area: 0.8}
+containment: {enabled: true}
+cage: {enabled: true, construction: mesh, clearance: 0.6, pods: [1], sides: [right]}
+mesh: {cell_size: [0.3, 0.3, 0.25]}
+"""
+        )
+        built = m.build_model(spec)
+        self.assertEqual(len([r for r in built.rows if r.id == "F1"][0].racks), 0)
+        self.assertTrue([p for p in built.panels if p.name.startswith("cage_")])

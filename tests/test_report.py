@@ -1518,3 +1518,66 @@ class TheReportSaysWhichUnitsAreOutOfServiceTest(unittest.TestCase):
         said = inspect.getsource(report._conclusions)
         self.assertIn("This is an N−{len(off)} scenario", said)
         self.assertIn('if not f.get("off")]', said)
+
+
+@unittest.skipUnless(HAVE_EXTRAS, "python-docx and matplotlib are not installed")
+@unittest.skipUnless((RESULT / "viewer.json").exists(), "no exported result")
+class DrawingsTest(unittest.TestCase):
+    """The drawings the case was built from open the basis of design (ADR-130)."""
+
+    @classmethod
+    def setUpClass(cls):
+        import json
+        import shutil
+
+        import matplotlib
+
+        matplotlib.use("Agg")
+        import matplotlib.pyplot as plt
+        from aicfd.report import build
+
+        cls.tmp = tempfile.TemporaryDirectory()
+        root = Path(cls.tmp.name)
+        export = root / "export"
+        shutil.copytree(RESULT, export)
+        (export / "figures").mkdir(exist_ok=True)
+        fig, ax = plt.subplots(figsize=(2, 1))
+        ax.plot([0, 1], [0, 1])
+        fig.savefig(export / "figures" / "plan.png")
+        plt.close(fig)
+        payload = json.loads((export / "viewer.json").read_text())
+        payload["figures"] = [
+            {"file": "figures/plan.png", "caption": "The layout as read from the drawing."},
+            {"file": "figures/missing.png", "caption": "Never copied."},
+        ]
+        (export / "viewer.json").write_text(json.dumps(payload))
+        cls.without = build(RESULT, root / "plain.docx")
+        cls.path = build(export, root / "drawn.docx")
+        from docx import Document
+
+        cls.doc = Document(str(cls.path))
+        cls.plain = Document(str(cls.without))
+        cls.text = "\n".join(p.text for p in cls.doc.paragraphs)
+
+    @classmethod
+    def tearDownClass(cls):
+        cls.tmp.cleanup()
+
+    def test_the_drawing_is_printed_under_its_caption_in_the_basis_of_design(self):
+        self.assertIn("the drawings the model was built from", self.text)
+        self.assertIn("The layout as read from the drawing.", self.text)
+        self.assertEqual(len(self.doc.inline_shapes), len(self.plain.inline_shapes) + 1)
+
+    def test_it_comes_after_the_rack_distribution_and_before_the_methodology(self):
+        racks = self.text.index("Basis of design — rack distribution")
+        drawings = self.text.index("the drawings the model was built from")
+        method = self.text.index("3  Methodology")
+        self.assertLess(racks, drawings)
+        self.assertLess(drawings, method)
+
+    def test_a_figure_the_export_does_not_hold_is_left_out_silently(self):
+        self.assertNotIn("Never copied.", self.text)
+
+    def test_a_result_without_drawings_has_no_such_section(self):
+        plain = "\n".join(p.text for p in self.plain.paragraphs)
+        self.assertNotIn("the drawings the model was built from", plain)

@@ -1203,7 +1203,8 @@ def reread_run(name: str) -> dict:
         )
     from aicfd import post
 
-    results = post.export(model, solved, RESULTS_DIR / name, spec=spec)
+    results = post.export(model, solved, RESULTS_DIR / name, spec=spec,
+                          spec_dir=CASES_DIR)
     failed = [c.name for c in results.checks if not c.passed]
     return {
         "time": results.time,
@@ -1357,7 +1358,8 @@ def start_run(name: str) -> None:
             # this run's name -- so the page's own "See results" opened a
             # superseded answer and said nothing about it (ADR-030).
             STATE.set(stage="exporting", step="post", message="")
-            results = post.export(model, target, RESULTS_DIR / name, spec=spec)
+            results = post.export(model, target, RESULTS_DIR / name, spec=spec,
+                                  spec_dir=CASES_DIR)
             failed = [c.name for c in results.checks if not c.passed]
             stopped = STATE.snapshot()["stopping"]
             how = "stopped early" if stopped else "solved"

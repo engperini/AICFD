@@ -2432,8 +2432,10 @@ def _rows_beside(model: "Model", at: float) -> list:
     """
     below = above = None
     for row in model.rows:
-        lo = min(r.box.lo[1] for r in row.racks)
-        hi = max(r.box.hi[1] for r in row.racks)
+        # THE ROW'S BAND, NOT ITS CABINETS: a row every position of which is
+        # a blanking panel (a row the drawing does not have yet, built as a
+        # wall) has no cabinets and still has a band and a face.
+        lo, hi = row.band
         face = hi if row.front_sign < 0 else lo
         if hi <= at + 1e-6 and face >= hi - 1e-6:
             if below is None or face > below[1]:
@@ -3290,7 +3292,11 @@ def _hall_layout(spec: dict, cell, rack_spec: dict | None = None) -> _Layout:
     perimeter = float(spec["aisles"].get("perimeter", cold))
     size = tuple(resolved_size(spec))
     rack_dx, rack_dy, rack_dz = size
-    per_row = int(spec["racks"]["per_row"])
+    # THE TYPICAL ROW'S LENGTH GOVERNS THE ROW: a case that states `racks.row`
+    # need not count it again in `per_row` (ADR-074), and one that does is
+    # read from the row, not the count.
+    typical = (spec["racks"].get("row") or [])
+    per_row = len(typical) if typical else int(spec["racks"]["per_row"])
     load_kw = float(spec["racks"]["load_kw"])
     pods = int(spec["pods"])
     n_blocks = int(spec["racks"].get("blocks", 1))

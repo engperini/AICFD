@@ -5610,3 +5610,31 @@ the units near the failed one see more of the load. That is the failure. A
 plant whose fans would speed up to hold the room's airflow is a different
 control, and a case that has it states a higher `airflow_m3h` per unit for
 the scenario.
+
+---
+
+## ADR-130 — The report opens with the drawings the case was built from
+
+**Decision.** A case may name `figures`: a list of `{file, caption}` pairs,
+paths relative to the case file. At export they are copied into
+`results/<name>/figures/` and listed in `viewer.json`, and the Word report
+prints them in the basis of design, after the rack distribution and before
+the methodology, under their captions. A file that is missing is a warning
+on the export, not a refusal. Nothing else reads them.
+
+**Why.** A case read from a layout drawing by `aicfd-hall-from-dwg` comes
+with three pictures — the plan with every cabinet, its load and its front,
+the 3D model, and the sections with the heights — and the engineer reviewing
+the study asked for them in the report's opening chapters, to see what is
+being simulated before any result. The report reads the export and nothing
+else (ADR-028, ADR-032), so the pictures have to travel with the result: a
+path into the folder the case was written in would break the first time a
+result was copied or a report produced elsewhere. Copying at export keeps
+the document buildable from `results/` alone.
+
+**Also.** Two things the same work uncovered. A hall that states `racks.row`
+no longer has to repeat the count in `racks.per_row`: the manual said the
+row's length governs (ADR-074) and the layout still read the count first.
+And a row every position of which is a blanking panel — how a hall is
+written when one row of a pair is not built yet — no longer breaks the cage
+placement, which read the row's cabinets where it should have read its band.

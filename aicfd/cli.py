@@ -362,7 +362,8 @@ def _run(args) -> int:
         )
     if args.no_post:
         return 0
-    return _export(model, target, name, time=None, spec=spec)
+    return _export(model, target, name, time=None, spec=spec,
+                   spec_dir=spec_path.parent)
 
 
 def _stop(args) -> int:
@@ -416,16 +417,16 @@ def _post(args) -> int:
 
     model, _solver = load_spec(spec)
     return _export(model, run, args.name, args.time,
-                   yaml.safe_load(spec.read_text()))
+                   yaml.safe_load(spec.read_text()), spec_dir=spec.parent)
 
 
 def _export(model, run: Path, name: str, time: str | None,
-            spec: dict | None = None) -> int:
+            spec: dict | None = None, spec_dir: Path | None = None) -> int:
     from aicfd import post
 
     out = RESULTS_DIR / name
     try:
-        results = post.export(model, run, out, time, spec)
+        results = post.export(model, run, out, time, spec, spec_dir=spec_dir)
     except ValueError as error:
         # A run with nothing solved in it is a normal mistake, not a crash:
         # say what to change rather than printing a traceback at someone.

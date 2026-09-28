@@ -2450,12 +2450,51 @@ def convergence(model: Model, case_dir: str | Path) -> list[dict]:
 # --- viewer payload -----------------------------------------------------------
 
 
+def collect_figures(spec: dict | None, spec_dir: str | Path | None,
+                    out_dir: str | Path) -> tuple[list[dict], list[str]]:
+    """The drawings a case names, copied into the result beside the fields.
+
+    `figures` is a list of `{file, caption}`: the layout drawing the case was
+    built from, its 3D view, its sections -- what an extraction tool such as
+    aicfd-hall-from-dwg writes, or a scan of the architect's plan. Paths are
+    relative to the case file. Each one found is copied into
+    `<result>/figures/` and listed by its new path, so the report opens with
+    the drawing whatever happens to the folder the case was written in; each
+    one missing is a warning, not a failure -- a study is not refused for a
+    picture (ADR-130).
+    """
+    import shutil
+
+    raw = (spec or {}).get("figures") or []
+    found: list[dict] = []
+    missing: list[str] = []
+    base = Path(spec_dir) if spec_dir is not None else Path(".")
+    target = Path(out_dir) / "figures"
+    for i, entry in enumerate(raw):
+        if not isinstance(entry, dict) or not entry.get("file"):
+            missing.append(f"figures[{i}]: each entry is a mapping with `file` and `caption`")
+            continue
+        source = Path(str(entry["file"]))
+        if not source.is_absolute():
+            source = base / source
+        if not source.is_file():
+            missing.append(f"figures[{i}]: {source} is not a file; the report goes out without it")
+            continue
+        target.mkdir(parents=True, exist_ok=True)
+        copied = target / source.name
+        if source.resolve() != copied.resolve():
+            shutil.copyfile(source, copied)
+        found.append({"file": f"figures/{source.name}", "caption": str(entry.get("caption") or "")})
+    return found, missing
+
+
 def export(
     model: Model,
     case_dir: str | Path,
     out_dir: str | Path,
     time: str | None = None,
     spec: dict | None = None,
+    spec_dir: str | Path | None = None,
 ) -> PodResults:
     """Write the 3-D viewer's payload for a solved POD.
 
@@ -2597,6 +2636,10 @@ def export(
     # how a page ends up showing a superseded run under the current name
     # (ADR-030).
     payload["model"] = to_dict(model, spec or {})
+    # The drawings the case was built from travel with the result, so the
+    # report can open with them wherever it is produced (ADR-130).
+    payload["figures"], missing = collect_figures(spec, spec_dir, out)
+    payload["warnings"].extend(missing)
     (out / "viewer.json").write_text(json.dumps(payload, indent=1))
     (out / "report.md").write_text(report(results))
     return results

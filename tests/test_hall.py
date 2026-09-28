@@ -1028,3 +1028,22 @@ def _T_with_wall() -> str:
               "        value nonuniform List<scalar> 3\n(300 301 302)\n;\n    }\n"
             + "    fan2Supply\n    {\n        type fixedValue;\n        value uniform 291.95;\n    }\n"
             + "}\n")
+
+
+class TypicalRowTest(unittest.TestCase):
+    """A hall that states `racks.row` need not count it again (ADR-074, ADR-130)."""
+
+    def test_the_row_governs_and_per_row_is_not_required(self):
+        spec = copy.deepcopy(SPEC)
+        del spec["racks"]["per_row"]
+        spec["racks"]["row"] = [{}, {"width": 0.8}, {}, {"blank": True}, {}]
+        built = M.build_model(spec)
+        self.assertEqual(len(built.rows[0].racks), 4)   # five positions, one a blank
+        self.assertEqual(len(built.rows), 6)
+
+    def test_a_stated_count_that_disagrees_with_the_row_loses(self):
+        spec = copy.deepcopy(SPEC)
+        spec["racks"]["per_row"] = 9
+        spec["racks"]["row"] = [{}, {}, {}]
+        built = M.build_model(spec)
+        self.assertEqual(len(built.rows[0].racks), 3)

@@ -1410,3 +1410,38 @@ class UnitsOutOfServiceAreLeftOutOfTheAveragesTest(unittest.TestCase):
 
         self.assertIn('units = len([f for f in kpis.get("fans", []) if not f.get("off")]) or 1',
                       inspect.getsource(post._checks))
+
+
+class FiguresTest(unittest.TestCase):
+    """The drawings a case names travel with the result (ADR-130)."""
+
+    def setUp(self):
+        self.tmp = tempfile.TemporaryDirectory()
+        self.addCleanup(self.tmp.cleanup)
+        self.root = Path(self.tmp.name)
+        (self.root / "case").mkdir()
+        (self.root / "case" / "plan.png").write_bytes(b"\x89PNG\r\n\x1a\nnot really")
+
+    def test_a_figure_is_copied_beside_the_fields_and_listed_by_its_new_path(self):
+        spec = {"figures": [{"file": "plan.png", "caption": "The plan."}]}
+        found, missing = post.collect_figures(spec, self.root / "case", self.root / "out")
+        self.assertEqual(found, [{"file": "figures/plan.png", "caption": "The plan."}])
+        self.assertEqual(missing, [])
+        self.assertTrue((self.root / "out" / "figures" / "plan.png").is_file())
+
+    def test_a_missing_file_is_a_warning_not_a_refusal(self):
+        spec = {"figures": [{"file": "gone.png", "caption": "x"}, {"file": "plan.png"}]}
+        found, missing = post.collect_figures(spec, self.root / "case", self.root / "out")
+        self.assertEqual([f["file"] for f in found], ["figures/plan.png"])
+        self.assertEqual(len(missing), 1)
+        self.assertIn("gone.png", missing[0])
+
+    def test_an_entry_that_is_not_a_mapping_is_named(self):
+        found, missing = post.collect_figures({"figures": ["plan.png"]}, self.root / "case", self.root / "out")
+        self.assertEqual(found, [])
+        self.assertIn("figures[0]", missing[0])
+
+    def test_a_case_without_figures_has_none(self):
+        self.assertEqual(post.collect_figures({}, self.root / "case", self.root / "out"), ([], []))
+        self.assertEqual(post.collect_figures(None, None, self.root / "out"), ([], []))
+        self.assertFalse((self.root / "out" / "figures").exists())

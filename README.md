@@ -301,7 +301,9 @@ POD at 0,20 m cells for that.
   the export and nothing else, so a figure in the document and a view on the
   screen are two renderings of one result, and it writes into `reports/<name>/`
   so producing a document never modifies a result. It is the only part of AICFD
-  that needs `python-docx` and `matplotlib`.
+  that needs `python-docx` and `matplotlib`. A case that names `figures` — the
+  drawings it was built from, as `aicfd-hall-from-dwg` writes them — has them
+  copied into the result and printed in the report's basis of design (ADR-130).
 - **Results page** — the same three drawings with the solved field underneath
   (temperature, speed, pressure) in contour bands with the ASHRAE limits drawn
   on the legend (ADR-024); every rack painted by the temperature of the air it
