@@ -77,6 +77,11 @@ def main(argv: list[str] | None = None) -> int:
     run_parser.add_argument(
         "--no-post", action="store_true", help="skip post-processing afterwards"
     )
+    run_parser.add_argument(
+        "--resume", action="store_true",
+        help="continue an interrupted run from its newest written field, "
+             "without rebuilding the case (ADR-132)",
+    )
 
     stop_parser = sub.add_parser(
         "stop", help="ask a running solve to stop cleanly at its next iteration"
@@ -315,7 +320,19 @@ def _run(args) -> int:
     print(case.summary(model))
     _print_notes(model)
     options = _build_options(solver)
-    case.build(model, target, **options)
+    resume = bool(getattr(args, "resume", False))
+    if resume:
+        if not (target / "system" / "controlDict").is_file():
+            print(f"error: --resume: there is no case at {target} to continue",
+                  file=sys.stderr)
+            return 1
+        if not solver.get("couple", True):
+            print("error: --resume continues the coupled loop; this case runs "
+                  "uncoupled, so run it again without --resume", file=sys.stderr)
+            return 1
+        print(f"Resuming {target} from its newest written field")
+    else:
+        case.build(model, target, **options)
 
     def step(command: str) -> None:
         # The orientation of a fan wall pair is only knowable once
@@ -342,6 +359,7 @@ def _run(args) -> int:
             target, case.pipeline(options["processors"]), model,
             on_step=step,
             on_pass=pass_done if solver.get("couple", True) else None,
+            resume=resume,
         ) if solver.get("couple", True) else (
             _solve_uncoupled(target, case.pipeline(options["processors"]), step), []
         )

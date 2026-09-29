@@ -5681,3 +5681,30 @@ and two ends exactly as a parametric row is.
 it; a hall drawn the other way round is mirrored by the converter. Rows run
 along x and fronts are `+y` / `-y`; the other orientation is transposed
 there too.
+
+---
+
+## ADR-132 — An interrupted coupled run resumes from its newest field
+
+**Decision.** `aicfd run <case> --resume` continues a coupled run that
+stopped part-way — a container recycled under it, a machine rebooted —
+instead of starting again. It does not rebuild the case: the mesh, the
+baffles and the decomposed fields are the ones the run left. It
+reconstructs the newest written time, reads each unit's return off it,
+puts it through the coil and writes the supply back, exactly as the next
+pass would have, and solves on from there one segment at a time until the
+loop closes or reaches its pass limit. The passes before the interruption
+are not repeated; the one it was part-way through is simply done again from
+where it got to. A case with no solved time, or one that runs uncoupled, is
+refused by name.
+
+**Why.** The first halls solved from drawings ran for hours on a four-core
+container that was recycled twice mid-solve, once at the 27th coil pass of
+a 1 MW hall. Each time the only choices were to export a field that had
+not closed or to throw two hours of solved iterations away. A steady solve
+has no history to lose: the newest field is a complete initial condition,
+and continuing from it is what every pass of the coupled loop already does.
+
+**Cost accepted.** The coupling record of a resumed run counts only the
+passes made after the resume, and numbers them from 2; the report reads
+whether the loop closed, which is what it needs.

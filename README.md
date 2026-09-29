@@ -292,6 +292,9 @@ POD at 0,20 m cells for that.
   position's load is its own heat source. An empty one keeps the row's
   resistance, because an empty cabinet is blanked rather than left open.
 
+- **A run that was interrupted** — `aicfd run <case> --resume` continues a
+  coupled solve from its newest written field without rebuilding the case,
+  doing what the next coil pass would have done (ADR-132).
 - **A hall read from a drawing** — a case whose `geometry.file` names an STL
   of named, axis-aligned solids (one per cabinet, unit, panel and opening, on
   the mesh grid), as the `aicfd-hall-from-dwg` skill writes it from the

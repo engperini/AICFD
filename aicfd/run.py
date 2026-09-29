@@ -291,6 +291,7 @@ def solve_coupled(
     tolerance: float = COUPLING_TOLERANCE_K,
     on_step=None,
     on_pass=None,
+    resume: bool = False,
 ) -> tuple[list[StepResult], list]:
     """Solve, then let each unit's coil set its own supply temperature, and
     keep going until the room and the machines agree.
@@ -329,7 +330,10 @@ def solve_coupled(
     case = Path(case_dir)
     before, solver, after = _split_at_solver(pipeline)
     results = []
-    for entry in before:
+    # A RESUMED RUN KEEPS ITS MESH. The case, the baffles and the decomposed
+    # fields are the ones the interrupted run left; building them again would
+    # throw the solved field away (ADR-132).
+    for entry in ([] if resume else before):
         command, args, log_name = _entry(entry)
         if on_step:
             on_step(log_name or command)
@@ -345,7 +349,31 @@ def solve_coupled(
     interval = _write_interval(case)
     segment = -(-segment // interval) * interval
     passes, previous, previous_time = [], None, None
-    for number in range(1, max_passes + 1):
+    first = 1
+    if resume:
+        # CONTINUE FROM THE NEWEST WRITTEN FIELD, as the next pass would have:
+        # read each unit's return off it, put it through the coil, write the
+        # supply back, and solve one more segment from there. The passes the
+        # interrupted run made are not repeated, and the one it was part-way
+        # through is simply done again from where it got to (ADR-132).
+        from aicfd.post import reconstruction_lock
+
+        with reconstruction_lock(case):
+            if any(case.glob("processor*")):
+                results.append(run_command(case, "reconstructPar", args=["-latestTime"]))
+            time = loop.latest_time(case)
+            if time is None:
+                raise RuntimeError(
+                    "nothing to resume: the case has no solved time directory. "
+                    "Run it without --resume")
+            supplies, _returns, _saturated = loop.supply_temperatures(model, case / time)
+            if supplies:
+                loop.apply_supplies(case, time, supplies)
+        previous, previous_time = (supplies or None), time
+        first = 2
+        end = int(float(time)) + segment
+        loop.set_end_time(case, end, latest=True)
+    for number in range(first, max_passes + 1):
         command, args, log_name = _entry(solver)
         if on_step:
             on_step(log_name or command)

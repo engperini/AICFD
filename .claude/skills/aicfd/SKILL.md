@@ -27,6 +27,7 @@ current (ADR-090).
 aicfd new NAME [--from CASE] -> cases/NAME.yaml  (blank POD, or a copy of a worked case)
 aicfd build cases/NAME.yaml -> runs/NAME/case    (generate only, no solve)
 aicfd run cases/NAME.yaml   -> runs/NAME         (generate, solve, sample, export)
+aicfd run cases/NAME.yaml --resume               # an interrupted coupled run: continue from its newest field (ADR-132)
 aicfd post NAME             -> results/NAME/{viewer.json,fields.bin,report.md}
 aicfd view --case NAME      -> http://localhost:8000/web/?case=NAME
 aicfd report NAME           -> reports/NAME/NAME-cfd-report.docx  (the Word deliverable)
