@@ -1,0 +1,42 @@
+# AICFD case -- geometry from the STL beside it; this file carries only what a
+# drawing cannot say. Written by aicfd-hall-from-dwg; edit answers.yaml and
+# re-run rather than editing this file.
+name: dh04-1mw
+geometry: {file: dh04-1mw.stl, source: 'LAYOUT_FTZ01_24Sep26_1.dwg, DATA HALL 04,
+    human-revised layout; dh04_treated.dxf sha256 dd1832ab269a6f8d'}
+site: {altitude_m: 0.0}
+racks:
+  load_kw: 4.11
+  airflow_cfm_per_kw: 158
+  loads: {D01: 10.0, D02: 10.0, D03: 10.0, D04: 10.0, D05: 10.0, D06: 10.0, D07: 10.0,
+    D08: 10.0, D09: 10.0, D10: 20.0, D11: 8.333, D12: 8.333, D13: 8.333, C01: 20.0,
+    C02: 10.0, C03: 10.0, C04: 10.0, C05: 10.0, C06: 10.0, C07: 10.0, C08: 10.0, C09: 0.0,
+    C10: 0.0, C11: 8.333, C12: 8.333, C13: 8.333, B01: 20.0, B02: 10.0, B03: 10.0,
+    B04: 10.0, B05: 10.0, B06: 10.0, B07: 10.0, B08: 20.0, B09: 0.0, B10: 0.0, B11: 8.333,
+    B12: 8.333, B13: 8.333, A01: 20.0, A02: 10.0, A03: 10.0, A04: 10.0, A05: 10.0,
+    A06: 10.0, A07: 10.0, A08: 10.0, A09: 20.0, A10: 0.0, A11: 8.333, A12: 8.333,
+    A13: 8.333}
+fanwall:
+  model: P3100DA
+  airflow_m3h: 27500
+  capacity_kw: 100.5
+  power_kw: 7.5
+  static_pressure_pa: 50
+  control: team
+  supply_temp_c: 22.0
+  out_of_service: []
+components: {cage: cage-mesh-13, ceiling_return: ceiling-return-600-open, floor_tile: floor-tile-600,
+  gallery_mesh: gallery-mesh-13, supply_grille: supply-grille-2000}
+cage: {construction: mesh}
+mesh:
+  cell_size: [0.2, 0.2, 0.2]
+solver: {max_iterations: 2000, residual_tolerance: 0.0001, sensor_interval: 100, warm_start: true,
+  processors: 4}
+figures:
+- {file: dh04-1mw.png, caption: 'The layout as read from the drawing: cabinets with
+    their loads and fronts, the containment, the tiles, the return grilles, the cage
+    and the cooling units.'}
+- {file: dh04-1mw.3d.png, caption: 'The 3D model built from the drawing, false ceiling
+    removed.'}
+- {file: dh04-1mw.sections.png, caption: 'Sections through the rows, a contained aisle
+    and the supply path: the heights and closures.'}

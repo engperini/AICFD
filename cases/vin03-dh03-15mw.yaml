@@ -1,0 +1,70 @@
+# AICFD case -- geometry from the STL beside it; this file carries only what a
+# drawing cannot say. Written by aicfd-hall-from-dwg; edit answers.yaml and
+# re-run rather than editing this file.
+# LIQUID-COOLED HALL: racks.loads carry the AIR share of each cabinet's IT load
+# (IT 15000 kW, to the air 894 kW); the rest leaves in the coolant.
+name: vin03-dh03-15mw
+geometry: {file: vin03-dh03-15mw.stl, source: 'VIN03-CN-ASC-F0-MEC00-PL-0001-R02.dwg,
+    DATA HALL 03, liquid cooling POD layout, Sep 2026; BoD R03; PL-0001.dwg sha256
+    bbae31a5594f4c6b'}
+site: {altitude_m: 0.0}
+racks:
+  load_kw: 12.0
+  airflow_cfm_per_kw: 158
+  loads: {F1-01: 9.0, F1-02: 0.0, F1-03: 9.0, F1-04: 0.0, F1-05: 9.0, F1-06: 0.0,
+    F1-07: 9.0, F1-08: 0.0, F1-09: 0.0, F1-10: 4.8, F1-11: 4.8, F1-12: 4.8, F1-13: 4.8,
+    F2-01: 4.8, F2-02: 4.8, F2-03: 4.8, F2-05: 0.0, F2-06: 0.0, F2-07: 9.0, F2-08: 0.0,
+    F2-09: 9.0, F2-10: 0.0, F2-11: 9.0, F2-12: 0.0, F2-13: 9.0, F2-14: 0.0, F3-01: 0.0,
+    F3-02: 9.0, F3-03: 0.0, F3-04: 9.0, F3-05: 0.0, F3-06: 9.0, F3-07: 0.0, F3-08: 9.0,
+    F3-09: 0.0, F3-10: 0.0, F3-12: 4.8, F3-13: 4.8, F4-01: 4.8, F4-02: 4.8, F4-03: 4.8,
+    F4-04: 4.8, F4-05: 0.0, F4-06: 0.0, F4-07: 0.0, F4-08: 9.0, F4-09: 0.0, F4-10: 9.0,
+    F4-11: 0.0, F4-12: 9.0, F4-13: 0.0, F4-14: 9.0, F4-15: 0.0, F5-01: 0.0, F5-02: 9.0,
+    F5-03: 0.0, F5-04: 9.0, F5-05: 0.0, F5-06: 9.0, F5-07: 0.0, F5-08: 0.0, F5-10: 4.8,
+    F5-11: 4.8, F5-12: 4.8, F6-01: 4.8, F6-02: 4.8, F6-03: 4.8, F6-04: 4.8, F6-06: 0.0,
+    F6-07: 0.0, F6-08: 9.0, F6-09: 0.0, F6-10: 9.0, F6-11: 0.0, F6-12: 9.0, F6-13: 0.0,
+    F7-01: 0.0, F7-02: 9.0, F7-03: 0.0, F7-04: 0.0, F7-05: 9.0, F7-06: 0.0, F7-07: 9.0,
+    F7-08: 0.0, F7-09: 0.0, F7-10: 4.8, F7-11: 4.8, F7-12: 4.8, F7-13: 4.8, F7-14: 4.8,
+    F8-01: 4.8, F8-02: 4.8, F8-03: 4.8, F8-04: 4.8, F8-05: 0.0, F8-06: 0.0, F8-07: 0.0,
+    F8-08: 0.0, F8-09: 9.0, F8-10: 0.0, F8-11: 9.0, F8-12: 0.0, F8-13: 9.0, F8-14: 0.0,
+    F9-01: 9.0, F9-02: 0.0, F9-03: 9.0, F9-04: 0.0, F9-05: 9.0, F9-06: 0.0, F9-07: 9.0,
+    F9-08: 0.0, F9-09: 0.0, F9-10: 4.8, F9-11: 4.8, F9-12: 4.8, F10-01: 4.8, F10-02: 4.8,
+    F10-03: 4.8, F10-04: 4.8, F10-05: 0.0, F10-06: 0.0, F10-07: 9.0, F10-08: 0.0,
+    F10-09: 9.0, F10-10: 0.0, F10-11: 9.0, F10-12: 0.0, F10-13: 9.0, F10-14: 0.0,
+    F11-01: 0.0, F11-02: 9.0, F11-03: 0.0, F11-04: 9.0, F11-05: 0.0, F11-06: 9.0,
+    F11-07: 0.0, F11-08: 9.0, F11-09: 0.0, F11-10: 0.0, F11-12: 4.8, F11-13: 4.8,
+    F11-14: 4.8, F11-15: 4.8, F12-01: 4.8, F12-02: 4.8, F12-03: 4.8, F12-04: 4.8,
+    F12-05: 0.0, F12-06: 0.0, F12-07: 9.0, F12-08: 0.0, F12-09: 9.0, F12-10: 0.0,
+    F12-11: 9.0, F12-12: 0.0, F12-13: 9.0, F12-14: 0.0, F13-01: 0.0, F13-02: 9.0,
+    F13-03: 0.0, F13-04: 0.0, F13-05: 9.0, F13-06: 0.0, F13-07: 9.0, F13-08: 0.0,
+    F13-09: 0.0, F13-10: 4.8, F13-11: 4.8, F13-12: 4.8, F13-13: 4.8, F14-01: 4.8,
+    F14-02: 4.8, F14-03: 4.8, F14-04: 4.8, F14-05: 0.0, F14-06: 0.0, F14-07: 0.0,
+    F14-09: 9.0, F14-10: 0.0, F14-11: 9.0, F14-12: 0.0, F14-13: 9.0, F14-14: 0.0,
+    F15-01: 0.0, F15-02: 9.0, F15-03: 0.0, F15-04: 9.0, F15-05: 0.0, F15-06: 9.0,
+    F15-07: 0.0, F15-08: 9.0, F15-09: 0.0, F15-10: 0.0, F15-12: 4.8, F15-13: 4.8,
+    F15-14: 4.8, F16-01: 10.0, F16-02: 0.0, F16-03: 4.8, F16-04: 4.8, F16-05: 4.8,
+    F16-06: 0.0, F16-07: 0.0, F16-08: 9.0, F16-09: 0.0, F16-10: 9.0, F16-11: 9.0,
+    F16-12: 0.0, F16-13: 9.0, F16-14: 0.0}
+fanwall:
+  model: CA80NEVGT
+  airflow_m3h: 100725
+  capacity_kw: 450
+  power_kw: 27
+  static_pressure_pa: 100
+  control: team
+  supply_temp_c: 24.0
+  out_of_service: []
+components: {cage: cage-mesh-13, ceiling_return: ceiling-return-600-open, floor_tile: floor-tile-600,
+  gallery_mesh: gallery-mesh-13, supply_grille: supply-grille-2000}
+cage: {construction: mesh}
+mesh:
+  cell_size: [0.2, 0.2, 0.2]
+solver: {max_iterations: 2000, residual_tolerance: 0.0001, sensor_interval: 100, warm_start: true,
+  processors: 4}
+figures:
+- {file: vin03-dh03-15mw.png, caption: 'The layout as read from the drawing: cabinets
+    with their loads and fronts, the containment, the tiles, the return grilles, the
+    cage and the cooling units.'}
+- {file: vin03-dh03-15mw.3d.png, caption: 'The 3D model built from the drawing, false
+    ceiling removed.'}
+- {file: vin03-dh03-15mw.sections.png, caption: 'Sections through the rows, a contained
+    aisle and the supply path: the heights and closures.'}
