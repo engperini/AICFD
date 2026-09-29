@@ -407,6 +407,11 @@ def build(spec: dict) -> Model:
     for s in by.get("lid", []):
         panels.append(s.panel("containment_lid_" + s.id, "wall"))
     for s in by.get("door", []):
+        # A door in the plane of a dividing wall is the wall: the mesher builds
+        # the wall there already, and a second zone on the same faces is what
+        # createBaffles refuses ("Face ... already in faceZone").
+        if s.flat_axis == 0 and any(abs(s.lo[0] - x) < 1e-6 for x in divider_x):
+            continue
         panels.append(s.panel("containment_door_" + s.id, "wall"))
     for s in walls:
         if s.lo[0] in dividers and s.flat_axis == 0 and full_width(s) and s.hi[2] >= slab - 1e-6:

@@ -312,3 +312,11 @@ class ParametricCasesAreUntouchedTest(unittest.TestCase):
 
 if __name__ == "__main__":
     unittest.main()
+
+
+class DoorOnTheWallTest(ReaderTest):
+    def test_a_door_in_the_dividing_walls_plane_is_left_to_the_wall(self):
+        text = downflow_hall() + _panel("door:c1_x", "x", 3.0, (3.2, 1.0, 4.4, 3.2)) + "\n"
+        model, _ = self.build(text)
+        self.assertNotIn("containment_door_c1_x", {p.name for p in model.panels})
+        self.assertIn("containment_door_c1_w", {p.name for p in model.panels})

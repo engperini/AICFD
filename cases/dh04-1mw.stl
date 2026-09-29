@@ -16234,22 +16234,6 @@ solid door:c1_w
     endloop
   endfacet
 endsolid door:c1_w
-solid door:c1_e
-  facet normal 1 0 0
-    outer loop
-      vertex 17.100 2.400 1.000
-      vertex 17.100 4.200 1.000
-      vertex 17.100 4.200 3.200
-    endloop
-  endfacet
-  facet normal 1 0 0
-    outer loop
-      vertex 17.100 2.400 1.000
-      vertex 17.100 4.200 3.200
-      vertex 17.100 2.400 3.200
-    endloop
-  endfacet
-endsolid door:c1_e
 solid door:c2_w
   facet normal 1 0 0
     outer loop
