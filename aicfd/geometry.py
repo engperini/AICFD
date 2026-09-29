@@ -316,8 +316,14 @@ def build(spec: dict) -> Model:
         if s.flat_axis is not None:
             raise ValueError(f"{path.name}: {s.name} is flat; a cabinet is a box")
         kw = loads.get(s.id, default_kw)
+        # EVERY CABINET RESISTS AT THE HALL'S STANDARD LOAD (`racks.load_kw`),
+        # whatever it dissipates, as the parametric rows are built: the
+        # closed-form drop the check compares the field against takes one
+        # coefficient for the row, and a cabinet calibrated at its own 20 kW
+        # would make the field and the form disagree by the square of the
+        # flow ratio (ADR-054).
         racks.append(Rack(s.id, s.box, kw, airflow_axis=1, airflow_sign=-1 if s.attr == "+y" else 1,
-                          cfm_per_kw=cfm, resistance_kw=default_kw if kw <= 0 else None, rho=rho))
+                          cfm_per_kw=cfm, resistance_kw=default_kw, rho=rho))
         fronts[s.id] = -1 if s.attr == "+y" else 1
     if not racks:
         raise ValueError(f"{path.name}: no `rack:` solid; nothing to cool")

@@ -251,10 +251,10 @@ class DownflowHallTest(ReaderTest):
         self.assertEqual(tiles[0].position, 1.0)
         self.assertIsNotNone(self.model.floor_tile_k)
 
-    def test_a_cabinet_at_zero_load_keeps_its_neighbours_resistance(self):
+    def test_every_cabinet_resists_at_the_standard_load_whatever_it_dissipates(self):
         empty = next(r for r in self.model.racks if r.id == "A01")
         self.assertEqual(empty.load_kw, 0.0)
-        self.assertEqual(empty.resistance_kw, 5.0)
+        self.assertEqual({r.resistance_kw for r in self.model.racks}, {5.0})
 
     def test_the_cage_is_a_resistance_and_knows_its_cabinets(self):
         self.assertEqual(self.model.cage, "mesh")
