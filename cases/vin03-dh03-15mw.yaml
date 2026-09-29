@@ -57,7 +57,7 @@ components: {cage: cage-mesh-13, ceiling_return: ceiling-return-600-open, floor_
   gallery_mesh: gallery-mesh-13, supply_grille: supply-grille-2000}
 cage: {construction: mesh}
 mesh:
-  cell_size: [0.2, 0.2, 0.2]
+  cell_size: [0.3, 0.3, 0.2]
 solver: {max_iterations: 2000, residual_tolerance: 0.0001, sensor_interval: 100, warm_start: true,
   processors: 4}
 figures:
