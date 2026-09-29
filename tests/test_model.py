@@ -1170,3 +1170,30 @@ class TheUnitCarriesItsReturnFaceTest(unittest.TestCase):
         payload = m.to_dict(built, support.spec("pod-fanwall"))
         for fan in [p for p in payload["panels"] if p["kind"] == "fan"]:
             self.assertIsNone(fan["return_z"], fan["name"])
+
+
+class RackDropClosedFormTest(unittest.TestCase):
+    """The drop the rows ask of the fan, for cabinets that stand in parallel."""
+
+    def _model(self, widths):
+        from aicfd.model import Box, Model, Rack, Row, RACK_PRESSURE_DROP
+        racks = []
+        x = 0.0
+        for i, w in enumerate(widths):
+            racks.append(Rack(f"R{i + 1}", Box((x, 2.0, 0.0), (x + w, 3.2, 2.2)), 5.0, resistance_kw=5.0))
+            x += w
+        return Model("m", Box((0, 0, 0), (10, 8, 6)), [Box((0, 0, 0), (3, 8, 6))], Box((3, 0, 0), (10, 8, 6)),
+                     4.0, [(0.0, 2.0)], [(3.2, 8.0)], [Row("F1", (2.0, 3.2), 1, racks)], racks, [],
+                     airflow_m3h=sum(r.rated_airflow_m3h for r in racks) * 2, supply_temp_c=20.0,
+                     cell_size=(0.2, 0.2, 0.2)), RACK_PRESSURE_DROP
+
+    def test_twice_the_calibration_flow_costs_four_times_the_rated_drop(self):
+        model, rated = self._model([0.6, 0.6, 0.6])
+        self.assertAlmostEqual(model.rack_pressure_drop_pa, 4 * rated, places=6)
+
+    def test_mixed_widths_share_the_drop_rather_than_take_one_cabinets_coefficient(self):
+        uniform, rated = self._model([0.6, 0.6, 0.6])
+        mixed, _ = self._model([0.8, 0.6, 0.6])
+        # the same cabinets at the same standard pass the same flow at the same drop, whatever their width
+        self.assertAlmostEqual(mixed.rack_pressure_drop_pa, uniform.rack_pressure_drop_pa, places=6)
+        self.assertAlmostEqual(mixed.rack_pressure_drop_pa, 4 * rated, places=6)

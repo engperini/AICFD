@@ -686,22 +686,21 @@ class Model:
         """
         if not self.racks:
             return 0.0
-        face = sum(rack.face_area for rack in self.racks)
-        if face <= 0:
+        # THE CABINETS STAND IN PARALLEL AND SHARE ONE DROP. Each one is
+        # calibrated to pass its own flow at the rated drop, so at a drop dp
+        # it passes q_i * sqrt(dp / rated), and the drop that passes the whole
+        # supply is the rated drop scaled by the square of the supply over
+        # the sum of the calibration flows. On a hall of one cabinet size at
+        # one standard load this is the single coefficient it used to take
+        # from any cabinet; on a hall of 0,6 and 0,8 m cabinets side by side
+        # that coefficient is one width's and the form asked 157 Pa of a
+        # field that could only drop 100 (ADR-054, ADR-131). The guard is for
+        # a hall whose standard is itself zero -- nothing installed anywhere,
+        # so there is nothing to ask of the fan.
+        calibration = sum(rack.resistance_airflow_m3s for rack in self.racks)
+        if calibration <= 0:
             return 0.0
-        velocity = self.airflow_m3s / face
-        # Any cabinet gives the coefficient, because they all carry the same
-        # one: an unloaded position is blanked, so it resists like the ones
-        # either side of it and only its heat is missing (ADR-054). The guard
-        # is for a hall whose standard is itself zero -- nothing installed
-        # anywhere, so there is nothing to ask of the fan.
-        reference = next(
-            (rack for rack in self.racks if rack.resistance_airflow_m3s > 0), None
-        )
-        if reference is None:
-            return 0.0
-        _d, f = reference.darcy_forchheimer()
-        return 0.5 * self.rho * f * velocity**2 * reference.depth
+        return RACK_PRESSURE_DROP * (self.airflow_m3s / calibration) ** 2
 
     @property
     def fan_teams(self) -> list[list[str]]:
