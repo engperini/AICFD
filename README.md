@@ -292,6 +292,15 @@ POD at 0,20 m cells for that.
   position's load is its own heat source. An empty one keeps the row's
   resistance, because an empty cabinet is blanked rather than left open.
 
+- **A hall read from a drawing** — a case whose `geometry.file` names an STL
+  of named, axis-aligned solids (one per cabinet, unit, panel and opening, on
+  the mesh grid), as the `aicfd-hall-from-dwg` skill writes it from the
+  architect's DWG. The YAML is then a *sidecar*: loads, plant, components,
+  mesh and solver, nothing that builds the room. The reader in `geometry.py`
+  turns the solids into the same model the parametric layouts build, so the
+  mesher, the solver, the checks, the page and the report run unchanged; the
+  drawing decides every position, the sidecar everything a drawing cannot
+  say (ADR-131).
 - **The Word report** — `aicfd report <name>`, or the **Word report** button on
   the results page, writes a .docx from the same export: cover, summary with the
   basis of design, methodology with the geometry, the boundary conditions and
@@ -323,6 +332,7 @@ aicfd/
   equipment.py the unit library: capacity against the air a coil receives
   run.py       the only place that shells out to OpenFOAM (isolated env, ADR-002)
   report.py    the Word deliverable, built from the export and nothing else
+  geometry.py  a hall read from a drawing: the STL + sidecar input (ADR-131)
   figures.py   its figures: plan, sections and charts, all 2-D
   palette.py   the page's colour ramps in Python, checked against the original
   server.py    the page's backend: model payload, parameter edits, run control

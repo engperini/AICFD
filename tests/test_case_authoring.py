@@ -55,6 +55,9 @@ BEYOND_THE_FORM = {
     # The drawings a case was built from: a list of file + caption pairs,
     # read at export and printed in the report (ADR-130).
     "figures",
+    # A hall read from a drawing: the STL and where it came from (ADR-131).
+    "geometry.file",
+    "geometry.source",
 }
 
 #: A reference-table row: a backticked key, then type, range and source. The
@@ -124,7 +127,7 @@ class KeysTest(unittest.TestCase):
         source = "\n".join(
             (REPO / "aicfd" / name).read_text()
             for name in ("model.py", "cli.py", "server.py", "case.py",
-                         "post.py", "components.py", "racklib.py")
+                         "post.py", "components.py", "racklib.py", "geometry.py")
         )
         for key in sorted(BEYOND_THE_FORM):
             leaf = key.rsplit(".", 1)[-1]

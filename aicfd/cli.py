@@ -136,7 +136,11 @@ def load_spec(path: str | Path):
     from aicfd.model import build_model
 
     spec = yaml.safe_load(Path(path).read_text())
-    return build_model(spec), spec.get("solver", {})
+    # Where the case file lives: a geometry case names its STL beside it.
+    spec["_base"] = str(Path(path).resolve().parent)
+    model = build_model(spec)
+    spec.pop("_base", None)
+    return model, spec.get("solver", {})
 
 
 STARTER_SPEC = """# AICFD case spec. Everything here is in engineering units; the OpenFOAM

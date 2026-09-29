@@ -1351,6 +1351,14 @@ def build_model(spec: dict) -> Model:
       contained hot aisle, cold aisles between the pairs and round the edge,
       and one fan wall in front of every cold aisle.
     """
+    # A HALL READ FROM A DRAWING is not derived from parameters at all: its
+    # STL carries every box and panel as drawn, and the sidecar the rest. The
+    # reader builds the same Model, so everything downstream is shared
+    # (ADR-131).
+    from aicfd import geometry
+
+    if geometry.is_geometry_case(spec):
+        return geometry.build(spec)
     name = spec.get("name", "case")
     cell = parse_cell_size(spec.get("mesh", {}).get("cell_size", 0.10))
     ceiling = float(spec["hall"]["ceiling"])

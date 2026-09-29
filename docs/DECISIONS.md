@@ -5638,3 +5638,46 @@ row's length governs (ADR-074) and the layout still read the count first.
 And a row every position of which is a blanking panel — how a hall is
 written when one row of a pair is not built yet — no longer breaks the cage
 placement, which read the row's cabinets where it should have read its band.
+
+---
+
+## ADR-131 — A hall read from a drawing: the STL and the sidecar
+
+**Decision.** A case may name `geometry.file`: an ASCII STL of named,
+axis-aligned solids — `hall`, `rack:<id>:<front>`, `unit:<id>[:<dir>]`,
+`wall`, `lid`, `door`, `blank`, `cage`, `deck`, `ceiling`, `tile`, `grille`,
+`supply`, `mesh`, `opening` — every coordinate on the mesh grid the sidecar
+states. The YAML is then a sidecar: loads by rack id, the plant, the
+components, the mesh, the solver, and nothing that builds the room. The
+reader (`aicfd/geometry.py`) turns the solids into the Model the parametric
+layouts produce, under the same panel names, so `build_model` hands off to
+it and everything downstream is shared. What a drawing does not say and the
+parametric path decides after placing the boxes, this reader decides the
+same way: which aisle is cold (from the fronts), which cabinets the cage
+holds (its rectangle), what a grille costs (its component). It then tells
+the spec what the drawing decided — `floor`, `containment`, `plenum`,
+`fanwall.count/width/height` — so the equipment check, the page and the
+report see the room the STL builds.
+
+**Why.** The parametric layouts cannot reproduce a drawn hall: one perimeter,
+one cold aisle, one typical row, a cage wall only between pods. A 15 MW
+liquid-cooling hall with PODs in two columns, perimeters of 5,6 and 8,8 m,
+a cage wall in a hot aisle, or a row alone against the wall, is a different
+room in every one of those. Fitting it to parameters and listing the
+differences was tried and rejected by the engineer as a second input that
+disagrees with the first. The drawing is the geometry; the STL carries it
+exactly, and the model built from it is the one the solver runs.
+
+**Contract.** The skill's `reference/contract.md` is the specification of
+the file; its self-check runs the same rules before the file is handed
+over. The reader refuses by name what breaks them: a vertex off the grid, a
+type it does not know, a cabinet without a front, a fan wall off its wall,
+an opening anywhere but the gallery's holes above the ceiling and below the
+deck. Rows are what the converter named — the cabinets sharing a band, a
+front and a row id — and each contiguous run of them is closed with a lid
+and two ends exactly as a parametric row is.
+
+**Cost accepted.** A single gallery must lie at low x, as the layouts keep
+it; a hall drawn the other way round is mirrored by the converter. Rows run
+along x and fronts are `+y` / `-y`; the other orientation is transposed
+there too.
