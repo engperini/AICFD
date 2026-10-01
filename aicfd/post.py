@@ -41,7 +41,8 @@ from pathlib import Path
 import numpy as np
 
 from aicfd.case import FAN_INTAKE, FAN_SUPPLY, KELVIN
-from aicfd.foam.fields import patch_names, read_field, read_patch_field, to_grid
+from aicfd.foam.fields import (patch_names, read_field, read_patch_entry,
+                               read_patch_field, to_grid)
 from aicfd.model import CP_AIR, Model, num
 
 # ASHRAE TC 9.9 rack *inlet* envelopes, degrees C dry bulb. The recommended
@@ -886,6 +887,15 @@ def grille_pressure_drop(step: str | Path, prefix: str = "grille") -> float | No
     working (ADR-080). The sign comes from phi, which knows which way the air
     is going.
 
+    THE JUMP, NOT THE TWO PRESSURES. A porous baffle writes the jump it applies
+    face by face, at full precision, beside its `value`. The values are
+    absolute pressures near 101 325 Pa written to six significant figures, so
+    each one is rounded to a whole pascal -- and a floor plate costs three or
+    four. Differencing them read a raised floor at 2,94 Pa where the solver
+    was applying 4,26, on a field that had moved 0,6 Pa in level and nothing
+    else, and failed a hall whose plates were delivering their K to 2 %
+    (ADR-133). The values are used only for a surface that writes no jump.
+
     ``prefix`` matters. Every cyclic pair in the case ends `_below`, so taking
     them all mixed the ceiling return grilles with the woven mesh closing the
     plenum into a mechanical gallery -- two surfaces with different open areas
@@ -901,10 +911,13 @@ def grille_pressure_drop(step: str | Path, prefix: str = "grille") -> float | No
     for below in names:
         above = below[: -len("_below")] + "_above"
         net = float(np.sum(read_patch_field(phi_path, below)))
-        drop = float(
+        jump = read_patch_entry(Path(step) / "p_rgh", below, "jump")
+        # The neighbour side sits `jump` above the owner side, so the drop
+        # from `_below` to `_above` is its negative.
+        drop = (float(-np.mean(jump)) if jump is not None and jump.size else float(
             np.mean(read_patch_field(Path(step) / "p_rgh", below))
             - np.mean(read_patch_field(Path(step) / "p_rgh", above))
-        )
+        ))
         # phi is positive out of the owner cell, which is the `_below` side.
         # Positive net flow means the air runs below -> above and `_below` is
         # upstream; negative means the surface is being crossed the other way

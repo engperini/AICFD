@@ -1,6 +1,10 @@
 # AICFD case -- geometry from the STL beside it; this file carries only what a
 # drawing cannot say. Written by aicfd-hall-from-dwg; edit answers.yaml and
 # re-run rather than editing this file.
+#
+# THE REFERENCE EXAMPLE of a hall read from a drawing with a cage and a raised
+# floor: 1 MW, 171 cabinets, 14 downflow DX units, supply setpoint 19 degC.
+# Solved coupled on this mesh to 12 of 12 checks (ADR-131, ADR-133).
 name: dh04-1mw-19c
 geometry: {file: dh04-1mw.stl, source: 'LAYOUT_FTZ01_24Sep26_1.dwg, DATA HALL 04,
     human-revised layout; dh04_treated.dxf sha256 dd1832ab269a6f8d'}

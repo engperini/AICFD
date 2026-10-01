@@ -625,6 +625,29 @@ class GrilleAndFanBudgetTest(unittest.TestCase):
             post.grille_pressure_drop(step, "supply"), -4.0, places=3
         )
 
+    def test_a_porous_baffle_is_read_by_the_jump_it_applies(self):
+        """Six significant figures round 101 318,4 and 101 314,2 to whole
+        pascals, and a floor plate costs three or four of them. The jump the
+        baffle writes beside its value is the drop at full precision, and it
+        is what the measurement reads (ADR-133)."""
+        step = self.case / "100"
+        step.mkdir()
+        field(step / "phi", "phi", "0", {
+            "tile_a_below": [0.2] * 4, "tile_a_above": [-0.2] * 4,
+            # the same plate crossed the other way still reads positive
+            "tile_b_below": [-0.2] * 4, "tile_b_above": [0.2] * 4,
+        })
+        field(step / "p_rgh", "p_rgh", "101325", {
+            "tile_a_below": [101318.0] * 4, "tile_a_above": [101317.0] * 4,
+            "tile_b_below": [101314.0] * 4, "tile_b_above": [101318.0] * 4,
+        })
+        text = (step / "p_rgh").read_text()
+        for name, jump in (("tile_a_below", -4.2), ("tile_b_below", 4.2)):
+            text = text.replace(f"    {name}\n    {{\n",
+                                f"    {name}\n    {{\n        jump uniform {jump};\n", 1)
+        (step / "p_rgh").write_text(text)
+        self.assertAlmostEqual(post.grille_pressure_drop(step, "tile_"), 4.2, places=3)
+
     def test_no_grille_pairs_means_no_measurement(self):
         step = self.case / "100"
         step.mkdir()

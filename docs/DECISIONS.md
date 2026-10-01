@@ -5708,3 +5708,27 @@ and continuing from it is what every pass of the coupled loop already does.
 **Cost accepted.** The coupling record of a resumed run counts only the
 passes made after the resume, and numbers them from 2; the report reads
 whether the loop closed, which is what it needs.
+
+---
+
+## ADR-133 — A porous surface's drop is read off the jump it applies
+
+**Decision.** The resistance checks for the return grilles, the gallery
+mesh, the supply grilles and the raised floor measure each surface's drop
+from the `jump` its porous baffle writes into `p_rgh`, face by face, beside
+the patch values. The difference of the mean pressures on the two sides is
+used only for a surface that writes no jump.
+
+**Why.** The patch values are absolute pressures near 101 325 Pa written to
+six significant figures, so each is rounded to a whole pascal, and a floor
+plate costs three or four. Differencing them is a measurement made at the
+resolution of the thing measured. A 1 MW raised-floor hall exported one
+iteration after a coil pass had moved the whole field 0,6 Pa in level and
+nothing else: the rounded values read its plates at 2,94 Pa while the
+solver was applying 4,26 Pa, and `floor_resistance` failed at 67 % on a
+floor delivering its own K to 2 %. The same field one iteration earlier
+passed at 96 %. The jump is the quantity the solver actually applies, at
+full precision, and it does not care where the pressure level sits.
+
+**Cost accepted.** None in the physics; a surface modelled some other way
+than as a porous baffle keeps the old, coarser measurement.

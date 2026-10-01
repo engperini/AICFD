@@ -128,6 +128,27 @@ def read_patch_field(path: str | Path, patch: str) -> np.ndarray:
     return np.array([])
 
 
+def read_patch_entry(path: str | Path, patch: str, key: str) -> np.ndarray | None:
+    """A named scalar list a patch carries besides its ``value`` -- the
+    ``jump`` of a porous baffle, say. None when the patch has no such entry.
+
+    Shape ``(n,)``, or a single entry when the entry is uniform.
+    """
+    text = Path(path).read_text()
+    start = text.find("boundaryField")
+    if start < 0:
+        return None
+    block = _patch_block(text[start:], patch, path)
+    match = re.search(
+        rf"\b{re.escape(key)}\s+nonuniform\s+List<scalar>\s*\n?\s*(\d+)\s*\n?\s*\(", block)
+    if match:
+        body_end = _matching_paren(block, match.end() - 1)
+        return np.fromstring(
+            block[match.end() : body_end].replace("(", " ").replace(")", " "), sep=" ")
+    match = re.search(rf"\b{re.escape(key)}\s+uniform\s+([-\d.eE+]+)\s*;", block)
+    return np.array([float(match.group(1))]) if match else None
+
+
 def _patch_block(text: str, patch: str, path) -> str:
     """The braces belonging to one patch entry, without the ones nested in it."""
     match = re.search(rf"^\s*{re.escape(patch)}\s*$", text, re.MULTILINE)
