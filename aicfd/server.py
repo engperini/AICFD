@@ -547,7 +547,9 @@ def apply_changes(spec: dict, changes: dict) -> tuple[dict, list[str]]:
             items = [v.strip() for v in str(raw or "").replace(";", ",").split(",")
                      if v.strip()]
             if not items:
-                _place(spec, path, None)
+                # Every unit back in service, written the way the converter
+                # writes it: an empty list rather than a null (ADR-134).
+                _place(spec, path, [])
                 continue
             bad = [v for v in items if not re.search(r"\d+\s*$", v)]
             if bad:
@@ -625,6 +627,81 @@ def apply_changes(spec: dict, changes: dict) -> tuple[dict, list[str]]:
             continue
         _place(spec, path, value)
     return spec, rejected
+
+
+def _imported_fields(model) -> set[str]:
+    """`IMPORTED_EDITABLE`, less what this drawing has none of: no supply
+    grilles to size in a hall without a plenum wall, no plates in one without
+    a deck, no cage to build of anything in one without a cage."""
+    names = {p.name for p in model.panels}
+    has = lambda prefix: any(n.startswith(prefix) for n in names)  # noqa: E731
+    out = set(IMPORTED_EDITABLE)
+    if not has("supply"):
+        out -= {"plenum_grille_width", "plenum_grille_height", "supply_grille"}
+    if not has("tile_"):
+        out -= {"floor_tile"}
+    if not has("cage_"):
+        out -= {"cage_construction", "cage_mesh"}
+    if not has("plenum_opening") and not has("floor_opening"):
+        out -= {"gallery_mesh"}
+    return out
+
+
+def imported_summary(name: str, model, spec: dict) -> dict:
+    """What the page shows of a room it does not let anyone edit (ADR-134):
+    where it came from, what is in it, the units by the drawing's own names,
+    the meshes it can be built on and the figures the report opens with."""
+    from aicfd import geometry
+
+    geo = spec.get("geometry") or {}
+    names = [p.name for p in model.panels]
+    count = lambda prefix: sum(1 for n in names if n.startswith(prefix))  # noqa: E731
+    try:
+        folder = spec_path(name).parent
+        rel = folder.resolve().relative_to(REPO_ROOT.resolve())
+        base_url = "../" + str(rel).replace("\\", "/") + "/"
+    except (FileNotFoundError, ValueError):
+        folder, base_url = None, None
+    figures = []
+    for entry in spec.get("figures") or []:
+        if isinstance(entry, dict) and entry.get("file"):
+            exists = bool(folder and (folder / entry["file"]).is_file())
+            figures.append({"file": entry["file"], "caption": entry.get("caption", ""),
+                            "url": (base_url + entry["file"]) if (exists and base_url) else None})
+    tags = getattr(model, "unit_tags", {}) or {}
+    drawn = getattr(model, "supply_grille_drawn", None)
+    supplies = [p for p in model.panels if p.name.startswith("supply")]
+    floor = getattr(model, "floor_height", None)
+    return {
+        "file": geo.get("file"),
+        "source": geo.get("source"),
+        "project": folder.name if folder and folder != CASES_DIR else None,
+        "arrangement": "downflow" if floor is not None else "fanwall",
+        "counts": {
+            "cabinets": len(model.racks), "rows": len(model.rows),
+            "units": len(model.fans), "return_grilles": count("grille"),
+            "floor_plates": count("tile_"), "supply_grilles": len(supplies),
+            "cage_panels": count("cage_"),
+        },
+        "heights": {
+            "floor": floor, "ceiling": round(model.ceiling_z, 3),
+            "slab": round(model.domain.hi[2], 3),
+            "rack_top": round(max(r.box.hi[2] for r in model.racks), 3) if model.racks else None,
+        },
+        "hall": [round(model.hall.hi[k] - model.hall.lo[k], 3) for k in range(2)],
+        "containment": getattr(model, "contained", None),
+        "cage": getattr(model, "cage", None),
+        "caged_cabinets": len(getattr(model, "cage_racks", ()) or ()),
+        "units": [{"name": f.name, "tag": tags.get(f.name, f.name),
+                   "off": f.name in model.fans_off} for f in model.fans],
+        "cells": geometry.grid_options(spec),
+        "supply_grille": ({
+            "drawn": list(drawn),
+            "now": [round(supplies[0].extent[0][1] - supplies[0].extent[0][0], 3),
+                    round(supplies[0].extent[1][1] - supplies[0].extent[1][0], 3)],
+        } if supplies and drawn else None),
+        "figures": figures,
+    }
 
 
 def update_case(name: str, changes: dict) -> dict:
@@ -736,8 +813,15 @@ def payload_for(name: str, spec: dict) -> dict:
     # The page needs the path of every editable field, so it can read the
     # current value out of the spec without a second copy of this table.
     imported = is_imported(spec)
+    allowed = _imported_fields(model) if imported else set(EDITABLE)
     payload["editable"] = {key: list(path) for key, (path, _c, _l) in EDITABLE.items()
-                           if not imported or key in IMPORTED_EDITABLE}
+                           if key in allowed}
+    if imported:
+        payload["imported"] = imported_summary(name, model, spec)
+        if payload["imported"]["supply_grille"]:
+            drawn = payload["imported"]["supply_grille"]["drawn"]
+            payload.setdefault("plenum_defaults", {}).update(
+                plenum_grille_width=drawn[0], plenum_grille_height=drawn[1])
     # Which page this is: the parametric form, or a room read from a drawing
     # whose geometry is shown and not edited (ADR-134).
     payload["mode"] = "imported" if imported else "parametric"

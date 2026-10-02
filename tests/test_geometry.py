@@ -320,3 +320,48 @@ class DoorOnTheWallTest(ReaderTest):
         model, _ = self.build(text)
         self.assertNotIn("containment_door_c1_x", {p.name for p in model.panels})
         self.assertIn("containment_door_c1_w", {p.name for p in model.panels})
+
+
+def plenum_hall() -> str:
+    """The fan-wall hall with the wall into it doubled: an inner leaf at
+    x = 4.2 and a supply grille in it in front of each cold aisle."""
+    leaf = [_panel("wall:plenum_w", "x", 4.2, (0.0, 0.0, 8.0, 4.0)),
+            _panel("supply:w1", "x", 4.2, (0.4, 0.0, 1.6, 2.0)),
+            _panel("supply:w2", "x", 4.2, (6.0, 0.0, 7.6, 2.0))]
+    return fanwall_hall() + "\n".join(leaf) + "\n"
+
+
+class SupplyGrilleSizeTest(ReaderTest):
+    """One size for every supply grille, chosen by the scenario (ADR-134)."""
+
+    def supplies(self, model):
+        return sorted((p for p in model.panels if p.name.startswith("supply")),
+                      key=lambda p: p.extent[0][0])
+
+    def test_the_drawn_size_needs_no_override(self):
+        model, _ = self.build(plenum_hall())
+        self.assertEqual([_r([p.extent[0], p.extent[1]]) for p in self.supplies(model)],
+                         [[(0.4, 1.6), (0.0, 2.0)], [(6.0, 7.6), (0.0, 2.0)]])
+        self.assertFalse(any("cut to" in w for w in model.warnings))
+
+    def test_every_grille_takes_the_size_about_its_centre_on_its_sill(self):
+        model, _ = self.build(plenum_hall(), plenum={"grille": {"width": 0.8, "height": 3.0}})
+        first, second = self.supplies(model)
+        self.assertEqual(_r([first.extent[0], first.extent[1]]), [(0.6, 1.4), (0.0, 3.0)])
+        self.assertEqual(_r([second.extent[0], second.extent[1]]), [(6.4, 7.2), (0.0, 3.0)])
+        self.assertTrue(any("cut to 0.8 x 3 m" in w for w in model.warnings))
+
+    def test_a_grille_through_the_false_ceiling_is_refused(self):
+        with self.assertRaises(ValueError) as caught:
+            self.build(plenum_hall(), plenum={"grille": {"height": 4.4}})
+        self.assertIn("false ceiling", str(caught.exception))
+
+    def test_a_grille_past_the_end_of_its_leaf_is_refused(self):
+        with self.assertRaises(ValueError) as caught:
+            self.build(plenum_hall(), plenum={"grille": {"width": 4.0}})
+        self.assertIn("past the end of its leaf", str(caught.exception))
+
+    def test_grilles_run_into_each_other_are_refused(self):
+        with self.assertRaises(ValueError) as caught:
+            self.build(plenum_hall(), plenum={"grille": {"width": 5.8}})
+        self.assertIn("plenum.grille.width", str(caught.exception))

@@ -103,6 +103,20 @@ class TheFormTest(ProjectTest):
         for locked in ("hall_height", "fan_count", "floor", "containment", "rack_size"):
             self.assertNotIn(locked, payload["editable"])
 
+    def test_the_page_is_shown_the_room_it_cannot_edit(self):
+        g = server.build_payload("drawn-base")["imported"]
+        self.assertEqual(g["arrangement"], "downflow")
+        self.assertEqual(g["counts"]["cabinets"], 4)
+        self.assertEqual([u["tag"] for u in g["units"]], ["UE-01", "UE-02"])
+        self.assertIn(0.2, g["cells"]["x"])
+        self.assertNotIn(0.3, g["cells"]["x"], "the drawing has 0,2 m steps in x")
+
+    def test_what_this_drawing_has_none_of_is_not_offered(self):
+        editable = server.build_payload("drawn-base")["editable"]
+        self.assertNotIn("plenum_grille_width", editable, "no supply grilles in a raised-floor hall")
+        self.assertIn("floor_tile", editable)
+        self.assertIn("cage_construction", editable)
+
     def test_a_field_the_drawing_decides_is_refused_by_name(self):
         out = server.update_case("drawn-base", {"fan_count": 3})
         self.assertTrue(any("fan_count" in r and "drawing" in r for r in out["rejected"]))
@@ -126,7 +140,7 @@ class TheFormTest(ProjectTest):
                          ["UE-01"])
         self.assertEqual(M.build_model(server.load_spec("drawn-base")).fans_off, ("fan1",))
         server.update_case("drawn-base", {"fan_out_of_service": ""})
-        self.assertIsNone(yaml.safe_load(self.file.read_text())["fanwall"]["out_of_service"])
+        self.assertEqual(yaml.safe_load(self.file.read_text())["fanwall"]["out_of_service"], [])
 
 
 class TheRacksPageTest(ProjectTest):

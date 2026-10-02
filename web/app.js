@@ -224,10 +224,31 @@ const SECTIONS = [
   },
 ];
 
+/**
+ * A room read from a drawing keeps its geometry and the page says so in the
+ * titles it uses: its units are the drawing's units, cooling a raised floor or
+ * blowing through a wall, and its supply grilles are the drawing's grilles cut
+ * to a size the scenario chooses (ADR-134).
+ */
+const IMPORTED_TITLES = {
+  'Fan walls': () => (model.imported?.arrangement === 'downflow'
+    ? { title: 'Cooling units', note: 'the drawing\u2019s units; the machine and its numbers are the scenario\u2019s' }
+    : { title: 'Fan walls', note: 'the drawing\u2019s units; the machine and its numbers are the scenario\u2019s' }),
+  'Supply plenum': () => ({ title: 'Supply grilles',
+    note: 'one size for every grille in the inner leaf; the drawing places them' }),
+  'Racks': () => ({ note: 'the drawing\u2019s cabinets; their loads are the scenario\u2019s' }),
+  'Customer cage': () => ({ note: 'drawn where it stands; what it is built of is the scenario\u2019s' }),
+  'Return air and containment': () => ({ title: 'Surfaces the air crosses',
+    note: 'what each is made of; how many and where is the drawing' }),
+  'Mesh and solver': () => ({ note: 'only the cells that keep the drawing on the grid' }),
+};
+
 /** The parameters this spec actually carries, section by section. */
 function activeSections() {
   return SECTIONS.map((section) => ({
     ...section,
+    ...(model.mode === 'imported' && IMPORTED_TITLES[section.title]
+      ? IMPORTED_TITLES[section.title]() : {}),
     params: section.params.filter(
       // A checkbox always has an answer -- on or off -- so it shows whether
       // or not the case mentions it. Dropping the ones a case said nothing
@@ -239,7 +260,11 @@ function activeSections() {
       (p) => model.editable?.[p.key]
         && (p.optional || p.check || p.choices || specValue(p.key) !== ''),
     ),
-  })).filter((section) => section.params.length);
+  })).filter((section) => section.params.length
+    // A section that is only component choices still has something to show:
+    // on a drawn hall the counts are the drawing's and the materials are not
+    // (ADR-134).
+    || (section.components && (model.components || []).length));
 }
 
 const RESIDUAL_ORDER = ['Ux', 'Uy', 'Uz', 'h', 'p_rgh', 'k', 'epsilon'];
@@ -330,9 +355,13 @@ function render() {
   </div>
 
   <aside class="column">
+    ${model.mode === 'imported' ? importedCard() : ''}
     <section class="card">
-      <div class="card-head"><span class="card-title">Inputs</span>
-        <span class="card-sub">the case template; every field of the spec</span></div>
+      <div class="card-head"><span class="card-title">${
+        model.mode === 'imported' ? 'Scenario' : 'Inputs'}</span>
+        <span class="card-sub">${model.mode === 'imported'
+          ? 'everything the drawing cannot say'
+          : 'the case template; every field of the spec'}</span></div>
       <div class="params" id="params"></div>
       <div class="actions">
         <button id="apply" class="primary" type="button">Apply</button>
@@ -555,7 +584,7 @@ function wireMeshPreset() {
     note.textContent = meshNote(box.value);
     // A typed value that happens to match a preset selects it; anything else
     // falls back to Custom, so the select never claims something untrue.
-    const match = MESH_PRESETS.find((m) => m.value.join(', ') === box.value.trim());
+    const match = meshPresets().find((m) => m.value.join(', ') === box.value.trim());
     preset.value = match ? match.value.join(', ') : '';
   };
   preset.addEventListener('change', () => {
@@ -565,6 +594,78 @@ function wireMeshPreset() {
   });
   box.addEventListener('input', refresh);
   refresh();
+}
+
+/**
+ * The room as the drawing has it, shown and not edited (ADR-134).
+ *
+ * Every number here came off the drawing through the converter; changing one
+ * is a different drawing, imported again. What the card is for is the check a
+ * reader makes before a run: that this is the hall they meant -- its source,
+ * its cabinets, its units, its heights -- and the figures the report will
+ * open with.
+ */
+function importedCard() {
+  const g = model.imported;
+  const c = g.counts;
+  const h = g.heights;
+  const n = (v) => (v === null || v === undefined ? '\u2014' : dec(v));
+  const rows = [
+    ['Data hall (without galleries)', `${n(g.hall[0])} \u00d7 ${n(g.hall[1])} m`],
+    ['Cabinets', `${c.cabinets} in ${c.rows} rows`],
+    [g.arrangement === 'downflow' ? 'Units (downflow, raised floor)' : 'Units (fan walls)', String(c.units)],
+    ...(h.floor !== null ? [['Raised floor', `${n(h.floor)} m, ${c.floor_plates} plates`]] : []),
+    ...(c.supply_grilles ? [['Supply grilles', `${c.supply_grilles}, drawn ${
+      g.supply_grille ? g.supply_grille.drawn.map(n).join(' \u00d7 ') : ''} m`]] : []),
+    ['Return grilles', String(c.return_grilles)],
+    ['False ceiling / slab', `${n(h.ceiling)} / ${n(h.slab)} m`],
+    ['Rack top', `${n(h.rack_top)} m`],
+    ['Containment', g.containment ? `${g.containment} aisle` : 'none'],
+    ...(c.cage_panels ? [['Cage', `${g.cage}, ${g.caged_cabinets} cabinets inside`]] : []),
+  ];
+  const figures = (g.figures || []).filter((f) => f.url).map((f) =>
+    `<a class="figure-thumb" href="${f.url}" target="_blank" rel="noopener" title="${f.caption}">
+       <img src="${f.url}" alt="${f.caption}" loading="lazy" /></a>`).join('');
+  return `<section class="card" id="imported-card">
+    <div class="card-head"><span class="card-title">Geometry</span>
+      <span class="card-sub">read from the drawing \u2014 fixed for every scenario</span></div>
+    <p class="param-note">${g.source || g.file}${g.project ? ` \u00b7 project <b>${g.project}</b>` : ''}</p>
+    <table class="kv">${rows.map(([k, v]) => `<tr><th>${k}</th><td>${v}</td></tr>`).join('')}</table>
+    ${figures ? `<div class="figure-strip">${figures}</div>` : ''}
+    <p class="param-note">To change the room \u2014 a row, a unit\u2019s place, the ceiling \u2014
+      change the drawing and import it again. Everything below is this scenario\u2019s.</p>
+  </section>`;
+}
+
+/**
+ * Which units have failed, ticked off the drawing's own list (ADR-134).
+ *
+ * The parametric form takes "1, 3", because there the units are numbered by
+ * the page. A drawing names its units, and the reader looking for CRAC-03 in a
+ * list of numbers is doing a translation the page can do for them. The boxes
+ * write the tags into the same field the server already reads.
+ */
+function unitChecklist(value) {
+  const units = model.imported?.units || [];
+  const off = new Set(units.filter((u) => u.off).map((u) => u.tag));
+  return `<div class="param param-wide">
+      <label>Units out of service</label>
+      <input type="hidden" id="p-fan_out_of_service" value="${[...off].join(', ')}" />
+    </div>
+    <div class="unit-checklist" id="unit-checklist">${units.map((u) =>
+      `<label class="unit-check"><input type="checkbox" data-unit="${u.tag}"${
+        off.has(u.tag) ? ' checked' : ''} /> ${u.tag}</label>`).join('')}</div>
+    <p class="param-note">Ticked units stay where they are and stop: their faces become walls (ADR-129).</p>`;
+}
+
+function wireUnitChecklist() {
+  const host = document.getElementById('unit-checklist');
+  const field = document.getElementById('p-fan_out_of_service');
+  if (!host || !field) return;
+  host.addEventListener('change', () => {
+    field.value = [...host.querySelectorAll('input[data-unit]:checked')]
+      .map((box) => box.dataset.unit).join(', ');
+  });
 }
 
 function renderParams() {
@@ -586,6 +687,7 @@ function renderParams() {
     )
     .join('');
   wireMeshPreset();
+  wireUnitChecklist();
   wireUnitPicker();
   wireComponentPickers();
   wireExclusiveChecks();
@@ -779,6 +881,31 @@ const MESH_PRESETS = [
   { label: 'Fine — a quarter rack, for one POD', value: [0.2, 0.2, 0.1] },
 ];
 
+/**
+ * The presets for THIS case. A drawn hall can only be meshed where every
+ * vertex of the drawing lands on a cell face, and the server says which cells
+ * those are, axis by axis; the presets are built from them rather than from
+ * the parametric three, which a drawing on a 0,3 m grid cannot take (ADR-134).
+ */
+function meshPresets() {
+  const cells = model.imported?.cells;
+  if (!cells) return MESH_PRESETS;
+  const pick = (axis, want) => {
+    const ok = cells[axis] || [];
+    return ok.reduce((best, c) => (Math.abs(c - want) < Math.abs(best - want) ? c : best), ok[0]);
+  };
+  const out = [];
+  const add = (label, wants) => {
+    const value = ['x', 'y', 'z'].map((a, i) => pick(a, wants[i]));
+    if (value.some((v) => v === undefined)) return;
+    if (!out.some((o) => o.value.join() === value.join())) out.push({ label, value });
+  };
+  add('Standard — the coarsest the drawing allows near 0,3 m', [0.3, 0.3, 0.2]);
+  add('Fine — near 0,2 m in plan', [0.2, 0.2, 0.2]);
+  add('Very fine — near 0,1 m, for checking a detail', [0.1, 0.1, 0.1]);
+  return out;
+}
+
 /** Cells the domain would hold at this cell size, and what that costs. */
 function meshNote(text) {
   const cell = String(text).split(/[,\s]+/).map(Number).filter((v) => v > 0);
@@ -801,6 +928,7 @@ function meshNote(text) {
 
 function inputHtml(p) {
   const value = specValue(p.key);
+  if (p.key === 'fan_out_of_service' && model.mode === 'imported') return unitChecklist(value);
   if (p.check) {
     // Absent means the default, and the default is not always on: the hot
     // aisle is contained unless a case says otherwise, a supply plenum is
@@ -837,7 +965,7 @@ function inputHtml(p) {
     </div>`;
   }
   const current = formatValue(value);
-  const options = MESH_PRESETS.map((preset) => {
+  const options = meshPresets().map((preset) => {
     const text = preset.value.join(', ');
     return `<option value="${text}" ${text === current ? 'selected' : ''}>${
       preset.label
@@ -1110,7 +1238,7 @@ async function applyChanges() {
         // like a number box sends NaN, and the server rejects the field the
         // reader just chose.
         changes[p.key] = (p.text || p.choices) ? input.value : Number(input.value);
-      } else if (specValue(p.key) !== '') {
+      } else if (formatValue(specValue(p.key)) !== '') {
         // EMPTIED, NOT UNTOUCHED: the box held a value and the reader took it
         // out, which means the standard again -- every unit back in service,
         // the datasheet's capacity. Leaving it out of the request kept the

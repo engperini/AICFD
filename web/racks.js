@@ -47,6 +47,14 @@ const fmt = (v, digits = 2) =>
 
 const whole = (v) => (Number.isFinite(+v) ? (+v).toLocaleString('en-US') : '—');
 
+/**
+ * A hall read from a drawing: its cabinets are the drawing's, under the ids
+ * and at the widths the drawing gave them, and what this page edits is their
+ * load (ADR-134). No typical row, no blanks, no widths -- those come back with
+ * the drawing.
+ */
+const imported = () => state?.mode === 'imported';
+
 async function load() {
   const res = await fetch(withCase('/api/racks'));
   const payload = await res.json();
@@ -66,7 +74,7 @@ function render() {
     <div class="layout">
       <div class="column">
         ${standardCard()}
-        ${typicalRowCard()}
+        ${imported() ? '' : typicalRowCard()}
         ${positionsCard()}
       </div>
       <div class="column">${aside(t)}</div>
@@ -89,21 +97,27 @@ function standardCard() {
                  value="${dec(s.load_kw)}" />
         </div>
         <div class="field trio">
-          <label>Rack size (w × d × h), m</label>
+          <label>Rack size (w × d × h), m${imported() ? ' — as drawn' : ''}</label>
           <div class="three">
             <input id="size-w" type="text" inputmode="decimal"
-                   value="${dec(s.size[0])}" />
+                   value="${dec(s.size[0])}"${imported() ? ' readonly style="opacity:.8"' : ''} />
             <input id="size-d" type="text" inputmode="decimal"
-                   value="${dec(s.size[1])}" />
+                   value="${dec(s.size[1])}"${imported() ? ' readonly style="opacity:.8"' : ''} />
             <input id="size-h" type="text" inputmode="decimal"
-                   value="${dec(s.size[2])}" />
+                   value="${dec(s.size[2])}"${imported() ? ' readonly style="opacity:.8"' : ''} />
           </div>
         </div>
         <div class="field">
           <label>Air the rack's own fans draw, CFM/kW</label>
           <input value="${s.cfm_per_kw ?? '—'}" readonly style="opacity:.8" />
         </div>
-        <p class="note">This is the cabinet a position takes when it says
+        ${imported() ? `<p class="note">Every cabinet here is one the drawing
+          placed, under the id and at the width it was drawn; to move or resize
+          one, change the drawing and import it again. What this page sets is
+          the load: the standard every cabinet carries unless it says
+          otherwise, and each cabinet's own below. A cabinet at 0 still stands
+          and still resists; it only stops heating the room.</p>` : ''}
+        <p class="note"${imported() ? ' hidden' : ''}>This is the cabinet a position takes when it says
           nothing else. The width is the one a position can override, one by
           one below or for every row at once in the typical row; depth and
           height are the row's and are the same all along it. CFM/kW is set on
@@ -198,8 +212,8 @@ function positionsCard() {
     <section class="card">
       <div class="card-head">
         <span class="card-title">Each position</span>
-        <span class="card-sub">empty follows the typical row; 0 is a cabinet
-          with nothing in it</span>
+        <span class="card-sub">empty follows the ${imported() ? 'standard' : 'typical row'};
+          0 is a cabinet with nothing in it</span>
       </div>
       <div class="rack-filter">
         <input type="search" id="filter" placeholder="row or position, e.g. F1B1" />
@@ -240,7 +254,13 @@ function aside(t) {
              where no cabinet stands. No air crosses them, which is what makes
              them different from a cabinet at zero load. `
           : ''}
-        ${t.unloaded
+        ${t.unloaded && t.nominal_kw < t.load_kw
+          ? `The cabinets' own loads add up to ${fmt(t.load_kw, 0)} kW, more
+             than the ${fmt(t.nominal_kw, 0)} kW the standard alone would give:
+             the standard is what a cabinet carries when it says nothing, and
+             here most of them say something. ${whole(t.unloaded)} carry
+             nothing, and where they stand decides how evenly the units load.`
+          : t.unloaded
           ? `Nominal would be ${fmt(t.nominal_kw, 0)} kW with every position
              filled. The difference is ${fmt(t.nominal_kw - t.load_kw, 0)} kW
              the plant does not have to remove, spread the way
@@ -287,12 +307,15 @@ function drawRows() {
     return `<tr data-stated="${differs}" data-zero="${zero || blank}">
       <td><span class="dot ${zero || blank ? 'zero' : differs ? 'stated' : ''}"></span>${r.id}</td>
       <td>${r.row}</td>
-      <td><select data-kind="${r.id}">
+      <td>${imported()
+          ? `Cabinet${r.caged ? ' <span class="card-sub">· in the cage</span>' : ''}`
+          : `<select data-kind="${r.id}">
             <option value="" ${blank ? '' : 'selected'}>Cabinet</option>
             <option value="1" ${blank ? 'selected' : ''}>Blank panel</option>
-          </select></td>
-      <td><input type="text" inputmode="decimal" data-width="${r.id}"
-                 value="${dec(widthOf(r))}" placeholder="${state.standard.size[0]}" /></td>
+          </select>`}</td>
+      <td>${imported() ? fmt(r.width_m, 2)
+          : `<input type="text" inputmode="decimal" data-width="${r.id}"
+                 value="${dec(widthOf(r))}" placeholder="${state.standard.size[0]}" />`}</td>
       <td>${blank ? '<span class="card-sub">—</span>'
           : `<input type="text" inputmode="decimal" data-rack="${r.id}"
                     value="${dec(value)}" />`}</td>
@@ -510,15 +533,19 @@ async function save() {
     const res = await fetch(withCase('/api/racks'), {
       method: 'POST',
       headers: { 'Content-Type': 'application/json' },
-      body: JSON.stringify({
-        load_kw: num(byId('standard').value),
-        size: [num(byId('size-w').value), num(byId('size-d').value),
-               num(byId('size-h').value)],
-        row: rowDraft(),
-        loads,
-        widths,
-        blanks,
-      }),
+      body: JSON.stringify(imported()
+        // The drawing's cabinets: their loads, and nothing about where they
+        // stand or how wide they are (ADR-134).
+        ? { load_kw: num(byId('standard').value), loads }
+        : {
+          load_kw: num(byId('standard').value),
+          size: [num(byId('size-w').value), num(byId('size-d').value),
+                 num(byId('size-h').value)],
+          row: rowDraft(),
+          loads,
+          widths,
+          blanks,
+        }),
     });
     const payload = await res.json();
     if (payload.error) throw new Error(payload.error);

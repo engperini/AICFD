@@ -221,7 +221,7 @@ or three.
 |---|---|---|---|
 | `name` | str | | the case's own name; must match the file name |
 | `site.altitude_m` | float | 0 to 5000 | the site's elevation. It sets air density, so it changes every mass flow in the model. The fan wall selection states the elevation it was taken at — use that one, and if it differs from the site's, that disagreement is the finding |
-| `geometry.file` | str | | **a hall read from a drawing** (ADR-131): the named-solid STL `aicfd-hall-from-dwg` writes, beside the case file. With it the case is a *sidecar*: no `pods`, `hall.size`, `aisles`, `racks.size/per_row`, `fanwall.count/width/height`, `floor`, `plenum`, `grilles` or `containment` keys, because the STL carries every box and panel; loads, plant, components, mesh and solver stay in the YAML |
+| `geometry.file` | str | | **a hall read from a drawing** (ADR-131): the named-solid STL `aicfd-hall-from-dwg` writes, beside the case file. With it the case is a *sidecar*: no `pods`, `hall.size`, `aisles`, `racks.size/per_row`, `fanwall.count/width/height`, `floor`, `grilles` or `containment` keys, because the STL carries every box and panel; loads, plant, components, mesh and solver stay in the YAML. It lives in `cases/<project>/` as `geometry.stl`, one YAML per scenario beside it (ADR-134) |
 | `geometry.source` | str | | which drawing, sheet and revision the STL came from, for the report |
 | `figures` | list | | the drawings the case was built from, as `[{file, caption}]` with paths relative to the case file: the layout plan, the 3D model, the sections an extraction tool such as `aicfd-hall-from-dwg` writes. Copied into the result at export and printed in the report's basis of design, so the reader meets what is simulated before any number (ADR-130). A file that is missing is a warning, not a refusal |
 
@@ -290,6 +290,7 @@ or three.
 | `plenum.depth` | float | 0.3 to 6 | the cavity between the two leaves. Default 1.2 |
 | `plenum.grille.width` | float | 0.3 to 12 | one supply grille's width. Default 2.0 |
 | `plenum.grille.height` | float | 0.3 to 6 | one supply grille's height. Defaults to the rack height — air let in above the racks is air the racks never see |
+| `plenum.grille` on a drawn hall | | | **cuts every drawn supply grille to this width and height** (ADR-134): each keeps its centre along the leaf and its sill, the edges land on the mesh, and a size that runs one grille into the next, past the end of its leaf or through the false ceiling is refused by name. Absent, the grilles are the drawing's |
 | `plenum.closed` | list of names | | grilles that are shut in this study |
 | `plenum.mesh_loss_coefficient` | float | | overrides the component's K for the mesh across the opening |
 | `plenum.as_mesh` | bool | | §4 |

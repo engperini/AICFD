@@ -163,6 +163,81 @@ def geometry_path(spec: dict) -> Path:
     )
 
 
+def _resize_supplies(supplies: list[Solid], spec: dict, cell, ceiling_z: float,
+                     leaves: list[Solid], stl: str) -> tuple[list[Solid], str | None]:
+    """Every supply grille cut to the size the scenario asks for (ADR-134).
+
+    One size for all of them, `plenum.grille.width` x `plenum.grille.height`,
+    because that is how a plenum wall is specified and the variation a study
+    makes. Each keeps its centre along the wall and its sill: a grille stands
+    on the floor of the cavity and grows upwards. The new edges land on the
+    mesh, and a size that would run one grille into the next, past the end of
+    its leaf or through the false ceiling is refused by name -- that is a
+    different wall, and a different drawing.
+    """
+    asked = ((spec.get("plenum") or {}).get("grille") or {})
+    if not supplies or not asked:
+        return supplies, None
+    w0 = supplies[0].hi[1] - supplies[0].lo[1]
+    h0 = supplies[0].hi[2] - supplies[0].lo[2]
+    width = float(asked.get("width", w0))
+    height = float(asked.get("height", h0))
+    if abs(width - w0) < 1e-6 and abs(height - h0) < 1e-6:
+        return supplies, None
+    out = []
+    for s in supplies:
+        centre = (s.lo[1] + s.hi[1]) / 2
+        cells_w = max(1, round(width / cell[1]))
+        y0 = round((centre - cells_w * cell[1] / 2) / cell[1]) * cell[1]
+        y1 = y0 + cells_w * cell[1]
+        z0 = s.lo[2]
+        z1 = z0 + max(1, round(height / cell[2])) * cell[2]
+        if z1 > ceiling_z + 1e-6:
+            raise ValueError(f"plenum.grille.height: {height:g} m from the sill at {z0:g} m runs to {z1:g} m, "
+                             f"through the false ceiling at {ceiling_z:g} m")
+        leaf = next((w for w in leaves if abs(w.lo[0] - s.lo[0]) < 1e-6), None)
+        if leaf and (y0 < leaf.lo[1] - 1e-6 or y1 > leaf.hi[1] + 1e-6):
+            raise ValueError(f"plenum.grille.width: {width:g} m puts {s.id} at y {y0:g}-{y1:g} m, past the end "
+                             f"of its leaf ({leaf.lo[1]:g}-{leaf.hi[1]:g} m)")
+        out.append(dataclasses.replace(s, lo=(s.lo[0], y0, z0), hi=(s.hi[0], y1, z1)))
+    for a, b in zip(out, out[1:]):
+        if abs(a.lo[0] - b.lo[0]) < 1e-6 and b.lo[1] < a.hi[1] - 1e-6:
+            pitch = (b.lo[1] + b.hi[1]) / 2 - (a.lo[1] + a.hi[1]) / 2
+            raise ValueError(f"plenum.grille.width: {width:g} m runs {a.id} into {b.id}, whose centres are "
+                             f"{pitch:.2f} m apart on the drawing. Narrower grilles, or a different drawing")
+    w1, h1 = out[0].hi[1] - out[0].lo[1], out[0].hi[2] - out[0].lo[2]
+    return out, (f"Supply grilles cut to {w1:g} x {h1:g} m for this scenario, against {w0:g} x {h0:g} m on "
+                 f"the drawing ({stl}); the drawing's figures show the drawn size (ADR-134).")
+
+
+#: The cell sizes a scenario may ask for, on each axis. Below 0,05 m a hall is
+#: millions of cells; above 0,6 m a cabinet is one cell wide.
+CELL_CANDIDATES = (0.05, 0.1, 0.15, 0.2, 0.25, 0.3, 0.4, 0.5, 0.6)
+_GRID_CACHE: dict[tuple[str, float], dict] = {}
+
+
+def grid_options(spec: dict) -> dict | None:
+    """Which cell sizes keep every vertex of the drawing on a cell face, per
+    axis -- the only meshes this geometry can be built on (ADR-134). None when
+    the STL cannot be found."""
+    try:
+        path = geometry_path(spec)
+    except (ValueError, KeyError):
+        return None
+    key = (str(path.resolve()), path.stat().st_mtime)
+    if key not in _GRID_CACHE:
+        coords: list[set] = [set(), set(), set()]
+        for s in read_stl(path):
+            for p in (s.lo, s.hi):
+                for k in range(3):
+                    coords[k].add(round(p[k], 6))
+        _GRID_CACHE[key] = {
+            axis: [c for c in CELL_CANDIDATES if all(_on_grid(v, c) for v in coords[k])]
+            for k, axis in enumerate("xyz")
+        }
+    return _GRID_CACHE[key]
+
+
 _ARRANGEMENT_CACHE: dict[tuple[str, float], str] = {}
 
 
@@ -317,6 +392,9 @@ def build(spec: dict) -> Model:
         plenum_depth = depth if plenum_depth is None else plenum_depth
         panels.append(s.panel(f"plenum_wall{suffix(i)}", "wall", sign=1 if i == 0 else -1))
     supplies = sorted(by.get("supply", []), key=lambda s: (side_of(s.lo[0]), s.lo[1]))
+    drawn_grille = (round(supplies[0].hi[1] - supplies[0].lo[1], 3),
+                    round(supplies[0].hi[2] - supplies[0].lo[2], 3)) if supplies else None
+    supplies, resized = _resize_supplies(supplies, spec, cell, ceiling_z, plenum_walls, path.name)
     for n, s in enumerate(supplies, start=1):
         if s.flat_axis != 0 or not any(abs(s.lo[0] - w.lo[0]) < 1e-6 for w in plenum_walls):
             raise ValueError(f"{path.name}: {s.name} is not in the plane of a `wall:plenum_*` leaf")
@@ -590,12 +668,18 @@ def build(spec: dict) -> Model:
     model.contained = contained
     model.cage = cage_construction
     model.cage_racks = cage_racks
+    # The drawing's own names for its units, by the panel each became, so the
+    # page can offer "CRAC-03 has failed" rather than "unit 3" (ADR-134).
+    model.unit_tags = {fname: tag for tag, fname in tags.items()}
+    model.supply_grille_drawn = drawn_grille
     model.warnings = check_mesh_alignment(model)
     model.warnings.insert(0, (
         f"Geometry read from {path.name}: {len(solids)} solids -- {len(racks)} cabinets in {len(rows)} rows, "
         f"{len(fans)} units, {len(by.get('grille', []))} return grilles, {len(by.get('tile', []))} floor plates, "
         f"{len(supplies)} supply grilles, {len(cage_solids)} cage panels (ADR-131)."
     ))
+    if resized:
+        model.warnings.insert(1, resized)
     if fans_off:
         model.warnings.insert(1, (
             f"Units out of service: {', '.join(fans_off)} -- {len(fans_off)} of {len(fans)} (ADR-129)."

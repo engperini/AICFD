@@ -3915,7 +3915,14 @@ def summary_rows(model: Model) -> list[tuple[str, str, str]]:
         (
             "IT load",
             (
-                f"{len(model.racks)} x {model.racks[0].load_kw:g} kW"
+                # ONE FIGURE ONLY WHEN THERE IS ONE. "218 x 0 kW" stood over a
+                # hall carrying 894 kW, because the first cabinet happened to
+                # be a spare at zero (ADR-134).
+                (f"{len(model.racks)} x {model.racks[0].load_kw:g} kW"
+                 if len({r.load_kw for r in model.racks}) == 1
+                 else f"{len(model.racks)} racks, "
+                      f"{min(r.load_kw for r in model.racks):g}-"
+                      f"{max(r.load_kw for r in model.racks):g} kW each")
                 + (f" in {len(model.rows)} rows" if len(model.rows) > 1 else "")
             )
             if model.racks
