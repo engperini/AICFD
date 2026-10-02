@@ -1110,6 +1110,12 @@ async function applyChanges() {
         // like a number box sends NaN, and the server rejects the field the
         // reader just chose.
         changes[p.key] = (p.text || p.choices) ? input.value : Number(input.value);
+      } else if (specValue(p.key) !== '') {
+        // EMPTIED, NOT UNTOUCHED: the box held a value and the reader took it
+        // out, which means the standard again -- every unit back in service,
+        // the datasheet's capacity. Leaving it out of the request kept the
+        // old value for ever (ADR-134).
+        changes[p.key] = '';
       }
     }
   }
