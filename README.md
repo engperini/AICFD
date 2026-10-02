@@ -140,6 +140,17 @@ to end in `docs/experiments/`:
 | `hall-10mw.yaml` | 16 PODs, 768 racks, 9,98 MW, 35 fan walls | 329 280 cells | 11 min, 4 cores |
 | `hall-double-gallery.yaml` | 5 PODs, 440 racks, 5,1 MW, a gallery at each end and rows in two blocks | 275 400 cells | settled in 7 min, 4 cores |
 
+**A new drawn hall arrives as one file (ADR-135).** The converter writes
+`<project>.aicfd.zip`; import it on the page (case menu → *Import package*) or
+with `aicfd import`. It is checked and built before anything is written, and
+its scenarios are locked to the geometry they came with. `aicfd package` (or
+*Download package*) writes a scenario back out the same way, for a colleague:
+
+```bash
+python3 -m aicfd import dh05-2mw.aicfd.zip         # -> cases/dh05-2mw/
+python3 -m aicfd package dh04-1mw-19c              # -> dh04-1mw-19c.aicfd.zip
+```
+
 Start a scenario from one that exists rather than from a blank file — the
 copy lands in the same project and shares its geometry:
 

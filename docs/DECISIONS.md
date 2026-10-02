@@ -5772,3 +5772,35 @@ drawing does not have.
 is still swept against the suite's own copies of them (`tests/cases/`), and
 the worked results under `reference/` stay as evidence. A scenario name has to
 be unique across every project, because it is a run directory.
+
+---
+
+## ADR-135 — A drawn hall travels as one file, and its geometry is locked to its scenarios
+
+**Decision.** The converter (`aicfd-hall-from-dwg`) delivers
+`<project>.aicfd.zip`: `manifest.json` (format `aicfd-package/1`, project,
+scenarios, the STL's sha256, source, grid alerts), `geometry.stl`,
+`figures/`, `scenarios/<name>.yaml` and `source/` (the answers it was given
+and the report it wrote). Nothing else may be in it. `aicfd import`, or
+*Import package* on the page, checks the manifest and the hash, builds every
+scenario against the geometry in a staging folder, and only then moves it to
+`cases/<project>/`; a package that does not build leaves nothing behind. A
+project that exists, or a scenario name taken anywhere in `cases/`, is
+refused. Each scenario is stamped with `geometry.sha256`, and the reader
+refuses an STL that no longer matches it. `aicfd package <scenario> [--all]`,
+and *Download package* on the page, write the same layout back out.
+
+**Why.** A drawn hall was five files moved by hand. A sidecar pasted in
+without its STL was refused, a report built where the PNGs had not been
+copied went out without the drawings it opens with, and the 19 °C scenario
+was a YAML copied in a terminal. One file with a manifest is the unit the
+engineer already thinks in — "the DH04 model" — and the hash is what makes
+"the geometry is fixed" true rather than a convention: every number in a
+scenario was chosen for one room, and a room replaced under it by hand would
+run under the old study's name.
+
+**Cost accepted.** Changing the room means running the converter again and
+importing under a new project name (or removing the old one first); the
+package is not merged into an existing project. The page uploads the package
+as base64 inside JSON, which costs a third more bytes than a multipart body
+and keeps the server free of a form parser; the halls so far are under 2 MB.

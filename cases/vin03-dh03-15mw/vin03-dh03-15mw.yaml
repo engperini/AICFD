@@ -5,7 +5,7 @@
 # LIQUID-COOLED HALL: racks.loads carry the AIR share of each cabinet's IT load
 # (IT 15000 kW, to the air 894 kW); the rest leaves in the coolant.
 name: vin03-dh03-15mw
-geometry: {file: geometry.stl, source: 'VIN03-CN-ASC-F0-MEC00-PL-0001-R02.dwg,
+geometry: {file: geometry.stl, sha256: 5d34ba2196f19a5899d5c386d3d578e364d1eac839e022bbfc23db3db1d6e90e, source: 'VIN03-CN-ASC-F0-MEC00-PL-0001-R02.dwg,
     DATA HALL 03, liquid cooling POD layout, Sep 2026; BoD R03; PL-0001.dwg sha256
     bbae31a5594f4c6b'}
 site: {altitude_m: 0.0}

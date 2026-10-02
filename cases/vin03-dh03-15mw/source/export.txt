@@ -1,0 +1,582 @@
+AICFD geometry export -- vin03-dh03-15mw
+========================================================================
+source        PL-0001.dwg
+drawing       VIN03-CN-ASC-F0-MEC00-PL-0001-R02.dwg, DATA HALL 03, liquid cooling POD layout, Sep 2026; BoD R03; PL-0001.dwg sha256 bbae31a5594f4c6b
+grid          every coordinate on 0.3 x 0.3 x 0.2 m
+origin        drawing (75658.279, 169595.040) is the model's (0, 0); z = 0 on the slab under the plenum; the drawing was transposed (x <-> y)
+
+HEIGHTS (m over the slab)
+  no raised floor   rack top 2.20   unit top 3.60   false ceiling 6.00   slab 8.40
+  containment: HOT aisle; units: fanwall
+  plenum 0.0 m (confirmed), rack 2.3 m (confirmed), unit 3.67 m (confirmed), ceiling 6.0 m (confirmed), hall 8.5 m (confirmed)
+
+COUNTS
+  envelope 49.2 x 43.2 m; hall x 9.0..39.9; gallery W 7.2 m, gallery E 7.8 m
+  218 cabinets in 16 rows (94 at zero load); 894.40 kW to the air of 15000.00 kW IT (174 liquid-cooled), 12.0 kW where the drawing gives none
+    row  F1: 13 cabinets, front +y, x 11.4..23.4, y 33.3..34.5, 55.2 kW
+    row  F2: 14 cabinets, front +y, x 26.7..37.8, y 33.3..34.5, 62.4 kW
+    row  F3: 13 cabinets, front -y, x 11.4..20.7, y 29.7..30.9, 57.6 kW
+    row  F4: 15 cabinets, front -y, x 25.8..37.8, y 29.7..30.9, 55.2 kW
+    row  F5: 12 cabinets, front +y, x 11.4..22.5, y 25.5..26.7, 53.4 kW
+    row  F6: 13 cabinets, front +y, x 26.7..37.8, y 25.5..26.7, 58.2 kW
+    row  F7: 14 cabinets, front -y, x 11.4..23.4, y 21.9..23.1, 51.0 kW
+    row  F8: 14 cabinets, front -y, x 25.8..37.8, y 21.9..23.1, 46.2 kW
+    row  F9: 12 cabinets, front +y, x 11.4..22.5, y 17.1..18.3, 50.4 kW
+    row F10: 14 cabinets, front +y, x 26.7..37.8, y 17.1..18.3, 55.2 kW
+    row F11: 15 cabinets, front -y, x 11.4..22.5, y 13.5..14.7, 67.2 kW
+    row F12: 14 cabinets, front -y, x 26.7..37.8, y 13.5..14.7, 55.2 kW
+    row F13: 13 cabinets, front +y, x 11.4..23.4, y 9.0..10.2, 46.2 kW
+    row F14: 14 cabinets, front +y, x 26.7..37.8, y 9.0..10.2, 58.2 kW
+    row F15: 14 cabinets, front -y, x 11.4..22.5, y 5.7..6.9, 62.4 kW
+    row F16: 14 cabinets, front -y, x 25.8..37.8, y 5.7..6.9, 60.4 kW
+  0 contained cold aisles: 
+  8 contained hot aisles: h1 2.1 m between F16/F14, 60 grilles in the ceiling; h2 2.4 m between F12/F10, 72 grilles in the ceiling; h3 2.4 m between F8/F6, 80 grilles in the ceiling; h4 2.4 m between F4/F2, 80 grilles in the ceiling; h5 2.1 m between F15/F13, 60 grilles in the ceiling; h6 2.4 m between F11/F9, 72 grilles in the ceiling; h7 2.4 m between F7/F5, 80 grilles in the ceiling; h8 2.4 m between F3/F1, 80 grilles in the ceiling
+  0 hot bands: 
+  8 cooling units: U01 (W), U02 (W), U03 (W), U04 (W), U05 (E), U06 (E), U07 (E), U08 (E)
+  supply plenum W: 1.8 m between the units' leaf at x = 7.2 and the hall's wall at x = 9.0; 5 supply grilles 2 x 3 m in the wall (one per cold aisle, centred (AICFD's rule))
+  supply plenum E: 1.5 m between the units' leaf at x = 41.4 and the hall's wall at x = 39.9; 5 supply grilles 2 x 3 m in the wall (one per cold aisle, centred (AICFD's rule))
+  cage: 0 panel(s), mesh, deck to ceiling
+  containment: 0 lids, 16 chimney panels, 16 doors, 0 end panels, 41 blank panels on the row lines
+  solids written: 41 blank, 1 ceiling, 16 door, 584 grille, 1 hall, 2 mesh, 218 rack, 10 supply, 8 unit, 20 wall
+
+GRID ALERTS (16) -- the mesh cell changed the layout; read before running
+  ! row F1: 11.60 m of row in the drawing, 12.00 m in the model (+400 mm). The 0.3 m x cell cannot hold the widths: 0.8 m cabinets are 0.9 m (6 of 13). Clearance to the west wall 2.37 -> 2.40 m, to the east wall 16.93 -> 16.50 m. Fix: an x cell of 0.2 m carries every drawn width (0.6, 0.605, 0.8 m) exactly
+  ! row F2: 10.79 m of row in the drawing, 11.10 m in the model (+305 mm). The 0.3 m x cell cannot hold the widths: 0.8 m cabinets are 0.9 m (5 of 14). Clearance to the west wall 17.66 -> 17.70 m, to the east wall 2.45 -> 2.10 m. Fix: an x cell of 0.2 m carries every drawn width (0.6, 0.605, 0.8 m) exactly
+  ! row F3: 9.08 m of row in the drawing, 9.30 m in the model (+220 mm). The 0.3 m x cell cannot hold the widths: 0.8 m cabinets are 0.9 m (4 of 13). Clearance to the west wall 2.37 -> 2.40 m, to the east wall 19.45 -> 19.20 m. Fix: an x cell of 0.2 m carries every drawn width (0.6, 0.605, 0.8 m) exactly
+  ! row F4: 11.59 m of row in the drawing, 12.00 m in the model (+405 mm). The 0.3 m x cell cannot hold the widths: 0.8 m cabinets are 0.9 m (7 of 15). Clearance to the west wall 16.86 -> 16.80 m, to the east wall 2.45 -> 2.10 m. Fix: an x cell of 0.2 m carries every drawn width (0.6, 0.605, 0.8 m) exactly
+  ! row F5: 10.80 m of row in the drawing, 11.10 m in the model (+300 mm). The 0.3 m x cell cannot hold the widths: 0.8 m cabinets are 0.9 m (5 of 12). Clearance to the west wall 2.37 -> 2.40 m, to the east wall 17.73 -> 17.40 m. Fix: an x cell of 0.2 m carries every drawn width (0.6, 0.605, 0.8 m) exactly
+  ! row F6: 10.79 m of row in the drawing, 11.10 m in the model (+305 mm). The 0.3 m x cell cannot hold the widths: 0.8 m cabinets are 0.9 m (6 of 13). Clearance to the west wall 17.66 -> 17.70 m, to the east wall 2.45 -> 2.10 m. Fix: an x cell of 0.2 m carries every drawn width (0.6, 0.605, 0.8 m) exactly
+  ! row F7: 11.58 m of row in the drawing, 12.00 m in the model (+420 mm). The 0.3 m x cell cannot hold the widths: 0.8 m cabinets are 0.9 m (7 of 14). Clearance to the west wall 2.37 -> 2.40 m, to the east wall 16.95 -> 16.50 m. Fix: an x cell of 0.2 m carries every drawn width (0.6, 0.605, 0.8 m) exactly
+  ! row F8: 11.59 m of row in the drawing, 12.00 m in the model (+405 mm). The 0.3 m x cell cannot hold the widths: 0.8 m cabinets are 0.9 m (7 of 14). Clearance to the west wall 16.86 -> 16.80 m, to the east wall 2.45 -> 2.10 m. Fix: an x cell of 0.2 m carries every drawn width (0.6, 0.605, 0.8 m) exactly
+  ! row F9: 10.80 m of row in the drawing, 11.10 m in the model (+300 mm). The 0.3 m x cell cannot hold the widths: 0.8 m cabinets are 0.9 m (5 of 12). Clearance to the west wall 2.37 -> 2.40 m, to the east wall 17.73 -> 17.40 m. Fix: an x cell of 0.2 m carries every drawn width (0.6, 0.605, 0.8 m) exactly
+  ! row F10: 10.79 m of row in the drawing, 11.10 m in the model (+305 mm). The 0.3 m x cell cannot hold the widths: 0.8 m cabinets are 0.9 m (6 of 14). Clearance to the west wall 17.66 -> 17.70 m, to the east wall 2.45 -> 2.10 m. Fix: an x cell of 0.2 m carries every drawn width (0.6, 0.605, 0.8 m) exactly
+  ! row F11: 10.80 m of row in the drawing, 11.10 m in the model (+300 mm). The 0.3 m x cell cannot hold the widths: 0.8 m cabinets are 0.9 m (6 of 15). Clearance to the west wall 2.37 -> 2.40 m, to the east wall 17.73 -> 17.40 m. Fix: an x cell of 0.2 m carries every drawn width (0.6, 0.605, 0.8 m) exactly
+  ! row F12: 10.79 m of row in the drawing, 11.10 m in the model (+305 mm). The 0.3 m x cell cannot hold the widths: 0.8 m cabinets are 0.9 m (6 of 14). Clearance to the west wall 17.66 -> 17.70 m, to the east wall 2.45 -> 2.10 m. Fix: an x cell of 0.2 m carries every drawn width (0.6, 0.605, 0.8 m) exactly
+  ! row F13: 11.60 m of row in the drawing, 12.00 m in the model (+400 mm). The 0.3 m x cell cannot hold the widths: 0.8 m cabinets are 0.9 m (6 of 13). Clearance to the west wall 2.37 -> 2.40 m, to the east wall 16.93 -> 16.50 m. Fix: an x cell of 0.2 m carries every drawn width (0.6, 0.605, 0.8 m) exactly
+  ! row F14: 10.79 m of row in the drawing, 11.10 m in the model (+305 mm). The 0.3 m x cell cannot hold the widths: 0.8 m cabinets are 0.9 m (6 of 14). Clearance to the west wall 17.66 -> 17.70 m, to the east wall 2.45 -> 2.10 m. Fix: an x cell of 0.2 m carries every drawn width (0.6, 0.605, 0.8 m) exactly
+  ! row F15: 10.80 m of row in the drawing, 11.10 m in the model (+300 mm). The 0.3 m x cell cannot hold the widths: 0.8 m cabinets are 0.9 m (5 of 14). Clearance to the west wall 2.37 -> 2.40 m, to the east wall 17.73 -> 17.40 m. Fix: an x cell of 0.2 m carries every drawn width (0.6, 0.605, 0.8 m) exactly
+  ! row F16: 11.59 m of row in the drawing, 12.00 m in the model (+405 mm). The 0.3 m x cell cannot hold the widths: 0.8 m cabinets are 0.9 m (5 of 14). Clearance to the west wall 16.86 -> 16.80 m, to the east wall 2.45 -> 2.10 m. Fix: an x cell of 0.2 m carries every drawn width (0.6, 0.605, 0.8 m) exactly
+
+CORRECTIONS APPLIED (67)
+  - dividing wall W: 250 mm thick in the drawing, carried as a panel on its hall-side face at x = 9.00; the gallery takes the thickness
+  - dividing wall E: 236 mm thick in the drawing, carried as a panel on its hall-side face at x = 39.90; the gallery takes the thickness
+  - row F1: no tags; named F1-01..F1-13 from the north, west to east
+  - row F2: no tags; named F2-01..F2-14 from the north, west to east
+  - row F3: no tags; named F3-01..F3-13 from the north, west to east
+  - row F4: no tags; named F4-01..F4-15 from the north, west to east
+  - row F5: no tags; named F5-01..F5-12 from the north, west to east
+  - row F6: no tags; named F6-01..F6-13 from the north, west to east
+  - row F7: no tags; named F7-01..F7-14 from the north, west to east
+  - row F8: no tags; named F8-01..F8-14 from the north, west to east
+  - row F9: no tags; named F9-01..F9-12 from the north, west to east
+  - row F10: no tags; named F10-01..F10-14 from the north, west to east
+  - row F11: no tags; named F11-01..F11-15 from the north, west to east
+  - row F12: no tags; named F12-01..F12-14 from the north, west to east
+  - row F13: no tags; named F13-01..F13-13 from the north, west to east
+  - row F14: no tags; named F14-01..F14-14 from the north, west to east
+  - row F15: no tags; named F15-01..F15-14 from the north, west to east
+  - row F16: no tags; named F16-01..F16-14 from the north, west to east
+  - row F2: FRONT marks disagree (1 north, 13 south); majority taken
+  - row F3: FRONT marks disagree (1 north, 12 south); majority taken
+  - row F5: FRONT marks disagree (1 north, 11 south); majority taken
+  - row F6: FRONT marks disagree (1 north, 12 south); majority taken
+  - row F11: FRONT marks disagree (1 north, 14 south); majority taken
+  - row F14: FRONT marks disagree (1 north, 13 south); majority taken
+  - row F15: FRONT marks disagree (1 north, 13 south); majority taken
+  - containment box 1: the FRONT/BACK marks disagree between its two rows; taken as HOT by answers.yaml `containment.aisle`
+  - row F14: its FRONT/BACK marks say the cabinets face the hot aisle; turned round to match the box (answers.yaml `containment.aisle`) -- a mirrored POD block, most likely
+  - containment box 2: the FRONT/BACK marks disagree between its two rows; taken as HOT by answers.yaml `containment.aisle`
+  - row F10: its FRONT/BACK marks say the cabinets face the hot aisle; turned round to match the box (answers.yaml `containment.aisle`) -- a mirrored POD block, most likely
+  - containment box 3: the FRONT/BACK marks disagree between its two rows; taken as HOT by answers.yaml `containment.aisle`
+  - row F6: its FRONT/BACK marks say the cabinets face the hot aisle; turned round to match the box (answers.yaml `containment.aisle`) -- a mirrored POD block, most likely
+  - containment box 4: the FRONT/BACK marks disagree between its two rows; taken as HOT by answers.yaml `containment.aisle`
+  - row F2: its FRONT/BACK marks say the cabinets face the hot aisle; turned round to match the box (answers.yaml `containment.aisle`) -- a mirrored POD block, most likely
+  - containment box 5: the FRONT/BACK marks disagree between its two rows; taken as HOT by answers.yaml `containment.aisle`
+  - row F13: its FRONT/BACK marks say the cabinets face the hot aisle; turned round to match the box (answers.yaml `containment.aisle`) -- a mirrored POD block, most likely
+  - containment box 6: the FRONT/BACK marks disagree between its two rows; taken as HOT by answers.yaml `containment.aisle`
+  - row F9: its FRONT/BACK marks say the cabinets face the hot aisle; turned round to match the box (answers.yaml `containment.aisle`) -- a mirrored POD block, most likely
+  - containment box 7: the FRONT/BACK marks disagree between its two rows; taken as HOT by answers.yaml `containment.aisle`
+  - row F5: its FRONT/BACK marks say the cabinets face the hot aisle; turned round to match the box (answers.yaml `containment.aisle`) -- a mirrored POD block, most likely
+  - containment box 8: the FRONT/BACK marks disagree between its two rows; taken as HOT by answers.yaml `containment.aisle`
+  - row F1: its FRONT/BACK marks say the cabinets face the hot aisle; turned round to match the box (answers.yaml `containment.aisle`) -- a mirrored POD block, most likely
+  - aisle h1: the containment runs 12.0 m and row F16 covers 12.0 m; 2.1 m of the row line closed with 3 blank panel(s)
+  - aisle h1: the containment runs 12.0 m and row F14 covers 11.1 m; 1.8 m of the row line closed with 3 blank panel(s)
+  - aisle h2: the containment runs 11.1 m and row F12 covers 11.1 m; 0.9 m of the row line closed with 1 blank panel(s)
+  - aisle h2: the containment runs 11.1 m and row F10 covers 11.1 m; 0.9 m of the row line closed with 2 blank panel(s)
+  - aisle h3: the containment runs 12.0 m and row F8 covers 12.0 m; 1.5 m of the row line closed with 2 blank panel(s)
+  - aisle h3: the containment runs 12.0 m and row F6 covers 11.1 m; 2.4 m of the row line closed with 3 blank panel(s)
+  - aisle h4: the containment runs 12.0 m and row F4 covers 12.0 m; 0.9 m of the row line closed with 1 blank panel(s)
+  - aisle h4: the containment runs 12.0 m and row F2 covers 11.1 m; 2.1 m of the row line closed with 4 blank panel(s)
+  - aisle h5: the containment runs 12.0 m and row F15 covers 11.1 m; 2.1 m of the row line closed with 3 blank panel(s)
+  - aisle h5: the containment runs 12.0 m and row F13 covers 12.0 m; 2.4 m of the row line closed with 3 blank panel(s)
+  - aisle h6: the containment runs 11.1 m and row F11 covers 11.1 m; 0.3 m of the row line closed with 1 blank panel(s)
+  - aisle h6: the containment runs 11.1 m and row F9 covers 11.1 m; 2.4 m of the row line closed with 3 blank panel(s)
+  - aisle h7: the containment runs 12.0 m and row F7 covers 12.0 m; 1.5 m of the row line closed with 2 blank panel(s)
+  - aisle h7: the containment runs 12.0 m and row F5 covers 11.1 m; 3.3 m of the row line closed with 5 blank panel(s)
+  - aisle h8: the containment runs 12.0 m and row F3 covers 9.3 m; 3.0 m of the row line closed with 2 blank panel(s)
+  - aisle h8: the containment runs 12.0 m and row F1 covers 12.0 m; 2.4 m of the row line closed with 3 blank panel(s)
+  - unit at (41.25, 4.30) has no tag in the drawing: named U01
+  - unit at (5.40, 4.30) has no tag in the drawing: named U02
+  - unit at (5.40, 13.09) has no tag in the drawing: named U03
+  - unit at (5.40, 21.67) has no tag in the drawing: named U04
+  - unit at (5.40, 30.09) has no tag in the drawing: named U05
+  - unit at (41.25, 13.09) has no tag in the drawing: named U06
+  - unit at (41.25, 21.67) has no tag in the drawing: named U07
+  - unit at (41.25, 30.09) has no tag in the drawing: named U08
+  - gallery W: DOUBLE WALL -- the units are mounted in a leaf at x = 7.20 and the hall's wall is at x = 9.00; the 1.8 m between them is the SUPPLY PLENUM: the units blow into it and the air enters the hall through supply grilles in the hall's wall (no second leaf drawn: the units' discharge face is taken as the dividing wall)
+  - gallery E: DOUBLE WALL -- the units are mounted in a leaf at x = 41.40 and the hall's wall is at x = 39.90; the 1.5 m between them is the SUPPLY PLENUM: the units blow into it and the air enters the hall through supply grilles in the hall's wall
+
+QUANTISATIONS OVER 1 mm (342)
+  - rack top z 2.300 -> 2.200 (-100 mm)
+  - unit top z 3.670 -> 3.600 (-70 mm)
+  - slab z 8.500 -> 8.400 (-100 mm)
+  - envelope width x 49.332 -> 49.200 (-132 mm)
+  - envelope length y 43.271 -> 43.200 (-71 mm)
+  - dividing wall W (hall-side face) x 8.866 -> 9.000 (+134 mm)
+  - dividing wall E (hall-side face) x 39.751 -> 39.900 (+149 mm)
+  - row F1 depth y length 1.278 -> 1.200 (-78 mm)
+  - row F1 y 33.160 -> 33.300 (+140 mm)
+  - row F1 start x 11.366 -> 11.400 (+34 mm)
+  - rack F1-01 width x length 0.605 -> 0.600 (-5 mm)
+  - rack F1-02 width x length 0.605 -> 0.600 (-5 mm)
+  - rack F1-03 width x length 0.605 -> 0.600 (-5 mm)
+  - rack F1-04 gap before x 1.295 -> 1.200 (-95 mm)
+  - rack F1-04 width x length 0.605 -> 0.600 (-5 mm)
+  - rack F1-05 width x length 0.605 -> 0.600 (-5 mm)
+  - rack F1-06 width x length 0.605 -> 0.600 (-5 mm)
+  - rack F1-07 gap before x 0.135 -> 0.000 (-135 mm)
+  - rack F1-07 width x length 0.605 -> 0.600 (-5 mm)
+  - rack F1-08 width x length 0.800 -> 0.900 (+100 mm)
+  - rack F1-09 width x length 0.800 -> 0.900 (+100 mm)
+  - rack F1-10 gap before x 0.215 -> 0.300 (+85 mm)
+  - rack F1-10 width x length 0.800 -> 0.900 (+100 mm)
+  - rack F1-11 width x length 0.800 -> 0.900 (+100 mm)
+  - rack F1-12 gap before x 0.920 -> 0.900 (-20 mm)
+  - rack F1-12 width x length 0.800 -> 0.900 (+100 mm)
+  - rack F1-13 width x length 0.800 -> 0.900 (+100 mm)
+  - row F2 start x 26.656 -> 26.700 (+44 mm)
+  - rack F2-01 width x length 0.800 -> 0.900 (+100 mm)
+  - rack F2-02 gap before x 0.320 -> 0.300 (-20 mm)
+  - rack F2-02 width x length 0.800 -> 0.900 (+100 mm)
+  - rack F2-03 width x length 0.800 -> 0.900 (+100 mm)
+  - rack F2-05 gap before x 0.195 -> 0.300 (+105 mm)
+  - rack F2-05 width x length 0.800 -> 0.900 (+100 mm)
+  - rack F2-06 width x length 0.800 -> 0.900 (+100 mm)
+  - rack F2-07 width x length 0.605 -> 0.600 (-5 mm)
+  - rack F2-08 gap before x 0.720 -> 0.600 (-120 mm)
+  - rack F2-08 width x length 0.605 -> 0.600 (-5 mm)
+  - rack F2-09 width x length 0.605 -> 0.600 (-5 mm)
+  - rack F2-10 width x length 0.605 -> 0.600 (-5 mm)
+  - rack F2-11 gap before x 0.120 -> 0.000 (-120 mm)
+  - rack F2-11 width x length 0.605 -> 0.600 (-5 mm)
+  - rack F2-12 width x length 0.605 -> 0.600 (-5 mm)
+  - rack F2-13 width x length 0.605 -> 0.600 (-5 mm)
+  - rack F2-14 width x length 0.605 -> 0.600 (-5 mm)
+  - row F3 depth y length 1.278 -> 1.200 (-78 mm)
+  - row F3 y 29.682 -> 29.700 (+18 mm)
+  - row F3 start x 11.366 -> 11.400 (+34 mm)
+  - rack F3-01 width x length 0.605 -> 0.600 (-5 mm)
+  - rack F3-02 width x length 0.605 -> 0.600 (-5 mm)
+  - rack F3-03 width x length 0.605 -> 0.600 (-5 mm)
+  - rack F3-04 width x length 0.605 -> 0.600 (-5 mm)
+  - rack F3-05 gap before x 0.120 -> 0.000 (-120 mm)
+  - rack F3-05 width x length 0.605 -> 0.600 (-5 mm)
+  - rack F3-06 width x length 0.605 -> 0.600 (-5 mm)
+  - rack F3-07 width x length 0.605 -> 0.600 (-5 mm)
+  - rack F3-08 width x length 0.605 -> 0.600 (-5 mm)
+  - rack F3-09 gap before x 0.120 -> 0.000 (-120 mm)
+  - rack F3-09 width x length 0.800 -> 0.900 (+100 mm)
+  - rack F3-10 width x length 0.800 -> 0.900 (+100 mm)
+  - rack F3-12 gap before x 0.200 -> 0.300 (+100 mm)
+  - rack F3-12 width x length 0.800 -> 0.900 (+100 mm)
+  - rack F3-13 width x length 0.800 -> 0.900 (+100 mm)
+  - row F4 start x 25.856 -> 25.800 (-56 mm)
+  - rack F4-01 width x length 0.800 -> 0.900 (+100 mm)
+  - rack F4-02 width x length 0.800 -> 0.900 (+100 mm)
+  - rack F4-03 gap before x 0.115 -> 0.000 (-115 mm)
+  - rack F4-03 width x length 0.800 -> 0.900 (+100 mm)
+  - rack F4-04 width x length 0.800 -> 0.900 (+100 mm)
+  - rack F4-05 width x length 0.800 -> 0.900 (+100 mm)
+  - rack F4-06 gap before x 0.803 -> 0.900 (+97 mm)
+  - rack F4-06 width x length 0.800 -> 0.900 (+100 mm)
+  - rack F4-07 width x length 0.800 -> 0.900 (+100 mm)
+  - rack F4-08 gap before x 0.115 -> 0.000 (-115 mm)
+  - rack F4-08 width x length 0.605 -> 0.600 (-5 mm)
+  - rack F4-09 width x length 0.605 -> 0.600 (-5 mm)
+  - rack F4-10 width x length 0.605 -> 0.600 (-5 mm)
+  - rack F4-11 width x length 0.605 -> 0.600 (-5 mm)
+  - rack F4-12 gap before x 0.120 -> 0.000 (-120 mm)
+  - rack F4-12 width x length 0.605 -> 0.600 (-5 mm)
+  - rack F4-13 width x length 0.605 -> 0.600 (-5 mm)
+  - rack F4-14 width x length 0.605 -> 0.600 (-5 mm)
+  - rack F4-15 width x length 0.605 -> 0.600 (-5 mm)
+  - row F5 depth y length 1.278 -> 1.200 (-78 mm)
+  - row F5 y 25.367 -> 25.500 (+133 mm)
+  - row F5 start x 11.366 -> 11.400 (+34 mm)
+  - rack F5-01 width x length 0.605 -> 0.600 (-5 mm)
+  - rack F5-02 width x length 0.605 -> 0.600 (-5 mm)
+  - rack F5-03 width x length 0.605 -> 0.600 (-5 mm)
+  - rack F5-04 width x length 0.605 -> 0.600 (-5 mm)
+  - rack F5-05 gap before x 0.690 -> 0.600 (-90 mm)
+  - rack F5-05 width x length 0.605 -> 0.600 (-5 mm)
+  - rack F5-06 width x length 0.605 -> 0.600 (-5 mm)
+  - rack F5-07 gap before x 0.740 -> 0.600 (-140 mm)
+  - rack F5-07 width x length 0.800 -> 0.900 (+100 mm)
+  - rack F5-08 width x length 0.800 -> 0.900 (+100 mm)
+  - rack F5-10 gap before x 0.220 -> 0.300 (+80 mm)
+  - rack F5-10 width x length 0.800 -> 0.900 (+100 mm)
+  - rack F5-11 width x length 0.800 -> 0.900 (+100 mm)
+  - rack F5-12 gap before x 0.920 -> 0.900 (-20 mm)
+  - rack F5-12 width x length 0.800 -> 0.900 (+100 mm)
+  - row F6 start x 26.656 -> 26.700 (+44 mm)
+  - rack F6-01 width x length 0.800 -> 0.900 (+100 mm)
+  - rack F6-02 gap before x 0.115 -> 0.000 (-115 mm)
+  - rack F6-02 width x length 0.800 -> 0.900 (+100 mm)
+  - rack F6-03 width x length 0.800 -> 0.900 (+100 mm)
+  - rack F6-04 width x length 0.800 -> 0.900 (+100 mm)
+  - rack F6-05 gap before x 0.225 -> 0.300 (+75 mm)
+  - rack F6-06 width x length 0.800 -> 0.900 (+100 mm)
+  - rack F6-07 width x length 0.800 -> 0.900 (+100 mm)
+  - rack F6-08 gap before x 1.305 -> 1.200 (-105 mm)
+  - rack F6-08 width x length 0.605 -> 0.600 (-5 mm)
+  - rack F6-09 width x length 0.605 -> 0.600 (-5 mm)
+  - rack F6-10 gap before x 0.120 -> 0.000 (-120 mm)
+  - rack F6-10 width x length 0.605 -> 0.600 (-5 mm)
+  - rack F6-11 width x length 0.605 -> 0.600 (-5 mm)
+  - rack F6-12 width x length 0.605 -> 0.600 (-5 mm)
+  - rack F6-13 width x length 0.605 -> 0.600 (-5 mm)
+  - row F7 depth y length 1.278 -> 1.200 (-78 mm)
+  - row F7 y 21.889 -> 21.900 (+11 mm)
+  - row F7 start x 11.366 -> 11.400 (+34 mm)
+  - rack F7-01 width x length 0.605 -> 0.600 (-5 mm)
+  - rack F7-02 width x length 0.605 -> 0.600 (-5 mm)
+  - rack F7-03 width x length 0.605 -> 0.600 (-5 mm)
+  - rack F7-04 gap before x 0.705 -> 0.600 (-105 mm)
+  - rack F7-04 width x length 0.605 -> 0.600 (-5 mm)
+  - rack F7-05 width x length 0.605 -> 0.600 (-5 mm)
+  - rack F7-06 width x length 0.605 -> 0.600 (-5 mm)
+  - rack F7-07 width x length 0.605 -> 0.600 (-5 mm)
+  - rack F7-08 gap before x 0.840 -> 0.900 (+60 mm)
+  - rack F7-08 width x length 0.800 -> 0.900 (+100 mm)
+  - rack F7-09 width x length 0.800 -> 0.900 (+100 mm)
+  - rack F7-10 gap before x 0.100 -> 0.000 (-100 mm)
+  - rack F7-10 width x length 0.800 -> 0.900 (+100 mm)
+  - rack F7-11 width x length 0.800 -> 0.900 (+100 mm)
+  - rack F7-12 width x length 0.800 -> 0.900 (+100 mm)
+  - rack F7-13 gap before x 0.100 -> 0.000 (-100 mm)
+  - rack F7-13 width x length 0.800 -> 0.900 (+100 mm)
+  - rack F7-14 width x length 0.800 -> 0.900 (+100 mm)
+  - row F8 start x 25.856 -> 25.800 (-56 mm)
+  - rack F8-01 width x length 0.800 -> 0.900 (+100 mm)
+  - rack F8-02 width x length 0.800 -> 0.900 (+100 mm)
+  - rack F8-03 gap before x 0.120 -> 0.000 (-120 mm)
+  - rack F8-03 width x length 0.800 -> 0.900 (+100 mm)
+  - rack F8-04 width x length 0.800 -> 0.900 (+100 mm)
+  - rack F8-05 width x length 0.800 -> 0.900 (+100 mm)
+  - rack F8-06 gap before x 0.813 -> 0.900 (+87 mm)
+  - rack F8-06 width x length 0.800 -> 0.900 (+100 mm)
+  - rack F8-07 width x length 0.800 -> 0.900 (+100 mm)
+  - rack F8-08 gap before x 0.705 -> 0.600 (-105 mm)
+  - rack F8-08 width x length 0.605 -> 0.600 (-5 mm)
+  - rack F8-09 width x length 0.605 -> 0.600 (-5 mm)
+  - rack F8-10 width x length 0.605 -> 0.600 (-5 mm)
+  - rack F8-11 gap before x 0.120 -> 0.000 (-120 mm)
+  - rack F8-11 width x length 0.605 -> 0.600 (-5 mm)
+  - rack F8-12 width x length 0.605 -> 0.600 (-5 mm)
+  - rack F8-13 width x length 0.605 -> 0.600 (-5 mm)
+  - rack F8-14 width x length 0.605 -> 0.600 (-5 mm)
+  - row F9 depth y length 1.278 -> 1.200 (-78 mm)
+  - row F9 y 16.972 -> 17.100 (+128 mm)
+  - row F9 start x 11.366 -> 11.400 (+34 mm)
+  - rack F9-01 width x length 0.605 -> 0.600 (-5 mm)
+  - rack F9-02 width x length 0.605 -> 0.600 (-5 mm)
+  - rack F9-03 width x length 0.605 -> 0.600 (-5 mm)
+  - rack F9-04 gap before x 1.330 -> 1.200 (-130 mm)
+  - rack F9-04 width x length 0.605 -> 0.600 (-5 mm)
+  - rack F9-05 width x length 0.605 -> 0.600 (-5 mm)
+  - rack F9-06 width x length 0.605 -> 0.600 (-5 mm)
+  - rack F9-07 gap before x 0.215 -> 0.300 (+85 mm)
+  - rack F9-07 width x length 0.605 -> 0.600 (-5 mm)
+  - rack F9-08 width x length 0.800 -> 0.900 (+100 mm)
+  - rack F9-09 width x length 0.800 -> 0.900 (+100 mm)
+  - rack F9-10 gap before x 0.100 -> 0.000 (-100 mm)
+  - rack F9-10 width x length 0.800 -> 0.900 (+100 mm)
+  - rack F9-11 width x length 0.800 -> 0.900 (+100 mm)
+  - rack F9-12 gap before x 0.920 -> 0.900 (-20 mm)
+  - rack F9-12 width x length 0.800 -> 0.900 (+100 mm)
+  - row F10 start x 26.656 -> 26.700 (+44 mm)
+  - rack F10-01 width x length 0.800 -> 0.900 (+100 mm)
+  - rack F10-02 gap before x 0.120 -> 0.000 (-120 mm)
+  - rack F10-02 width x length 0.800 -> 0.900 (+100 mm)
+  - rack F10-03 width x length 0.800 -> 0.900 (+100 mm)
+  - rack F10-04 width x length 0.800 -> 0.900 (+100 mm)
+  - rack F10-05 gap before x 0.195 -> 0.300 (+105 mm)
+  - rack F10-05 width x length 0.800 -> 0.900 (+100 mm)
+  - rack F10-06 width x length 0.800 -> 0.900 (+100 mm)
+  - rack F10-07 width x length 0.605 -> 0.600 (-5 mm)
+  - rack F10-08 gap before x 0.720 -> 0.600 (-120 mm)
+  - rack F10-08 width x length 0.605 -> 0.600 (-5 mm)
+  - rack F10-09 width x length 0.605 -> 0.600 (-5 mm)
+  - rack F10-10 width x length 0.605 -> 0.600 (-5 mm)
+  - rack F10-11 gap before x 0.120 -> 0.000 (-120 mm)
+  - rack F10-11 width x length 0.605 -> 0.600 (-5 mm)
+  - rack F10-12 width x length 0.605 -> 0.600 (-5 mm)
+  - rack F10-13 width x length 0.605 -> 0.600 (-5 mm)
+  - rack F10-14 width x length 0.605 -> 0.600 (-5 mm)
+  - row F11 depth y length 1.278 -> 1.200 (-78 mm)
+  - row F11 y 13.492 -> 13.500 (+8 mm)
+  - row F11 start x 11.366 -> 11.400 (+34 mm)
+  - rack F11-01 width x length 0.605 -> 0.600 (-5 mm)
+  - rack F11-02 width x length 0.605 -> 0.600 (-5 mm)
+  - rack F11-03 width x length 0.605 -> 0.600 (-5 mm)
+  - rack F11-04 width x length 0.605 -> 0.600 (-5 mm)
+  - rack F11-05 gap before x 0.120 -> 0.000 (-120 mm)
+  - rack F11-05 width x length 0.605 -> 0.600 (-5 mm)
+  - rack F11-06 width x length 0.605 -> 0.600 (-5 mm)
+  - rack F11-07 width x length 0.605 -> 0.600 (-5 mm)
+  - rack F11-08 width x length 0.605 -> 0.600 (-5 mm)
+  - rack F11-09 gap before x 0.120 -> 0.000 (-120 mm)
+  - rack F11-09 width x length 0.800 -> 0.900 (+100 mm)
+  - rack F11-10 width x length 0.800 -> 0.900 (+100 mm)
+  - rack F11-12 gap before x 0.200 -> 0.300 (+100 mm)
+  - rack F11-12 width x length 0.800 -> 0.900 (+100 mm)
+  - rack F11-13 width x length 0.800 -> 0.900 (+100 mm)
+  - rack F11-14 width x length 0.800 -> 0.900 (+100 mm)
+  - rack F11-15 gap before x 0.120 -> 0.000 (-120 mm)
+  - rack F11-15 width x length 0.800 -> 0.900 (+100 mm)
+  - row F12 start x 26.656 -> 26.700 (+44 mm)
+  - rack F12-01 width x length 0.800 -> 0.900 (+100 mm)
+  - rack F12-02 gap before x 0.120 -> 0.000 (-120 mm)
+  - rack F12-02 width x length 0.800 -> 0.900 (+100 mm)
+  - rack F12-03 width x length 0.800 -> 0.900 (+100 mm)
+  - rack F12-04 width x length 0.800 -> 0.900 (+100 mm)
+  - rack F12-05 gap before x 0.800 -> 0.900 (+100 mm)
+  - rack F12-05 width x length 0.800 -> 0.900 (+100 mm)
+  - rack F12-06 width x length 0.800 -> 0.900 (+100 mm)
+  - rack F12-07 gap before x 0.115 -> 0.000 (-115 mm)
+  - rack F12-07 width x length 0.605 -> 0.600 (-5 mm)
+  - rack F12-08 width x length 0.605 -> 0.600 (-5 mm)
+  - rack F12-09 width x length 0.605 -> 0.600 (-5 mm)
+  - rack F12-10 width x length 0.605 -> 0.600 (-5 mm)
+  - rack F12-11 gap before x 0.120 -> 0.000 (-120 mm)
+  - rack F12-11 width x length 0.605 -> 0.600 (-5 mm)
+  - rack F12-12 width x length 0.605 -> 0.600 (-5 mm)
+  - rack F12-13 width x length 0.605 -> 0.600 (-5 mm)
+  - rack F12-14 width x length 0.605 -> 0.600 (-5 mm)
+  - row F13 depth y length 1.278 -> 1.200 (-78 mm)
+  - row F13 y 9.128 -> 9.000 (-128 mm)
+  - row F13 start x 11.366 -> 11.400 (+34 mm)
+  - rack F13-01 width x length 0.605 -> 0.600 (-5 mm)
+  - rack F13-02 width x length 0.605 -> 0.600 (-5 mm)
+  - rack F13-03 width x length 0.605 -> 0.600 (-5 mm)
+  - rack F13-04 gap before x 1.330 -> 1.200 (-130 mm)
+  - rack F13-04 width x length 0.605 -> 0.600 (-5 mm)
+  - rack F13-05 width x length 0.605 -> 0.600 (-5 mm)
+  - rack F13-06 width x length 0.605 -> 0.600 (-5 mm)
+  - rack F13-07 gap before x 0.215 -> 0.300 (+85 mm)
+  - rack F13-07 width x length 0.605 -> 0.600 (-5 mm)
+  - rack F13-08 width x length 0.800 -> 0.900 (+100 mm)
+  - rack F13-09 width x length 0.800 -> 0.900 (+100 mm)
+  - rack F13-10 width x length 0.800 -> 0.900 (+100 mm)
+  - rack F13-11 width x length 0.800 -> 0.900 (+100 mm)
+  - rack F13-12 gap before x 0.920 -> 0.900 (-20 mm)
+  - rack F13-12 width x length 0.800 -> 0.900 (+100 mm)
+  - rack F13-13 width x length 0.800 -> 0.900 (+100 mm)
+  - row F14 start x 26.656 -> 26.700 (+44 mm)
+  - rack F14-01 width x length 0.800 -> 0.900 (+100 mm)
+  - rack F14-02 gap before x 0.115 -> 0.000 (-115 mm)
+  - rack F14-02 width x length 0.800 -> 0.900 (+100 mm)
+  - rack F14-03 width x length 0.800 -> 0.900 (+100 mm)
+  - rack F14-04 width x length 0.800 -> 0.900 (+100 mm)
+  - rack F14-05 gap before x 0.205 -> 0.300 (+95 mm)
+  - rack F14-06 width x length 0.800 -> 0.900 (+100 mm)
+  - rack F14-07 width x length 0.800 -> 0.900 (+100 mm)
+  - rack F14-08 gap before x 0.725 -> 0.600 (-125 mm)
+  - rack F14-09 width x length 0.605 -> 0.600 (-5 mm)
+  - rack F14-10 width x length 0.605 -> 0.600 (-5 mm)
+  - rack F14-11 gap before x 0.120 -> 0.000 (-120 mm)
+  - rack F14-11 width x length 0.605 -> 0.600 (-5 mm)
+  - rack F14-12 width x length 0.605 -> 0.600 (-5 mm)
+  - rack F14-13 width x length 0.605 -> 0.600 (-5 mm)
+  - rack F14-14 width x length 0.605 -> 0.600 (-5 mm)
+  - row F15 depth y length 1.278 -> 1.200 (-78 mm)
+  - row F15 y 5.650 -> 5.700 (+50 mm)
+  - row F15 start x 11.366 -> 11.400 (+34 mm)
+  - rack F15-01 width x length 0.605 -> 0.600 (-5 mm)
+  - rack F15-02 width x length 0.605 -> 0.600 (-5 mm)
+  - rack F15-03 width x length 0.605 -> 0.600 (-5 mm)
+  - rack F15-04 width x length 0.605 -> 0.600 (-5 mm)
+  - rack F15-05 gap before x 0.120 -> 0.000 (-120 mm)
+  - rack F15-05 width x length 0.605 -> 0.600 (-5 mm)
+  - rack F15-06 width x length 0.605 -> 0.600 (-5 mm)
+  - rack F15-07 width x length 0.605 -> 0.600 (-5 mm)
+  - rack F15-08 width x length 0.605 -> 0.600 (-5 mm)
+  - rack F15-09 gap before x 0.120 -> 0.000 (-120 mm)
+  - rack F15-09 width x length 0.800 -> 0.900 (+100 mm)
+  - rack F15-10 width x length 0.800 -> 0.900 (+100 mm)
+  - rack F15-12 gap before x 0.200 -> 0.300 (+100 mm)
+  - rack F15-12 width x length 0.800 -> 0.900 (+100 mm)
+  - rack F15-13 width x length 0.800 -> 0.900 (+100 mm)
+  - rack F15-14 gap before x 0.920 -> 0.900 (-20 mm)
+  - rack F15-14 width x length 0.800 -> 0.900 (+100 mm)
+  - row F16 start x 25.856 -> 25.800 (-56 mm)
+  - rack F16-03 gap before x 0.515 -> 0.600 (+85 mm)
+  - rack F16-03 width x length 0.800 -> 0.900 (+100 mm)
+  - rack F16-04 width x length 0.800 -> 0.900 (+100 mm)
+  - rack F16-05 width x length 0.800 -> 0.900 (+100 mm)
+  - rack F16-06 gap before x 0.805 -> 0.900 (+95 mm)
+  - rack F16-06 width x length 0.800 -> 0.900 (+100 mm)
+  - rack F16-07 width x length 0.800 -> 0.900 (+100 mm)
+  - rack F16-08 gap before x 0.720 -> 0.600 (-120 mm)
+  - rack F16-08 width x length 0.605 -> 0.600 (-5 mm)
+  - rack F16-09 width x length 0.605 -> 0.600 (-5 mm)
+  - rack F16-10 width x length 0.605 -> 0.600 (-5 mm)
+  - rack F16-11 gap before x 0.120 -> 0.000 (-120 mm)
+  - rack F16-11 width x length 0.605 -> 0.600 (-5 mm)
+  - rack F16-12 width x length 0.605 -> 0.600 (-5 mm)
+  - rack F16-13 width x length 0.605 -> 0.600 (-5 mm)
+  - rack F16-14 width x length 0.605 -> 0.600 (-5 mm)
+  - unit U01 x 41.251 -> 41.400 (+149 mm)
+  - unit U01 y 4.300 -> 4.200 (-100 mm)
+  - unit U01 depth x length 1.850 -> 1.800 (-50 mm)
+  - unit U01 width y length 4.095 -> 4.200 (+105 mm)
+  - unit U02 x 5.399 -> 5.400 (+1 mm)
+  - unit U02 y 4.300 -> 4.200 (-100 mm)
+  - unit U02 depth x length 1.850 -> 1.800 (-50 mm)
+  - unit U02 width y length 4.095 -> 4.200 (+105 mm)
+  - unit U03 x 5.399 -> 5.400 (+1 mm)
+  - unit U03 y 13.091 -> 13.200 (+109 mm)
+  - unit U03 depth x length 1.850 -> 1.800 (-50 mm)
+  - unit U03 width y length 4.095 -> 4.200 (+105 mm)
+  - unit U04 x 5.399 -> 5.400 (+1 mm)
+  - unit U04 y 21.670 -> 21.600 (-70 mm)
+  - unit U04 depth x length 1.850 -> 1.800 (-50 mm)
+  - unit U04 width y length 4.095 -> 4.200 (+105 mm)
+  - unit U05 x 5.399 -> 5.400 (+1 mm)
+  - unit U05 y 30.091 -> 30.000 (-91 mm)
+  - unit U05 depth x length 1.850 -> 1.800 (-50 mm)
+  - unit U05 width y length 4.095 -> 4.200 (+105 mm)
+  - unit U06 x 41.251 -> 41.400 (+149 mm)
+  - unit U06 y 13.091 -> 13.200 (+109 mm)
+  - unit U06 depth x length 1.850 -> 1.800 (-50 mm)
+  - unit U06 width y length 4.095 -> 4.200 (+105 mm)
+  - unit U07 x 41.251 -> 41.400 (+149 mm)
+  - unit U07 y 21.670 -> 21.600 (-70 mm)
+  - unit U07 depth x length 1.850 -> 1.800 (-50 mm)
+  - unit U07 width y length 4.095 -> 4.200 (+105 mm)
+  - unit U08 x 41.251 -> 41.400 (+149 mm)
+  - unit U08 y 30.091 -> 30.000 (-91 mm)
+  - unit U08 depth x length 1.850 -> 1.800 (-50 mm)
+  - unit U08 width y length 4.095 -> 4.200 (+105 mm)
+  - units' leaf E x 41.251 -> 41.400 (+149 mm)
+
+LEFT OUT (37)
+  - 1406 x rectangle 0.1 x 0.1 m on layer AC power source
+  - 104 x rectangle 0.1 x 0.2 m on layer ASC-RETORNO TCR
+  - 104 x rectangle 0.1 x 0.2 m on layer ASC-ALIMENTAÇÃP TCS
+  - 57 x rectangle 0.5 x 0.5 m on layer S-COLS
+  - 48 x rectangle 0.1 x 0.1 m on layer _EST_POD
+  - 24 x rectangle 0.2 x 0.2 m on layer MH-ARQ_ÁREA
+  - 16 x rectangle 0.1 x 1.4 m on layer AC Sliding door
+  - 14 x rectangle 0.6 x 0.1 m on layer AC blanking panel
+  - 13 x rectangle 0.8 x 0.1 m on layer AC blanking panel
+  - 8 x rectangle 0.5 x 0.2 m on layer ASC-RETORNO TCR
+  - 8 x rectangle 1.2 x 1.2 m on layer 0
+  - 6 x rectangle 0.2 x 2.3 m on layer ASC-RETORNO TCR
+  - 5 x rectangle 0.7 x 0.1 m on layer AC blanking panel
+  - 5 x rectangle 13.7 x 0.2 m on layer ASC-RETORNO TCR
+  - 4 x rectangle 0.6 x 0.3 m on layer AC Special-ODF-rack
+  - 4 x rectangle 0.1 x 0.1 m on layer AC blanking panel
+  - 4 x rectangle 11.6 x 4.8 m on layer _EST_POD
+  - 4 x rectangle 6.0 x 0.2 m on layer ASC-ALIMENTAÇÃP TCS
+  - 3 x rectangle 0.0 x 1.8 m on layer Ali cable basket
+  - 3 x rectangle 13.5 x 0.2 m on layer ASC-RETORNO TCR
+  - 3 x rectangle 5.4 x 0.2 m on layer ASC-ALIMENTAÇÃP TCS
+  - 2 x rectangle 0.3 x 34.5 m on layer ASC-ALIMENTAÇÃP TCS
+  - 2 x rectangle 0.1 x 0.1 m on layer Ali power source
+  - 2 x rectangle 0.8 x 0.3 m on layer ASC-RETORNO TCR
+  - 2 x rectangle 1.8 x 0.3 m on layer ASC-ALIMENTAÇÃP TCS
+  - 2 x rectangle 0.5 x 2.4 m on layer Ali cable basket
+  - 2 x rectangle 1.2 x 1.8 m on layer 0
+  - 2 x rectangle 1.2 x 1.8 m on layer MH-ARQ_TEXTO_AMBIENTE
+  - 1 x rectangle 2.5 x 0.1 m on layer AC blanking panel
+  - 1 x rectangle 2.0 x 0.0 m on layer MH-ARQ_ESQUADRIA
+  - 1 x rectangle 0.4 x 0.1 m on layer AC blanking panel
+  - 1 x rectangle 1.2 x 0.1 m on layer AC blanking panel
+  - 1 x rectangle 4.6 x 0.2 m on layer ASC-ALIMENTAÇÃP TCS
+  - 1 x rectangle 0.2 x 1.7 m on layer ASC-RETORNO TCR
+  - 1 x rectangle 0.2 x 1.5 m on layer ASC-RETORNO TCR
+  - 1 x rectangle 0.4 x 0.2 m on layer ASC-RETORNO TCR
+  - 1 x rectangle 0.5 x 2.3 m on layer Ali cable basket
+
+NOTES (66)
+  - rack F1-04: 1.30 m of air before it in the row
+  - rack F1-07: 0.13 m of air before it in the row
+  - rack F1-10: 0.21 m of air before it in the row
+  - rack F1-12: 0.92 m of air before it in the row
+  - rack F2-02: 0.32 m of air before it in the row
+  - rack F2-05: 0.19 m of air before it in the row
+  - rack F2-08: 0.72 m of air before it in the row
+  - rack F2-11: 0.12 m of air before it in the row
+  - rack F3-05: 0.12 m of air before it in the row
+  - rack F3-09: 0.12 m of air before it in the row
+  - rack F3-12: 0.20 m of air before it in the row
+  - rack F4-03: 0.11 m of air before it in the row
+  - rack F4-06: 0.80 m of air before it in the row
+  - rack F4-08: 0.11 m of air before it in the row
+  - rack F4-12: 0.12 m of air before it in the row
+  - rack F5-05: 0.69 m of air before it in the row
+  - rack F5-07: 0.74 m of air before it in the row
+  - rack F5-10: 0.22 m of air before it in the row
+  - rack F5-12: 0.92 m of air before it in the row
+  - rack F6-02: 0.11 m of air before it in the row
+  - rack F6-05: 0.22 m of air before it in the row
+  - rack F6-08: 1.30 m of air before it in the row
+  - rack F6-10: 0.12 m of air before it in the row
+  - rack F7-04: 0.71 m of air before it in the row
+  - rack F7-08: 0.84 m of air before it in the row
+  - rack F7-10: 0.10 m of air before it in the row
+  - rack F7-13: 0.10 m of air before it in the row
+  - rack F8-03: 0.12 m of air before it in the row
+  - rack F8-06: 0.81 m of air before it in the row
+  - rack F8-08: 0.70 m of air before it in the row
+  - rack F8-11: 0.12 m of air before it in the row
+  - rack F9-04: 1.33 m of air before it in the row
+  - rack F9-07: 0.21 m of air before it in the row
+  - rack F9-10: 0.10 m of air before it in the row
+  - rack F9-12: 0.92 m of air before it in the row
+  - rack F10-02: 0.12 m of air before it in the row
+  - rack F10-05: 0.19 m of air before it in the row
+  - rack F10-08: 0.72 m of air before it in the row
+  - rack F10-11: 0.12 m of air before it in the row
+  - rack F11-05: 0.12 m of air before it in the row
+  - rack F11-09: 0.12 m of air before it in the row
+  - rack F11-12: 0.20 m of air before it in the row
+  - rack F11-15: 0.12 m of air before it in the row
+  - rack F12-02: 0.12 m of air before it in the row
+  - rack F12-05: 0.80 m of air before it in the row
+  - rack F12-07: 0.11 m of air before it in the row
+  - rack F12-11: 0.12 m of air before it in the row
+  - rack F13-04: 1.33 m of air before it in the row
+  - rack F13-07: 0.21 m of air before it in the row
+  - rack F13-12: 0.92 m of air before it in the row
+  - rack F14-02: 0.11 m of air before it in the row
+  - rack F14-05: 0.21 m of air before it in the row
+  - rack F14-08: 0.73 m of air before it in the row
+  - rack F14-11: 0.12 m of air before it in the row
+  - rack F15-05: 0.12 m of air before it in the row
+  - rack F15-09: 0.12 m of air before it in the row
+  - rack F15-12: 0.20 m of air before it in the row
+  - rack F15-14: 0.92 m of air before it in the row
+  - rack F16-03: 0.51 m of air before it in the row
+  - rack F16-06: 0.80 m of air before it in the row
+  - rack F16-08: 0.72 m of air before it in the row
+  - rack F16-11: 0.12 m of air before it in the row
+  - the supply plenums are not the same depth on the two sides (W 1.8 m, E 1.5 m): each carried as drawn
+  - the plan does not place the SUPPLY GRILLES in the plenum wall: 10 laid, one per cold aisle, 2 x 3 m centred on it (`plenum.grille` from answers.yaml)
+  - 174 liquid-cooled cabinets: the sidecar carries their AIR share (server 4%, network 15% of IT); IT 15000 kW, to the air 894 kW
+  - drawing transposed: the galleries lie along y in the file, x in the model
+
+OPEN QUESTIONS (0) -- answer in answers.yaml and re-run
+
+SELF-CHECK PASSED

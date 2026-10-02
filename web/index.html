@@ -72,6 +72,10 @@
   .casemenu-list .when{margin-left:auto;color:var(--text-muted);font-size:11px}
   .casemenu-row{display:flex;gap:6px;align-items:center;margin-bottom:6px}
   .casemenu-row input[type=text]{flex:1;min-width:0}
+  .casemenu-row.wrap{flex-wrap:wrap}
+  .casemenu-row.wrap input[type=file]{flex:1 1 100%;font-size:12px}
+  .casemenu-row.wrap input[type=text]{flex:1 1 140px}
+  .casemenu-row[hidden]{display:none}
   .casemenu-panel textarea{width:100%;font-family:var(--mono,ui-monospace,monospace);
     font-size:11px;resize:vertical}
   .casemenu-note{font-size:11px;color:var(--text-muted);margin:8px 0 0}
@@ -251,6 +255,17 @@
     <div class="casemenu-panel">
       <div class="casemenu-head">Open a case</div>
       <div id="case-list" class="casemenu-list"></div>
+      <div class="casemenu-head">Import a drawn hall</div>
+      <div class="casemenu-row wrap">
+        <input id="case-package-file" type="file" accept=".zip,.aicfd.zip" />
+        <input id="case-package-name" type="text" placeholder="project name (optional)" />
+        <button id="case-package" type="button">Import package</button>
+      </div>
+      <div class="casemenu-row wrap" id="case-scenario-row" hidden>
+        <input id="case-scenario-name" type="text" placeholder="new scenario, e.g. dh04-crac01-off" />
+        <button id="case-scenario" type="button">Duplicate as scenario</button>
+        <a class="linkbutton" id="case-package-download" href="#">Download package</a>
+      </div>
       <div class="casemenu-head">Start one</div>
       <div class="casemenu-row">
         <input id="case-new-name" type="text" placeholder="name, e.g. hall-sp07" />

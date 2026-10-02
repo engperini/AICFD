@@ -1,0 +1,41 @@
+# DATA HALL 03 -- Vinhedo 03, 15 MW liquid-cooling PODs (VIN03-CN-ASC-F0-MEC00-PL-0001-R02).
+# Figures marked BoD come from VIN3-CN-ASC-F1-GER00-BD-0000-R03 (30 MW), the basis of design.
+name: vin03-dh03-15mw
+hall: "DATA HALL 03"
+source: "VIN03-CN-ASC-F0-MEC00-PL-0001-R02.dwg, DATA HALL 03, liquid cooling POD layout, Sep 2026; BoD R03"
+heights:
+  plenum: 0.0           # BoD: cabinets on the concrete slab, no raised floor
+  rack: 2.30            # BoD: liquid cooling rack 600 x 1278 x 2300 mm
+  unit: 3.67            # BoD: fan wall 1480 x 3960 x 3670 mm
+  ceiling: 6.00         # BoD: slab to ceiling 6,00 m ("height between the rack and ceiling 3,70")
+  hall: 8.50            # BoD: ceiling to superior slab 2,50 m -> 6,00 + 2,50 (the "slab to slab 8,30 free area" is the clear figure)
+unit_plan_sizes_m: [[3.96, 1.48], [4.10, 1.85]]   # BoD footprint; the block EFW500C draws 4,10 x 1,85 with its frame
+units:
+  block_pattern: "EFW"
+plenum:
+  grille: {width: 2.0, height: 3.0}   # user, 29 Sep 2026: one per cold aisle, in front of each, 2 m wide x 3 m tall
+containment:
+  aisle: hot            # BoD: HOT AISLE CONTAINMENT; the drawing's boxes are on layer 'AC HAC'
+racks:
+  load_kw: 12           # only for a cabinet the drawing gives no load (the air-cooled NETWORK RACK 12KW is read from its label)
+liquid_cooling:
+  air_fraction: {server: 0.04, network: 0.15}   # drawing notes: 96 % / 85 % liquid; BoD: 96 % LC + 4 % AC
+  spare_kw: 0           # the 15 MW case: spare positions empty (BoD "POD max allowed power 2.056 kW" x 8 = 16.4 MW); 225 for the infrastructure case
+fanwall:
+  model: CA80NEVGT      # the catalogue unit with the BoD's envelope (3,96 x 1,48 x 3,67); its own selection is 573,7 kW / 140.165 m3/h -- the BoD selection below overrides
+  airflow_m3h: 100725   # BoD: minimum airflow per fan wall
+  capacity_kw: 450      # BoD: net sensible cooling per fan wall (477 gross)
+  power_kw: 27          # gross - net per BoD (477 - 450)
+  static_pressure_pa: 100   # BoD: available static pressure
+  control: team
+  supply_temp_c: 24.0   # BoD: rack inlet 24 degC, return 38 degC
+  out_of_service: []
+
+mesh:
+  cell_size: [0.3, 0.3, 0.2]   # user, 29 Sep 2026: 0,3 m in plan for speed; 0,2 m in z keeps the validated heights
+solver:
+  max_iterations: 2000
+  residual_tolerance: 1.0e-4
+  sensor_interval: 100
+  warm_start: true
+  processors: 4                # the 4 cores of the machine that runs it

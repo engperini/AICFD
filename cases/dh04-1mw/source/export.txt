@@ -1,0 +1,162 @@
+AICFD geometry export -- dh04-1mw
+========================================================================
+source        dh04_treated.dxf
+drawing       LAYOUT_FTZ01_24Sep26_1.dwg, DATA HALL 04, human-revised layout; dh04_treated.dxf sha256 dd1832ab269a6f8d
+grid          every coordinate on 0.2 x 0.3 x 0.2 m
+origin        drawing (67.480, 21.160) is the model's (0, 0); z = 0 on the slab under the plenum
+
+HEIGHTS (m over the slab)
+  deck 1.00   rack top 3.20   unit top 3.00   false ceiling 5.00   slab 6.60
+  containment: COLD aisle; units: downflow
+  plenum 1.0 m (REFERENCE, unconfirmed), rack 2.2 m (REFERENCE, unconfirmed), unit 1.97 m (REFERENCE, unconfirmed), ceiling 4.0 m (REFERENCE, unconfirmed), hall 5.6 m (REFERENCE, unconfirmed)
+
+COUNTS
+  envelope 21.4 x 34.8 m; hall x 4.4..17.0; gallery W 4.4 m, gallery E 4.4 m
+  171 cabinets in 11 rows (5 at zero load); 999.09 kW to the air, 4.11 kW where the drawing gives none
+    row  F1: 17 cabinets, front +y, x 5.6..15.8, y 30.6..31.8, 69.9 kW
+    row  F2: 17 cabinets, front -y, x 5.6..15.8, y 27.6..28.8, 69.9 kW
+    row  F3: 17 cabinets, front +y, x 5.6..15.8, y 25.2..26.4, 69.9 kW
+    row  F4: 17 cabinets, front -y, x 5.6..15.8, y 22.2..23.4, 69.9 kW
+    row  F5: 17 cabinets, front +y, x 5.6..15.8, y 19.8..21.0, 69.9 kW
+    row  F6: 17 cabinets, front -y, x 5.6..15.8, y 16.8..18.0, 69.9 kW
+    row  F7: 17 cabinets, front +y, x 5.6..15.8, y 14.4..15.6, 69.9 kW
+    row   D: 13 cabinets, front -y, x 5.6..15.6, y 9.6..10.8, 135.0 kW
+    row   C: 13 cabinets, front +y, x 5.6..15.6, y 6.6..7.8, 115.0 kW
+    row   B: 13 cabinets, front -y, x 5.6..15.6, y 4.2..5.4, 125.0 kW
+    row   A: 13 cabinets, front +y, x 5.6..15.6, y 1.2..2.4, 135.0 kW
+  6 contained cold aisles: c1 1.8 m between A/B, 3x17 tiles; c2 1.8 m between C/D, 3x17 tiles; c3 1.2 m between F7/F6, 2x17 tiles; c4 1.2 m between F5/F4, 2x17 tiles; c5 1.2 m between F3/F2, 2x17 tiles; c6 1.2 m between F1 (alone), 2x17 tiles
+  7 hot bands: h1 1.8 m between F1/F2, 34 grilles (as cold aisle c6) against F1; h2 1.8 m between F3/F4, 34 grilles (as cold aisle c5) against F3; h3 1.8 m between F5/F6, 34 grilles (as cold aisle c4) against F5; h4 2.4 m behind F7, 34 grilles (as cold aisle c3) against F7; h5 1.2 m behind D, 34 grilles (as cold aisle c2) against D; h6 1.2 m between C/B, 34 grilles (as cold aisle c2) against C; h7 1.2 m behind A, 34 grilles (as cold aisle c1) against A
+  14 cooling units: UE-46 (W), UE-52 (W), UE-51 (W), UE-50 (W), UE-49 (W), UE-48 (W), UE-47 (W), UE-45 (E), UE-44 (E), UE-43 (E), UE-42 (E), UE-41 (E), UE-40 (E), UE-39 (E)
+  cage: 1 panel(s), mesh, deck to ceiling
+  containment: 6 lids, 0 chimney panels, 12 doors, 1 end panels, 4 blank panels on the row lines
+  solids written: 4 blank, 1 cage, 1 ceiling, 1 deck, 12 door, 238 grille, 1 hall, 6 lid, 4 mesh, 171 rack, 238 tile, 14 unit, 3 wall
+
+GRID ALERTS (0) -- the mesh cell changed the layout; read before running
+  none: every row keeps its drawn length and alignment within the tolerance
+
+CORRECTIONS APPLIED (26)
+  - dividing wall W: 200 mm thick in the drawing, carried as a panel on its hall-side face at x = 4.40; the gallery takes the thickness
+  - dividing wall E: 200 mm thick in the drawing, carried as a panel on its hall-side face at x = 17.00; the gallery takes the thickness
+  - row F1: tags RB01.. are shared with another row or repeat; named F1-01..F1-17 from the north, west to east
+  - row F2: tags RB01.. are shared with another row or repeat; named F2-01..F2-17 from the north, west to east
+  - row F3: tags RB01.. are shared with another row or repeat; named F3-01..F3-17 from the north, west to east
+  - row F4: tags RB01.. are shared with another row or repeat; named F4-01..F4-17 from the north, west to east
+  - row F5: tags RB01.. are shared with another row or repeat; named F5-01..F5-17 from the north, west to east
+  - row F6: tags RB01.. are shared with another row or repeat; named F6-01..F6-17 from the north, west to east
+  - row F7: tags RB01.. are shared with another row or repeat; named F7-01..F7-17 from the north, west to east
+  - aisle between F1 and F2: 1.843 m in the drawing is not a multiple of the 0.6 m module; carried as 1.8 m (row moved +43 mm)
+  - aisle between F2 and F3: 1.254 m in the drawing is not a multiple of the 0.6 m module; carried as 1.2 m (row moved +54 mm)
+  - aisle between F3 and F4: 1.843 m in the drawing is not a multiple of the 0.6 m module; carried as 1.8 m (row moved +43 mm)
+  - aisle between F4 and F5: 1.254 m in the drawing is not a multiple of the 0.6 m module; carried as 1.2 m (row moved +54 mm)
+  - aisle between F5 and F6: 1.843 m in the drawing is not a multiple of the 0.6 m module; carried as 1.8 m (row moved +43 mm)
+  - aisle between F6 and F7: 1.254 m in the drawing is not a multiple of the 0.6 m module; carried as 1.2 m (row moved +54 mm)
+  - aisle between D and C: 1.854 m in the drawing is not a multiple of the 0.6 m module; carried as 1.8 m (row moved +54 mm)
+  - aisle between C and B: 1.254 m in the drawing is not a multiple of the 0.6 m module; carried as 1.2 m (row moved +54 mm)
+  - aisle between B and A: 1.821 m in the drawing is not a multiple of the 0.6 m module; carried as 1.8 m (row moved +21 mm)
+  - aisle c1: the containment runs 10.2 m and row A covers 10.0 m; 0.2 m of the row line closed with 1 blank panel(s)
+  - aisle c1: the containment runs 10.2 m and row B covers 10.0 m; 0.2 m of the row line closed with 1 blank panel(s)
+  - aisle c2: the containment runs 10.2 m and row C covers 10.0 m; 0.2 m of the row line closed with 1 blank panel(s)
+  - aisle c2: the containment runs 10.2 m and row D covers 10.0 m; 0.2 m of the row line closed with 1 blank panel(s)
+  - cold aisle c6: row F1 stands against it alone; its north side is closed with a vertical panel at y = 33.0
+  - hot band h5: cold aisle c2 has 51 tiles, so at least 51 return grilles are asked for, and the 1.2 m band holds 2 strip(s) of 17; 34 laid
+  - hot band h6: cold aisle c2 has 51 tiles, so at least 51 return grilles are asked for, and the 1.2 m band holds 2 strip(s) of 17; 34 laid
+  - hot band h7: cold aisle c1 has 51 tiles, so at least 51 return grilles are asked for, and the 1.2 m band holds 2 strip(s) of 17; 34 laid
+
+QUANTISATIONS OVER 1 mm (78)
+  - unit top z 2.970 -> 3.000 (+30 mm)
+  - envelope width x 21.340 -> 21.400 (+60 mm)
+  - envelope length y 34.750 -> 34.800 (+50 mm)
+  - dividing wall W (hall-side face) x 4.360 -> 4.400 (+40 mm)
+  - dividing wall E (hall-side face) x 16.960 -> 17.000 (+40 mm)
+  - row F1 y 30.546 -> 30.600 (+54 mm)
+  - row F1 start x 5.557 -> 5.600 (+43 mm)
+  - row F2 start x 5.557 -> 5.600 (+43 mm)
+  - row F3 start x 5.557 -> 5.600 (+43 mm)
+  - row F4 start x 5.557 -> 5.600 (+43 mm)
+  - row F5 start x 5.557 -> 5.600 (+43 mm)
+  - row F6 start x 5.557 -> 5.600 (+43 mm)
+  - row F7 start x 5.557 -> 5.600 (+43 mm)
+  - row D y 9.512 -> 9.600 (+88 mm)
+  - row D start x 5.557 -> 5.600 (+43 mm)
+  - row C start x 5.538 -> 5.600 (+62 mm)
+  - row B start x 5.556 -> 5.600 (+44 mm)
+  - row A start x 5.556 -> 5.600 (+44 mm)
+  - cage panel y1 y 11.950 -> 12.000 (+50 mm)
+  - cage panel y1 start x 4.360 -> 4.400 (+40 mm)
+  - cage panel y1 end x 16.960 -> 17.000 (+40 mm)
+  - aisle far side y 32.948 -> 33.000 (+52 mm)
+  - unit UE-47 x 2.959 -> 3.000 (+41 mm)
+  - unit UE-47 y 30.778 -> 30.900 (+122 mm)
+  - unit UE-47 depth x length 0.890 -> 0.800 (-90 mm)
+  - unit UE-47 width y length 2.553 -> 2.700 (+147 mm)
+  - unit UE-39 x 17.526 -> 17.600 (+74 mm)
+  - unit UE-39 y 30.779 -> 30.900 (+121 mm)
+  - unit UE-39 depth x length 0.890 -> 0.800 (-90 mm)
+  - unit UE-39 width y length 2.553 -> 2.700 (+147 mm)
+  - unit UE-48 x 2.959 -> 3.000 (+41 mm)
+  - unit UE-48 y 26.045 -> 26.100 (+55 mm)
+  - unit UE-48 depth x length 0.890 -> 0.800 (-90 mm)
+  - unit UE-48 width y length 2.553 -> 2.700 (+147 mm)
+  - unit UE-49 x 2.959 -> 3.000 (+41 mm)
+  - unit UE-49 y 21.312 -> 21.300 (-12 mm)
+  - unit UE-49 depth x length 0.890 -> 0.800 (-90 mm)
+  - unit UE-49 width y length 2.553 -> 2.700 (+147 mm)
+  - unit UE-50 x 2.959 -> 3.000 (+41 mm)
+  - unit UE-50 y 16.580 -> 16.500 (-80 mm)
+  - unit UE-50 depth x length 0.890 -> 0.800 (-90 mm)
+  - unit UE-50 width y length 2.553 -> 2.700 (+147 mm)
+  - unit UE-51 x 2.959 -> 3.000 (+41 mm)
+  - unit UE-51 y 11.847 -> 11.700 (-147 mm)
+  - unit UE-51 depth x length 0.890 -> 0.800 (-90 mm)
+  - unit UE-51 width y length 2.553 -> 2.700 (+147 mm)
+  - unit UE-52 x 2.959 -> 3.000 (+41 mm)
+  - unit UE-52 y 7.114 -> 7.200 (+86 mm)
+  - unit UE-52 depth x length 0.890 -> 0.800 (-90 mm)
+  - unit UE-52 width y length 2.553 -> 2.700 (+147 mm)
+  - unit UE-40 x 17.526 -> 17.600 (+74 mm)
+  - unit UE-40 y 26.046 -> 26.100 (+54 mm)
+  - unit UE-40 depth x length 0.890 -> 0.800 (-90 mm)
+  - unit UE-40 width y length 2.553 -> 2.700 (+147 mm)
+  - unit UE-41 x 17.526 -> 17.600 (+74 mm)
+  - unit UE-41 y 21.313 -> 21.300 (-13 mm)
+  - unit UE-41 depth x length 0.890 -> 0.800 (-90 mm)
+  - unit UE-41 width y length 2.553 -> 2.700 (+147 mm)
+  - unit UE-42 x 17.526 -> 17.600 (+74 mm)
+  - unit UE-42 y 16.580 -> 16.500 (-80 mm)
+  - unit UE-42 depth x length 0.890 -> 0.800 (-90 mm)
+  - unit UE-42 width y length 2.553 -> 2.700 (+147 mm)
+  - unit UE-43 x 17.526 -> 17.600 (+74 mm)
+  - unit UE-43 y 11.847 -> 11.700 (-147 mm)
+  - unit UE-43 depth x length 0.890 -> 0.800 (-90 mm)
+  - unit UE-43 width y length 2.553 -> 2.700 (+147 mm)
+  - unit UE-44 x 17.526 -> 17.600 (+74 mm)
+  - unit UE-44 y 7.114 -> 7.200 (+86 mm)
+  - unit UE-44 depth x length 0.890 -> 0.800 (-90 mm)
+  - unit UE-44 width y length 2.553 -> 2.700 (+147 mm)
+  - unit UE-46 x 2.959 -> 3.000 (+41 mm)
+  - unit UE-46 y 2.381 -> 2.400 (+19 mm)
+  - unit UE-46 depth x length 0.890 -> 0.800 (-90 mm)
+  - unit UE-46 width y length 2.553 -> 2.700 (+147 mm)
+  - unit UE-45 x 17.526 -> 17.600 (+74 mm)
+  - unit UE-45 y 2.381 -> 2.400 (+19 mm)
+  - unit UE-45 depth x length 0.890 -> 0.800 (-90 mm)
+  - unit UE-45 width y length 2.553 -> 2.700 (+147 mm)
+
+LEFT OUT (0)
+
+NOTES (6)
+  - aisles read from 238 floor tiles drawn in 6 bands: cold aisles
+  - hot band h1: 2 strip(s) of grilles against F1's back, 0.6 m without grilles on the far side
+  - hot band h2: 2 strip(s) of grilles against F3's back, 0.6 m without grilles on the far side
+  - hot band h3: 2 strip(s) of grilles against F5's back, 0.6 m without grilles on the far side
+  - hot band h4: 2 strip(s) of grilles against F7's back, 1.2 m without grilles on the far side
+  - cage taken from 1 line segment(s) on a CAGE/MESH layer
+
+OPEN QUESTIONS (5) -- answer in answers.yaml and re-run
+  - height `plenum` (raised floor depth (slab to deck; 0 = no raised floor)): 1.0 m taken from the reference -- confirm or give the drawing's figure (`heights.plenum`)
+  - height `rack` (cabinet height): 2.2 m taken from the reference -- confirm or give the drawing's figure (`heights.rack`)
+  - height `unit` (cooling unit height): 1.97 m taken from the reference -- confirm or give the drawing's figure (`heights.unit`)
+  - height `ceiling` (floor to false ceiling): 4.0 m taken from the reference -- confirm or give the drawing's figure (`heights.ceiling`)
+  - height `hall` (floor to slab): 5.6 m taken from the reference -- confirm or give the drawing's figure (`heights.hall`)
+
+SELF-CHECK PASSED

@@ -7,6 +7,8 @@
     aicfd post <name>                re-export a solved run into results/NAME
     aicfd view [--port 8000]         serve the page: check, edit, run, read
     aicfd verify [--solve]           run the audit: tests, install, both cases
+    aicfd import <pkg.aicfd.zip>     a hall read from a drawing, into cases/<project>/
+    aicfd package <name> [--all]     a scenario of a drawn hall as a .aicfd.zip
 
 The assistant drives these same commands rather than a separate code path, so
 anything it can do is reproducible by hand -- and anything that breaks can be
@@ -63,6 +65,19 @@ def main(argv: list[str] | None = None) -> int:
         help="start from an existing case (e.g. dh04-1mw) instead of the blank POD; "
              "a scenario's copy lands in its project's folder",
     )
+
+    import_parser = sub.add_parser(
+        "import", help="unpack a <project>.aicfd.zip into cases/<project>/ (ADR-135)")
+    import_parser.add_argument("package", help="the .aicfd.zip the converter wrote")
+    import_parser.add_argument("--as", dest="project",
+                               help="project name (default: the package's own)")
+
+    package_parser = sub.add_parser(
+        "package", help="a scenario of a drawn hall as a .aicfd.zip, to hand on")
+    package_parser.add_argument("name", help="the scenario's case name")
+    package_parser.add_argument("--all", action="store_true",
+                                help="every scenario of its project, not only this one")
+    package_parser.add_argument("--out", help="output file (default: ./<name>.aicfd.zip)")
 
     sub.add_parser("doctor", help="check the OpenFOAM installation")
 
@@ -246,6 +261,41 @@ def _new(args) -> int:
         path.write_text(STARTER_SPEC.format(name=args.name))
         print(f"Wrote {path}")
     print(f"Edit it, then:  aicfd view --case {args.name}    (or: aicfd run {path})")
+    return 0
+
+
+def _import(args) -> int:
+    """A drawn hall, from the one file the converter writes (ADR-135)."""
+    from aicfd.package import PackageError, import_package
+
+    try:
+        data = Path(args.package).read_bytes()
+    except OSError as error:
+        print(f"error: {error}", file=sys.stderr)
+        return 1
+    try:
+        done = import_package(data, CASES_DIR, args.project)
+    except PackageError as error:
+        print(f"error: {error}. Nothing was written.", file=sys.stderr)
+        return 1
+    print(f"Imported project {done['project']} into {done['folder']}")
+    for name in done["scenarios"]:
+        print(f"  scenario {name}:  aicfd view --case {name}    aicfd run {name}")
+    return 0
+
+
+def _package(args) -> int:
+    """A scenario as the package it would arrive as, for a colleague (ADR-135)."""
+    from aicfd.package import PackageError, export_package
+
+    try:
+        filename, data = export_package(args.name, CASES_DIR, every_scenario=args.all)
+    except (PackageError, FileNotFoundError) as error:
+        print(f"error: {error}", file=sys.stderr)
+        return 1
+    out = Path(args.out) if args.out else Path(filename)
+    out.write_bytes(data)
+    print(f"Wrote {out} ({len(data) / 1e6:.1f} MB)")
     return 0
 
 

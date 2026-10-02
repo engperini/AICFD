@@ -163,6 +163,29 @@ def geometry_path(spec: dict) -> Path:
     )
 
 
+_SHA_CACHE: dict[tuple[str, float], str] = {}
+
+
+def _check_lock(spec: dict, path: Path) -> None:
+    """A scenario imported from a package carries the sha256 of the STL it was
+    imported with, and refuses another one (ADR-135). Every number in the
+    scenario was chosen for that room; a geometry replaced by hand under it is
+    a different study that would run under the old one's name."""
+    stated = str((spec.get("geometry") or {}).get("sha256") or "").strip().lower()
+    if not stated:
+        return
+    key = (str(path.resolve()), path.stat().st_mtime)
+    if key not in _SHA_CACHE:
+        from aicfd.package import sha256
+
+        _SHA_CACHE[key] = sha256(path)
+    if _SHA_CACHE[key] != stated:
+        raise ValueError(
+            f"{path.name} is not the geometry this scenario was imported with (its sha256 is "
+            f"{_SHA_CACHE[key][:12]}..., the scenario's geometry.sha256 is {stated[:12]}...). The room is changed "
+            f"by importing the drawing again as a package, not by replacing the STL")
+
+
 def _resize_supplies(supplies: list[Solid], spec: dict, cell, ceiling_z: float,
                      leaves: list[Solid], stl: str) -> tuple[list[Solid], str | None]:
     """Every supply grille cut to the size the scenario asks for (ADR-134).
@@ -280,6 +303,7 @@ def build(spec: dict) -> Model:
     # `_base` stays: a spec is built more than once (the page builds it, then
     # the picker asks it again), and private keys are stripped wherever a spec
     # is written or recorded (ADR-134).
+    _check_lock(spec, path)
     solids = read_stl(path)
     cell = parse_cell_size((spec.get("mesh") or {}).get("cell_size", 0.2))
     name = spec.get("name", path.stem)

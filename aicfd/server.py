@@ -411,6 +411,24 @@ def import_case(name: str, text: str) -> dict:
     return _admit(_case_name(name), text)
 
 
+def import_package(data: str | None, project: str | None = None) -> dict:
+    """A `.aicfd.zip` from the page, base64 in the JSON body (ADR-135). Answers
+    like `new_case`, with the first scenario as the case to open."""
+    import base64
+    import binascii
+
+    from aicfd import package
+
+    if not data:
+        raise ValueError("no package was sent")
+    try:
+        blob = base64.b64decode(data, validate=True)
+    except (binascii.Error, ValueError):
+        raise ValueError("the package did not arrive whole (not base64)") from None
+    done = package.import_package(blob, CASES_DIR, (project or "").strip() or None)
+    return {"case": done["scenarios"][0], **done}
+
+
 def case_path(name: str) -> str:
     """Where this case lives, said the shortest way a person can act on.
 
@@ -1780,6 +1798,8 @@ class Handler(SimpleHTTPRequestHandler):
             return self._json(self._safely(read_component, self._query("id")))
         if self.path.startswith("/api/equipment"):
             return self._json(self._safely(read_equipment, self._query("model")))
+        if self.path.startswith("/api/cases/package"):
+            return self._package(self._case(), bool(self._query("all")))
         if self.path.startswith("/api/cases/export"):
             return self._json(self._safely(
                 read_case_text, self._case()))
@@ -1805,6 +1825,8 @@ class Handler(SimpleHTTPRequestHandler):
         if self.path.startswith("/api/model"):
             return self._json(self._safely(update_case, self._case(), body))
 
+        if self.path.startswith("/api/cases/package"):
+            return self._json(self._safely(import_package, body.get("data"), body.get("project")))
         if self.path.startswith("/api/cases/import"):
             return self._json(
                 self._safely(import_case, body.get("name"), body.get("yaml"))
@@ -1851,6 +1873,23 @@ class Handler(SimpleHTTPRequestHandler):
             return fn(*args)
         except Exception as error:
             return {"error": f"{type(error).__name__}: {error}"}
+
+    def _package(self, name: str, every: bool) -> None:
+        """A scenario of a drawn hall as the package it would arrive as, as a
+        download (ADR-135)."""
+        from aicfd.package import export_package
+
+        try:
+            filename, data = export_package(name, CASES_DIR, every_scenario=every)
+        except Exception as error:
+            return self._json({"error": f"{type(error).__name__}: {error}"})
+        self.send_response(200)
+        self.send_header("Content-Type", "application/zip")
+        self.send_header("Content-Disposition", f'attachment; filename="{filename}"')
+        self.send_header("Content-Length", str(len(data)))
+        self.send_header("Cache-Control", "no-store")
+        self.end_headers()
+        self.wfile.write(data)
 
     def _report(self, name: str, body: dict) -> None:
         """The document itself, as the response.

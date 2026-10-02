@@ -1567,11 +1567,23 @@ async function loadCaseMenu() {
     // server was started on (ADR-091).
     const payload = await (await fetch(withCase('/api/cases'))).json();
     if (payload.error) throw new Error(payload.error);
+    // Scenarios of one drawn hall sit together under their project, the way
+    // they sit together in cases/ (ADR-134).
     list.innerHTML = payload.cases
+      .slice().sort((a, b) => (a.project || '').localeCompare(b.project || '')
+        || b.modified - a.modified)
       .map((c) => `<a href="?case=${encodeURIComponent(c.case)}"
-           data-current="${c.current ? 1 : 0}"><span>${c.case}</span>
+           data-current="${c.current ? 1 : 0}"><span>${
+             c.project ? `<span class="when">${c.project} /</span> ` : ''}${c.case}</span>
            <span class="when">${ago(c.modified)}</span></a>`)
       .join('') || '<p class="casemenu-note">nothing in cases/ yet</p>';
+    const current = payload.cases.find((c) => c.current);
+    const row = document.getElementById('case-scenario-row');
+    if (row) row.hidden = !(current && current.imported);
+    const download = document.getElementById('case-package-download');
+    if (download && current) {
+      download.href = withCase('/api/cases/package');
+    }
     from.innerHTML = '<option value="">from the starter</option>'
       + payload.cases.map((c) => `<option value="${c.case}">copy ${c.case}</option>`)
         .join('');
@@ -1608,6 +1620,26 @@ function wireCaseMenu() {
   el('case-new')?.addEventListener('click', () => postCase('/api/cases', {
     name: el('case-new-name').value, from: el('case-new-from').value || null,
   }, 'creating'));
+  // ONE FILE for a hall read from a drawing: the package the converter
+  // writes. It is read here, sent whole, and unpacked by the server only once
+  // every scenario in it has been built (ADR-135).
+  el('case-package')?.addEventListener('click', async () => {
+    const file = el('case-package-file')?.files?.[0];
+    if (!file) { menu.say('Choose the .aicfd.zip the converter wrote.', 'bad'); return; }
+    const bytes = new Uint8Array(await file.arrayBuffer());
+    let binary = '';
+    for (let i = 0; i < bytes.length; i += 0x8000) {
+      binary += String.fromCharCode(...bytes.subarray(i, i + 0x8000));
+    }
+    postCase('/api/cases/package', {
+      data: btoa(binary), project: el('case-package-name').value || null,
+    }, 'importing the package');
+  });
+  // Another scenario of the same room: a copy beside it, sharing its geometry
+  // and figures, edited from there (ADR-134).
+  el('case-scenario')?.addEventListener('click', () => postCase('/api/cases', {
+    name: el('case-scenario-name').value, from: CASE || model?.name || null,
+  }, 'duplicating'));
   el('case-import')?.addEventListener('click', () => postCase('/api/cases/import', {
     name: el('case-import-name').value, yaml: el('case-import-yaml').value,
   }, 'importing'));

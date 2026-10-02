@@ -143,6 +143,24 @@ class TheFormTest(ProjectTest):
         self.assertEqual(yaml.safe_load(self.file.read_text())["fanwall"]["out_of_service"], [])
 
 
+class ThePackageOnThePageTest(ProjectTest):
+    def test_a_package_sent_as_base64_is_imported_and_opened(self):
+        import base64
+
+        from tests.test_package import build_zip, good_members
+
+        members = good_members()
+        members["scenarios/drawn-pkg.yaml"] = members.pop("scenarios/drawn-base.yaml").replace(
+            "name: drawn-base", "name: drawn-pkg")
+        out = server.import_package(base64.b64encode(build_zip(members)).decode(), "drawn-2")
+        self.assertEqual(out["case"], "drawn-pkg")
+        self.assertTrue((self.root / "drawn-2" / "drawn-pkg.yaml").is_file())
+
+    def test_garbage_is_refused_in_a_sentence(self):
+        with self.assertRaises(ValueError):
+            server.import_package("not base64 at all!!")
+
+
 class TheRacksPageTest(ProjectTest):
     def test_it_lists_the_drawings_cabinets_under_their_own_ids(self):
         out = server.read_racks("drawn-base")
