@@ -360,7 +360,7 @@ class FieldSupplyTest(unittest.TestCase):
     finding under the number that names it (ADR-040).
     """
 
-    RESULT = Path(__file__).resolve().parents[1] / "reference" / "pod-fanwall"
+    RESULT = Path(__file__).resolve().parents[1] / "reference" / "hall-double-gallery"
 
     def test_it_is_read_off_the_supply_patches(self):
         from aicfd import post

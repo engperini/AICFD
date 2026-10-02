@@ -41,8 +41,8 @@ aicfd verify [--solve]      # the audit; run it first in a fresh sandbox
 Run them as `python3 -m aicfd <command>`. There is **one** spec shape and one
 pipeline: no generator to choose, no flag to remember.
 
-Costs on 4 cores: the worked POD is ~8 minutes serial (75 600 cells), the 10 MW
-hall ~11 minutes on 4 (329 280 cells). Launch a run detached
+Costs on 4 cores: the 10 MW parametric hall ~11 minutes (329 280 cells); the
+drawn 1 MW hall 1 to 3 hours coupled (409 596 cells), the 15 MW hall about 1,6 h. Launch a run detached
 (`setsid nohup ... &`) and watch `runs/NAME/sensors.json`; never block a tool
 call on a long solve, and never poll in a tight loop.
 
@@ -50,8 +50,9 @@ call on a long solve, and never poll in a tight loop.
 
 Both are the same geometry code (ADR-022); the spec's shape picks the layout.
 
-- **A POD** — `racks.count` and no `pods:`. One row, a contained hot aisle
-  against the far wall, one fan wall. `tests/cases/pod-fanwall.yaml`.
+- **A POD** — `racks.count` and no `pods:`. The single row the project
+  started from; the generator still builds it and the suite still tests it,
+  but it is no longer an example: the examples are complete data halls.
 - **A data hall** — `pods: <n>` and `racks.per_row`. That many row-HAC-row
   pairs across the hall, a cold aisle between pairs and a perimeter aisle round
   the edge, and `fanwall.count` units spread along the gallery wall.

@@ -4,7 +4,7 @@
 machine, and written for electrical and facility engineers rather than CFD
 specialists.
 
-You describe a POD or a data hall in the units you already work in — kW per
+You describe a data hall in the units you already work in — kW per
 rack, m³/h per fan wall, CFM/kW, supply temperature, site altitude — and AICFD
 derives the geometry, generates an OpenFOAM case, solves it, holds the result
 to eleven physical checks, and draws it as plan and sections with the field
@@ -38,7 +38,7 @@ Two pages, and they take the case differently:
 | | address | |
 |---|---|---|
 | **model** | `http://localhost:8000/web/` | the spec and the geometry it implies, before any solve. The case is the one the server was started with, because this page asks the server for it — `docker compose up` opens `dh04-1mw-19c`; change the line in `docker-compose.yml`, or run `aicfd view --case <name>`. |
-| **results** | `http://localhost:8000/web/results.html?case=hall-double-gallery` | a solved result. This page is static: it resolves `?case=` against `results/` first and `reference/` second, so any name with an export works — `hall-double-gallery`, `hall-10mw`, `pod-fanwall`. |
+| **results** | `http://localhost:8000/web/results.html?case=hall-double-gallery` | a solved result. This page is static: it resolves `?case=` against `results/` first and `reference/` second, so any name with an export works — `dh04-1mw-19c`, `hall-double-gallery`, `hall-10mw`. |
 
 **Your results shadow the shipped ones.** The three worked results are tracked
 under `reference/` and the tool never writes there; anything you solve goes to
@@ -128,15 +128,15 @@ solver to finish the iteration it is on, write the field and exit — OpenFOAM's
 own mechanism, not a signal (ADR-031). The run then exports and is held to the
 same eleven checks, so what you get is a *result*: partial, and honest about it.
 A run cut short before it settled fails `settled`; one stopped after it settled
-passes all eleven, which is how `results/pod-fanwall` was produced.
+passes all eleven.
 
-The three worked parametric results are tracked under `reference/`, their
+The two worked parametric results are tracked under `reference/` — complete
+data halls only; the single POD the project started from is retired — their
 cases are the suite's own copies in `tests/cases/`, and each is documented end
 to end in `docs/experiments/`:
 
 | Case | What it is | Mesh | Cost |
 |---|---|---|---|
-| `pod-fanwall.yaml` | one row of 3 racks, 18 kW, one fan wall | 75 600 cells | 8 min, 1 core |
 | `hall-10mw.yaml` | 16 PODs, 768 racks, 9,98 MW, 35 fan walls | 329 280 cells | 11 min, 4 cores |
 | `hall-double-gallery.yaml` | 5 PODs, 440 racks, 5,1 MW, a gallery at each end and rows in two blocks | 275 400 cells | settled in 7 min, 4 cores |
 

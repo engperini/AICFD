@@ -20,7 +20,7 @@ from tests import support
 #: The worked POD's export, tracked under reference/ because it is evidence
 #: rather than an artifact (ADR-032). A result solved locally lands in
 #: results/ and never touches this one.
-RESULT = Path(__file__).resolve().parents[1] / "reference" / "pod-fanwall"
+RESULT = Path(__file__).resolve().parents[1] / "reference" / "hall-double-gallery"
 
 try:  # the report's two extras
     import docx  # noqa: F401
@@ -129,6 +129,12 @@ class DocumentTest(unittest.TestCase):
         6's subject, so the negations belong there."""
         body = self.text[self.text.index("2  Summary"):
                          self.text.index("6  Limitations")]
+        # The mesh-snapping list QUOTES the generator's own warnings, one per
+        # plane it moved ("3.960 m is not on the 0.30 m grid; the mesh will
+        # use 3.90 m"). It is a record, not the report's prose, and the worked
+        # POD this used to read had nothing to snap (ADR-134).
+        body = "\n".join(line for line in body.split("\n")
+                         if "grid; the mesh will use" not in line)
         for phrase in ("does not", "do not", "is not on", "What it does not"):
             self.assertNotIn(phrase, body, f"negated: {phrase!r}")
 
