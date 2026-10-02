@@ -12,6 +12,7 @@ install beyond what the solver already needs.
 
 from __future__ import annotations
 
+import copy
 import json
 import re
 import threading
@@ -21,6 +22,7 @@ from pathlib import Path
 
 import yaml
 
+from aicfd import cases as case_store
 from aicfd import model as model_module
 from aicfd import yamledit
 
@@ -154,6 +156,10 @@ EDITABLE = {
     "cage_height": (("cage", "height"), float, (1.0, 20.0)),
     "cage_roof": (("cage", "roof"), bool, None),
     "cage_mesh": (("components", "cage"), "component", "cage"),
+    # The other two surfaces a hall from a drawing can vary without touching
+    # its geometry: the plates in the deck and the mesh into the gallery.
+    "floor_tile": (("components", "floor_tile"), "component", "floor_tile"),
+    "gallery_mesh": (("components", "gallery_mesh"), "component", "gallery_mesh"),
     # --- mesh and solver ----------------------------------------------------
     "cell_size": (("mesh", "cell_size"), "cell_size", (0.02, 1.0)),
     "max_iterations": (("solver", "max_iterations"), int, (10, 20_000)),
@@ -161,6 +167,27 @@ EDITABLE = {
     "warm_start": (("solver", "warm_start"), bool, None),
     "processors": (("solver", "processors"), int, (1, 64)),
 }
+
+
+#: What the page may change on a case read from a drawing (ADR-134).
+#:
+#: The room is the STL's: its walls, rows, cabinets, units, plates, grilles,
+#: cage and plenum were read off the drawing and are changed by importing the
+#: drawing again, never by a number typed here. Everything the drawing cannot
+#: say stays editable -- the loads, the machines and their curves, which of
+#: them have failed, the surfaces the air crosses, the size the supply grilles
+#: are cut to, the mesh and the solver. Changing what KIND of room it is -- a
+#: raised floor into fan walls -- is a different drawing.
+IMPORTED_EDITABLE = frozenset({
+    "altitude_m",
+    "rack_load_kw", "rack_cfm_per_kw",
+    "fan_model", "airflow_m3h", "fan_capacity_kw", "fan_power_kw",
+    "supply_temp_c", "fan_team", "fan_static_pa", "fan_out_of_service",
+    "plenum_grille_width", "plenum_grille_height",
+    "supply_grille", "ceiling_return", "floor_tile", "gallery_mesh",
+    "cage_construction", "cage_mesh",
+    "cell_size", "max_iterations", "sensor_interval", "warm_start", "processors",
+})
 
 
 @dataclass
@@ -246,11 +273,24 @@ def read_sensors(case_name: str) -> dict:
     return post.sensor_history(model, case)
 
 
+def spec_path(name: str) -> Path:
+    """The file this case is written in, loose or inside its project's folder
+    (ADR-134)."""
+    return case_store.spec_path(name, CASES_DIR)
+
+
 def load_spec(name: str) -> dict:
-    path = CASES_DIR / f"{name}.yaml"
-    if not path.exists():
-        raise FileNotFoundError(f"no case spec at {path}")
-    return yaml.safe_load(path.read_text())
+    """The case as a spec, with `_base` set so a geometry case finds its STL.
+    `_`-keys are this process's own and never written back."""
+    return case_store.load(name, CASES_DIR)
+
+
+def is_imported(spec: dict) -> bool:
+    """A case whose room is read from a drawing (ADR-131): its geometry is the
+    STL's, and the page edits everything else (ADR-134)."""
+    from aicfd import geometry
+
+    return geometry.is_geometry_case(spec)
 
 
 #: What a case may be called. A name reaches the filesystem, so it is checked
@@ -277,16 +317,20 @@ def list_cases(current: str | None = None) -> dict:
     page exists to open the room they are studying.
     """
     rows = []
-    for path in CASES_DIR.glob("*.yaml"):
+    for path in case_store.every(CASES_DIR):
         try:
-            name = yaml.safe_load(path.read_text()).get("name")
+            spec = yaml.safe_load(path.read_text()) or {}
         except Exception:  # noqa: BLE001 -- a broken file is still a file
-            name = None
+            spec = {}
         rows.append({
             "case": path.stem,
-            "name": name or path.stem,
+            "name": spec.get("name") or path.stem,
             "modified": path.stat().st_mtime,
             "current": path.stem == current,
+            # Which project a scenario belongs to, so the menu can group them
+            # (ADR-134). None for a parametric case on its own.
+            "project": path.parent.name if path.parent != CASES_DIR else None,
+            "imported": bool(isinstance(spec, dict) and is_imported(spec)),
         })
     rows.sort(key=lambda r: -r["modified"])
     return {"cases": rows, "current": current}
@@ -295,13 +339,11 @@ def list_cases(current: str | None = None) -> dict:
 def read_case_text(name: str) -> dict:
     """The case file as it is written, comments and all -- what a person
     copies out to send somebody, and what `import` takes back."""
-    path = CASES_DIR / f"{_case_name(name)}.yaml"
-    if not path.exists():
-        raise FileNotFoundError(f"no case spec at {path}")
+    path = spec_path(_case_name(name))
     return {"case": path.stem, "yaml": path.read_text()}
 
 
-def _admit(name: str, text: str) -> dict:
+def _admit(name: str, text: str, folder: Path | None = None) -> dict:
     """Write a case only once the generator has built it (ADR-055).
 
     Saving first and validating afterwards is how the page lost itself: a spec
@@ -311,8 +353,9 @@ def _admit(name: str, text: str) -> dict:
     """
     from aicfd.model import build_model
 
-    path = CASES_DIR / f"{name}.yaml"
-    if path.exists():
+    folder = folder or CASES_DIR
+    path = folder / f"{name}.yaml"
+    if path.exists() or case_store.exists(name, CASES_DIR):
         raise ValueError(
             f"'{name}' already exists. Pick another name, or open that case "
             f"and edit it."
@@ -328,7 +371,8 @@ def _admit(name: str, text: str) -> dict:
     if not re.search(r"^name:", text, flags=re.M):
         text = f"name: {name}\n{text}"
     try:
-        build_model(yaml.safe_load(text))  # refuses here, before anything is written
+        # Built where it will live, so a scenario finds the geometry beside it.
+        build_model({**yaml.safe_load(text), "_base": str(folder.resolve())})
     except Exception as refused:           # noqa: BLE001 -- any refusal is a refusal
         # A KeyError from the generator reads as `'aisles'` and tells an
         # engineer nothing. Say which section is missing, in a sentence.
@@ -350,10 +394,13 @@ def new_case(name: str, template: str | None = None) -> dict:
 
     name = _case_name(name)
     if template:
-        source = CASES_DIR / f"{_case_name(template)}.yaml"
-        if not source.exists():
-            raise ValueError(f"no case named '{template}' to copy")
-        return _admit(name, source.read_text())
+        try:
+            source = spec_path(_case_name(template))
+        except FileNotFoundError:
+            raise ValueError(f"no case named '{template}' to copy") from None
+        # A copy of a scenario is another scenario of the same project: it
+        # lands beside it and shares its geometry and figures (ADR-134).
+        return _admit(name, source.read_text(), source.parent)
     return _admit(name, STARTER_SPEC.format(name=name))
 
 
@@ -373,7 +420,10 @@ def case_path(name: str) -> str:
     `relative_to` raises rather than declines, which turned an error message
     into a second error (ADR-056).
     """
-    path = CASES_DIR / f"{name}.yaml"
+    try:
+        path = spec_path(name)
+    except (FileNotFoundError, ValueError):
+        path = CASES_DIR / f"{name}.yaml"
     try:
         return str(path.relative_to(REPO_ROOT))
     except ValueError:
@@ -395,7 +445,11 @@ def save_spec(name: str, spec: dict) -> None:
     over the comments, because a file that is correct and bare beats one that
     is pretty and wrong.
     """
-    path = CASES_DIR / f"{name}.yaml"
+    spec = case_store.public(spec)
+    try:
+        path = spec_path(name)
+    except FileNotFoundError:
+        path = CASES_DIR / f"{name}.yaml"
     if path.is_file():
         text = path.read_text()
         try:
@@ -461,12 +515,26 @@ def _forget_the_previous_unit(spec: dict, changes: dict) -> None:
 def apply_changes(spec: dict, changes: dict) -> tuple[dict, list[str]]:
     """Apply edits from the page, rejecting anything outside its declared range."""
     rejected: list[str] = []
+    imported = is_imported(spec)
     _forget_the_previous_unit(spec, changes)
     for key, raw in changes.items():
         if key not in EDITABLE:
             rejected.append(f"{key}: not an editable parameter")
             continue
+        if imported and key not in IMPORTED_EDITABLE:
+            rejected.append(
+                f"{key}: this case's room is read from its drawing "
+                f"({(spec.get('geometry') or {}).get('file')}); change the "
+                f"drawing and import it again (ADR-134)")
+            continue
         path, caster, limits = EDITABLE[key]
+        if raw is None or (isinstance(raw, str) and not raw.strip()
+                           and caster not in ("unit_list", "component", "equipment", "choice")):
+            # AN EMPTIED BOX IS AN ANSWER: back to the standard. The page used
+            # to leave an empty field out of the request, so a value once
+            # typed could never be taken away again (ADR-134).
+            _unset(spec, path)
+            continue
         if caster == "team":
             # A checkbox, stored as the word the spec uses, so a case reads
             # `control: team` rather than `control: true`.
@@ -559,6 +627,49 @@ def apply_changes(spec: dict, changes: dict) -> tuple[dict, list[str]]:
     return spec, rejected
 
 
+def update_case(name: str, changes: dict) -> dict:
+    """Apply the page's edits, build the result, and save it only if it builds.
+
+    Built before it is saved. A value can be inside its range and still
+    describe a room that cannot exist -- seven 4 m fan walls along a 26 m
+    wall -- and the generator refuses it. Saving first meant that refusal was
+    already on disk: every reload afterwards failed on the same error, so the
+    form that could undo it never loaded again, and the page was gone for good
+    (ADR-055).
+
+    BUILT ON A COPY. A hall read from a drawing tells the spec it is given
+    what the drawing decided -- the floor, the containment, the heights, the
+    number of units -- so the page and the report see that room (ADR-131).
+    Saving the spec the build had been handed wrote all of that into the
+    sidecar as if somebody had typed it, and stripped the file's comments on
+    the way (ADR-134). What is saved is the file plus the edits, nothing more.
+    """
+    spec, rejected = apply_changes(load_spec(name), changes)
+    try:
+        payload = payload_for(name, copy.deepcopy(spec))
+    except ValueError as refused:
+        payload = build_payload(name)
+        payload["rejected"] = rejected + [str(refused)]
+        return payload
+    save_spec(name, spec)
+    payload["rejected"] = rejected
+    return payload
+
+
+def _unset(spec: dict, path: tuple[str, ...]) -> None:
+    """Take a key out, and any section it leaves empty."""
+    trail = [spec]
+    for step in path[:-1]:
+        node = trail[-1].get(step)
+        if not isinstance(node, dict):
+            return
+        trail.append(node)
+    trail[-1].pop(path[-1], None)
+    for depth in range(len(path) - 1, 0, -1):
+        if trail[depth] == {}:
+            trail[depth - 1].pop(path[depth - 1], None)
+
+
 def _place(spec: dict, path: tuple[str, ...], value) -> None:
     """Write ``value`` at ``path``, creating the sections it needs."""
     node = spec
@@ -616,13 +727,22 @@ def payload_for(name: str, spec: dict) -> dict:
     before it is saved: a spec the generator refuses is never written, so it
     cannot take the page down with it (ADR-055).
     """
+    # The spec as written, before the build fills it in: an export made by
+    # `aicfd post` records that one, a run records the filled one, and both are
+    # the same inputs (ADR-134).
+    written = case_store.public(copy.deepcopy(spec))
     model = model_module.build_model(spec)
     payload = model_module.to_dict(model, spec)
     # The page needs the path of every editable field, so it can read the
     # current value out of the spec without a second copy of this table.
-    payload["editable"] = {key: list(path) for key, (path, _c, _l) in EDITABLE.items()}
+    imported = is_imported(spec)
+    payload["editable"] = {key: list(path) for key, (path, _c, _l) in EDITABLE.items()
+                           if not imported or key in IMPORTED_EDITABLE}
+    # Which page this is: the parametric form, or a room read from a drawing
+    # whose geometry is shown and not edited (ADR-134).
+    payload["mode"] = "imported" if imported else "parametric"
     payload["run"] = STATE.snapshot()
-    payload["results"] = results_state(name, spec)
+    payload["results"] = results_state(name, spec, written)
     payload["blocked"] = solver_available(name)
     return payload
 
@@ -631,6 +751,8 @@ def spec_differences(before: dict, after: dict, prefix: str = "") -> list[str]:
     """The dotted keys whose values differ between two specs."""
     changed = []
     for key in sorted(set(before) | set(after)):
+        if not prefix and str(key).startswith("_"):
+            continue  # this process's own (`_base`), not an input
         path = f"{prefix}{key}"
         a, b = before.get(key), after.get(key)
         if isinstance(a, dict) and isinstance(b, dict):
@@ -674,7 +796,7 @@ def solved_after(name: str, export: Path) -> str | None:
     )
 
 
-def results_state(name: str, spec: dict) -> dict:
+def results_state(name: str, spec: dict, written: dict | None = None) -> dict:
     """What the exported result is, relative to the spec now on screen.
 
     The page offers a link to the result, and a link that opens a *superseded*
@@ -700,6 +822,8 @@ def results_state(name: str, spec: dict) -> dict:
         return {"exists": True, "matches": False,
                 "note": f"{where}exported before AICFD recorded its inputs"}
     changed = spec_differences(exported, spec)
+    if changed and written is not None and not spec_differences(exported, written):
+        changed = []
     if not changed:
         behind = solved_after(name, path)
         if behind:
@@ -780,6 +904,8 @@ def read_racks(name: str) -> dict:
 
     case = name
     spec = load_spec(case)
+    if is_imported(spec):
+        return _read_imported_racks(case, spec)
     model = m.build_model(spec)
     standard = float(spec["racks"]["load_kw"])
     stated = m.rack_loads(spec)
@@ -849,6 +975,116 @@ def read_racks(name: str) -> dict:
     }
 
 
+def _read_imported_racks(case: str, spec: dict) -> dict:
+    """The racks page for a hall read from a drawing (ADR-134).
+
+    Every cabinet is the one the drawing placed, under the id the drawing gave
+    it, at the width it was drawn. What the page edits is what the drawing
+    cannot say: the standard load and each cabinet's own. There is no typical
+    row to lay out and no blank to place -- those are the drawing's, and they
+    come back with it.
+    """
+    from aicfd import model as m
+
+    model = m.build_model(copy.deepcopy(spec))
+    standard = float((spec.get("racks") or {}).get("load_kw", 0.0))
+    stated = {str(k) for k in ((spec.get("racks") or {}).get("loads") or {})}
+    rows = []
+    for row in model.rows:
+        for position, rack in enumerate(row.racks, start=1):
+            rows.append({
+                "id": rack.id,
+                "row": row.id,
+                "position": position,
+                "blank": False,
+                "load_kw": round(rack.load_kw, 3),
+                "width_m": round(rack.box.hi[0] - rack.box.lo[0], 3),
+                "stated": rack.id in stated,
+                "sized": False,
+                "blank_stated": False,
+                "airflow_m3h": round(rack.rated_airflow_m3h),
+                "caged": rack.id in (model.cage_racks or ()),
+            })
+    loaded = [r for r in rows if r["load_kw"] > 0]
+    depth = round(model.racks[0].box.hi[1] - model.racks[0].box.lo[1], 3) if model.racks else 0
+    height = round(model.racks[0].box.hi[2] - model.racks[0].box.lo[2], 3) if model.racks else 0
+    return {
+        "case": case,
+        "mode": "imported",
+        "standard": {
+            "load_kw": standard,
+            "size": [rows[0]["width_m"] if rows else 0.6, depth, height],
+            "cfm_per_kw": (spec.get("racks") or {}).get("airflow_cfm_per_kw"),
+            "cell_x": model.cell_size[0],
+        },
+        "row": [],
+        "rows": sorted({r["row"] for r in rows}),
+        "racks": rows,
+        "totals": {
+            "positions": len(rows),
+            "cabinets": len(rows),
+            "blanks": 0,
+            "loaded": len(loaded),
+            "unloaded": len(rows) - len(loaded),
+            "load_kw": round(sum(r["load_kw"] for r in rows), 1),
+            "nominal_kw": round(standard * len(rows), 1),
+            "airflow_m3h": round(sum(r["airflow_m3h"] for r in rows)),
+        },
+        "warnings": [],
+    }
+
+
+def _write_imported_racks(case: str, spec: dict, body: dict) -> dict:
+    """Loads only, against the cabinets the drawing placed (ADR-134)."""
+    from aicfd import model as m
+
+    rejected: list[str] = []
+    for key in ("size", "row", "widths", "blanks"):
+        if key in body:
+            rejected.append(f"{key}: the drawing decides where the cabinets stand and "
+                            f"how wide they are; import it again to change that")
+    racks = spec.setdefault("racks", {})
+    standard = body.get("load_kw")
+    if standard is not None:
+        try:
+            value = float(standard)
+        except (TypeError, ValueError):
+            rejected.append(f"load_kw: {standard!r} is not a number")
+        else:
+            if 0.1 <= value <= 200:
+                racks["load_kw"] = value
+            else:
+                rejected.append(f"load_kw: {value:g} is outside 0.1-200")
+    if "loads" in body:
+        known = {r.id for r in m.build_model(copy.deepcopy(spec)).racks}
+        loads: dict[str, float] = {}
+        for rack_id, raw in (body.get("loads") or {}).items():
+            if rack_id not in known:
+                rejected.append(f"{rack_id}: the drawing has no cabinet by that id")
+                continue
+            if raw is None or raw == "":
+                continue  # back to the standard
+            try:
+                value = float(raw)
+            except (TypeError, ValueError):
+                rejected.append(f"{rack_id}: {raw!r} is not a number")
+                continue
+            if not 0 <= value <= 200:
+                rejected.append(f"{rack_id}: {value:g} kW is outside 0-200")
+                continue
+            if value != float(racks.get("load_kw", 0.0)):
+                loads[rack_id] = value
+        if loads:
+            racks["loads"] = loads
+        else:
+            racks.pop("loads", None)
+    m.build_model(copy.deepcopy(spec))   # nothing is written that does not build
+    _save_case_racks(case, spec)
+    out = _read_imported_racks(case, load_spec(case))
+    out["rejected"] = rejected
+    return out
+
+
 def _rack_id(row_id: str, i: int, single_row: bool) -> str:
     """The id a position carries, matching what the layouts hand the model."""
     return f"R{i + 1}" if single_row else f"{row_id}-{i + 1:02d}"
@@ -866,6 +1102,8 @@ def write_racks(name: str, body: dict) -> dict:
 
     case = name
     spec = load_spec(case)
+    if is_imported(spec):
+        return _write_imported_racks(case, spec, body)
     rejected: list[str] = []
 
     standard = body.get("load_kw")
@@ -1041,7 +1279,7 @@ def _save_case_racks(name: str, spec: dict) -> None:
     only the two lines this page owns are rewritten -- the standard, and the
     block of positions that disagree with it (ADR-048, ADR-054).
     """
-    path = CASES_DIR / f"{name}.yaml"
+    path = spec_path(name)
     lines = path.read_text().split("\n")
     on_disk = yaml.safe_load("\n".join(lines)) or {}
     # Only where it actually moved: rendering `6.0` back as `6` is the same
@@ -1204,7 +1442,7 @@ def reread_run(name: str) -> dict:
     from aicfd import post
 
     results = post.export(model, solved, RESULTS_DIR / name, spec=spec,
-                          spec_dir=CASES_DIR)
+                          spec_dir=spec_path(name).parent)
     failed = [c.name for c in results.checks if not c.passed]
     return {
         "time": results.time,
@@ -1359,7 +1597,7 @@ def start_run(name: str) -> None:
             # superseded answer and said nothing about it (ADR-030).
             STATE.set(stage="exporting", step="post", message="")
             results = post.export(model, target, RESULTS_DIR / name, spec=spec,
-                                  spec_dir=CASES_DIR)
+                                  spec_dir=spec_path(name).parent)
             failed = [c.name for c in results.checks if not c.passed]
             stopped = STATE.snapshot()["stopping"]
             how = "stopped early" if stopped else "solved"
@@ -1481,26 +1719,7 @@ class Handler(SimpleHTTPRequestHandler):
         body = json.loads(self.rfile.read(length) or b"{}")
 
         if self.path.startswith("/api/model"):
-            def update():
-                spec, rejected = apply_changes(load_spec(self._case()), body)
-                # Built before it is saved. A value can be inside its range
-                # and still describe a room that cannot exist -- seven 4 m fan
-                # walls along a 26 m wall -- and the generator refuses it.
-                # Saving first meant that refusal was already on disk: every
-                # reload afterwards failed on the same error, so the form that
-                # could undo it never loaded again, and the page was gone for
-                # good (ADR-055).
-                try:
-                    payload = payload_for(self._case(), spec)
-                except ValueError as refused:
-                    payload = build_payload(self._case())
-                    payload["rejected"] = rejected + [str(refused)]
-                    return payload
-                save_spec(self._case(), spec)
-                payload["rejected"] = rejected
-                return payload
-
-            return self._json(self._safely(update))
+            return self._json(self._safely(update_case, self._case(), body))
 
         if self.path.startswith("/api/cases/import"):
             return self._json(

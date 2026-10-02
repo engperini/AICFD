@@ -469,22 +469,24 @@ class EveryWallIsMeshedTest(unittest.TestCase):
         same commit."""
         for name in support.SHIPPED_CASES:
             with self.subTest(case=name):
-                self.assertTrue((support.CASES / f"{name}.yaml").is_file())
+                self.assertTrue(support.shipped_path(name).is_file())
 
     def test_every_case_ships_a_mesh_for_every_wall_it_draws(self):
         """Walks the DECLARED cases, not the folder: `cases/` is where an
         engineer keeps their own rooms, and a guard pointed at it holds their
         file to a promise this repository made about its own (ADR-056)."""
-        for name in support.SHIPPED_CASES:
-            path = support.CASES / f"{name}.yaml"
+        for name, spec in support.sweep():
             with self.subTest(case=name):
-                model = m.build_model(yaml.safe_load(path.read_text()))
+                model = m.build_model(spec)
                 plan = case.wall_plan(model)
                 built = {p.name for _n, panels, _h in plan for p in panels}
                 holes = {p.name for _n, _p, hs in plan for p in hs}
+                # A wall the air can cross -- a mesh cage panel -- is built as
+                # a porous baffle rather than a wall (ADR-096).
+                porous = {p.name for p in case.porous(model)}
                 missing = sorted(
                     p.name for p in model.panels
-                    if p.kind == "wall" and p.name not in built | holes
+                    if p.kind == "wall" and p.name not in built | holes | porous
                 )
                 self.assertEqual(missing, [], f"drawn but never meshed: {missing}")
 

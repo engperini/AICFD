@@ -364,7 +364,8 @@ racks:
 A position takes `type`, `blank`, `width` and `load_kw` and nothing else; an
 unknown key is refused by name.
 
-**A worked one.** `cases/hall-cage-1mw.yaml` carries a customer's real rack
+**A worked one.** `tests/cases/hall-cage-1mw.yaml` (the suite's copy; `cases/`
+holds the projects read from drawings now, ADR-134) carries a customer's real rack
 schedule this way: 52 positions in the cage, 20 kW cabinets at the row ends,
 10 kW through the middle, five ODF positions at zero and twelve future
 positions at 8,33 kW — 509,96 kW in all — against the rest of the hall spread
@@ -615,7 +616,8 @@ and `aicfd build` prints no error.
 
 ## 13. A worked translation
 
-`cases/hall-double-gallery.yaml` is the reference example, and it is a real
+`tests/cases/hall-double-gallery.yaml` is the reference example, kept in the
+suite since `cases/` became the projects read from drawings (ADR-134), and it is a real
 project: a 5 MW Ascenty hall, studied independently by Maders Consulting with
 HELYX 4.5.1. Read it beside this manual. What each project fact became:
 

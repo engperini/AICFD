@@ -1129,6 +1129,12 @@ def wanted_arrangement(spec: dict) -> str:
     is the wrong machine in the other's room, and the coil being right is
     what makes that wrong answer look like a right one (ADR-072, ADR-076).
     """
+    from aicfd import geometry
+
+    if geometry.is_geometry_case(spec):
+        drawn = geometry.drawn_arrangement(spec)
+        if drawn:
+            return drawn
     return "downflow" if raised_floor_for(spec) else "fanwall"
 
 
@@ -4225,5 +4231,7 @@ def to_dict(model: Model, spec: dict) -> dict:
         "alerts": model.alerts,
         "site": {"altitude_m": model.altitude_m, "pressure_pa": round(model.pressure_pa), "rho": round(model.rho, 4)},
         "warnings": model.warnings,
-        "spec": spec,
+        # Without this process's own keys (`_base`, a path on this machine).
+        "spec": ({k: v for k, v in spec.items() if not str(k).startswith("_")}
+                 if isinstance(spec, dict) else spec),
     }

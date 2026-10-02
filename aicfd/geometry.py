@@ -163,6 +163,29 @@ def geometry_path(spec: dict) -> Path:
     )
 
 
+_ARRANGEMENT_CACHE: dict[tuple[str, float], str] = {}
+
+
+def drawn_arrangement(spec: dict) -> str | None:
+    """`downflow` or `fanwall`, as the drawing has it, or None when the STL
+    cannot be found. Read off the solids the way `build` reads it -- a deck,
+    and units that blow nowhere in particular, are downflow units on a raised
+    floor -- so a unit picker asked about the sidecar alone judges the room
+    the drawing is, not the one the sidecar does not describe (ADR-134)."""
+    try:
+        path = geometry_path(spec)
+    except (ValueError, KeyError):
+        return None
+    key = (str(path.resolve()), path.stat().st_mtime)
+    if key not in _ARRANGEMENT_CACHE:
+        solids = read_stl(path)
+        deck = any(s.kind == "deck" for s in solids)
+        units = [s for s in solids if s.kind == "unit"]
+        _ARRANGEMENT_CACHE[key] = ("downflow" if deck and not any(s.attr for s in units)
+                                   else "fanwall")
+    return _ARRANGEMENT_CACHE[key]
+
+
 def _on_grid(v: float, cell: float) -> bool:
     return abs(v / cell - round(v / cell)) < 1e-6
 
@@ -179,7 +202,9 @@ def _row_id(rack_id: str) -> str:
 def build(spec: dict) -> Model:
     """The Model of a drawn hall, from its STL and sidecar."""
     path = geometry_path(spec)
-    spec.pop("_base", None)
+    # `_base` stays: a spec is built more than once (the page builds it, then
+    # the picker asks it again), and private keys are stripped wherever a spec
+    # is written or recorded (ADR-134).
     solids = read_stl(path)
     cell = parse_cell_size((spec.get("mesh") or {}).get("cell_size", 0.2))
     name = spec.get("name", path.stem)

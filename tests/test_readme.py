@@ -64,7 +64,8 @@ class WorkedResultTableTest(unittest.TestCase):
         """`The three worked cases` -- in words, and it was wrong once."""
         words = {"one": 1, "two": 2, "three": 3, "four": 4, "five": 5,
                  "six": 6, "seven": 7, "eight": 8, "nine": 9, "ten": 10}
-        said = re.search(r"The (\w+) worked cases in `cases/`", README.read_text())
+        said = re.search(r"The (\w+) worked parametric results are tracked under `reference/`",
+                         README.read_text())
         self.assertIsNotNone(said, "the sentence introducing the table is gone")
         self.assertIn(said.group(1), words, f"{said.group(1)!r} is not a number")
         self.assertEqual(

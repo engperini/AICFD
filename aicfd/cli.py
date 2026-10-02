@@ -60,7 +60,8 @@ def main(argv: list[str] | None = None) -> int:
     new_parser.add_argument(
         "--from",
         dest="template",
-        help="start from an existing case (e.g. hall-10mw) instead of the blank POD",
+        help="start from an existing case (e.g. dh04-1mw) instead of the blank POD; "
+             "a scenario's copy lands in its project's folder",
     )
 
     sub.add_parser("doctor", help="check the OpenFOAM installation")
@@ -155,7 +156,7 @@ STARTER_SPEC = """# AICFD case spec. Everything here is in engineering units; th
 # This starter is a single POD: one row of racks, a contained hot aisle, a
 # ceiling-plenum return and one fan wall. Add `pods: <n>` and swap
 # `racks.count` for `racks.per_row` to make it a data hall of that many
-# row-HAC-row pairs (see cases/hall-10mw.yaml).
+# row-HAC-row pairs.
 name: {name}
 
 site:
@@ -212,20 +213,25 @@ solver:
 def _new(args) -> int:
     """Write a new case spec: the commented starter, or a copy of a worked one.
 
-    `--from hall-10mw` is how a real study starts: the worked case carries a
+    `--from <case>` is how a real study starts: the worked case carries a
     datasheet selection, a mesh that is known to build and comments on every
     line, so the engineer edits numbers rather than inventing a file.
     """
+    from aicfd import cases as case_store
+
     CASES_DIR.mkdir(parents=True, exist_ok=True)
     path = CASES_DIR / f"{args.name}.yaml"
-    if path.exists():
-        print(f"error: {path} already exists", file=sys.stderr)
+    if path.exists() or case_store.exists(args.name, CASES_DIR):
+        print(f"error: a case called '{args.name}' already exists", file=sys.stderr)
         return 1
 
     if args.template:
-        source = CASES_DIR / f"{Path(args.template).stem}.yaml"
-        if not source.exists():
-            available = ", ".join(sorted(p.stem for p in CASES_DIR.glob("*.yaml")))
+        source = _spec_file(Path(args.template).stem)
+        # A copy of a scenario is another scenario of its project: it lands
+        # beside it and shares its geometry (ADR-134).
+        path = source.parent / f"{args.name}.yaml"
+        if not source.is_file():
+            available = ", ".join(sorted(p.stem for p in case_store.every(CASES_DIR)))
             print(
                 f"error: no case named '{args.template}'. Available: {available}",
                 file=sys.stderr,
@@ -266,10 +272,24 @@ def _doctor(_args) -> int:
     return 0
 
 
+def _spec_file(raw: str) -> Path:
+    """A case given as a path, or by its name wherever it sits under cases/
+    (ADR-134): `aicfd run dh04-1mw-19c` as well as the file itself."""
+    from aicfd import cases as case_store
+
+    path = Path(raw)
+    if path.is_file():
+        return path
+    try:
+        return case_store.spec_path(Path(raw).stem if raw.endswith(".yaml") else raw, CASES_DIR)
+    except FileNotFoundError:
+        return path
+
+
 def _build(args) -> int:
     from aicfd import case
 
-    model, solver = load_spec(args.spec)
+    model, solver = load_spec(_spec_file(args.spec))
     out = Path(args.out) if args.out else RUNS_DIR / model.name / "case"
     case.build(model, out, **_build_options(solver))
     print(case.summary(model))
@@ -305,7 +325,7 @@ def _run(args) -> int:
     from aicfd import run as run_module
     from aicfd.run import FoamCommandFailed, FoamNotInstalled, solve
 
-    spec_path = Path(args.spec)
+    spec_path = _spec_file(args.spec)
     if not spec_path.is_file():
         print(f"error: no such spec: {spec_path}", file=sys.stderr)
         return 1
@@ -431,9 +451,10 @@ def _post(args) -> int:
     if not run.exists():
         print(f"error: no run named '{args.name}' under {RUNS_DIR}", file=sys.stderr)
         return 1
-    spec = CASES_DIR / f"{args.name}.yaml"
-    if not spec.exists():
-        print(f"error: no spec at {spec} to read the run with", file=sys.stderr)
+    spec = _spec_file(args.name)
+    if not spec.is_file():
+        print(f"error: no case named '{args.name}' under {CASES_DIR} to read the run with",
+              file=sys.stderr)
         return 1
     import yaml
 
@@ -552,7 +573,9 @@ def _verify(args) -> int:
     print("=" * 72)
     print("3/4  mesh every worked case")
     print("=" * 72)
-    specs = sorted(CASES_DIR.glob("*.yaml"))
+    from aicfd import cases as case_store
+
+    specs = case_store.every(CASES_DIR)
     if not specs:
         print(f"error: no case specs in {CASES_DIR}", file=sys.stderr)
         return 1
@@ -567,7 +590,9 @@ def _verify(args) -> int:
           else "4/4  solve  (skipped; pass --solve to include it)")
     print("=" * 72)
     if args.solve:
-        if _short_solve(CASES_DIR / "pod-fanwall.yaml", args.iterations) != 0:
+        # The suite's own POD: small enough to solve in minutes, and not a
+        # case anybody edits (ADR-056, ADR-134).
+        if _short_solve(TESTS_DIR / "cases" / "pod-fanwall.yaml", args.iterations) != 0:
             print("\nVERIFY FAILED: the physical checks", file=sys.stderr)
             return 1
 
@@ -652,9 +677,11 @@ def _short_solve(spec: Path, iterations: int) -> int:
 
 
 def _newest_case() -> str | None:
+    from aicfd import cases as case_store
+
     if not CASES_DIR.exists():
         return None
-    specs = sorted(CASES_DIR.glob("*.yaml"), key=lambda p: p.stat().st_mtime)
+    specs = sorted(case_store.every(CASES_DIR), key=lambda p: p.stat().st_mtime)
     return specs[-1].stem if specs else None
 
 

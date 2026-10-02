@@ -48,8 +48,6 @@ BEYOND_THE_FORM = {
     "cage.sides",
     "plenum.closed",
     "plenum.mesh_loss_coefficient",
-    "components.floor_tile",
-    "components.gallery_mesh",
     "solver.residual_tolerance",
     "solver.couple",
     # The drawings a case was built from: a list of file + caption pairs,
@@ -258,8 +256,7 @@ class DerivationTest(unittest.TestCase):
         from tests import support
 
         halls = 0
-        for name in support.SHIPPED_CASES:
-            spec = yaml.safe_load((REPO / "cases" / f"{name}.yaml").read_text())
+        for name, spec in support.sweep():
             if "pods" not in spec:
                 continue  # a POD dimensions itself; section 2 says so
             halls += 1
@@ -393,7 +390,7 @@ class TheDerivationEndsWhereTheMeshEndsTest(unittest.TestCase):
 
         from aicfd import model as model_module
 
-        spec = yaml.safe_load((REPO / "cases" / "hall-cage-1mw.yaml").read_text())
+        spec = yaml.safe_load((REPO / "tests" / "cases" / "hall-cage-1mw.yaml").read_text())
         spec["gallery"]["depth"] = depth
         return spec, model_module.build_model(spec), model_module
 

@@ -37,9 +37,7 @@ class EveryPanelReachesTheMesherTest(unittest.TestCase):
         from aicfd import model as model_module
         from tests import support
 
-        for name in support.SHIPPED_CASES:
-            spec = yaml.safe_load(
-                (support.REPO / "cases" / f"{name}.yaml").read_text())
+        for name, spec in support.sweep():
             for aisle in ("hot", "cold"):
                 trial = copy.deepcopy(spec)
                 trial.setdefault("containment", {})["aisle"] = aisle

@@ -1,12 +1,9 @@
 # AICFD case -- geometry from the STL beside it; this file carries only what a
-# drawing cannot say. Written by aicfd-hall-from-dwg; edit answers.yaml and
-# re-run rather than editing this file.
-#
-# THE REFERENCE EXAMPLE of a hall read from a drawing with a cage and a raised
-# floor: 1 MW, 171 cabinets, 14 downflow DX units, supply setpoint 19 degC.
-# Solved coupled on this mesh to 12 of 12 checks (ADR-131, ADR-133).
-name: dh04-1mw-19c
-geometry: {file: dh04-1mw.stl, source: 'LAYOUT_FTZ01_24Sep26_1.dwg, DATA HALL 04,
+# drawing cannot say. Written by aicfd-hall-from-dwg. The room is the drawing's
+# and is changed by importing it again; everything below is edited here or on
+# the page, one scenario per file (ADR-134).
+name: dh04-1mw
+geometry: {file: geometry.stl, source: 'LAYOUT_FTZ01_24Sep26_1.dwg, DATA HALL 04,
     human-revised layout; dh04_treated.dxf sha256 dd1832ab269a6f8d'}
 site: {altitude_m: 0.0}
 racks:
@@ -27,7 +24,7 @@ fanwall:
   power_kw: 7.5
   static_pressure_pa: 50
   control: team
-  supply_temp_c: 19.0   # study: supply setpoint lowered from 22 to 19 degC
+  supply_temp_c: 22.0
   out_of_service: []
 components: {cage: cage-mesh-13, ceiling_return: ceiling-return-600-open, floor_tile: floor-tile-600,
   gallery_mesh: gallery-mesh-13, supply_grille: supply-grille-2000}
@@ -37,10 +34,10 @@ mesh:
 solver: {max_iterations: 2000, residual_tolerance: 0.0001, sensor_interval: 100, warm_start: true,
   processors: 4}
 figures:
-- {file: dh04-1mw.png, caption: 'The layout as read from the drawing: cabinets with
+- {file: figures/dh04-1mw.png, caption: 'The layout as read from the drawing: cabinets with
     their loads and fronts, the containment, the tiles, the return grilles, the cage
     and the cooling units.'}
-- {file: dh04-1mw.3d.png, caption: 'The 3D model built from the drawing, false ceiling
+- {file: figures/dh04-1mw.3d.png, caption: 'The 3D model built from the drawing, false ceiling
     removed.'}
-- {file: dh04-1mw.sections.png, caption: 'Sections through the rows, a contained aisle
+- {file: figures/dh04-1mw.sections.png, caption: 'Sections through the rows, a contained aisle
     and the supply path: the heights and closures.'}

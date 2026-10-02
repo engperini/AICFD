@@ -13,7 +13,7 @@ services:
     # time, and on a fresh clone that is whatever order the checkout happened
     # to write the files in: `docker compose up` would open one case on one
     # machine and another on the next.
-    command: python3 -m aicfd view --case hall-double-gallery --port 8000 --no-browser
+    command: python3 -m aicfd view --case dh04-1mw-19c --port 8000 --no-browser
     volumes:
       # The clone IS the application. The image carries the slow, rarely
       # changing half -- OpenFOAM and the Python dependencies -- and everything

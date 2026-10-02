@@ -744,6 +744,9 @@ class ImpossibleChangeTest(unittest.TestCase):
 class PlenumCardTest(unittest.TestCase):
     """The card a reader meets before deciding anything (ADR-059)."""
 
+    def setUp(self):
+        support.sandbox(self)
+
     def test_the_house_standard_reaches_the_page(self):
         """An empty box says neither what the number would be nor that there
         is one, so the reader has to guess whether leaving it empty means
@@ -855,13 +858,37 @@ class ApplyKeepsTheFileTest(unittest.TestCase):
         dump rather than refusing or guessing."""
         from aicfd import yamledit
 
-        before = {"a": {"b": 1}, "gone": 2}
-        self.assertIsNone(yamledit.rewrite("a:\n  b: 1\ngone: 2\n",
-                                           before, {"a": {"b": 1}}))
+        # a whole block going away is not a line the editor can take out
+        before = {"a": {"b": 1}, "keep": 2}
+        self.assertIsNone(yamledit.rewrite("a:\n  b: 1\nkeep: 2\n",
+                                           before, {"keep": 2}))
         spec = server.load_spec(self.CASE)
         spec.pop("solver")
         server.save_spec(self.CASE, spec)
         self.assertNotIn("solver", server.load_spec(self.CASE))
+
+
+class AnEmptiedFieldTest(unittest.TestCase):
+    """A box emptied on the page is the standard again, and the file keeps
+    its comments while the line goes (ADR-134)."""
+
+    def test_the_line_goes_and_its_neighbours_stay(self):
+        from aicfd import yamledit
+
+        text = "fan:\n  capacity_kw: 100   # from the datasheet\n  airflow: 2   # kept\n"
+        before = {"fan": {"capacity_kw": 100, "airflow": 2}}
+        out = yamledit.rewrite(text, before, {"fan": {"airflow": 2}})
+        self.assertEqual(out, "fan:\n  airflow: 2   # kept\n")
+
+    def test_the_server_takes_the_key_out(self):
+        spec = {"fanwall": {"capacity_kw": 100.0, "airflow_m3h": 2000}}
+        spec, rejected = server.apply_changes(spec, {"fan_capacity_kw": ""})
+        self.assertEqual(rejected, [])
+        self.assertEqual(spec, {"fanwall": {"airflow_m3h": 2000}})
+
+    def test_the_page_sends_an_emptied_box(self):
+        js = (server.REPO_ROOT / "web" / "app.js").read_text()
+        self.assertIn("EMPTIED, NOT UNTOUCHED", js)
 
 
 class ThePageSolvesTheSameWayTheCommandLineDoesTest(unittest.TestCase):

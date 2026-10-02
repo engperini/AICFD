@@ -41,16 +41,10 @@ CASES = REPO / "cases"
 #: three times now (ADR-056, ADR-061, ADR-077). So a guard names what it
 #: guards, and this is the list.
 SHIPPED_CASES = (
-    "hall-10mw",
-    "hall-cage-1mw",
-    "hall-double-gallery",
-    "hall-hotrow-independent",
-    "hall-hotrow-team",
-    "pod-fanwall",
-    "pod-mesh",
-    "pod-plenum",
-    "pod-raised-floor",
-    "pod-uneven-row",
+    # Halls read from drawings, one folder per project (ADR-131, ADR-134).
+    "dh04-1mw",
+    "dh04-1mw-19c",
+    "vin03-dh03-15mw",
 )
 
 #: Cases the tests own: what every other test reads, and what a sandbox is
@@ -99,3 +93,33 @@ def sandbox(test: unittest.TestCase) -> Path:
     server.CASES_DIR = copy
     test.addCleanup(lambda: setattr(server, "CASES_DIR", original))
     return copy
+
+
+def shipped_path(name: str) -> Path:
+    """The file a shipped case is written in, inside its project's folder
+    (ADR-134)."""
+    from aicfd import cases as case_store
+
+    return case_store.spec_path(name, CASES)
+
+
+def shipped_spec(name: str) -> dict:
+    """A shipped case as a spec, with `_base` set so its STL is found."""
+    from aicfd import cases as case_store
+
+    return case_store.load(name, CASES)
+
+
+def sweep():
+    """Every case a sweep should hold to a promise: the halls this repository
+    ships, read from their drawings, and every parametric case the suite owns.
+    The parametric generator lost its worked cases from `cases/` when the
+    working folder became the projects (ADR-134); its fixtures carry the same
+    rooms, so the sweeps still walk them."""
+    for path in sorted(FIXTURES.glob("*.yaml")):
+        yield path.stem, yaml.safe_load(path.read_text())
+    for name in SHIPPED_CASES:
+        try:
+            yield name, shipped_spec(name)
+        except FileNotFoundError:
+            continue

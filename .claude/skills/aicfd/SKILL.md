@@ -24,10 +24,10 @@ current (ADR-090).
 ## The loop
 
 ```
-aicfd new NAME [--from CASE] -> cases/NAME.yaml  (blank POD, or a copy of a worked case)
-aicfd build cases/NAME.yaml -> runs/NAME/case    (generate only, no solve)
-aicfd run cases/NAME.yaml   -> runs/NAME         (generate, solve, sample, export)
-aicfd run cases/NAME.yaml --resume               # an interrupted coupled run: continue from its newest field (ADR-132)
+aicfd new NAME [--from CASE] -> cases/NAME.yaml, or beside CASE in its project  (ADR-134)
+aicfd build NAME            -> runs/NAME/case    (generate only, no solve; a path works too)
+aicfd run NAME              -> runs/NAME         (generate, solve, sample, export)
+aicfd run NAME --resume                          # an interrupted coupled run: continue from its newest field (ADR-132)
 aicfd post NAME             -> results/NAME/{viewer.json,fields.bin,report.md}
 aicfd view --case NAME      -> http://localhost:8000/web/?case=NAME
 aicfd report NAME           -> reports/NAME/NAME-cfd-report.docx  (the Word deliverable)
@@ -49,11 +49,11 @@ call on a long solve, and never poll in a tight loop.
 Both are the same geometry code (ADR-022); the spec's shape picks the layout.
 
 - **A POD** — `racks.count` and no `pods:`. One row, a contained hot aisle
-  against the far wall, one fan wall. `cases/pod-fanwall.yaml`.
+  against the far wall, one fan wall. `tests/cases/pod-fanwall.yaml`.
 - **A data hall** — `pods: <n>` and `racks.per_row`. That many row-HAC-row
   pairs across the hall, a cold aisle between pairs and a perimeter aisle round
   the edge, and `fanwall.count` units spread along the gallery wall.
-  `cases/hall-10mw.yaml`.
+  `tests/cases/hall.yaml`.
 
 A long hall takes two more inputs, both optional (ADR-027):
 `gallery.sides: 2` puts a mechanical gallery at each end and splits
@@ -61,11 +61,20 @@ A long hall takes two more inputs, both optional (ADR-027):
 separated by `aisles.transverse`, each its own contained volume, each fed by
 the gallery at its end. The **return plenum stays single** and opens into both
 galleries — say so when explaining the layout, because it is the reason the
-arrangement is used. `cases/hall-double-gallery.yaml` is the worked case.
+arrangement is used. `tests/cases/hall-double-gallery.yaml` is the worked case.
 
-Start from the worked case that matches and change numbers:
-`aicfd new <name> --from hall-10mw` copies it with every comment and datasheet
-reference intact. Do not write a spec from memory.
+- **A hall read from a drawing** — `geometry.file` names the STL beside it
+  (ADR-131). `cases/` holds these as projects (ADR-134): `cases/<project>/`
+  with `geometry.stl`, `figures/`, `source/` and one YAML per scenario —
+  `dh04-1mw` (1 MW, cage, raised floor) and `vin03-dh03-15mw` (15 MW, fan
+  walls into a supply plenum). The room is the drawing's: a scenario changes
+  loads, units, failed units, setpoint, surfaces, supply grille size, mesh and
+  solver, never the geometry. A new geometry comes from the
+  aicfd-hall-from-dwg skill.
+
+Start a scenario from the one that matches and change numbers:
+`aicfd new <name> --from dh04-1mw-19c` copies it beside the original, with
+every comment intact. Do not write a spec from memory.
 
 The page is the same template: every field of the spec, grouped by section,
 showing only what the loaded spec carries. Point the user at it

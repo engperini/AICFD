@@ -329,6 +329,26 @@ def _insert_at(lines: list[str], parent: list[str]) -> int | None:
     return end
 
 
+def remove_scalar(lines: list[str], path: list[str]) -> bool:
+    """Delete one block-style ``key: value`` line, comment and all. False when
+    the key is not on a line of its own -- inside a flow mapping, or opening a
+    block of its own -- which this does not try to edit (ADR-134)."""
+    index = find(lines, path)
+    if index is None:
+        return False
+    line = lines[index]
+    _head, _, rest = line.partition(":")
+    value = rest.split("#", 1)[0].strip()
+    if not value or value[0] in "{[>|&*":
+        return False
+    depth = len(line) - len(line.lstrip())
+    following = lines[index + 1] if index + 1 < len(lines) else ""
+    if following.strip() and len(following) - len(following.lstrip()) > depth:
+        return False
+    del lines[index]
+    return True
+
+
 def rewrite(text: str, before: dict, after: dict) -> str | None:
     """``text`` with the values that changed between the two specs, or None.
 
@@ -345,9 +365,13 @@ def rewrite(text: str, before: dict, after: dict) -> str | None:
     """
     old = dict(_leaves(before))
     new = dict(_leaves(after))
-    if set(old) - set(new):
-        return None  # a key went away; not something this can express
     lines = text.split("\n")
+    # A key that went away -- a field emptied on the page, so the case falls
+    # back to the standard -- is its line taken out. Anything that is not a
+    # line of its own still falls back to the dump (ADR-134).
+    for path in sorted(set(old) - set(new), key=len, reverse=True):
+        if not remove_scalar(lines, list(path)):
+            return None
     for path, value in new.items():
         if path in old and old[path] == value:
             continue

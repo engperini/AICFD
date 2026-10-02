@@ -1033,9 +1033,7 @@ class EveryPlaneOnTheGridTest(unittest.TestCase):
         return abs(value / cell - round(value / cell)) < 1e-6
 
     def specs(self):
-        for name in support.SHIPPED_CASES:
-            yield name, yaml.safe_load(
-                (support.REPO / "cases" / f"{name}.yaml").read_text())
+        yield from support.sweep()
 
     def test_every_panel_plane_of_every_shipped_case_lands_on_a_cell_face(self):
         for name, spec in self.specs():
@@ -1139,10 +1137,9 @@ class FloorPlatesThatWouldOverlapTest(unittest.TestCase):
         self.assertTrue(plates)
 
     def test_no_shipped_case_trips_it(self):
-        for name in support.SHIPPED_CASES:
+        for name, spec in support.sweep():
             with self.subTest(case=name):
-                m.build_model(yaml.safe_load(
-                    (support.REPO / "cases" / f"{name}.yaml").read_text()))
+                m.build_model(spec)
 
 
 class TheUnitCarriesItsReturnFaceTest(unittest.TestCase):

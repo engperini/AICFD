@@ -1,10 +1,11 @@
 # AICFD case -- geometry from the STL beside it; this file carries only what a
-# drawing cannot say. Written by aicfd-hall-from-dwg; edit answers.yaml and
-# re-run rather than editing this file.
+# drawing cannot say. Written by aicfd-hall-from-dwg. The room is the drawing's
+# and is changed by importing it again; everything below is edited here or on
+# the page, one scenario per file (ADR-134).
 # LIQUID-COOLED HALL: racks.loads carry the AIR share of each cabinet's IT load
 # (IT 15000 kW, to the air 894 kW); the rest leaves in the coolant.
 name: vin03-dh03-15mw
-geometry: {file: vin03-dh03-15mw.stl, source: 'VIN03-CN-ASC-F0-MEC00-PL-0001-R02.dwg,
+geometry: {file: geometry.stl, source: 'VIN03-CN-ASC-F0-MEC00-PL-0001-R02.dwg,
     DATA HALL 03, liquid cooling POD layout, Sep 2026; BoD R03; PL-0001.dwg sha256
     bbae31a5594f4c6b'}
 site: {altitude_m: 0.0}
@@ -61,10 +62,10 @@ mesh:
 solver: {max_iterations: 2000, residual_tolerance: 0.0001, sensor_interval: 100, warm_start: true,
   processors: 4}
 figures:
-- {file: vin03-dh03-15mw.png, caption: 'The layout as read from the drawing: cabinets
+- {file: figures/vin03-dh03-15mw.png, caption: 'The layout as read from the drawing: cabinets
     with their loads and fronts, the containment, the tiles, the return grilles, the
     cage and the cooling units.'}
-- {file: vin03-dh03-15mw.3d.png, caption: 'The 3D model built from the drawing, false
+- {file: figures/vin03-dh03-15mw.3d.png, caption: 'The 3D model built from the drawing, false
     ceiling removed.'}
-- {file: vin03-dh03-15mw.sections.png, caption: 'Sections through the rows, a contained
+- {file: figures/vin03-dh03-15mw.sections.png, caption: 'Sections through the rows, a contained
     aisle and the supply path: the heights and closures.'}

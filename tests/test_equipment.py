@@ -1537,9 +1537,7 @@ class UnitPickerTest(unittest.TestCase):
     def specs(self):
         from tests import support
 
-        for name in support.SHIPPED_CASES:
-            yield name, yaml.safe_load(
-                (support.REPO / "cases" / f"{name}.yaml").read_text())
+        yield from support.sweep()
 
     def test_the_picker_offers_every_unit_in_the_library(self):
         from aicfd.model import equipment_in_use
@@ -1598,7 +1596,7 @@ class UnitPickerTest(unittest.TestCase):
     def test_the_field_accepts_a_unit_in_the_library_and_refuses_one_that_is_not(self):
         spec = dict(yaml.safe_load(
             (Path(__file__).resolve().parents[1]
-             / "cases" / "hall-double-gallery.yaml").read_text()))
+             / "tests" / "cases" / "hall-double-gallery.yaml").read_text()))
         other = next(m for m in equipment.available()
                      if m != spec["fanwall"]["model"]
                      and equipment.load(m).arrangement == "fanwall"
@@ -1622,7 +1620,7 @@ class UnitPickerTest(unittest.TestCase):
         back to that rather than be ignored."""
         spec = yaml.safe_load(
             (Path(__file__).resolve().parents[1]
-             / "cases" / "hall-double-gallery.yaml").read_text())
+             / "tests" / "cases" / "hall-double-gallery.yaml").read_text())
         changed, rejected = server.apply_changes(copy.deepcopy(spec),
                                                  {"fan_model": ""})
         self.assertEqual(rejected, [])
@@ -1653,7 +1651,7 @@ class ChangingTheUnitTest(unittest.TestCase):
     def hall(self) -> dict:
         spec = yaml.safe_load(
             (Path(__file__).resolve().parents[1]
-             / "cases" / "hall-double-gallery.yaml").read_text())
+             / "tests" / "cases" / "hall-double-gallery.yaml").read_text())
         spec["floor"] = {"enabled": True, "height": 1.0, "tiles_per_rack": 1}
         spec.pop("plenum", None)
         return spec

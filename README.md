@@ -37,7 +37,7 @@ Two pages, and they take the case differently:
 
 | | address | |
 |---|---|---|
-| **model** | `http://localhost:8000/web/` | the spec and the geometry it implies, before any solve. The case is the one the server was started with, because this page asks the server for it — `docker compose up` opens `hall-double-gallery`; change the line in `docker-compose.yml`, or run `aicfd view --case <name>`. |
+| **model** | `http://localhost:8000/web/` | the spec and the geometry it implies, before any solve. The case is the one the server was started with, because this page asks the server for it — `docker compose up` opens `dh04-1mw-19c`; change the line in `docker-compose.yml`, or run `aicfd view --case <name>`. |
 | **results** | `http://localhost:8000/web/results.html?case=hall-double-gallery` | a solved result. This page is static: it resolves `?case=` against `results/` first and `reference/` second, so any name with an export works — `hall-double-gallery`, `hall-10mw`, `pod-fanwall`. |
 
 **Your results shadow the shipped ones.** The three worked results are tracked
@@ -64,8 +64,8 @@ clone, so anything you run is on your disk afterwards:
 
 ```bash
 docker compose run --rm aicfd python3 -m aicfd verify
-docker compose run --rm aicfd python3 -m aicfd run cases/pod-fanwall.yaml
-docker compose run --rm aicfd python3 -m aicfd report pod-fanwall
+docker compose run --rm aicfd python3 -m aicfd run dh04-1mw-19c
+docker compose run --rm aicfd python3 -m aicfd report dh04-1mw-19c
 ```
 
 **Ubuntu or WSL2 — native.** The reference environment; the image is this,
@@ -83,7 +83,7 @@ python3 -m aicfd verify --solve   # the above, plus a short solve and its checks
 `verify` is the audit. It runs, in order: the unit tests, the OpenFOAM
 install check, a full mesh of every case in `cases/` (including the internal
 surgery that builds the containment and the fan walls), and — with `--solve` —
-a short run of the worked POD that has to pass all eleven physical checks.
+a short run of the suite's own POD (`tests/cases/pod-fanwall.yaml`) that has to pass all eleven physical checks.
 Anything that fails names itself and stops.
 
 **What runs with no OpenFOAM at all**, natively on macOS, straight after the
@@ -100,10 +100,27 @@ python3 -m aicfd report hall-double-gallery        # the Word document
 ## 2. Run a case
 
 ```bash
-python3 -m aicfd run cases/pod-fanwall.yaml    # one POD, 8 min on one core
-python3 -m aicfd view --case pod-fanwall       # the page, at localhost:8000
-python3 -m aicfd report pod-fanwall            # the Word report, for circulation
-python3 -m aicfd stop pod-fanwall              # stop a run without losing it
+python3 -m aicfd run dh04-1mw-19c              # a case by its name, wherever it sits
+python3 -m aicfd view --case dh04-1mw-19c      # the page, at localhost:8000
+python3 -m aicfd report dh04-1mw-19c           # the Word report, for circulation
+python3 -m aicfd stop dh04-1mw-19c             # stop a run without losing it
+python3 -m aicfd run dh04-1mw-19c --resume     # continue a coupled run that was cut off
+```
+
+**`cases/` is your projects (ADR-134).** A hall read from a drawing is a folder:
+its `geometry.stl`, the `figures/` the report opens with, a `source/` folder
+with what the converter was told, and one YAML per scenario. The room is the
+drawing's; a scenario changes everything else — loads, units and their
+curves, which units have failed, the supply setpoint, the surfaces the air
+crosses, the supply grilles' size, the mesh and the solver — on the page or in
+the file. A parametric case is still a single file in `cases/`.
+
+```
+cases/
+  dh04-1mw/                  1 MW, 171 cabinets, a cage, a raised floor, 14 DX units
+    geometry.stl  figures/  dh04-1mw.yaml (22 °C)  dh04-1mw-19c.yaml (19 °C)
+  vin03-dh03-15mw/           15 MW, fan walls into a supply plenum
+    geometry.stl  figures/  vin03-dh03-15mw.yaml
 ```
 
 **Stopping a run.** `aicfd stop`, and the Stop button on the page, ask the
@@ -113,8 +130,9 @@ same eleven checks, so what you get is a *result*: partial, and honest about it.
 A run cut short before it settled fails `settled`; one stopped after it settled
 passes all eleven, which is how `results/pod-fanwall` was produced.
 
-The three worked cases in `cases/` are the reference results, and each is
-documented end to end in `docs/experiments/`:
+The three worked parametric results are tracked under `reference/`, their
+cases are the suite's own copies in `tests/cases/`, and each is documented end
+to end in `docs/experiments/`:
 
 | Case | What it is | Mesh | Cost |
 |---|---|---|---|
@@ -122,12 +140,13 @@ documented end to end in `docs/experiments/`:
 | `hall-10mw.yaml` | 16 PODs, 768 racks, 9,98 MW, 35 fan walls | 329 280 cells | 11 min, 4 cores |
 | `hall-double-gallery.yaml` | 5 PODs, 440 racks, 5,1 MW, a gallery at each end and rows in two blocks | 275 400 cells | settled in 7 min, 4 cores |
 
-Start a study from one of them rather than from a blank file:
+Start a scenario from one that exists rather than from a blank file — the
+copy lands in the same project and shares its geometry:
 
 ```bash
-python3 -m aicfd new my-hall --from hall-10mw   # a copy, comments and all
-python3 -m aicfd new my-pod                     # the commented blank POD
-python3 -m aicfd view --case my-hall            # fill it in on the page
+python3 -m aicfd new dh04-crac01-off --from dh04-1mw-19c   # a copy, comments and all
+python3 -m aicfd new my-pod                                # the commented blank POD
+python3 -m aicfd view --case dh04-crac01-off               # change it on the page
 ```
 
 ## 3. What the tool actually does
@@ -172,8 +191,8 @@ its component states, and any of them can be shut. The room is then fed by the
 grilles rather than by the units, which is what makes the supply even along
 the wall and aimed at the aisles. The hall is longer by the depth of the
 cavity, so the clearances a case asks for are unchanged (ADR-058).
-`cases/pod-plenum.yaml` is `pod-fanwall` with that one change, for comparing
-the two.
+`tests/cases/pod-plenum.yaml` is `pod-fanwall` with that one change, for
+comparing the two.
 
 The velocity through the supply grilles — the flow over their gross face — is
 reported among the derived numbers beside the fan wall's own, and nothing
@@ -189,14 +208,14 @@ way and closes the hall side with the same 13 x 13 mm woven mesh used on the
 return, open over its whole face, rather than with a wall with grilles in it.
 It aims nothing — where each unit points is still where its air goes — and it
 is a wall as far as clearance goes, so the room is the room the plenum gives.
-Only a case with no plenum at all is shorter (ADR-060). `cases/pod-mesh.yaml`
-is that case, against `cases/pod-plenum.yaml`'s grilles.
+Only a case with no plenum at all is shorter (ADR-060). `tests/cases/pod-mesh.yaml`
+is that case, against `tests/cases/pod-plenum.yaml`'s grilles.
 
 Editing a case from the page keeps the file: only the values that changed are
 rewritten, comments and layout and all, and an Apply that changes nothing
 leaves the file byte for byte as it was (ADR-061).
 
-Nothing in `cases/*.yaml` is an OpenFOAM dictionary. The mesh divisions, the
+Nothing in a case file is an OpenFOAM dictionary. The mesh divisions, the
 porosity coefficients, the heat sources, the boundary conditions and the
 baffle surgery are all derived from engineering numbers, and the generated
 case is a build artifact that is never edited by hand (ADR-004).

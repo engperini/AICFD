@@ -22,6 +22,7 @@ import unittest
 
 import yaml
 
+from aicfd import cases as case_store
 from aicfd import model as m
 from tests import support
 
@@ -36,10 +37,11 @@ class WorkedCasesTest(unittest.TestCase):
         """The ten cases the repository GUARANTEES. A failure here is the
         repository's, and it stops a release."""
         for name in support.SHIPPED_CASES:
-            path = support.CASES / f"{name}.yaml"
-            with self.subTest(case=path.name):
-                if not path.is_file():
-                    self.skipTest(f"cases/{path.name} is not in this clone")
+            with self.subTest(case=name):
+                try:
+                    path = case_store.spec_path(name, support.CASES)
+                except FileNotFoundError:
+                    self.skipTest(f"case {name} is not in this clone")
                 self.builds(path, shipped=True)
 
     def test_a_case_of_your_own_is_reported_and_does_not_stop_the_build(self):
@@ -52,15 +54,14 @@ class WorkedCasesTest(unittest.TestCase):
         theirs (ADR-056): a case of their own that does not build is SAID,
         once, and skipped (ADR-108).
         """
-        mine = {f"{name}.yaml" for name in support.SHIPPED_CASES}
-        theirs = [p for p in sorted(support.CASES.glob("*.yaml"))
-                  if p.name not in mine]
+        mine = set(support.SHIPPED_CASES)
+        theirs = [p for p in case_store.every(support.CASES) if p.stem not in mine]
         if not theirs:
             self.skipTest("no cases of your own in this clone")
         refused = []
         for path in theirs:
             try:
-                m.build_model(yaml.safe_load(path.read_text()))
+                m.build_model(case_store.load(path.stem, support.CASES))
             except Exception as why:  # noqa: BLE001 -- reported, not handled
                 refused.append(f"cases/{path.name}: {why}")
         if refused:
@@ -74,7 +75,7 @@ class WorkedCasesTest(unittest.TestCase):
         except yaml.YAMLError as broken:
             self.fail(f"cases/{path.name} is not valid YAML: {broken}")
         try:
-            m.build_model(spec)
+            m.build_model({**spec, "_base": str(path.resolve().parent)})
         except Exception as refused:  # noqa: BLE001 -- reported, not handled
             # `from None`: the reader needs the sentence, not the generator's
             # stack.

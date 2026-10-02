@@ -5732,3 +5732,43 @@ full precision, and it does not care where the pressure level sits.
 
 **Cost accepted.** None in the physics; a surface modelled some other way
 than as a porous baffle keeps the old, coarser measurement.
+
+---
+
+## ADR-134 — A hall read from a drawing is a project: its geometry is fixed, its scenarios are edited
+
+**Decision.** `cases/` holds projects. A hall read from a drawing is a folder
+— `geometry.stl`, `figures/`, `source/` (the package's manifest and the
+converter's answers) and one YAML per scenario — and a scenario is still named
+by one word, unique across the folder, that names its run, its export and its
+report as before. A parametric case stays a file on its own. `aicfd.cases`
+finds a case by name wherever it sits, one level down, and sets `_base` so the
+geometry beside it is found; `_`-keys are the process's own and are never
+written back or recorded.
+
+On the page, a case whose spec names `geometry.file` is **imported**. Its room
+— walls, rows, cabinets and their widths, units and where they stand, plates,
+grilles, cage, plenum, heights — is the drawing's and is not offered: the
+fields that would change it are not sent, and the server refuses them by name
+(`IMPORTED_EDITABLE`). Everything the drawing cannot say stays editable: the
+standard and per-cabinet loads, CFM per kW, the unit and its datasheet figures
+and curve, the supply setpoint and team control, which units have failed, the
+surfaces the air crosses, the supply grilles' size, the mesh and the solver.
+A different KIND of room — a raised floor into fan walls — is a different
+drawing.
+
+**Why.** The two halls read from drawings were edited by hand: a 19 °C
+scenario was a copied file, a failed unit would have been another. The page
+offered every parametric field on them instead, and the STL silently won over
+all of them, so a reader could type 3 units over a drawing of 14 and be shown
+14 with nothing said. Apply also saved the spec the build had been handed —
+which the geometry reader fills with what the drawing decided — so one press
+wrote the floor, the containment and the unit count into the sidecar as if
+somebody had typed them, and stripped its comments on the way. And the racks
+page could not open an imported case at all: it reads a typical row the
+drawing does not have.
+
+**Cost accepted.** The parametric worked cases left `cases/`; the generator
+is still swept against the suite's own copies of them (`tests/cases/`), and
+the worked results under `reference/` stay as evidence. A scenario name has to
+be unique across every project, because it is a run directory.
