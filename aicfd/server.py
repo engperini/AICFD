@@ -384,24 +384,26 @@ def _admit(name: str, text: str, folder: Path | None = None) -> dict:
 
 
 def new_case(name: str, template: str | None = None) -> dict:
-    """A case from the starter, or copied from one that already exists.
+    """A case copied from one that already exists.
 
     A copy keeps every comment and datasheet reference, exactly as
     `aicfd new --from` does: the note beside a figure is half of why the
-    figure is what it is (ADR-061).
+    figure is what it is (ADR-061). There is no blank starter: the POD it was
+    is obsolete, and a room is read from a drawing (Import package), copied,
+    or pasted in whole (ADR-134).
     """
-    from aicfd.cli import STARTER_SPEC
-
     name = _case_name(name)
-    if template:
-        try:
-            source = spec_path(_case_name(template))
-        except FileNotFoundError:
-            raise ValueError(f"no case named '{template}' to copy") from None
-        # A copy of a scenario is another scenario of the same project: it
-        # lands beside it and shares its geometry and figures (ADR-134).
-        return _admit(name, source.read_text(), source.parent)
-    return _admit(name, STARTER_SPEC.format(name=name))
+    if not template:
+        raise ValueError(
+            "choose a case to copy. A new drawn hall comes in with Import "
+            "package; a parametric case can be pasted in whole below")
+    try:
+        source = spec_path(_case_name(template))
+    except FileNotFoundError:
+        raise ValueError(f"no case named '{template}' to copy") from None
+    # A copy of a scenario is another scenario of the same project: it lands
+    # beside it and shares its geometry and figures (ADR-134).
+    return _admit(name, source.read_text(), source.parent)
 
 
 def import_case(name: str, text: str) -> dict:

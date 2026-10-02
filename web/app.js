@@ -1584,7 +1584,7 @@ async function loadCaseMenu() {
     if (download && current) {
       download.href = withCase('/api/cases/package');
     }
-    from.innerHTML = '<option value="">from the starter</option>'
+    from.innerHTML = '<option value="">choose a case to copy</option>'
       + payload.cases.map((c) => `<option value="${c.case}">copy ${c.case}</option>`)
         .join('');
   } catch (e) {

@@ -156,7 +156,6 @@ copy lands in the same project and shares its geometry:
 
 ```bash
 python3 -m aicfd new dh04-crac01-off --from dh04-1mw-19c   # a copy, comments and all
-python3 -m aicfd new my-pod                                # the commented blank POD
 python3 -m aicfd view --case dh04-crac01-off               # change it on the page
 ```
 

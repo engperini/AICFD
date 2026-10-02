@@ -87,6 +87,15 @@ class TheFolderTest(ProjectTest):
         raw["_base"] = str(self.project)
         self.assertEqual(M.wanted_arrangement(raw), "downflow")
 
+    def test_there_is_no_blank_starter_to_create_from(self):
+        """The starter POD is obsolete (ADR-134): a case is copied, imported
+        or pasted, never conjured."""
+        with self.assertRaises(ValueError) as caught:
+            server.new_case("zz-blank", None)
+        self.assertIn("choose a case to copy", str(caught.exception))
+        from aicfd import cli
+        self.assertFalse(hasattr(cli, "STARTER_SPEC"))
+
     def test_a_copy_of_a_scenario_lands_beside_it(self):
         server.new_case("drawn-19c", "drawn-base")
         self.assertTrue((self.project / "drawn-19c.yaml").is_file())

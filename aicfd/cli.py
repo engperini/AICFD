@@ -1,6 +1,6 @@
 """Command line interface -- the whole tool, and the only way it is driven.
 
-    aicfd new <name>                 write a starter case spec into cases/
+    aicfd new <name> --from <case>   a copy of an existing case, beside it
     aicfd doctor                     check that OpenFOAM is usable here
     aicfd build <spec.yaml>          generate the OpenFOAM case, solve nothing
     aicfd run <spec.yaml>            generate, solve, sample, post-process
@@ -57,13 +57,14 @@ def main(argv: list[str] | None = None) -> int:
     parser = argparse.ArgumentParser(prog="aicfd", description=__doc__)
     sub = parser.add_subparsers(dest="command", required=True)
 
-    new_parser = sub.add_parser("new", help="write a starter case spec")
+    new_parser = sub.add_parser("new", help="copy an existing case under a new name")
     new_parser.add_argument("name", help="case name; becomes cases/<name>.yaml")
     new_parser.add_argument(
         "--from",
         dest="template",
-        help="start from an existing case (e.g. dh04-1mw) instead of the blank POD; "
-             "a scenario's copy lands in its project's folder",
+        required=True,
+        help="the case to copy (e.g. dh04-1mw-19c); a scenario's copy lands in its "
+             "project's folder. A new drawn hall comes in with 'aicfd import'",
     )
 
     import_parser = sub.add_parser(
@@ -164,69 +165,10 @@ def load_spec(path: str | Path):
     return model, spec.get("solver", {})
 
 
-STARTER_SPEC = """# AICFD case spec. Everything here is in engineering units; the OpenFOAM
-# side (mesh, baffles, porosity, heat sources, boundary conditions) is derived
-# from it and never edited by hand (ADR-004).
-#
-# This starter is a single POD: one row of racks, a contained hot aisle, a
-# ceiling-plenum return and one fan wall. Add `pods: <n>` and swap
-# `racks.count` for `racks.per_row` to make it a data hall of that many
-# row-HAC-row pairs.
-name: {name}
-
-site:
-  altitude_m: 0               # the air weighs what it weighs here (ADR-023)
-
-gallery:
-  depth: 3.0                  # mechanical gallery, no false ceiling
-
-hall:
-  size: [6.0, 4.2, 8.0]       # length x, width y, floor to slab z
-  ceiling: 6.5                # false ceiling; above it, the return plenum
-
-aisles:
-  cold: 1.8
-  hot: 1.2                    # contained, a chimney up to the ceiling
-
-racks:
-  count: 3
-  load_kw: 6.0
-  size: [0.6, 1.2, 2.2]       # front(x) x depth(y) x height(z)
-  offset_x: 2.0               # from the gallery wall
-  airflow_cfm_per_kw: 158     # what a rack draws per kW (ADR-023)
-
-fanwall:
-  airflow_m3h: 5000           # PER UNIT, as a datasheet gives it
-  supply_temp_c: 20.0
-  width: 1.8
-  height: 4.0
-  static_pressure_pa: 100     # external static pressure at the rated flow
-  # capacity_kw: 30.0         # net sensible per unit; add it and the sizing
-  # power_kw: 2.0             # checks appear on the page and in the report
-
-grilles:
-  size: 0.60
-  count: 3
-  free_area: 0.80
-  loss_coefficient: 2.4       # from the grille datasheet (ADR-020)
-
-containment:
-  enabled: true
-
-mesh:
-  cell_size: [0.20, 0.20, 0.10]   # per axis (ADR-021)
-
-solver:
-  max_iterations: 2000        # a cap, not a target
-  residual_tolerance: 1.0e-4
-  sensor_interval: 100        # how often the run reports
-  warm_start: true            # seed the loop's topology (ADR-019)
-  processors: 1               # above 1: decomposePar + mpirun
-"""
-
-
 def _new(args) -> int:
-    """Write a new case spec: the commented starter, or a copy of a worked one.
+    """A new case as a copy of one that exists, comments and all. There is no
+    blank starter any more: the worked POD it was is obsolete, and a room is
+    either read from a drawing (`aicfd import`) or copied (ADR-134).
 
     `--from <case>` is how a real study starts: the worked case carries a
     datasheet selection, a mesh that is known to build and comments on every
@@ -257,9 +199,6 @@ def _new(args) -> int:
         text = re.sub(r"^name:.*$", f"name: {args.name}", text, count=1, flags=re.M)
         path.write_text(text)
         print(f"Wrote {path}, copied from {source.name}")
-    else:
-        path.write_text(STARTER_SPEC.format(name=args.name))
-        print(f"Wrote {path}")
     print(f"Edit it, then:  aicfd view --case {args.name}    (or: aicfd run {path})")
     return 0
 
