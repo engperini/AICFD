@@ -12,7 +12,7 @@ from, and a case names it:
     racks:
       type: generic-600-1200-45u     # the standard cabinet
       row:
-        - {type: type-e-liquid-225kw}
+        - {type: liquid-225kw}
         - {type: shuffle-box-600-1200-48u}
 
 Anything the case states still wins, as everywhere else in this software
@@ -34,16 +34,16 @@ LIBRARY = Path(__file__).resolve().parent.parent / "racks"
 SHIPPED = (
     "colo-600-1200",
     "colo-800-1300",
+    "compute-low-density",
     "generic-600-1200-45u",
     "generic-800-1200-46u",
     "generic-800-1200-48u",
+    "gpu-high-density",
+    "liquid-225kw",
     "liquid-network-800",
+    "network-low-density",
     "odf-special-600-300",
     "shuffle-box-600-1200-48u",
-    "sum3-high-density",
-    "sum3-low-density-compute",
-    "sum3-low-density-network",
-    "type-e-liquid-225kw",
 )
 
 

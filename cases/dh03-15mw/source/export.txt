@@ -1,7 +1,7 @@
-AICFD geometry export -- vin03-dh03-15mw
+AICFD geometry export -- dh03-15mw
 ========================================================================
-source        PL-0001.dwg
-drawing       VIN03-CN-ASC-F0-MEC00-PL-0001-R02.dwg, DATA HALL 03, liquid cooling POD layout, Sep 2026; BoD R03; PL-0001.dwg sha256 bbae31a5594f4c6b
+source        PL-0001.raw.dxf
+drawing       DATA HALL 03 layout drawing PL-0001 rev R02, liquid cooling POD layout, Sep 2026; BoD rev R03; PL-0001.raw.dxf sha256 c1634280f6154791
 grid          every coordinate on 0.3 x 0.3 x 0.2 m
 origin        drawing (75658.279, 169595.040) is the model's (0, 0); z = 0 on the slab under the plenum; the drawing was transposed (x <-> y)
 

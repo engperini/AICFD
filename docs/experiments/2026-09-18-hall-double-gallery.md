@@ -8,12 +8,12 @@ Two questions. Does the generator build a hall with a mechanical gallery at
 each end and its rack rows cut into blocks, with one shared return plenum, and
 does the physics close? And how far does AICFD's answer stand up next to an
 independent CFD study of a real hall of exactly that shape — *CFD Analysis of
-VIN03 Data Hall*, Maders Consulting, September 2026, HELYX 4.5.1,
+5 MW Data Hall*, an independent consultancy, September 2026, HELYX 4.5.1,
 21,6 M cells?
 
 ## The design
 
-Modelled on VIN03: five PODs (ten rows) cut into two blocks along their
+Modelled on that hall: five PODs (ten rows) cut into two blocks along their
 length, a mechanical gallery at each end with seven Vertiv Liebert CWA
 CA80NPVG6 units in each, hot-aisle containment and a ceiling-plenum return
 shared by both galleries.
@@ -32,7 +32,7 @@ shared by both galleries.
 Three of those are deliberate departures from the real hall, and each is a
 thing AICFD cannot yet take:
 
-- **11,59 kW on every rack.** VIN03 has 5 000 kW of IT in 412 of 438 loaded
+- **11,59 kW on every rack.** The hall has 5 000 kW of IT in 412 of 438 loaded
   positions, plus 100 kW of PDU loss in the electrical room. AICFD takes one
   load per rack, so the 5 100 kW total is spread evenly over 440 positions.
   The total heat is right; the *distribution* is not.
@@ -93,7 +93,7 @@ and really does feed both ends.
 
 ## Against the reference study
 
-| | AICFD | VIN03 study |
+| | AICFD | independent study |
 |---|---|---|
 | cells | 275 400 | 21 600 000 |
 | cost | 11 min on 4 cores | a cluster |
@@ -137,7 +137,7 @@ and this room returns 33,3 °C. Scaling the rating on that difference by hand �
 **arithmetic done outside the tool, not a number AICFD produced** — gives
 about 415 kW available per unit rather than 432,6, so the units are at roughly
 88 % of what their coils can actually transfer, not 84 %. On this hall the
-correction is small and changes nothing. On VIN03 the same correction moved
+correction is small and changes nothing. On that hall the same correction moved
 the plant from an apparent 6 056 kW against a 5 100 kW load to 95,6 % of the
 capacity available at the operating point — and, with two units out, past
 100 %.

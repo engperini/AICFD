@@ -2739,7 +2739,7 @@ def rack_positions(row_id: str, plan: list[dict], size, load_kw: float,
                             f"`racks.type` to make the row itself its size.")
                     if note not in warnings:
                         warnings.append(note)
-            # A LIQUID CABINET'S RATED DUTY IS NOT ITS AIR LOAD. The Type-E
+            # A LIQUID CABINET'S RATED DUTY IS NOT ITS AIR LOAD. The liquid
             # rack is 225 kW and leaves ~96% of it in the coolant, so what
             # this room has to remove is the other 4% -- about 9 kW, not 225.
             # Where the type states that fraction the air share follows from

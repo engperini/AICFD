@@ -1,5 +1,5 @@
 {
- "case": "vin03-dh03-15mw",
+ "case": "dh03-15mw",
  "time": "2300",
  "valid": true,
  "grid": {
@@ -44873,7 +44873,7 @@
   ]
  },
  "model": {
-  "name": "vin03-dh03-15mw",
+  "name": "dh03-15mw",
   "cell_size": [
    0.3,
    0.3,
@@ -67192,11 +67192,11 @@
    "Geometry read from geometry.stl: 901 solids -- 218 cabinets in 16 rows, 8 units, 584 return grilles, 0 floor plates, 10 supply grilles, 0 cage panels (ADR-131)."
   ],
   "spec": {
-   "name": "vin03-dh03-15mw",
+   "name": "dh03-15mw",
    "geometry": {
     "file": "geometry.stl",
     "sha256": "5d34ba2196f19a5899d5c386d3d578e364d1eac839e022bbfc23db3db1d6e90e",
-    "source": "VIN03-CN-ASC-F0-MEC00-PL-0001-R02.dwg, DATA HALL 03, liquid cooling POD layout, Sep 2026; BoD R03; PL-0001.dwg sha256 bbae31a5594f4c6b"
+    "source": "layout drawing PL-0001 rev R02, DATA HALL 03, liquid cooling POD layout, Sep 2026; BoD rev R03; PL-0001.dwg sha256 bbae31a5594f4c6b"
    },
    "site": {
     "altitude_m": 0.0
@@ -67454,15 +67454,15 @@
    },
    "figures": [
     {
-     "file": "figures/vin03-dh03-15mw.png",
+     "file": "figures/dh03-15mw.png",
      "caption": "The layout as read from the drawing: cabinets with their loads and fronts, the containment, the tiles, the return grilles, the cage and the cooling units."
     },
     {
-     "file": "figures/vin03-dh03-15mw.3d.png",
+     "file": "figures/dh03-15mw.3d.png",
      "caption": "The 3D model built from the drawing, false ceiling removed."
     },
     {
-     "file": "figures/vin03-dh03-15mw.sections.png",
+     "file": "figures/dh03-15mw.sections.png",
      "caption": "Sections through the rows, a contained aisle and the supply path: the heights and closures."
     }
    ]
@@ -67470,15 +67470,15 @@
  },
  "figures": [
   {
-   "file": "figures/vin03-dh03-15mw.png",
+   "file": "figures/dh03-15mw.png",
    "caption": "The layout as read from the drawing: cabinets with their loads and fronts, the containment, the tiles, the return grilles, the cage and the cooling units."
   },
   {
-   "file": "figures/vin03-dh03-15mw.3d.png",
+   "file": "figures/dh03-15mw.3d.png",
    "caption": "The 3D model built from the drawing, false ceiling removed."
   },
   {
-   "file": "figures/vin03-dh03-15mw.sections.png",
+   "file": "figures/dh03-15mw.sections.png",
    "caption": "Sections through the rows, a contained aisle and the supply path: the heights and closures."
   }
  ]

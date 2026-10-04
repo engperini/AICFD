@@ -225,7 +225,7 @@ class ShippedProjectUnitTest(unittest.TestCase):
 
     What IS held here is the rule that let a project unit in: a unit not in
     `SHIPPED` is not held to the report-field checks, and the reason has to
-    be a real one. P3100DA is carried for the Fortaleza project and is not
+    be a real one. P3100DA is carried for a project and is not
     declared, because its data sheet states no external static pressure.
     """
 

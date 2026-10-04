@@ -1,7 +1,7 @@
 AICFD geometry export -- dh04-1mw
 ========================================================================
 source        dh04_treated.dxf
-drawing       LAYOUT_FTZ01_24Sep26_1.dwg, DATA HALL 04, human-revised layout; dh04_treated.dxf sha256 dd1832ab269a6f8d
+drawing       DATA HALL 04 layout drawing 24Sep26 rev 1, human-revised layout; dh04_treated.dxf sha256 dd1832ab269a6f8d
 grid          every coordinate on 0.2 x 0.3 x 0.2 m
 origin        drawing (67.480, 21.160) is the model's (0, 0); z = 0 on the slab under the plenum
 

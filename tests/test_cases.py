@@ -295,17 +295,17 @@ class RackTypeTest(unittest.TestCase):
         """Its rated duty is the cabinet's, not what reaches the room's air.
         225 kW with 96% into the coolant is 9 kW of air load, and that is the
         document's own arithmetic rather than anybody's assumption."""
-        model = self.build(row=[{"type": "type-e-liquid-225kw"}, {}, {}])
+        model = self.build(row=[{"type": "liquid-225kw"}, {}, {}])
         self.assertAlmostEqual(model.rows[0].racks[0].load_kw, 9.0, places=2)
 
     def test_and_never_its_rated_duty_nor_the_halls_standard(self):
-        model = self.build(row=[{"type": "type-e-liquid-225kw"}, {}, {}])
+        model = self.build(row=[{"type": "liquid-225kw"}, {}, {}])
         carried = model.rows[0].racks[0].load_kw
         self.assertNotAlmostEqual(carried, 225.0)
         self.assertNotAlmostEqual(carried, 6.0)   # the hall's air standard
 
     def test_a_stated_load_still_wins_over_the_derived_share(self):
-        model = self.build(row=[{"type": "type-e-liquid-225kw", "load_kw": 12.0},
+        model = self.build(row=[{"type": "liquid-225kw", "load_kw": 12.0},
                                 {}, {}])
         self.assertAlmostEqual(model.rows[0].racks[0].load_kw, 12.0)
 
@@ -323,7 +323,7 @@ class RackTypeTest(unittest.TestCase):
         racklib.resolve = without
         self.addCleanup(lambda: setattr(racklib, "resolve", real))
         with self.assertRaises(ValueError) as caught:
-            self.build(row=[{"type": "type-e-liquid-225kw"}, {}, {}])
+            self.build(row=[{"type": "liquid-225kw"}, {}, {}])
         self.assertIn("leaves in the coolant", str(caught.exception))
 
     def test_an_incomplete_type_is_refused_by_name(self):
@@ -345,11 +345,11 @@ class RackTypeTest(unittest.TestCase):
         of engineering tolerance. A row is laid out on the pitch."""
         from aicfd import racklib
 
-        self.assertAlmostEqual(racklib.load("type-e-liquid-225kw").size[0], 0.605)
+        self.assertAlmostEqual(racklib.load("liquid-225kw").size[0], 0.605)
 
 
-class Sum3RackTest(unittest.TestCase):
-    """The SUM3 lease's own cabinets, as rack types (ADR-075)."""
+class LeaseRackTest(unittest.TestCase):
+    """The customer lease's own cabinets, as rack types (ADR-075)."""
 
     def build(self, **racks):
         spec = copy.deepcopy(support.spec("pod-fanwall"))
@@ -360,9 +360,9 @@ class Sum3RackTest(unittest.TestCase):
         from aicfd import racklib
 
         for type_id, size in (
-            ("sum3-high-density", [1.800, 1.800, 2.600]),
-            ("sum3-low-density-compute", [1.200, 1.800, 2.600]),
-            ("sum3-low-density-network", [1.200, 1.800, 2.600]),
+            ("gpu-high-density", [1.800, 1.800, 2.600]),
+            ("compute-low-density", [1.200, 1.800, 2.600]),
+            ("network-low-density", [1.200, 1.800, 2.600]),
         ):
             with self.subTest(type=type_id):
                 self.assertEqual(list(racklib.load(type_id).size), size)
@@ -372,14 +372,14 @@ class Sum3RackTest(unittest.TestCase):
         cabinet's whole duty is what the room removes."""
         from aicfd import racklib
 
-        for type_id, load in (("sum3-low-density-compute", 54.0),
-                              ("sum3-low-density-network", 34.0)):
+        for type_id, load in (("compute-low-density", 54.0),
+                              ("network-low-density", 34.0)):
             with self.subTest(type=type_id):
                 rack = racklib.load(type_id)
                 self.assertEqual(rack.cooling, "air")
                 self.assertEqual(rack.load_kw, load)
-        model = self.build(row=[{"type": "sum3-low-density-compute"},
-                                {"type": "sum3-low-density-network"}, {}])
+        model = self.build(row=[{"type": "compute-low-density"},
+                                {"type": "network-low-density"}, {}])
         self.assertEqual([r.load_kw for r in model.rows[0].racks],
                          [54.0, 34.0, 6.0])
 
@@ -388,15 +388,15 @@ class Sum3RackTest(unittest.TestCase):
         2,200 kW the gap between a guess and the truth is megawatts."""
         from aicfd import racklib
 
-        rack = racklib.load("sum3-high-density")
+        rack = racklib.load("gpu-high-density")
         self.assertEqual(rack.cooling, "liquid")
         self.assertIsNone(rack.liquid_fraction)
         with self.assertRaises(ValueError) as caught:
-            self.build(row=[{"type": "sum3-high-density"}, {}, {}])
+            self.build(row=[{"type": "gpu-high-density"}, {}, {}])
         self.assertIn("2200 kW leaves in the coolant", str(caught.exception))
 
     def test_the_gpu_rack_builds_once_its_air_load_is_stated(self):
-        model = self.build(row=[{"type": "sum3-high-density", "load_kw": 176.0},
+        model = self.build(row=[{"type": "gpu-high-density", "load_kw": 176.0},
                                 {}, {}])
         self.assertEqual(model.rows[0].racks[0].load_kw, 176.0)
         self.assertAlmostEqual(model.rows[0].racks[0].box.size[0], 1.8, places=1)
@@ -406,7 +406,7 @@ class Sum3RackTest(unittest.TestCase):
         geometry this model does not build, and dropping the number in
         silence is how a 1800 mm cabinet ends up drawn 1200 deep."""
         said = [w for w in self.build(
-            row=[{"type": "sum3-low-density-compute"}, {}, {}]).warnings
+            row=[{"type": "compute-low-density"}, {}, {}]).warnings
             if "row has one depth" in w]
         self.assertEqual(len(said), 2, said)       # depth and height
         self.assertIn("1.800 m deep", said[0])
@@ -415,14 +415,14 @@ class Sum3RackTest(unittest.TestCase):
     def test_and_as_the_standard_it_sizes_the_whole_row(self):
         spec = copy.deepcopy(support.spec("pod-fanwall"))
         spec["racks"].pop("size")
-        spec["racks"]["type"] = "sum3-low-density-compute"
+        spec["racks"]["type"] = "compute-low-density"
         box = m.build_model(spec).rows[0].racks[0].box
         self.assertAlmostEqual(box.size[1], 1.8, places=1)
         self.assertAlmostEqual(box.size[2], 2.6, places=1)
 
 
 class RfpCabinetTest(unittest.TestCase):
-    """The Fortaleza / Queretaro cabinets: a footprint and nothing else."""
+    """The colocation-RFP cabinets: a footprint and nothing else."""
 
     def test_both_are_in_the_catalogue_with_their_footprints(self):
         from aicfd import racklib

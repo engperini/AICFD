@@ -1,8 +1,8 @@
-# DATA HALL 03 -- Vinhedo 03, 15 MW liquid-cooling PODs (VIN03-CN-ASC-F0-MEC00-PL-0001-R02).
-# Figures marked BoD come from VIN3-CN-ASC-F1-GER00-BD-0000-R03 (30 MW), the basis of design.
-name: vin03-dh03-15mw
+# DATA HALL 03 -- 15 MW liquid-cooling PODs (layout drawing PL-0001, revision R02).
+# Figures marked BoD come from the basis of design, revision R03 (30 MW).
+name: dh03-15mw
 hall: "DATA HALL 03"
-source: "VIN03-CN-ASC-F0-MEC00-PL-0001-R02.dwg, DATA HALL 03, liquid cooling POD layout, Sep 2026; BoD R03"
+source: "DATA HALL 03 layout drawing PL-0001 rev R02, liquid cooling POD layout, Sep 2026; BoD rev R03"
 heights:
   plenum: 0.0           # BoD: cabinets on the concrete slab, no raised floor
   rack: 2.30            # BoD: liquid cooling rack 600 x 1278 x 2300 mm

@@ -69,7 +69,7 @@ arrangement is used. `tests/cases/hall-double-gallery.yaml` is the worked case.
 - **A hall read from a drawing** — `geometry.file` names the STL beside it
   (ADR-131). `cases/` holds these as projects (ADR-134): `cases/<project>/`
   with `geometry.stl`, `figures/`, `source/` and one YAML per scenario —
-  `dh04-1mw` (1 MW, cage, raised floor) and `vin03-dh03-15mw` (15 MW, fan
+  `dh04-1mw` (1 MW, cage, raised floor) and `dh03-15mw` (15 MW, fan
   walls into a supply plenum). The room is the drawing's: a scenario changes
   loads, units, failed units, setpoint, surfaces, supply grille size, mesh and
   solver, never the geometry. A new geometry comes from the

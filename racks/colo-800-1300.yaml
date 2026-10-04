@@ -1,5 +1,5 @@
 id: colo-800-1300
-name: 800 x 1300 colocation cabinet (Fortaleza / Queretaro RFP)
+name: 800 x 1300 colocation cabinet (colocation RFP)
 cooling: air
 
 # HEIGHT IS NOT THE RFP'S. 2200 mm is the engineer's instruction, as for its
@@ -12,12 +12,12 @@ cooling: air
 size: [0.800, 1.300, 2.200]
 height_note: 2200 mm, set by the engineer; the RFP states no height
 source: >
-  Customer RFP, Fortaleza and Queretaro cages, deadline 2026-03-06. Rack
-  sizing: Fortaleza 21 x 800x1300mm, Queretaro 20 x 800x1300mm. No height, no
+  Customer RFP, two cages, deadline 2026-03-06. Rack
+  sizing: cage A 21 x 800x1300mm, cage B 20 x 800x1300mm. No height, no
   U count and no per-rack power are given.
 note: >
-  Both mixes add up exactly to their cage counts -- 54 + 21 = 75 at Fortaleza,
-  95 + 20 = 115 at Queretaro -- so the two footprints are the whole population
+  Both mixes add up exactly to their cage counts -- 54 + 21 = 75 in cage A,
+  95 + 20 = 115 in cage B -- so the two footprints are the whole population
   and there is no third cabinet unaccounted for.
 
   NO LOAD ON PURPOSE. See `colo-600-1200`: the RFP gives a cage total across

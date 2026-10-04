@@ -76,7 +76,7 @@ staying a single shared volume above the whole hall (ADR-027).
 The worked results shipped under `reference/` are complete data halls read
 from drawings (ADR-131, ADR-134): `dh04-1mw` and `dh04-1mw-19c` (171 cabinets,
 999 kW, a cage, a raised floor, 14 DX units, at a 22 and a 19 °C setpoint) and
-`vin03-dh03-15mw` (218 cabinets, 8 fan walls into a supply plenum). The
+`dh03-15mw` (218 cabinets, 8 fan walls into a supply plenum). The
 parametric generator keeps its regression rooms in `tests/cases/`, and the
 earlier worked cases are written up in `docs/experiments/` as the history they
 are. A hall read from a drawing travels as one `.aicfd.zip` (ADR-135).

@@ -1,4 +1,4 @@
-Case 'vin03-dh03-15mw' at iteration 2300
+Case 'dh03-15mw' at iteration 2300
 
   Fan wall        805,800 m3/h (265.894 kg/s) at 24.0 degC
   Return air      27.3 degC (dT 3.4 K)

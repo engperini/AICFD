@@ -619,7 +619,7 @@ and `aicfd build` prints no error.
 
 `tests/cases/hall-double-gallery.yaml` is the reference example, kept in the
 suite since `cases/` became the projects read from drawings (ADR-134), and it is a real
-project: a 5 MW hall, studied independently by Maders Consulting with
+project: a 5 MW hall, studied independently by a consultancy with
 HELYX 4.5.1. Read it beside this manual. What each project fact became:
 
 | the project said | the case says |

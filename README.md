@@ -38,7 +38,7 @@ Two pages, and they take the case differently:
 | | address | |
 |---|---|---|
 | **model** | `http://localhost:8000/web/` | the spec and the geometry it implies, before any solve. The case is the one the server was started with, because this page asks the server for it — `docker compose up` opens `dh04-1mw-19c`; change the line in `docker-compose.yml`, or run `aicfd view --case <name>`. |
-| **results** | `http://localhost:8000/web/results.html?case=dh04-1mw-19c` | a solved result. This page is static: it resolves `?case=` against `results/` first and `reference/` second, so any name with an export works — `dh04-1mw`, `dh04-1mw-19c`, `vin03-dh03-15mw`. |
+| **results** | `http://localhost:8000/web/results.html?case=dh04-1mw-19c` | a solved result. This page is static: it resolves `?case=` against `results/` first and `reference/` second, so any name with an export works — `dh04-1mw`, `dh04-1mw-19c`, `dh03-15mw`. |
 
 **Your results shadow the shipped ones.** The worked results are tracked
 under `reference/` and the tool never writes there; anything you solve goes to
@@ -119,8 +119,8 @@ the file. A parametric case is still a single file in `cases/`.
 cases/
   dh04-1mw/                  1 MW, 171 cabinets, a cage, a raised floor, 14 DX units
     geometry.stl  figures/  dh04-1mw.yaml (22 °C)  dh04-1mw-19c.yaml (19 °C)
-  vin03-dh03-15mw/           15 MW, fan walls into a supply plenum
-    geometry.stl  figures/  vin03-dh03-15mw.yaml
+  dh03-15mw/           15 MW, fan walls into a supply plenum
+    geometry.stl  figures/  dh03-15mw.yaml
 ```
 
 **Stopping a run.** `aicfd stop`, and the Stop button on the page, ask the
@@ -138,7 +138,7 @@ read from drawings, nothing smaller. Each is a scenario of a project in
 |---|---|---|---|
 | `dh04-1mw.yaml` | 171 cabinets, 999 kW, a customer cage, a raised floor, 14 DX units at a 22 °C setpoint | 409 596 cells | 11 of 12 checks: 4 cabinets above 27 °C, three units at full compressor duty |
 | `dh04-1mw-19c.yaml` | the same room at a 19 °C setpoint | 409 596 cells | 12 of 12; warmest inlet 23.8 °C; resumed from the settled 22 °C field |
-| `vin03-dh03-15mw.yaml` | 218 cabinets, 894 kW, 8 fan walls into a supply plenum | 991 872 cells | 11 of 11, solved in about 1,6 h on 4 cores |
+| `dh03-15mw.yaml` | 218 cabinets, 894 kW, 8 fan walls into a supply plenum | 991 872 cells | 11 of 11, solved in about 1,6 h on 4 cores |
 
 The generator's own regression rooms — parametric halls and the cage hall —
 live in `tests/cases/` and are tested, not offered as examples.

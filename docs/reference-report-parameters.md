@@ -1,6 +1,6 @@
 # What a full study asks for, and what AICFD takes today
 
-**Source.** *CFD Analysis of VIN03 Data Hall*, Maders Consulting,
+**Source.** *CFD Analysis of a 5 MW Data Hall*, an independent consultancy,
 technical report rev. 04, September 2026 — a steady-state study of a real 5 MW
 hall of exactly the arrangement AICFD gained in ADR-027: 14 fan wall units in
 two mechanical galleries, 438 racks in 10 rows cut into two blocks, hot-aisle
@@ -87,7 +87,7 @@ already produces.
 
 ```yaml
 racks:
-  load_map: loads/vin03.csv   # row, position, kW  (0 = installed, no load)
+  load_map: loads/hall.csv   # row, position, kW  (0 = installed, no load)
 ```
 
 Already on the roadmap; the report shows why it is not cosmetic. 412 of 438

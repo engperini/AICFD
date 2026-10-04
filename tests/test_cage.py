@@ -175,7 +175,7 @@ class PlacementTest(unittest.TestCase):
                         "a rack outside the cage is inside its wall")
 
     def test_the_dividing_wall_of_an_edge_cage_is_the_only_one(self):
-        """The arrangement the Fortaleza plan shows."""
+        """A cage in the corner of the hall, rows above it, closed on three sides."""
         self.assertEqual(self.walls(clearance=0.6, pods=[1, 2],
                                     sides=["right"]), ["right"])
 

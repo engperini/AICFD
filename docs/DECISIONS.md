@@ -908,8 +908,8 @@ assumed).
 `gallery` as the first of them), and `Model.blocks` holds each block's x span,
 so the chimney area, the warm start, the drawing's section plane and the grille
 strips all count blocks rather than assuming one run of racks. The worked case
-is `cases/hall-double-gallery.yaml`, written against a real 5 MW hall of this
-shape (VIN03) so the tool's answer can be held against an independent
+is `tests/cases/hall-double-gallery.yaml`, written against a real 5 MW hall of this
+shape so the tool's answer can be held against an independent
 study of the same room.
 
 ---
@@ -1349,7 +1349,7 @@ error is not conservative: quote the warm selection and an undersized plant
 looks fine.
 
 This is the gap `docs/reference-report-parameters.md` put at the top of the
-list, and the independent study of VIN03 is what it looks like when it bites —
+list, and the independent study of that 5 MW hall is what it looks like when it bites —
 14 units whose catalogue sum was 6 056 kW against a 5 100 kW load, apparently
 19 % of margin, were at 95,6 % of the capacity available at the temperature the
 room really produced, and past 100 % with two units out.
@@ -3108,7 +3108,7 @@ itself. A case names one as its standard (`racks.type`) or per position
 **Because a cabinet is the same cabinet in every project that buys it.** Typing
 600 × 1200 × 2200 into each case is how two halls of the same rack end up 5 mm
 apart with nobody able to say which is right — and this project has exactly
-that trap in it, documented: the Type-E RFP notes that the **605 mm** marked on
+that trap in it, documented: the customer's RFP notes that the **605 mm** marked on
 its drawings is 600 mm of rack body plus 5 mm of engineering tolerance. The
 catalogue carries 605, because a row is laid out on the pitch and not on the
 box, and says so in the file.
@@ -3117,13 +3117,13 @@ box, and says so in the file.
 be traceable to the document it came from, or the next engineer has no way to
 tell a measured number from a remembered one.
 
-**A dimension the source does not state is left `null`.** The Vinhedo 03 layout
+**A dimension the source does not state is left `null`.** A 15+15 MW layout
 marks the 32 kW liquid network rack's depth and height "further confirmation",
 so `liquid-network-800` states its 800 mm width and nothing else, and a case
 naming it is refused by name. A plausible number in that field is a row that
 does not fit with nothing saying so (ADR-071).
 
-**A LIQUID CABINET'S RATED DUTY IS NOT ITS AIR LOAD.** The Type-E rack is
+**A LIQUID CABINET'S RATED DUTY IS NOT ITS AIR LOAD.** The liquid rack is
 225 kW and leaves about 96% of it in the coolant, so what the room has to
 remove is the other 4% — **9.0 kW, not 225**. Taking the rated figure would
 make the hall look 25 times worse than it is; taking the hall's air standard
@@ -3139,13 +3139,13 @@ there the gap between the two readings is 9 kW and 225 and nothing in the file
 chooses between them.
 
 **What the catalogue holds after this project's documents**: the three
-air-cooled cabinets the Type-E RFP standardises (600×1200 45U, 800×1200 46U,
-800×1200 48U at 12–16 kW), the Type-E liquid rack, and the four types the
-Vinhedo 03 15+15 MW schedule adds — shuffle-box, ODF, the shallow 300 mm ODF
+air-cooled cabinets the customer RFP standardises (600×1200 45U, 800×1200 46U,
+800×1200 48U at 12–16 kW), the liquid rack, and the four types the
+15+15 MW schedule adds — shuffle-box, ODF, the shallow 300 mm ODF
 special, and the liquid network rack that is still missing two dimensions.
 
-**The lease's Exhibit A-2 describes cabinets too, and they are types.** Its
-maxima are the envelope of a real rack, not a clearance: the SUM3 high-density
+**The customer's lease describes cabinets too, and they are types.** Its
+maxima are the envelope of a real rack, not a clearance: the high-density
 GPU cabinet at 1800 × 1800 × 2600 and the low-density one at 1200 × 1800 ×
 2600, both deployed modularly — the first as one 1800 mm unit or up to four
 600 mm racks connected in place, the second as up to two. Three types carry
@@ -3158,7 +3158,7 @@ range is the wrong error to make, and each says the range in its note.
 lease.** Low-density rows are provided with infrastructure for 100% air
 cooling, so those cabinets' whole duty is what the room removes. High-density
 rows carry both, and the lease gives the split **per colo** — up to 100% liquid
-and 55% air on the first, 35% after — never per rack. So `sum3-high-density`
+and 55% air on the first, 35% after — never per rack. So `gpu-high-density`
 states no `liquid_fraction` and a position naming it is refused until it says
 what reaches the air. At 2,200 kW that refusal is worth megawatts.
 
@@ -4184,7 +4184,7 @@ airflow, the supply temperature, the dimensions and the sensible capacity at
 the rated return — all of which a DX sheet states as plainly as any other.
 
 Refusing the whole unit for the sake of one property left entire sites
-unmodellable. The Fortaleza site is direct expansion throughout: six data halls
+unmodellable. A direct-expansion site is the common case: six data halls
 of Emerson P3100DA and Stulz ASD 1112 AU, self-contained, downflow into an
 inter-floor plenum. Nothing about that room is beyond this software except the
 one curve nobody asked it for.
@@ -4200,8 +4200,8 @@ the plate, where a DX circuit does markedly less sensible work than its plate
 says. A reader should not have to find those two numbers and subtract them, so
 the result does it and names the number to ask the manufacturer about.
 
-**A project unit is not a shipped one.** `equipment/P3100DA.yaml` carries the
-Fortaleza CRAC from its data sheet and is deliberately **not** in
+**A project unit is not a shipped one.** `equipment/P3100DA.yaml` carries a
+direct-expansion CRAC from its data sheet and is deliberately **not** in
 `equipment.SHIPPED`: the sheet states no external static pressure, and every
 unit this repository guarantees must state what a report will quote (ADR-071).
 It is usable in a case today and declarable the moment Emerson supplies the
@@ -4234,7 +4234,7 @@ walls to build. Everything else follows:
 
 The first version enclosed every rack and refused any clearance that reached
 the hall wall. That is one arrangement of three, and not the common one: the
-Fortaleza plan shows a cage occupying the bottom of the data hall with more
+plan of a real hall shows a cage occupying the bottom of the data hall with more
 racks above it, closed by the room on three sides and by one wall of its own.
 
 **A side the room closes is not built, and the rectangle is CLIPPED to the
@@ -4258,8 +4258,8 @@ not change from run to run: it is a **limitation of the model**, so it is read
 once, in the report's limitations, where every other one is (ADR-089).
 
 What stays in the alerts is the one line that IS about this run: the return the
-room produced against the return the unit was rated at, subtracted. On the
-Fortaleza hall that reads *the room returns 27.5 °C and P3100DA is rated
+room produced against the return the unit was rated at, subtracted. On a
+direct-expansion hall that reads *the room returns 27.5 °C and P3100DA is rated
 100.5 kW at 30.0 °C — 2.5 K below it*, which is a fact about this result and
 not boilerplate. An unfinished unit file still warns every time, because there
 the capacity beside it came from somewhere a reader cannot check.

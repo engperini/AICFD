@@ -1,8 +1,8 @@
-id: sum3-high-density
-name: SUM3 high-density (GPU) rack
+id: gpu-high-density
+name: High-density (GPU) rack
 cooling: liquid
 
-# The GPU cabinet of the Sumaré 03 lease. Its envelope is a maximum: it is
+# The GPU cabinet of the customer's lease. Its envelope is a maximum: it is
 # deployed either as one 1800 mm unit or as up to four 600 mm racks connected
 # in place, so 600, 1200 and 1800 are all real widths for it. What is carried
 # here is the full envelope, because that is what a row has to fit; state the
@@ -10,7 +10,7 @@ cooling: liquid
 size: [1.800, 1.800, 2.600]
 load_kw: 2200.0
 source: >
-  Colocation and Data Center Lease (2025), Exhibit A-2, SUM3, signed.
+  Customer colocation lease (2025), rack requirements, signed.
   1.5.4.1 Rack Dimensions: maximum single rack 600mm-1800mm (W) x 1800mm (D) x
   2600mm (H); may be deployed as a single 1800mm wide unit or up to (4) 600mm
   wide racks connected in place. 1.4.14.1 Maximum Rack Load: maximum high

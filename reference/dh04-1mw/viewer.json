@@ -79012,7 +79012,7 @@
    "geometry": {
     "file": "geometry.stl",
     "sha256": "53dc5392dc3ec795c6eab547d255e3d8905ce0d6acaf7528263bf1e14be4af13",
-    "source": "LAYOUT_FTZ01_24Sep26_1.dwg, DATA HALL 04, human-revised layout; dh04_treated.dxf sha256 dd1832ab269a6f8d"
+    "source": "DATA HALL 04 layout drawing 24Sep26 rev 1, human-revised layout; dh04_treated.dxf sha256 dd1832ab269a6f8d"
    },
    "site": {
     "altitude_m": 0.0

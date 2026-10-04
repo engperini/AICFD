@@ -1,14 +1,14 @@
-# Answers for DATA HALL 04 (LAYOUT_FTZ01 24 Sep 2026 revision), as the
+# Answers for DATA HALL 04 (layout drawing, 24 Sep 2026 revision), as the
 # engineer gave them. Every key here overrides the reference by name.
 name: dh04-1mw
 hall: "DATA HALL 04"      # the anchor text; the treated DXF has none, so:
 anchor_xy: [78.0, 40.0]   # a point inside the hall (drawing coordinates)
-source: "LAYOUT_FTZ01_24Sep26_1.dwg, DATA HALL 04, human-revised layout"
+source: "DATA HALL 04 layout drawing 24Sep26 rev 1, human-revised layout"
 racks:
   load_kw: 4.11           # the RB rows, as answered
 rows:
   rename_outside_cage: true   # RB06 missing, RB07/RB16 duplicated in the DWG: rows renumbered F1-01.. from the north
-loads:                      # the customer's cage schedule, as answered; every other cabinet is racks.load_kw
+loads:                      # the cage schedule, as answered; every other cabinet is racks.load_kw
   A01: 20
   A02: 10
   A03: 10

@@ -44,7 +44,7 @@ SHIPPED_CASES = (
     # Halls read from drawings, one folder per project (ADR-131, ADR-134).
     "dh04-1mw",
     "dh04-1mw-19c",
-    "vin03-dh03-15mw",
+    "dh03-15mw",
 )
 
 #: Cases the tests own: what every other test reads, and what a sandbox is

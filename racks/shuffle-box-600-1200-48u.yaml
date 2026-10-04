@@ -10,7 +10,7 @@ u_height: 48
 height_note: 2283 mm
 load_kw: 0.0
 source: >
-  Brazil Vinhedo 03 15+15 MW layout, rack schedule: Shuffle-Box rack
+  15+15 MW layout, rack schedule: Shuffle-Box rack
   600(W)mm x 1200(D)mm x 48U(2283mm), no power, 34 Nos.
 note: >
   Zero load and a full cabinet, which is not the same as a blanking panel: it
