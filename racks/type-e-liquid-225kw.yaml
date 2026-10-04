@@ -12,7 +12,7 @@ load_kw: 225.0
 weight_kg: 1880
 liquid_fraction: 0.96
 source: >
-  Brazil Ascenty Vinhedo 03 15+15 MW layout: 225 kW Liquid-cooled rack
+  Brazil Vinhedo 03 15+15 MW layout: 225 kW Liquid-cooled rack
   605(W)mm x 1278(D)mm x 2300(H)mm, 8x Ceeform, 58 Nos. The Type-E RFP v2.0
   states the same cabinet as 600*1278*2300mm with caster at a 227 kW thermal
   design power and ~1880 kg with liquid, and notes that the 605 mm marked on

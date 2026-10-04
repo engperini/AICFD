@@ -1,4 +1,4 @@
-id: meta-800-1300
+id: colo-800-1300
 name: 800 x 1300 colocation cabinet (Fortaleza / Queretaro RFP)
 cooling: air
 
@@ -20,5 +20,5 @@ note: >
   95 + 20 = 115 at Queretaro -- so the two footprints are the whole population
   and there is no third cabinet unaccounted for.
 
-  NO LOAD ON PURPOSE. See `meta-600-1200`: the RFP gives a cage total across
+  NO LOAD ON PURPOSE. See `colo-600-1200`: the RFP gives a cage total across
   both types and never splits it, so neither file states a load.

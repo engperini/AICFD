@@ -38,9 +38,9 @@ Two pages, and they take the case differently:
 | | address | |
 |---|---|---|
 | **model** | `http://localhost:8000/web/` | the spec and the geometry it implies, before any solve. The case is the one the server was started with, because this page asks the server for it — `docker compose up` opens `dh04-1mw-19c`; change the line in `docker-compose.yml`, or run `aicfd view --case <name>`. |
-| **results** | `http://localhost:8000/web/results.html?case=hall-double-gallery` | a solved result. This page is static: it resolves `?case=` against `results/` first and `reference/` second, so any name with an export works — `dh04-1mw-19c`, `hall-double-gallery`, `hall-10mw`. |
+| **results** | `http://localhost:8000/web/results.html?case=dh04-1mw-19c` | a solved result. This page is static: it resolves `?case=` against `results/` first and `reference/` second, so any name with an export works — `dh04-1mw`, `dh04-1mw-19c`, `vin03-dh03-15mw`. |
 
-**Your results shadow the shipped ones.** The three worked results are tracked
+**Your results shadow the shipped ones.** The worked results are tracked
 under `reference/` and the tool never writes there; anything you solve goes to
 `results/`, which is not tracked (ADR-032). So the page has something to show
 the moment you clone, re-running a worked case can never collide with the copy
@@ -92,8 +92,8 @@ clone — useful for reading a result or checking a spec without the container:
 ```bash
 pip install -r requirements.txt
 python3 -m unittest discover tests          # the whole suite, no solver needed
-python3 -m aicfd view --case hall-double-gallery   # the three solved results
-python3 -m aicfd report hall-double-gallery        # the Word document
+python3 -m aicfd view --case dh04-1mw-19c         # the solved results shipped in reference/
+python3 -m aicfd report dh04-1mw-19c              # the Word document
                                                   # (or the button on the results page)
 ```
 
@@ -130,15 +130,18 @@ same eleven checks, so what you get is a *result*: partial, and honest about it.
 A run cut short before it settled fails `settled`; one stopped after it settled
 passes all eleven.
 
-The two worked parametric results are tracked under `reference/` — complete
-data halls only; the single POD the project started from is retired — their
-cases are the suite's own copies in `tests/cases/`, and each is documented end
-to end in `docs/experiments/`:
+The worked results are tracked under `reference/` and are complete data halls
+read from drawings, nothing smaller. Each is a scenario of a project in
+`cases/`:
 
-| Case | What it is | Mesh | Cost |
+| Case | What it is | Mesh | Result |
 |---|---|---|---|
-| `hall-10mw.yaml` | 16 PODs, 768 racks, 9,98 MW, 35 fan walls | 329 280 cells | 11 min, 4 cores |
-| `hall-double-gallery.yaml` | 5 PODs, 440 racks, 5,1 MW, a gallery at each end and rows in two blocks | 275 400 cells | settled in 7 min, 4 cores |
+| `dh04-1mw.yaml` | 171 cabinets, 999 kW, a customer cage, a raised floor, 14 DX units at a 22 °C setpoint | 409 596 cells | 11 of 12 checks: 4 cabinets above 27 °C, three units at full compressor duty |
+| `dh04-1mw-19c.yaml` | the same room at a 19 °C setpoint | 409 596 cells | 12 of 12; warmest inlet 23.8 °C; resumed from the settled 22 °C field |
+| `vin03-dh03-15mw.yaml` | 218 cabinets, 894 kW, 8 fan walls into a supply plenum | 991 872 cells | 11 of 11, solved in about 1,6 h on 4 cores |
+
+The generator's own regression rooms — parametric halls and the cage hall —
+live in `tests/cases/` and are tested, not offered as examples.
 
 **A new drawn hall arrives as one file (ADR-135).** The converter writes
 `<project>.aicfd.zip`; import it on the page (case menu → *Import package*) or
@@ -377,7 +380,8 @@ web/
   racks.js     every rack by its inlet temperature
   colormaps.js perceptual ramps and the banded scale
   data.js  convergence.js  app.js  results.js
-cases/         the worked case specs, commented line by line
+cases/         your projects: a folder per hall read from a drawing, one
+               YAML per scenario beside its geometry
 equipment/     one file per fan wall model: the manufacturer's selections, as
                a table. `fanwall.model: <name>` in a spec is enough to
                describe the machine

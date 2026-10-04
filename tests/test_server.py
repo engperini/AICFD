@@ -238,7 +238,7 @@ class CommandsTest(unittest.TestCase):
     def test_a_shipped_result_can_still_be_reported_on(self):
         from aicfd.server import REFERENCE_DIR, commands_for
 
-        name = "hall-double-gallery"
+        name = "dh04-1mw-19c"
         if not (REFERENCE_DIR / name / "viewer.json").is_file():
             self.skipTest("the worked result is not in this clone")
         self.assertTrue(commands_for(name)["report"])
@@ -258,7 +258,7 @@ class ReportEndpointTest(unittest.TestCase):
             import matplotlib  # noqa: F401
         except ModuleNotFoundError:
             self.skipTest("python-docx and matplotlib are not installed")
-        if not (server.REFERENCE_DIR / "hall-double-gallery" / "viewer.json").is_file():
+        if not (server.REFERENCE_DIR / "dh04-1mw-19c" / "viewer.json").is_file():
             self.skipTest("the worked result is not in this clone")
         self.tmp = tempfile.TemporaryDirectory()
         self.saved = server.REPORTS_DIR
@@ -274,12 +274,12 @@ class ReportEndpointTest(unittest.TestCase):
         from aicfd import server
 
         before = sorted(p.name for p in
-                        (server.REFERENCE_DIR / "hall-double-gallery").iterdir())
-        out = server.write_report("hall-double-gallery", {"client": "A Client"})
+                        (server.REFERENCE_DIR / "dh04-1mw-19c").iterdir())
+        out = server.write_report("dh04-1mw-19c", {"client": "A Client"})
         self.assertTrue(out.is_file())
         self.assertGreater(out.stat().st_size, 10_000)
         self.assertEqual(
-            sorted(p.name for p in (server.REFERENCE_DIR / "hall-double-gallery").iterdir()),
+            sorted(p.name for p in (server.REFERENCE_DIR / "dh04-1mw-19c").iterdir()),
             before,
             "producing a document must not modify the result it was read from",
         )
@@ -315,7 +315,7 @@ class ReportRampTest(unittest.TestCase):
             return Path(out)
 
         with patch.object(report, "build", fake_build):
-            server.write_report("hall-double-gallery", body)
+            server.write_report("dh04-1mw-19c", body)
         return seen["ramp"]
 
     def setUp(self):
@@ -323,7 +323,7 @@ class ReportRampTest(unittest.TestCase):
 
         from aicfd import server
 
-        if not (server.REFERENCE_DIR / "hall-double-gallery" / "viewer.json").is_file():
+        if not (server.REFERENCE_DIR / "dh04-1mw-19c" / "viewer.json").is_file():
             self.skipTest("the worked result is not in this clone")
         self.tmp = tempfile.TemporaryDirectory()
         self.saved = server.REPORTS_DIR

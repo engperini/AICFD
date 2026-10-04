@@ -909,7 +909,7 @@ assumed).
 so the chimney area, the warm start, the drawing's section plane and the grille
 strips all count blocks rather than assuming one run of racks. The worked case
 is `cases/hall-double-gallery.yaml`, written against a real 5 MW hall of this
-shape (Ascenty VIN03) so the tool's answer can be held against an independent
+shape (VIN03) so the tool's answer can be held against an independent
 study of the same room.
 
 ---
@@ -4028,7 +4028,7 @@ It became wrong the moment the unit could be CHANGED from the page (ADR-092),
 because by then every key is already filled with the previous machine's
 figures: naming another unit changed the name and nothing else.
 
-Measured on a real hall, `FOR-META`, after its author picked the CRAH:
+Measured on a real hall, after its author picked the CRAH:
 
 | | the case said | the 39CRA150 is | where it came from |
 |---|---|---|---|
@@ -4184,7 +4184,7 @@ airflow, the supply temperature, the dimensions and the sensible capacity at
 the rated return — all of which a DX sheet states as plainly as any other.
 
 Refusing the whole unit for the sake of one property left entire sites
-unmodellable. Ascenty Fortaleza is direct expansion throughout: six data halls
+unmodellable. The Fortaleza site is direct expansion throughout: six data halls
 of Emerson P3100DA and Stulz ASD 1112 AU, self-contained, downflow into an
 inter-floor plenum. Nothing about that room is beyond this software except the
 one curve nobody asked it for.

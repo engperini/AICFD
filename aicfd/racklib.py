@@ -32,12 +32,12 @@ LIBRARY = Path(__file__).resolve().parent.parent / "racks"
 #: lists whatever is in `racks/`, which is these plus the engineer's own, and
 #: only these are this project's to guarantee (ADR-077).
 SHIPPED = (
+    "colo-600-1200",
+    "colo-800-1300",
     "generic-600-1200-45u",
     "generic-800-1200-46u",
     "generic-800-1200-48u",
     "liquid-network-800",
-    "meta-600-1200",
-    "meta-800-1300",
     "odf-special-600-300",
     "shuffle-box-600-1200-48u",
     "sum3-high-density",

@@ -2,7 +2,7 @@
 #
 # Everything below that is a NUMBER comes from seven manufacturer selections of
 # the same unit at the same conditions, differing only in the air it receives:
-# return air 35, 36, 37, 38, 39, 40 and 41 °C (Ascenty SP06, selection tool
+# return air 35, 36, 37, 38, 39, 40 and 41 °C (SP06, selection tool
 # v2.8.2604, issued by Lucca Mendonca, printed 2026-05-07). That is the point
 # of carrying a table instead of a rating: a chilled-water coil's capacity is
 # not a constant, and the one number a datasheet prints is only true at the one
@@ -43,7 +43,7 @@ design:
   # do?" (ADR-039). They are kept as reference, and as what the coil model is
   # fitted to.
   #
-  # Ascenty SP06, issued by Lucca Mendonca (Vertiv), 2026-05-07.
+  # SP06, issued by Lucca Mendonca (Vertiv), 2026-05-07.
   return_c: 34                # entering air, dry bulb
   supply_c: 21.9              # leaving air
   airflow_m3h: 121545         # unit return airflow

@@ -20,7 +20,7 @@ from tests import support
 #: The worked POD's export, tracked under reference/ because it is evidence
 #: rather than an artifact (ADR-032). A result solved locally lands in
 #: results/ and never touches this one.
-RESULT = Path(__file__).resolve().parents[1] / "reference" / "hall-double-gallery"
+RESULT = Path(__file__).resolve().parents[1] / "reference" / "dh04-1mw-19c"
 
 try:  # the report's two extras
     import docx  # noqa: F401
@@ -313,7 +313,7 @@ def _export_naming_a_unit(directory: Path, model_name: str, rows_below: bool,
     from aicfd.model import build_model
 
     source = Path(__file__).resolve().parents[1]
-    shutil.copytree(source / "reference" / "hall-double-gallery", directory / "export")
+    shutil.copytree(source / "reference" / "dh04-1mw-19c", directory / "export")
     library = directory / "equipment"
     library.mkdir()
     text = (source / "equipment" / f"{model_name}.yaml").read_text()
@@ -682,7 +682,7 @@ class FiguresShowTheRoomTest(unittest.TestCase):
     def export_with_a_cage(self):
         from aicfd.figures import Export
 
-        for name in ("bytedance-cage-crac", "hall-cage-1mw"):
+        for name in ("hall-cage-1mw",):
             for base in ("results", "reference"):
                 path = support.REPO / base / name
                 if (path / "viewer.json").is_file():
@@ -1557,7 +1557,15 @@ class DrawingsTest(unittest.TestCase):
             {"file": "figures/missing.png", "caption": "Never copied."},
         ]
         (export / "viewer.json").write_text(json.dumps(payload))
-        cls.without = build(RESULT, root / "plain.docx")
+        # The reference result carries its own drawings now (it is a hall read
+        # from a drawing), so the document WITHOUT drawings is made from a copy
+        # with that list emptied (ADR-134).
+        plain = root / "plain-export"
+        shutil.copytree(RESULT, plain)
+        bare = json.loads((plain / "viewer.json").read_text())
+        bare["figures"] = []
+        (plain / "viewer.json").write_text(json.dumps(bare))
+        cls.without = build(plain, root / "plain.docx")
         cls.path = build(export, root / "drawn.docx")
         from docx import Document
 

@@ -427,8 +427,8 @@ class RfpCabinetTest(unittest.TestCase):
     def test_both_are_in_the_catalogue_with_their_footprints(self):
         from aicfd import racklib
 
-        for type_id, w, d in (("meta-600-1200", 0.600, 1.200),
-                              ("meta-800-1300", 0.800, 1.300)):
+        for type_id, w, d in (("colo-600-1200", 0.600, 1.200),
+                              ("colo-800-1300", 0.800, 1.300)):
             with self.subTest(type=type_id):
                 rack = racklib.load(type_id)
                 self.assertAlmostEqual(rack.size[0], w)
@@ -440,7 +440,7 @@ class RfpCabinetTest(unittest.TestCase):
         rather than read later as the customer's."""
         from aicfd import racklib
 
-        for type_id in ("meta-600-1200", "meta-800-1300"):
+        for type_id in ("colo-600-1200", "colo-800-1300"):
             with self.subTest(type=type_id):
                 rack = racklib.load(type_id)
                 self.assertAlmostEqual(rack.size[2], 2.200)
@@ -455,7 +455,7 @@ class RfpCabinetTest(unittest.TestCase):
         they belong to a case and not to either type."""
         from aicfd import racklib
 
-        for type_id in ("meta-600-1200", "meta-800-1300"):
+        for type_id in ("colo-600-1200", "colo-800-1300"):
             with self.subTest(type=type_id):
                 self.assertIsNone(racklib.load(type_id).load_kw)
 
@@ -473,7 +473,7 @@ class RfpCabinetTest(unittest.TestCase):
         for other in ("generic-800-1200-46u", "generic-800-1200-48u"):
             with self.subTest(other=other):
                 self.assertAlmostEqual(racklib.load(other).size[1], 1.200)
-        self.assertAlmostEqual(racklib.load("meta-800-1300").size[1], 1.300)
+        self.assertAlmostEqual(racklib.load("colo-800-1300").size[1], 1.300)
 
 
 class RaisedFloorTest(unittest.TestCase):

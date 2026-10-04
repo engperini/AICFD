@@ -8,7 +8,7 @@ Two questions. Does the generator build a hall with a mechanical gallery at
 each end and its rack rows cut into blocks, with one shared return plenum, and
 does the physics close? And how far does AICFD's answer stand up next to an
 independent CFD study of a real hall of exactly that shape — *CFD Analysis of
-VIN03 Data Hall*, Maders Consulting for Ascenty, September 2026, HELYX 4.5.1,
+VIN03 Data Hall*, Maders Consulting, September 2026, HELYX 4.5.1,
 21,6 M cells?
 
 ## The design

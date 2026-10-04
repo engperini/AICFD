@@ -9,7 +9,7 @@ cooling: liquid
 size: [0.800, null, null]
 load_kw: 32.0
 source: >
-  Brazil Ascenty Vinhedo 03 15+15 MW layout: 32 kW Liquid-cooled Network rack,
+  Brazil Vinhedo 03 15+15 MW layout: 32 kW Liquid-cooled Network rack,
   800(W)mm - "Further confirmation", 8x Ceeform, 58 Nos.
 note: >
   Ask for the depth and height before placing this type. Until then a case

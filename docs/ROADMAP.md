@@ -73,13 +73,13 @@ A hall may have a mechanical gallery at **each end** (`gallery.sides: 2`) and
 rows cut into blocks along their length (`racks.blocks`), with the return plenum
 staying a single shared volume above the whole hall (ADR-027).
 
-Three worked cases carry the evidence: `cases/pod-fanwall.yaml` (one POD,
-18 kW), `cases/hall-10mw.yaml` (16 PODs, 768 racks, 9,98 MW, a Vertiv CA40
-selection) and `cases/hall-double-gallery.yaml` (5 MW, two galleries, two rack
-blocks, a Vertiv CA80 selection, built against a real hall studied
-independently, and agreeing with that study's warmest rack intake to within
-0,1 K on a mesh 78 times coarser). All three are written up in
-`docs/experiments/`.
+The worked results shipped under `reference/` are complete data halls read
+from drawings (ADR-131, ADR-134): `dh04-1mw` and `dh04-1mw-19c` (171 cabinets,
+999 kW, a cage, a raised floor, 14 DX units, at a 22 and a 19 °C setpoint) and
+`vin03-dh03-15mw` (218 cabinets, 8 fan walls into a supply plenum). The
+parametric generator keeps its regression rooms in `tests/cases/`, and the
+earlier worked cases are written up in `docs/experiments/` as the history they
+are. A hall read from a drawing travels as one `.aicfd.zip` (ADR-135).
 
 ## What is next
 

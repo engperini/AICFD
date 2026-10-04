@@ -43,8 +43,8 @@ COPY . /app
 # It costs about a minute and it is the difference between an image that builds
 # and an image that works.
 RUN python3 -m aicfd doctor \
-    && python3 -m aicfd build tests/cases/hall-double-gallery.yaml --out /tmp/smoke \
-    && python3 -m aicfd report hall-double-gallery --out /tmp/smoke.docx \
+    && python3 -m aicfd build dh04-1mw-19c --out /tmp/smoke \
+    && python3 -m aicfd report dh04-1mw-19c --out /tmp/smoke.docx \
     && python3 -m unittest discover tests \
     && rm -rf /tmp/smoke /tmp/smoke.docx results
 

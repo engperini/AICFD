@@ -373,7 +373,7 @@ class SaveTest(LibraryCopy):
         equipment.save("CA80NPVG6", {"capacity": rows})
         after = self.path.read_text()
         self.assertEqual(after.count("#"), self.before.count("#"))
-        self.assertIn("Ascenty SP06", after)
+        self.assertIn("SP06", after)
         self.assertAlmostEqual(equipment.load("CA80NPVG6").available_kw(35.0), 499.5)
 
     def test_saving_the_same_table_changes_nothing_at_all(self):
@@ -392,11 +392,11 @@ class SaveTest(LibraryCopy):
         rows.append({**rows[-1], "return_c": 42.0, "nscc_kw": 770.0})
         equipment.save("CA80NPVG6", {"capacity": rows})
         self.assertEqual(equipment.load("CA80NPVG6").span, (35.0, 42.0))
-        self.assertIn("Ascenty SP06", self.path.read_text())
+        self.assertIn("SP06", self.path.read_text())
 
         equipment.save("CA80NPVG6", {"capacity": rows[:3]})
         self.assertEqual(len(equipment.load("CA80NPVG6").capacity), 3)
-        self.assertIn("Ascenty SP06", self.path.read_text())
+        self.assertIn("SP06", self.path.read_text())
 
     def test_the_identity_fields_are_editable(self):
         """The same coil is very often sold under two names. Changing the one
@@ -404,16 +404,16 @@ class SaveTest(LibraryCopy):
         unit = equipment.load("CA80NPVG6").to_dict()
         equipment.save(
             "CA80NPVG6",
-            {**unit, "family": "Ascenty CoolWall", "weight_kg": 3100,
+            {**unit, "family": "House CoolWall", "weight_kg": 3100,
              "fans": {**unit["fans"], "count": 10, "type": "EC plug fan"}},
         )
         after = equipment.load("CA80NPVG6")
-        self.assertEqual(after.family, "Ascenty CoolWall")
+        self.assertEqual(after.family, "House CoolWall")
         self.assertEqual(after.weight_kg, 3100)
         self.assertEqual(after.fans["count"], 10)
         self.assertEqual(after.fans["type"], "EC plug fan")
         self.assertEqual(after.fans["module"], unit["fans"]["module"])  # untouched
-        self.assertIn("Ascenty SP06", self.path.read_text())
+        self.assertIn("SP06", self.path.read_text())
 
     def test_the_selection_conditions_are_editable(self):
         unit = equipment.load("CA80NPVG6").to_dict()
@@ -435,7 +435,7 @@ class SaveTest(LibraryCopy):
         after = equipment.load("CA80NPVG6")
         self.assertTrue(after.curve["measured"])
         self.assertEqual([list(p) for p in after.curve["points"]], points)
-        self.assertIn("Ascenty SP06", self.path.read_text())
+        self.assertIn("SP06", self.path.read_text())
 
     def test_saving_a_unit_unchanged_changes_nothing_at_all(self):
         """Not one byte, comment alignment included: a page that reads a unit
@@ -482,7 +482,7 @@ class SaveAsTest(LibraryCopy):
     def test_the_copy_keeps_the_provenance_and_says_where_it_came_from(self):
         equipment.save_as("CW80-A", "CA80NPVG6", equipment.load("CA80NPVG6").to_dict())
         text = (equipment.LIBRARY / "CW80-A.yaml").read_text()
-        self.assertIn("Ascenty SP06", text)
+        self.assertIn("SP06", text)
         self.assertIn("Copied from CA80NPVG6", text)
 
     def test_it_refuses_a_name_the_library_already_has(self):

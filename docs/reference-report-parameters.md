@@ -1,6 +1,6 @@
 # What a full study asks for, and what AICFD takes today
 
-**Source.** *CFD Analysis of VIN03 Data Hall*, Maders Consulting for Ascenty,
+**Source.** *CFD Analysis of VIN03 Data Hall*, Maders Consulting,
 technical report rev. 04, September 2026 — a steady-state study of a real 5 MW
 hall of exactly the arrangement AICFD gained in ADR-027: 14 fan wall units in
 two mechanical galleries, 438 racks in 10 rows cut into two blocks, hot-aisle
