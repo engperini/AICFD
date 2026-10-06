@@ -368,10 +368,13 @@ class FieldSupplyTest(unittest.TestCase):
         if not (self.RESULT / "viewer.json").is_file():
             self.skipTest("the worked result is not in this clone")
         payload = __import__("json").loads((self.RESULT / "viewer.json").read_text())
-        # The worked POD was solved before coupling existed, so the field's
-        # supply and the spec's setpoint agree -- which is the point: reading
-        # it off the field changes nothing where nothing changed.
-        self.assertIsNotNone(payload["kpis"]["supply_temp_c"])
+        # The reference hall was solved coupled at a 19 degC setpoint, and
+        # three of its units could not make it: the supply reported is what
+        # the units delivered, not what the spec asked for.
+        asked = payload["model"]["spec"]["fanwall"]["supply_temp_c"]
+        self.assertEqual(asked, 19.0)
+        self.assertAlmostEqual(payload["kpis"]["supply_temp_c"], 19.5, delta=0.1)
+        self.assertNotAlmostEqual(payload["kpis"]["supply_temp_c"], asked, delta=0.2)
 
     def test_a_missing_field_falls_back_to_what_was_asked_for(self):
         import tempfile

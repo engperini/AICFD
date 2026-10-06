@@ -1,6 +1,6 @@
 """The Word deliverable, built end to end from a tracked result.
 
-`results/pod-fanwall/` is committed, so this is a real run through the whole
+`reference/dh04-1mw-19c/` is committed, so this is a real run through the whole
 figure and document path -- not a mock. What it defends is the one property
 the deliverable has to have: **every number in it comes from the export**. A
 report that quietly computed its own numbers, or fell back to a default when
@@ -17,7 +17,7 @@ import unittest
 from pathlib import Path
 from tests import support
 
-#: The worked POD's export, tracked under reference/ because it is evidence
+#: A drawn hall's export (1 MW, a cage, a raised floor), tracked under reference/ because it is evidence
 #: rather than an artifact (ADR-032). A result solved locally lands in
 #: results/ and never touches this one.
 RESULT = Path(__file__).resolve().parents[1] / "reference" / "dh04-1mw-19c"
@@ -682,7 +682,7 @@ class FiguresShowTheRoomTest(unittest.TestCase):
     def export_with_a_cage(self):
         from aicfd.figures import Export
 
-        for name in ("hall-cage-1mw",):
+        for name in ("dh04-1mw-19c",):
             for base in ("results", "reference"):
                 path = support.REPO / base / name
                 if (path / "viewer.json").is_file():
@@ -1265,7 +1265,7 @@ class TheSameReportReadsRightOnAnyMachineTest(unittest.TestCase):
 
         self.assertEqual(title_of("hall-cage-1mw-crah"), "Hall Cage 1 MW CRAH")
         self.assertEqual(title_of("hall-cage-1mw-fanwall"), "Hall Cage 1 MW Fan Wall")
-        self.assertEqual(title_of("hall-10mw"), "Hall 10 MW")
+        self.assertEqual(title_of("dh03-15mw"), "Dh03 15 MW")
         self.assertEqual(title_of("hall-cage-1mw-n1"), "Hall Cage 1 MW N−1")
         self.assertEqual(title_of("hall-double-gallery"), "Hall Double Gallery")
 

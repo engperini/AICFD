@@ -899,8 +899,6 @@ class TheArrangementDecidesTheDefaultTest(unittest.TestCase):
     def test_a_fan_wall_hall_still_faces_its_aisles(self):
         spec = self.spec("hall-double-gallery")
         built = M.build_model(spec)
-        if built.floor_height:
-            self.skipTest("this fixture is a raised floor")
         fans = [p for p in built.panels if p.kind == "fan"]
         centres = sorted((p.extent[0][0] + p.extent[0][1]) / 2 for p in fans)
         aisles = sorted((lo + hi) / 2 for lo, hi in built.cold_aisles)

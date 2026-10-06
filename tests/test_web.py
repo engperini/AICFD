@@ -261,11 +261,11 @@ class CaseTravelsTest(unittest.TestCase):
       own query string       `location.search = "?model=X"` replaced the whole
                              search, case included
       a fetch without it     `/api/racks` then READ AND WROTE the start case.
-                             Measured: with the server on `pod-fanwall` and
-                             `hall-10mw` open, changing the standard load on
-                             the racks page and pressing Save wrote 13.75 kW
-                             into `cases/pod-fanwall.yaml` and left
-                             `hall-10mw.yaml` untouched (ADR-091)
+                             Measured: with the server on one case and
+                             another open, changing the standard load on the
+                             racks page and pressing Save wrote 13.75 kW into
+                             the case the server started on and left the open
+                             one untouched (ADR-091)
 
     The last one is why this is a test and not a fix. A page that shows the
     wrong room is a nuisance; a page that SAVES to the wrong room is a
