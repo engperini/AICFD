@@ -106,7 +106,7 @@ them, and each does what only it can:
 |---|---|---|
 | 1. get the skill | this clone | `python3 -m aicfd skill` writes `aicfd-hall-from-dwg.skill` |
 | 2. read the drawing | **a chat with the skill and code execution** (Claude Code, or claude.ai with the skill uploaded) | give it the DWG and, if you have it, the basis of design. It prints what it corrected and what it needs to know; you answer; it hands back `<name>.aicfd.zip` and the plan, 3D view and sections to check by eye |
-| 3. import | AICFD | `docker compose up`, open the page, case menu → *Import package* — or `python3 -m aicfd import <name>.aicfd.zip` |
+| 3. import | AICFD | `docker compose up`, open the page, press *Import package* in the top bar — or `python3 -m aicfd import <name>.aicfd.zip` |
 | 4. run | AICFD, with OpenFOAM (the Docker image has it) | *Run simulation* on the page, or `python3 -m aicfd run <scenario>`. A hall of about 400 000 cells takes hours on 4 cores |
 | 5. read it | AICFD | *See results*, then *Word report* — the figures from step 2 open the report |
 
@@ -168,7 +168,7 @@ The generator's own regression rooms — parametric halls and the cage hall —
 live in `tests/cases/` and are tested, not offered as examples.
 
 **A new drawn hall arrives as one file (ADR-135).** The converter writes
-`<project>.aicfd.zip`; import it on the page (case menu → *Import package*) or
+`<project>.aicfd.zip`; import it on the page (the *Import package* button in the top bar) or
 with `aicfd import`. It is checked and built before anything is written, and
 its scenarios are locked to the geometry they came with. `aicfd package` (or
 *Download package*) writes a scenario back out the same way, for a colleague:

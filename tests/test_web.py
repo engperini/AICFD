@@ -801,3 +801,19 @@ class ThePlanDoesNotDimensionTheCageAisleTest(unittest.TestCase):
         self.assertIn("add(lo, hi, 'cold aisle')", said)
         self.assertIn("hot aisle", said)
         self.assertIn("row depth", said)
+
+
+class TheImportIsInReachTest(unittest.TestCase):
+    """A drawn hall is the way into the program, and its import was only in the
+    menu on the case's name -- a person looking for it did not find it."""
+
+    def test_the_model_page_has_an_import_button_in_the_top_bar(self):
+        html = (WEB / "index.html").read_text()
+        header = html[html.index('<header class="topbar">'):html.index("</header>")]
+        menu = header[header.index('<details'):header.index("</details>")]
+        self.assertIn('id="import-top"', header)
+        self.assertNotIn('id="import-top"', menu, "it has to be outside the menu, or it is as hidden as before")
+        self.assertIn('id="import-top-file"', header)
+        script = (WEB / "app.js").read_text()
+        self.assertIn("import-top", script, "the button has to be wired")
+

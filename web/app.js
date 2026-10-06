@@ -1623,17 +1623,29 @@ function wireCaseMenu() {
   // ONE FILE for a hall read from a drawing: the package the converter
   // writes. It is read here, sent whole, and unpacked by the server only once
   // every scenario in it has been built (ADR-135).
-  el('case-package')?.addEventListener('click', async () => {
-    const file = el('case-package-file')?.files?.[0];
-    if (!file) { menu.say('Choose the .aicfd.zip the converter wrote.', 'bad'); return; }
+  const importFile = async (file, project) => {
     const bytes = new Uint8Array(await file.arrayBuffer());
     let binary = '';
     for (let i = 0; i < bytes.length; i += 0x8000) {
       binary += String.fromCharCode(...bytes.subarray(i, i + 0x8000));
     }
-    postCase('/api/cases/package', {
-      data: btoa(binary), project: el('case-package-name').value || null,
-    }, 'importing the package');
+    postCase('/api/cases/package', { data: btoa(binary), project: project || null },
+      'importing the package');
+  };
+  el('case-package')?.addEventListener('click', () => {
+    const file = el('case-package-file')?.files?.[0];
+    if (!file) { menu.say('Choose the .aicfd.zip the converter wrote.', 'bad'); return; }
+    importFile(file, el('case-package-name').value);
+  });
+  // The top bar's button: pick the file and import it, naming the project
+  // after the package. The menu opens only to show what the server said.
+  el('import-top')?.addEventListener('click', () => el('import-top-file')?.click());
+  el('import-top-file')?.addEventListener('change', (event) => {
+    const file = event.target.files?.[0];
+    if (!file) return;
+    el('case-menu').open = true;
+    importFile(file, null);
+    event.target.value = '';
   });
   // Another scenario of the same room: a copy beside it, sharing its geometry
   // and figures, edited from there (ADR-134).
