@@ -162,7 +162,7 @@ read from drawings, nothing smaller. Each is a scenario of a project in
 |---|---|---|---|
 | `dh04-1mw.yaml` | 171 cabinets, 999 kW, a customer cage, a raised floor, 14 DX units at a 22 °C setpoint | 409 596 cells | 11 of 12 checks: 4 cabinets above 27 °C, three units at full compressor duty |
 | `dh04-1mw-19c.yaml` | the same room at a 19 °C setpoint | 409 596 cells | 12 of 12; warmest inlet 23.8 °C; resumed from the settled 22 °C field |
-| `dh03-15mw.yaml` | 218 cabinets, 894 kW, 8 fan walls into a supply plenum | 991 872 cells | 11 of 11, solved in about 1,6 h on 4 cores |
+| `dh03-15mw.yaml` | 218 cabinets, 894 kW, 8 fan walls into a supply plenum | 991 872 cells | 12 of 12, solved in about 1,6 h on 4 cores |
 
 The generator's own regression rooms — parametric halls and the cage hall —
 live in `tests/cases/` and are tested, not offered as examples.
