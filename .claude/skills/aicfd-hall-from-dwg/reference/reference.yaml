@@ -1,0 +1,122 @@
+# THE REFERENCE: everything a drawing cannot say, taken from the AICFD case
+# that ran and closed (cases/hall-cage-1mw.yaml -- 1 MW colocation hall, a
+# customer cage at one end, 14 downflow DX room units on two mechanical
+# galleries, raised floor, contained cold aisles). A new hall of the same
+# family inherits all of it; answers.yaml overrides any key by name.
+#
+# Every figure here is printed in the export report as "from the reference",
+# so a reader can tell what the drawing said from what this file said.
+
+# ---- classifier calibration (metres) -------------------------------------
+tolerance_m: 0.02                 # two coordinates this close are the same
+rack_plan_sizes_m: [[0.6, 1.2], [0.8, 1.2], [0.6, 1.3], [0.8, 1.3]]   # cabinet footprints looked for
+rack_size_tolerance_m: 0.05
+unit_plan_sizes_m: [[2.553, 0.873]]   # plant unit footprints (width x depth): the P3100DA; add a
+                                  # fan wall's or CRAH's footprint for a hall that has them
+unit_size_tolerance_m: 0.12       # the drafter's box is 0,89 deep; accepted
+gallery_width_range_m: [2.0, 12.0]  # a mechanical gallery or a technical room against the hall
+aisle_box_width_range_m: [1.0, 3.0]  # a drafter's containment box: 1,2 / 1,8 cold, 2,2 hot...
+cold_aisle_min_length_m: 2.4     # a containment box shorter than three cabinets is not one
+row_split_gap_m: 1.0             # a gap wider than this splits a row (a cross aisle between pods)
+wall_thickness_m: 0.2             # only where the drawing shows no gap
+tile_size_m: 0.6
+row_growth_alert_m: 0.2           # a row the mesh cell lengthens or shortens by more than this is a GRID ALERT
+row_alignment_tolerance_m: 0.05   # rows whose drawn starts/ends are this close and round apart are a GRID ALERT
+aisle_max_m: 3.0                  # a gap between rows wider than this is not an aisle
+                                  # (a cage line or a walkway stands in it) and is
+                                  # not snapped to the 0,6 m module
+
+# ---- heights (metres) -----------------------------------------------------
+heights:
+  plenum: 1.0          # the raised floor: deck at z = 1,0 over the slab.
+                       # ASSUMED in the reference case ("+2.00" on a drawing
+                       # is a level, not a depth -- ask before changing)
+  hall: 5.6            # deck to slab; the building is plenum + hall tall
+  ceiling: 4.0         # deck to false ceiling; the return plenum is above
+                       # (a hot-aisle chimney runs from the rack tops to it)
+  rack: 2.2            # cabinet height; the lids sit on the rack tops
+  unit: 1.97           # P3100DA height; the box starts on the deck
+
+# ---- containment and openings -------------------------------------------
+containment:
+  aisle: auto          # auto | cold | hot. `auto` reads it from the drawing:
+                       # cabinets whose FRONTS face the drafter's box (or a
+                       # band of floor tiles) make a COLD aisle -- a lid at
+                       # rack height, a door at each end (ADR-100), the room is
+                       # the hot side; cabinets whose BACKS face the box make
+                       # a HOT aisle -- a chimney from the rack tops to the
+                       # false ceiling, doors floor to ceiling, the return
+                       # grilles in the ceiling over it, the room is the cold
+                       # side. A hall holds one kind, never both.
+  lone_aisle_closure: panel   # an aisle with a row on one side only is
+                              # closed on the other by a vertical panel
+units:
+  block_pattern: "EFW|FANWALL|FAN.?WALL|CRAH|CRAC|AHU"   # a block whose name matches is a unit
+  kind: auto           # auto | downflow | fanwall. `auto`: downflow when the
+                       # hall has a raised floor (heights.plenum > 0), fan
+                       # wall when it stands on the slab -- the unit blows
+                       # into the hall through the dividing wall
+liquid_cooling:
+  air_fraction:        # the share of a LIQUID-COOLED cabinet's IT load that
+    server: 0.04       # reaches the AIR (the rest leaves in the coolant); the
+    network: 0.15      # sidecar carries the air share, the report says so
+  spare_kw: null       # a SPARE / (0~225 kW) position: its IT load in the
+                       # scenario -- null asks the user
+tiles:
+  size: 0.6
+  across: auto         # 2 for a 1,2 m aisle, 3 for 1,8 m: floor(width/0.6), max 3
+  clip_to_rows: true   # tiles run from the first cabinet to the last, never
+                       # past a row end into the door zone
+return_grilles:
+  size: 0.6
+  mode: match_tiles    # EACH HOT AISLE TAKES THE COUNT OF THE COLD AISLE
+                       # ACROSS THE ROW: as many return grilles as that cold
+                       # aisle has tiles, in contiguous strips from the racks'
+                       # back outward, sweeping the hall from the north. What
+                       # is left of a wide hot aisle is one gap on the far
+                       # side; a band too narrow for the count is capped and
+                       # reported. `fill` covers every hot band instead.
+  across: auto         # `fill` only: floor(width/0.6), max 3
+plenum:                # a fan-wall hall's DOUBLE WALL: the units mounted in an
+  min_depth_m: 0.3     # outer leaf this far or more behind the hall's wall make
+                       # the cavity a SUPPLY PLENUM (AICFD `plenum.enabled`)
+  grille:              # the supply grilles in the hall's wall: the plan seldom
+    width: 2.0         # draws them, so one per cold aisle, centred on it,
+    height: null       # this wide and (null =) the cabinets' height tall
+gallery_openings:
+  below_deck: mesh     # the dividing wall below the deck: mesh (ADR-076)
+  above_ceiling: mesh  # and above the false ceiling: mesh (ADR-048)
+
+# ---- the sidecar's non-geometry blocks -----------------------------------
+site:
+  altitude_m: 0.0
+racks:
+  load_kw: 4.11        # the default for a cabinet the drawing gives no load
+  airflow_cfm_per_kw: 158
+  future_kw: 8.333     # a FUTURE position's load where the drawing says
+                       # only "FUTURE" (100 kW ROFR over 12 positions)
+fanwall:
+  model: P3100DA
+  airflow_m3h: 27500
+  capacity_kw: 100.5
+  power_kw: 7.5
+  static_pressure_pa: 50
+  control: team
+  supply_temp_c: 22.0
+  out_of_service: []
+components:
+  cage: cage-mesh-13
+  ceiling_return: ceiling-return-600-open
+  floor_tile: floor-tile-600
+  gallery_mesh: gallery-mesh-13
+  supply_grille: supply-grille-2000     # every supply:* panel of a plenum wall
+cage:
+  construction: mesh
+mesh:
+  cell_size: [0.2, 0.2, 0.2]
+solver:
+  max_iterations: 2000
+  residual_tolerance: 1.0e-4
+  sensor_interval: 100
+  warm_start: true
+  processors: 16

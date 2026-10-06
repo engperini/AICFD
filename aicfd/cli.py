@@ -9,6 +9,7 @@
     aicfd verify [--solve]           run the audit: tests, install, both cases
     aicfd import <pkg.aicfd.zip>     a hall read from a drawing, into cases/<project>/
     aicfd package <name> [--all]     a scenario of a drawn hall as a .aicfd.zip
+    aicfd skill                      the drawing-to-case skill, as a .skill file to upload
 
 The assistant drives these same commands rather than a separate code path, so
 anything it can do is reproducible by hand -- and anything that breaks can be
@@ -79,6 +80,10 @@ def main(argv: list[str] | None = None) -> int:
     package_parser.add_argument("--all", action="store_true",
                                 help="every scenario of its project, not only this one")
     package_parser.add_argument("--out", help="output file (default: ./<name>.aicfd.zip)")
+
+    skill_parser = sub.add_parser(
+        "skill", help="write the drawing-to-case skill as a .skill file to upload (ADR-135)")
+    skill_parser.add_argument("--out", help="output file (default: ./aicfd-hall-from-dwg.skill)")
 
     sub.add_parser("doctor", help="check the OpenFOAM installation")
 
@@ -220,6 +225,33 @@ def _import(args) -> int:
     print(f"Imported project {done['project']} into {done['folder']}")
     for name in done["scenarios"]:
         print(f"  scenario {name}:  aicfd view --case {name}    aicfd run {name}")
+    return 0
+
+
+def _skill(args) -> int:
+    """The converter skill, zipped the way the uploader takes it.
+
+    A skill is a folder that somebody uploads, and the folder is in this
+    repository (`.claude/skills/aicfd-hall-from-dwg/`): a clone is all anyone
+    needs to hand it to a chat, with `python3 -m aicfd skill` as the one
+    command between the two (ADR-135).
+    """
+    import zipfile
+
+    source = REPO_ROOT / ".claude" / "skills" / "aicfd-hall-from-dwg"
+    if not (source / "SKILL.md").is_file():
+        print(f"error: the skill is not at {source}", file=sys.stderr)
+        return 1
+    out = Path(args.out) if args.out else Path("aicfd-hall-from-dwg.skill")
+    with zipfile.ZipFile(out, "w", zipfile.ZIP_DEFLATED) as archive:
+        for path in sorted(source.rglob("*")):
+            if "__pycache__" in path.parts or path.is_dir():
+                continue
+            info = zipfile.ZipInfo.from_file(path, Path("aicfd-hall-from-dwg") / path.relative_to(source))
+            info.compress_type = zipfile.ZIP_DEFLATED
+            archive.writestr(info, path.read_bytes())   # keeps the executable bit of bin/dwg2dxf
+    print(f"Wrote {out} ({out.stat().st_size / 1e6:.1f} MB). Upload it where your chat takes skills; "
+          f"the chat hands back <name>.aicfd.zip, which 'aicfd import' or the page's Import package takes.")
     return 0
 
 

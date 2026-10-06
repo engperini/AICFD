@@ -5799,6 +5799,13 @@ engineer already thinks in — "the DH04 model" — and the hash is what makes
 scenario was chosen for one room, and a room replaced under it by hand would
 run under the old study's name.
 
+**Where the converter lives.** The skill is `.claude/skills/aicfd-hall-from-dwg/`
+in this repository, with the LibreDWG converter it bundles and the licence
+note beside it; `aicfd skill` zips it for upload. A test runs the skill's
+package writer and imports what it writes, so the two halves cannot drift
+apart unseen. The chat reads the drawing and hands back the package; the solve
+runs where OpenFOAM is.
+
 **Cost accepted.** Changing the room means running the converter again and
 importing under a new project name (or removing the old one first); the
 package is not merged into an existing project. The page uploads the package

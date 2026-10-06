@@ -18,6 +18,7 @@ import yaml
 from aicfd import cases as case_store
 from aicfd import model as M
 from aicfd import package
+from tests import support
 from tests.test_geometry import _box, downflow_hall
 
 SCENARIO = """# the converter's comment, which has to arrive
@@ -147,6 +148,70 @@ class ExportTest(PackageTest):
         (self.root / "pod.yaml").write_text("name: pod\n")
         with self.assertRaises(package.PackageError):
             package.export_package("pod", self.root)
+
+
+class TheSkillFileTest(unittest.TestCase):
+    def test_the_command_zips_the_skill_with_the_converter_executable(self):
+        import stat
+        import subprocess
+        import sys
+
+        out = Path(tempfile.mkdtemp()) / "skill.skill"
+        done = subprocess.run([sys.executable, "-m", "aicfd", "skill", "--out", str(out)],
+                              cwd=support.REPO, capture_output=True, text=True)
+        self.assertEqual(done.returncode, 0, done.stderr)
+        archive = zipfile.ZipFile(out)
+        names = set(archive.namelist())
+        for member in ("aicfd-hall-from-dwg/SKILL.md", "aicfd-hall-from-dwg/scripts/hall_from_dwg.py",
+                       "aicfd-hall-from-dwg/scripts/hallkit/package.py",
+                       "aicfd-hall-from-dwg/reference/contract.md", "aicfd-hall-from-dwg/bin/dwg2dxf"):
+            self.assertIn(member, names)
+        self.assertFalse([n for n in names if "__pycache__" in n])
+        mode = archive.getinfo("aicfd-hall-from-dwg/bin/dwg2dxf").external_attr >> 16
+        self.assertTrue(mode & stat.S_IXUSR, "the converter lost its executable bit in the zip")
+
+
+class TheConverterWritesWhatTheImporterReadsTest(PackageTest):
+    """The two halves live in different places -- the skill the engineer
+    uploads, and this repository -- and drift apart silently: each passes its
+    own checks while a package written by one is refused by the other
+    (ADR-135). So the skill's writer is run here and its package imported."""
+
+    SKILL = support.REPO / ".claude" / "skills" / "aicfd-hall-from-dwg" / "scripts"
+
+    def writer(self):
+        import importlib.util
+
+        path = self.SKILL / "hallkit" / "package.py"
+        spec = importlib.util.spec_from_file_location("skill_package", path)
+        module = importlib.util.module_from_spec(spec)
+        spec.loader.exec_module(module)
+        return module
+
+    def test_the_format_names_agree(self):
+        self.assertEqual(self.writer().FORMAT, package.FORMAT)
+
+    def test_a_package_the_skill_writes_is_imported_and_builds(self):
+        work = Path(tempfile.mkdtemp())
+        (work / "drawn.stl").write_text(STL)
+        (work / "plan.png").write_bytes(b"\x89PNG fake")
+        (work / "answers.yaml").write_text("loads: {}\n")
+        (work / "export.txt").write_text("export report\n")
+        # the sidecar as the converter writes it: the STL beside it, the figures by bare name
+        sidecar = SCENARIO.replace("geometry: {file: geometry.stl,", "geometry: {file: drawn.stl,") \
+                          .replace("figures/plan.png", "plan.png").replace("name: drawn-base", "name: drawn")
+        (work / "drawn.yaml").write_text(sidecar)
+        out = work / "drawn.aicfd.zip"
+        self.writer().write("drawn", str(out), str(work / "drawn.stl"), str(work / "drawn.yaml"),
+                            [str(work / "plan.png")], str(work / "answers.yaml"),
+                            str(work / "export.txt"), "a drawing", ["an alert"])
+        done = package.import_package(out.read_bytes(), self.root)
+        self.assertEqual(done["scenarios"], ["drawn"])
+        spec = case_store.load("drawn", self.root)
+        self.assertEqual(spec["figures"][0]["file"], "figures/plan.png")
+        self.assertEqual(len(M.build_model(spec).racks), 4)
+        manifest = json.loads((self.root / "drawn" / "source" / "manifest.json").read_text())
+        self.assertEqual(manifest["grid_alerts"], ["an alert"])
 
 
 if __name__ == "__main__":

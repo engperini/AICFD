@@ -1,0 +1,51 @@
+# answers.yaml -- what the drawing cannot say, and what the user corrects.
+# Every key overrides the same key in reference/reference.yaml. Delete the
+# lines you do not need; the pipeline prints which of these it still lacks.
+
+name: dh04-1mw                 # the AICFD case name (the results folder, the report's slug)
+hall: "DATA HALL 04"           # the hall's name AS DRAWN: the text anchors the extraction
+# anchor_xy: [78.0, 40.0]      # or a point inside the hall, in the drawing's coordinates
+source: "LAYOUT_FTZ01_24Sep26_1.dwg, DATA HALL 04, rev 24 Sep 2026"   # printed in the report
+
+racks:
+  load_kw: 4.11                # every cabinet the drawing gives no load
+  future_kw: 8.333             # a FUTURE position (100 kW ROFR over 12 positions)
+  airflow_cfm_per_kw: 158
+loads:                         # per cabinet, by the tag the drawing uses (or the renamed F1-01..)
+  A01: 20
+  A10: ODF                     # zero load, still a cabinet
+  A11: FUTURE                  # takes racks.future_kw
+# fronts:                      # only for a row with no cold aisle drawn on either side
+#   F1: +y                     # +y = the row's cabinets face north (higher y); -y = south
+
+heights:                       # THE ELEVATIONS, one per element -- asked of the user, never assumed.
+  plenum: 1.0                  # raised floor depth: the deck is at z = plenum over the slab
+  rack: 2.2                    # cabinet height; the lids sit on the rack tops
+  unit: 1.97                   # cooling unit height (P3100DA)
+  ceiling: 4.0                 # deck to false ceiling; the return plenum is above it
+  hall: 5.6                    # deck to slab
+                               # a key left out is built with the reference figure and stays an open question
+
+# return_grilles:
+#   mode: match_tiles          # match_tiles (as many as the floor, against each row's back) | fill
+#   across: auto               # fill only: auto | 1 | 2 | 3
+# tiles:
+#   across: auto               # auto | 1 | 2 | 3
+
+# plenum:                      # a fan-wall hall with a DOUBLE wall (read from the drawing): the supply grilles
+#   grille: {width: 2.0, height: 2.2}   # in the hall's wall, one per cold aisle, centred -- or place them:
+#   grilles:
+#     W: [[3.4, 5.4], [11.6, 13.6]]     # y ranges along the west wall
+#     E: [[3.4, 5.4], [11.6, 13.6]]
+
+# fanwall:                     # the plant, where it differs from the reference
+#   supply_temp_c: 22.0
+#   out_of_service: [UE-47]    # the failure scenario, by the drawing's tag
+# mesh:
+#   cell_size: [0.2, 0.2, 0.2]
+# solver:
+#   max_iterations: 2000
+#   processors: 16
+
+# galleries:                   # only if the drawing has no gallery contour and no wall rectangles
+#   - [67.48, 21.16, 71.64, 55.91]
