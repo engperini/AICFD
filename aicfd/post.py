@@ -357,6 +357,10 @@ def _analyse(model: Model, case_dir: str | Path, time: str | None = None) -> Pod
     # A raised floor's plates are a perforated surface like any other, and
     # every cubic metre the units move crosses them once (ADR-076).
     kpis["floor_drop_pa"] = grille_pressure_drop(step, "tile_")
+    for key, prefix in (("grille", "grille"), ("supply", "supply"), ("floor", "tile_")):
+        bad, total, worst = unreadable_jump_faces(step, prefix)
+        if bad:
+            kpis[f"{key}_jump_unreadable"] = {"faces": bad, "of": total, "largest_pa": worst}
     kpis["floor_drop_asked_pa"] = (
         round(model.floor_pressure_drop_pa, 3)
         if model.floor_pressure_drop_pa is not None else None
@@ -870,6 +874,64 @@ def _coil_gap_k(kpis: dict) -> float | None:
     return round(max(apart), 3) if apart else None
 
 
+#: The largest jump a perforated surface in a hall can apply, in Pa. A floor plate
+#: costs a few, a woven mesh a few tens; this is an atmosphere's worth of
+#: slack beyond anything real. What lies past it is not a pressure -- it is
+#: what `reconstructPar` left in a face it did not fill (ADR-136).
+MAX_PLAUSIBLE_JUMP_PA = 1.0e5
+
+
+def _readable(jump: np.ndarray | None) -> np.ndarray | None:
+    """The faces of a ``jump`` entry that are pressures, or None if none are."""
+    if jump is None or not jump.size:
+        return None
+    good = jump[np.isfinite(jump) & (np.abs(jump) <= MAX_PLAUSIBLE_JUMP_PA)]
+    return good if good.size else None
+
+
+def unreadable_jump_faces(step: str | Path, prefix: str = "grille") -> tuple[int, int, float | None]:
+    """How many faces of one kind of surface carry a ``jump`` that is not a
+    pressure: (those, all of them, the largest magnitude seen among them).
+
+    A report that prints -1,9e158 Pa as the drop across a floor and fails the
+    hall on it says nothing about the floor. The field was fine -- every other
+    check passed -- and the number was a face `reconstructPar` left unset where
+    the surface is cut between processors, read as if it were a measurement
+    (ADR-136). Those faces are left out of the
+    drop, and the check says how many, so the reader can tell a floor that
+    fails from a file that is damaged."""
+    names = [n for n in patch_names(Path(step) / "phi")
+             if n.endswith("_below") and n.startswith(prefix)]
+    bad = total = 0
+    worst = None
+    for below in names:
+        jump = read_patch_entry(Path(step) / "p_rgh", below, "jump")
+        if jump is None or not jump.size:
+            continue
+        total += jump.size
+        off = ~(np.isfinite(jump) & (np.abs(jump) <= MAX_PLAUSIBLE_JUMP_PA))
+        bad += int(off.sum())
+        if off.any():
+            seen = float(np.max(np.abs(np.where(np.isfinite(jump[off]), jump[off], np.inf))))
+            worst = seen if worst is None else max(worst, seen)
+    return bad, total, worst
+
+
+def _unreadable_note(kpis: dict, key: str) -> str:
+    """The sentence that goes beside a drop measured on fewer faces than the
+    surface has -- empty when every face was a pressure (ADR-136)."""
+    found = kpis.get(f"{key}_jump_unreadable")
+    if not found:
+        return ""
+    largest = found.get("largest_pa")
+    seen = (f", the largest {largest:.3g} Pa" if largest is not None and largest != float("inf")
+            else ", not numbers")
+    return (f"; {found['faces']} of the {found['of']} faces' jump entries hold values no "
+            f"surface carries{seen}, and were left out of the drop -- reconstructPar leaves "
+            f"the jump of a few faces unset where a surface is cut between processors, "
+            f"so this is the file and not the floor")
+
+
 def grille_pressure_drop(step: str | Path, prefix: str = "grille") -> float | None:
     """The jump the field shows across one kind of perforated surface, in Pa.
 
@@ -914,7 +976,8 @@ def grille_pressure_drop(step: str | Path, prefix: str = "grille") -> float | No
         jump = read_patch_entry(Path(step) / "p_rgh", below, "jump")
         # The neighbour side sits `jump` above the owner side, so the drop
         # from `_below` to `_above` is its negative.
-        drop = (float(-np.mean(jump)) if jump is not None and jump.size else float(
+        jump = _readable(jump)
+        drop = (float(-np.mean(jump)) if jump is not None else float(
             np.mean(read_patch_field(Path(step) / "p_rgh", below))
             - np.mean(read_patch_field(Path(step) / "p_rgh", above))
         ))
@@ -1552,7 +1615,8 @@ def _checks(model: Model, step: Path, kpis: dict, grid: dict) -> list[Check]:
                 passed,
                 f"the field drops {grille_drop:.2f} Pa across the return grilles "
                 f"where their K at {model.airflow_m3h:,.0f} m3/h asks for "
-                f"{grille_asked:.2f} Pa" + why + f" ({ratio * 100:.0f}%)",
+                f"{grille_asked:.2f} Pa" + why + f" ({ratio * 100:.0f}%)"
+                + _unreadable_note(kpis, "grille"),
             )
         )
 
@@ -1572,6 +1636,7 @@ def _checks(model: Model, step: Path, kpis: dict, grid: dict) -> list[Check]:
                 f"the field drops {supply_drop:.2f} Pa across the supply grilles "
                 f"where their K at {model.airflow_m3h:,.0f} m3/h asks for "
                 f"{supply_asked:.2f} Pa" + why + f" ({ratio * 100:.0f}%)"
+                + _unreadable_note(kpis, "supply")
                 # The velocity, with no verdict attached: what is high for
                 # one hall is ordinary in another, and the reader knows which
                 # they have (ADR-059).
@@ -1601,6 +1666,7 @@ def _checks(model: Model, step: Path, kpis: dict, grid: dict) -> list[Check]:
                 f"{kpis.get('floor_tiles')} floor plates where their K at "
                 f"{model.airflow_m3h:,.0f} m3/h asks for {floor_asked:.2f} Pa"
                 + why + f" ({ratio * 100:.0f}%)"
+                + _unreadable_note(kpis, "floor")
                 # The velocity, with no verdict attached, for the same reason
                 # the plenum's carries none (ADR-059).
                 + (f"; they run at {velocity:.2f} m/s on the face"

@@ -769,6 +769,78 @@ class ToleranceTest(unittest.TestCase):
     def test_any_real_backflow_through_a_fan_is_a_failure(self):
         self.assertLessEqual(post.BACKFLOW_TOLERANCE, 0.05)
 
+class AJumpThatIsNotAPressureIsLeftOutAndSaidSoTest(unittest.TestCase):
+    """A floor failed a hall at -1,9e158 Pa and nothing else was wrong (ADR-136).
+
+    `reconstructPar` left a number that is not a pressure in the `jump` of a
+    face where the surface is cut between processors, and the drop across the
+    floor was the mean of them. Every other check passed, the temperatures were sane, and the
+    report named the floor.
+    """
+
+    def setUp(self):
+        self.case = Path(tempfile.mkdtemp())
+        self.step = self.case / "100"
+        self.step.mkdir()
+
+    def write(self, jumps: dict[str, list[float]]):
+        phi, pressure = {}, {}
+        for name in jumps:
+            phi[f"{name}_below"] = [0.2] * len(jumps[name])
+            phi[f"{name}_above"] = [-0.2] * len(jumps[name])
+            pressure[f"{name}_below"] = [0.0] * len(jumps[name])
+            pressure[f"{name}_above"] = [0.0] * len(jumps[name])
+        field(self.step / "phi", "phi", "0", phi)
+        field(self.step / "p_rgh", "p_rgh", "0", pressure)
+        text = (self.step / "p_rgh").read_text()
+        for name, values in jumps.items():
+            listing = "\n".join(f"{v!r}" for v in values)
+            text = text.replace(
+                f"    {name}_below\n    {{\n",
+                f"    {name}_below\n    {{\n        jump nonuniform List<scalar> "
+                f"{len(values)}\n(\n{listing}\n)\n;\n", 1)
+        (self.step / "p_rgh").write_text(text)
+
+    def test_the_drop_is_the_mean_of_the_faces_that_are_pressures(self):
+        self.write({"tile_a": [-4.0, -4.0, -1.86e158, -4.0], "tile_b": [-4.0] * 4})
+        self.assertAlmostEqual(post.grille_pressure_drop(self.step, "tile_"), 4.0, places=3)
+
+    def test_not_a_number_is_left_out_too(self):
+        self.write({"tile_a": [-4.0, float("nan"), -4.0, -4.0]})
+        self.assertAlmostEqual(post.grille_pressure_drop(self.step, "tile_"), 4.0, places=3)
+
+    def test_the_faces_left_out_are_counted_and_the_largest_is_named(self):
+        self.write({"tile_a": [-4.0, -1.86e158, -4.0, -4.0], "tile_b": [-4.0] * 4})
+        bad, total, worst = post.unreadable_jump_faces(self.step, "tile_")
+        self.assertEqual((bad, total), (1, 8))
+        self.assertAlmostEqual(worst / 1.86e158, 1.0, places=3)
+
+    def test_a_clean_field_says_nothing(self):
+        self.write({"tile_a": [-4.0] * 4})
+        self.assertEqual(post.unreadable_jump_faces(self.step, "tile_")[:2], (0, 4))
+        self.assertEqual(post._unreadable_note({}, "floor"), "")
+
+    def test_the_note_says_the_file_is_at_fault_and_not_the_floor(self):
+        note = post._unreadable_note(
+            {"floor_jump_unreadable": {"faces": 3, "of": 704, "largest_pa": 1.86e158}}, "floor")
+        self.assertIn("3 of the 704", note)
+        self.assertIn("1.86e+158", note)
+        self.assertIn("not the floor", note)
+        self.assertIn("reconstructPar", note)
+
+    def test_every_face_unreadable_falls_back_to_the_two_pressures(self):
+        """A surface whose jump is all garbage is measured the way a surface
+        that writes none is: by the pressure either side."""
+        self.write({"tile_a": [1.0e200] * 4})
+        text = (self.step / "p_rgh").read_text()
+        field(self.step / "p_rgh", "p_rgh", "0", {"tile_a_below": [6.0] * 4, "tile_a_above": [2.0] * 4})
+        broken = (self.step / "p_rgh").read_text().replace(
+            "    tile_a_below\n    {\n",
+            "    tile_a_below\n    {\n        jump nonuniform List<scalar> 4\n(\n1e200\n1e200\n1e200\n1e200\n)\n;\n", 1)
+        (self.step / "p_rgh").write_text(broken)
+        self.assertAlmostEqual(post.grille_pressure_drop(self.step, "tile_"), 4.0, places=3)
+
+
 
 if __name__ == "__main__":
     unittest.main()
