@@ -5813,35 +5813,45 @@ as base64 inside JSON, which costs a third more bytes than a multipart body
 and keeps the server free of a form parser; the halls so far are under 2 MB.
 
 
-## ADR-136 — A `jump` that is not a pressure is left out of the drop, and the check says so
+## ADR-136 — Faces `reconstructPar` did not fill are left out of a surface's drop, and the report says so only when it happens
 
-**Decision.** `grille_pressure_drop` reads the `jump` the porous baffle writes
-(ADR-133) only from faces where it is a finite number within ±1e5 Pa. A face
-that holds anything else is left out of the flow-weighted mean; if every face
-of a surface is like that, the drop falls back to the pressure either side, as
-for a surface that writes no jump. `unreadable_jump_faces` counts the faces
-left out and names the largest value seen, the export carries it
-(`floor_jump_unreadable`, and the same for the grilles and the supply), and the
-check's sentence says "N of M faces' jump entries hold values no surface
-carries, and were left out ... this is the file and not the floor".
+**Decision.** `_measure` reads each perforated surface once and leaves a face
+out of its drop when its `jump` (ADR-133) is not a pressure -- not a number, or
+beyond ±1e5 Pa -- or is exactly zero on a face that passes air through a
+surface that resists everywhere else (a surface open by design is zero on every
+face and loses nothing). If every face of a surface is left out, the drop falls
+back to the pressure either side.
+
+- **Nothing left out** (the usual case, and every run on 4 cores so far): the
+  report says nothing.
+- **Up to 5 % of the surface** (`MAX_UNSET_SHARE`): the check's sentence ends
+  with a plain note -- *N of the M floor plate faces were left out of this
+  measure: they sit on the cut between processors, which the reconstruction
+  into a single file does not fill. This does not change the result.* It is not
+  an alert and does not change the verdict.
+- **More than 5 %**: the check **fails**, and says the solution is not affected
+  and to solve again on fewer processors. The drop would then be measured on a
+  part of the surface that cannot stand for it.
+
+The export carries `{floor,grille,supply}_jump_unreadable` when anything was
+left out.
 
 **Why.** A 390 000-cell hall with 176 floor plates, solved on 16 cores,
 failed `floor_resistance` at **−1,9×10¹⁵⁸ Pa**, and the report printed the
-figure to the last digit. The other eleven checks passed, the warmest rack was
-20,0 °C, the fans were at 84 % of their static pressure and the coil closed to
-0,01 K: the field was sound and the number was not a measurement.
+figure to the last digit. The other eleven checks passed: the field was sound
+and the number was not a measurement.
 
-**Cause, reproduced.** `reconstructPar` leaves the `jump` of a few faces unset
-where a perforated surface is cut between processors -- memory nobody filled,
-so a different value each time. The same hall on 16 subdomains, with the
-coupled loop's restarts, showed one face of 1 584 at 5,9×10²⁵⁰ Pa after the
-third pass; reconstructing the same time again gave none. A single pass of 40
-iterations did not show it, and neither did a small raised-floor case on 4, 6, 8
-and 12 subdomains, which is why it passed on the worked halls. The solver is
-unaffected: it holds its own jump per processor, and everything else in the
-export is a `value`, which the reconstruction does fill.
+**Cause, reproduced.** Where a perforated surface is cut between two
+processors, `reconstructPar` does not fill the `jump` of the faces on the cut --
+memory nobody filled. It is usually zero, sometimes anything: one face of 1 584
+held 5,9×10²⁵⁰ after the third coupled pass of the same hall on 16 subdomains,
+and the next reconstruction of that time was clean. The solver is unaffected --
+it holds its own jump per processor -- and everything else in the export is a
+`value`, which the reconstruction does fill. It is a property of the file
+`reconstructPar` writes, not of the mesh or of the physics, which is why a
+different mesh or processor count can make it disappear without anything having
+been fixed.
 
-**Cost accepted.** A limit of 1e5 Pa is a constant in `post.py`. Nothing in a
-data hall comes near it. It catches the values that are absurd, which is what
-unset memory almost always holds; a face left at a plausible number would pass,
-and with one face in 1 584 it would not move the flow-weighted mean.
+**Cost accepted.** Two constants in `post.py` (1e5 Pa and 5 %). A face left at
+a plausible non-zero number would pass; with one in 1 584 it moves the
+flow-weighted mean by under a tenth of a per cent.

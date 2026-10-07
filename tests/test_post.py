@@ -818,15 +818,47 @@ class AJumpThatIsNotAPressureIsLeftOutAndSaidSoTest(unittest.TestCase):
     def test_a_clean_field_says_nothing(self):
         self.write({"tile_a": [-4.0] * 4})
         self.assertEqual(post.unreadable_jump_faces(self.step, "tile_")[:2], (0, 4))
-        self.assertEqual(post._unreadable_note({}, "floor"), "")
+        self.assertEqual(post._unreadable_note({}, "floor"), (True, ""))
 
-    def test_the_note_says_the_file_is_at_fault_and_not_the_floor(self):
-        note = post._unreadable_note(
-            {"floor_jump_unreadable": {"faces": 3, "of": 704, "largest_pa": 1.86e158}}, "floor")
-        self.assertIn("3 of the 704", note)
-        self.assertIn("1.86e+158", note)
-        self.assertIn("not the floor", note)
-        self.assertIn("reconstructPar", note)
+    def test_a_few_faces_are_a_plain_note_that_does_not_fail_the_check(self):
+        stands, note = post._unreadable_note(
+            {"floor_jump_unreadable": {"faces": 3, "of": 704, "largest_pa": 1.86e158}},
+            "floor", "floor plate")
+        self.assertTrue(stands)
+        self.assertIn("3 of the 704 floor plate faces were left out of this measure", note)
+        self.assertIn("cut between processors", note)
+        self.assertIn("reconstruction into a single file", note)
+        self.assertIn("does not change the result", note)
+
+    def test_too_many_faces_fail_the_check_and_say_what_to_do(self):
+        stands, note = post._unreadable_note(
+            {"floor_jump_unreadable": {"faces": 100, "of": 704, "largest_pa": None}},
+            "floor", "floor plate")
+        self.assertFalse(stands)
+        self.assertIn("100 of the 704 floor plate faces (14%)", note)
+        self.assertIn("too many to measure on the rest", note)
+        self.assertIn("solution is not affected", note)
+        self.assertIn("fewer processors", note)
+
+    def test_the_limit_is_five_per_cent_of_the_surface(self):
+        self.assertTrue(post._unreadable_note(
+            {"floor_jump_unreadable": {"faces": 5, "of": 100, "largest_pa": None}}, "floor")[0])
+        self.assertFalse(post._unreadable_note(
+            {"floor_jump_unreadable": {"faces": 6, "of": 100, "largest_pa": None}}, "floor")[0])
+
+    def test_a_face_left_at_zero_that_passes_air_is_left_out_too(self):
+        """Unset memory is usually zero, and a zero is no 'absurd value'."""
+        self.write({"tile_a": [-4.0, 0.0, -4.0, -4.0], "tile_b": [-4.0] * 4})
+        bad, total, worst = post.unreadable_jump_faces(self.step, "tile_")
+        self.assertEqual((bad, total), (1, 8))
+        self.assertIsNone(worst, "a zero is not a huge value")
+        self.assertAlmostEqual(post.grille_pressure_drop(self.step, "tile_"), 4.0, places=3)
+
+    def test_a_surface_that_is_open_by_design_loses_nothing(self):
+        """The return grille of a hall can be modelled fully open: a jump of
+        zero on every face is what it is, not what a reconstruction forgot."""
+        self.write({"tile_a": [0.0] * 4, "tile_b": [0.0] * 4})
+        self.assertEqual(post.unreadable_jump_faces(self.step, "tile_")[:2], (0, 8))
 
     def test_every_face_unreadable_falls_back_to_the_two_pressures(self):
         """A surface whose jump is all garbage is measured the way a surface
@@ -991,10 +1023,10 @@ class FloorResistanceTest(unittest.TestCase):
         import inspect
 
         source = inspect.getsource(post)
-        self.assertIn('grille_pressure_drop(step, "tile_")', source)
-        # And the other kinds are still read against their own.
-        for prefix in ('"plenum_opening"', '"supply"'):
-            self.assertIn(f"grille_pressure_drop(step, {prefix})", source)
+        # The plates are read as their own family, and the other kinds against theirs.
+        for pair in ('("floor", "tile_")', '("supply", "supply")', '("grille", "grille")'):
+            self.assertIn(pair, source)
+        self.assertIn('grille_pressure_drop(step, "plenum_opening")', source)
 
     def test_the_report_calls_it_a_room_unit(self):
         """A downflow unit is not a fan wall, and the reader is checking a

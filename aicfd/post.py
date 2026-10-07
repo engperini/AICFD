@@ -334,10 +334,13 @@ def _analyse(model: Model, case_dir: str | Path, time: str | None = None) -> Pod
     kpis["racks"] = rack_temperatures(model, grid)
 
     kpis["rack_drop_pa"], kpis["rows"] = rack_pressure_drop(model, grid)
-    kpis["grille_drop_pa"] = grille_pressure_drop(step)
+    for key, prefix in (("grille", "grille"), ("supply", "supply"), ("floor", "tile_")):
+        drop, bad, total, worst = _measure(step, prefix)
+        kpis[f"{key}_drop_pa"] = drop
+        if bad:
+            kpis[f"{key}_jump_unreadable"] = {"faces": bad, "of": total, "largest_pa": worst}
     kpis["grille_drop_asked_pa"] = round(model.grille_pressure_drop_pa, 3)
     kpis["mesh_drop_pa"] = grille_pressure_drop(step, "plenum_opening")
-    kpis["supply_drop_pa"] = grille_pressure_drop(step, "supply")
     kpis["grille_spread"] = flow_spread(step, "grille")
     kpis["supply_spread"] = flow_spread(step, "supply")
     kpis["floor_spread"] = flow_spread(step, "tile_")
@@ -356,11 +359,7 @@ def _analyse(model: Model, case_dir: str | Path, time: str | None = None) -> Pod
         if model.mesh_pressure_drop_pa is not None else None
     # A raised floor's plates are a perforated surface like any other, and
     # every cubic metre the units move crosses them once (ADR-076).
-    kpis["floor_drop_pa"] = grille_pressure_drop(step, "tile_")
-    for key, prefix in (("grille", "grille"), ("supply", "supply"), ("floor", "tile_")):
-        bad, total, worst = unreadable_jump_faces(step, prefix)
-        if bad:
-            kpis[f"{key}_jump_unreadable"] = {"faces": bad, "of": total, "largest_pa": worst}
+
     kpis["floor_drop_asked_pa"] = (
         round(model.floor_pressure_drop_pa, 3)
         if model.floor_pressure_drop_pa is not None else None
@@ -880,56 +879,101 @@ def _coil_gap_k(kpis: dict) -> float | None:
 #: what `reconstructPar` left in a face it did not fill (ADR-136).
 MAX_PLAUSIBLE_JUMP_PA = 1.0e5
 
+#: The share of a surface's faces that may be left out of its drop. Past it
+#: the drop is measured on too little of the surface to stand for it, and the
+#: check fails instead of quoting it (ADR-136).
+MAX_UNSET_SHARE = 0.05
 
-def _readable(jump: np.ndarray | None) -> np.ndarray | None:
-    """The faces of a ``jump`` entry that are pressures, or None if none are."""
-    if jump is None or not jump.size:
-        return None
-    good = jump[np.isfinite(jump) & (np.abs(jump) <= MAX_PLAUSIBLE_JUMP_PA)]
-    return good if good.size else None
+#: Air a face has to pass, in kg/s, for a jump of exactly zero to be a face
+#: nobody filled rather than a face with nothing to resist.
+MIN_FACE_FLOW = 1.0e-6
+
+
+def _measure(step: str | Path, prefix: str) -> tuple[float | None, int, int, float | None]:
+    """One kind of surface, read once: (the drop in Pa, the faces left out of
+    it, all the faces, the largest absurd value seen).
+
+    A face is left out when its ``jump`` is not a pressure -- not a number, or
+    beyond anything a surface applies -- or is exactly zero on a face that
+    passes air through a surface that resists everywhere else. Both are faces
+    `reconstructPar` did not fill, where the surface is cut between processors
+    (ADR-136). A surface that is open by design has a jump of zero on every
+    face, and nothing is left out of it."""
+    phi_path, p_path = Path(step) / "phi", Path(step) / "p_rgh"
+    names = [n for n in patch_names(phi_path)
+             if n.endswith("_below") and n.startswith(prefix)]
+    if not names:
+        return None, 0, 0, None
+    rows = [(below, read_patch_field(phi_path, below), read_patch_entry(p_path, below, "jump"))
+            for below in names]
+    # Does this surface resist at all? Judged on the faces that carry air.
+    carrying = [np.abs(j[np.isfinite(j) & (np.abs(j) <= MAX_PLAUSIBLE_JUMP_PA)
+                         & (np.abs(f) > MIN_FACE_FLOW)])
+                for _below, f, j in rows if j is not None and j.size == f.size]
+    carrying = np.concatenate(carrying) if carrying else np.array([])
+    resists = bool(carrying.size and np.median(carrying) > 0.0)
+
+    total_flow, weighted, bad, total, worst = 0.0, 0.0, 0, 0, None
+    for below, flux, jump in rows:
+        net = float(np.sum(flux))
+        usable = None
+        if jump is not None and jump.size:
+            total += jump.size
+            absurd = ~(np.isfinite(jump) & (np.abs(jump) <= MAX_PLAUSIBLE_JUMP_PA))
+            unset = absurd.copy()
+            if resists and jump.size == flux.size:
+                unset |= (jump == 0.0) & (np.abs(flux) > MIN_FACE_FLOW)
+            bad += int(unset.sum())
+            if absurd.any():
+                seen = float(np.max(np.abs(np.where(np.isfinite(jump[absurd]), jump[absurd], np.inf))))
+                worst = seen if worst is None else max(worst, seen)
+            usable = jump[~unset] if (~unset).any() else None
+        if usable is not None:
+            # The neighbour side sits `jump` above the owner side, so the drop
+            # from `_below` to `_above` is its negative.
+            drop = float(-np.mean(usable))
+        else:
+            above = below[: -len("_below")] + "_above"
+            drop = float(np.mean(read_patch_field(p_path, below))
+                         - np.mean(read_patch_field(p_path, above)))
+        # phi is positive out of the owner cell, which is the `_below` side.
+        # Positive net flow means the air runs below -> above and `_below` is
+        # upstream; negative means the surface is being crossed the other way
+        # and the same physical drop reads with the opposite sign.
+        if net < 0:
+            drop = -drop
+        total_flow += abs(net)
+        weighted += abs(net) * drop
+    return (round(weighted / total_flow, 3) if total_flow else None), bad, total, worst
 
 
 def unreadable_jump_faces(step: str | Path, prefix: str = "grille") -> tuple[int, int, float | None]:
-    """How many faces of one kind of surface carry a ``jump`` that is not a
-    pressure: (those, all of them, the largest magnitude seen among them).
-
-    A report that prints -1,9e158 Pa as the drop across a floor and fails the
-    hall on it says nothing about the floor. The field was fine -- every other
-    check passed -- and the number was a face `reconstructPar` left unset where
-    the surface is cut between processors, read as if it were a measurement
-    (ADR-136). Those faces are left out of the
-    drop, and the check says how many, so the reader can tell a floor that
-    fails from a file that is damaged."""
-    names = [n for n in patch_names(Path(step) / "phi")
-             if n.endswith("_below") and n.startswith(prefix)]
-    bad = total = 0
-    worst = None
-    for below in names:
-        jump = read_patch_entry(Path(step) / "p_rgh", below, "jump")
-        if jump is None or not jump.size:
-            continue
-        total += jump.size
-        off = ~(np.isfinite(jump) & (np.abs(jump) <= MAX_PLAUSIBLE_JUMP_PA))
-        bad += int(off.sum())
-        if off.any():
-            seen = float(np.max(np.abs(np.where(np.isfinite(jump[off]), jump[off], np.inf))))
-            worst = seen if worst is None else max(worst, seen)
-    return bad, total, worst
+    """How many faces of one kind of surface were left out of its drop, out of
+    how many it has, and the largest absurd value among them (ADR-136)."""
+    return _measure(step, prefix)[1:]
 
 
-def _unreadable_note(kpis: dict, key: str) -> str:
-    """The sentence that goes beside a drop measured on fewer faces than the
-    surface has -- empty when every face was a pressure (ADR-136)."""
+def _unreadable_note(kpis: dict, key: str, what: str = "surface") -> tuple[bool, str]:
+    """What the check says when faces were left out of a drop, and whether it
+    still stands: (it stands, the sentence). Both empty when nothing was left
+    out, which is nearly always -- the report says nothing then (ADR-136).
+
+    A few faces are a note: they sit where the domain was cut between
+    processors, and the solution never depended on them. Too many are a
+    failure, because the drop is then measured on a part of the surface that
+    cannot stand for it."""
     found = kpis.get(f"{key}_jump_unreadable")
     if not found:
-        return ""
-    largest = found.get("largest_pa")
-    seen = (f", the largest {largest:.3g} Pa" if largest is not None and largest != float("inf")
-            else ", not numbers")
-    return (f"; {found['faces']} of the {found['of']} faces' jump entries hold values no "
-            f"surface carries{seen}, and were left out of the drop -- reconstructPar leaves "
-            f"the jump of a few faces unset where a surface is cut between processors, "
-            f"so this is the file and not the floor")
+        return True, ""
+    faces, of = found["faces"], found["of"]
+    if faces > MAX_UNSET_SHARE * of:
+        return False, (f"; but {faces} of the {of:,} {what} faces ({faces / of * 100:.0f}%) sit on the "
+                       f"cut between processors, which the reconstruction into a single file "
+                       f"does not fill -- too many to measure on the rest. The solution is not "
+                       f"affected: solve again on fewer processors")
+    return True, (f"; {faces} of the {of:,} {what} faces were left out of this measure: they sit "
+                  f"on the cut between processors, which the reconstruction into a single file "
+                  f"does not fill. This does not change the result")
 
 
 def grille_pressure_drop(step: str | Path, prefix: str = "grille") -> float | None:
@@ -964,32 +1008,7 @@ def grille_pressure_drop(step: str | Path, prefix: str = "grille") -> float | No
     -- into one weighted mean, which then matched neither one's K. Each is
     measured against its own (ADR-048).
     """
-    phi_path = Path(step) / "phi"
-    names = [n for n in patch_names(phi_path)
-             if n.endswith("_below") and n.startswith(prefix)]
-    if not names:
-        return None
-    total_flow, weighted = 0.0, 0.0
-    for below in names:
-        above = below[: -len("_below")] + "_above"
-        net = float(np.sum(read_patch_field(phi_path, below)))
-        jump = read_patch_entry(Path(step) / "p_rgh", below, "jump")
-        # The neighbour side sits `jump` above the owner side, so the drop
-        # from `_below` to `_above` is its negative.
-        jump = _readable(jump)
-        drop = (float(-np.mean(jump)) if jump is not None else float(
-            np.mean(read_patch_field(Path(step) / "p_rgh", below))
-            - np.mean(read_patch_field(Path(step) / "p_rgh", above))
-        ))
-        # phi is positive out of the owner cell, which is the `_below` side.
-        # Positive net flow means the air runs below -> above and `_below` is
-        # upstream; negative means the surface is being crossed the other way
-        # and the same physical drop reads with the opposite sign.
-        if net < 0:
-            drop = -drop
-        total_flow += abs(net)
-        weighted += abs(net) * drop
-    return round(weighted / total_flow, 3) if total_flow else None
+    return _measure(step, prefix)[0]
 
 
 def flow_spread(step: str | Path, prefix: str = "grille") -> float:
@@ -1609,14 +1628,15 @@ def _checks(model: Model, step: Path, kpis: dict, grid: dict) -> list[Check]:
             grille_drop, grille_asked, kpis.get("grille_spread", 1.0),
             kpis.get("grille_reverse", 0.0))
         ratio = grille_drop / expected if expected else ratio
+        stands, left_out = _unreadable_note(kpis, "grille", "return grille")
         checks.append(
             Check(
                 "grille_resistance",
-                passed,
+                passed and stands,
                 f"the field drops {grille_drop:.2f} Pa across the return grilles "
                 f"where their K at {model.airflow_m3h:,.0f} m3/h asks for "
                 f"{grille_asked:.2f} Pa" + why + f" ({ratio * 100:.0f}%)"
-                + _unreadable_note(kpis, "grille"),
+                + left_out,
             )
         )
 
@@ -1629,14 +1649,15 @@ def _checks(model: Model, step: Path, kpis: dict, grid: dict) -> list[Check]:
             supply_drop, supply_asked, kpis.get("supply_spread", 1.0),
             kpis.get("supply_reverse", 0.0))
         ratio = supply_drop / expected if expected else ratio
+        stands, left_out = _unreadable_note(kpis, "supply", "supply grille")
         checks.append(
             Check(
                 "plenum_resistance",
-                passed,
+                passed and stands,
                 f"the field drops {supply_drop:.2f} Pa across the supply grilles "
                 f"where their K at {model.airflow_m3h:,.0f} m3/h asks for "
                 f"{supply_asked:.2f} Pa" + why + f" ({ratio * 100:.0f}%)"
-                + _unreadable_note(kpis, "supply")
+                + left_out
                 # The velocity, with no verdict attached: what is high for
                 # one hall is ordinary in another, and the reader knows which
                 # they have (ADR-059).
@@ -1658,15 +1679,16 @@ def _checks(model: Model, step: Path, kpis: dict, grid: dict) -> list[Check]:
             floor_drop, floor_asked, kpis.get("floor_spread", 1.0),
             kpis.get("floor_reverse", 0.0))
         ratio = floor_drop / expected if expected else ratio
+        stands, left_out = _unreadable_note(kpis, "floor", "floor plate")
         checks.append(
             Check(
                 "floor_resistance",
-                passed,
+                passed and stands,
                 f"the field drops {floor_drop:.2f} Pa across the "
                 f"{kpis.get('floor_tiles')} floor plates where their K at "
                 f"{model.airflow_m3h:,.0f} m3/h asks for {floor_asked:.2f} Pa"
                 + why + f" ({ratio * 100:.0f}%)"
-                + _unreadable_note(kpis, "floor")
+                + left_out
                 # The velocity, with no verdict attached, for the same reason
                 # the plenum's carries none (ADR-059).
                 + (f"; they run at {velocity:.2f} m/s on the face"
