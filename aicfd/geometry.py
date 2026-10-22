@@ -47,6 +47,7 @@ from aicfd.model import (
     Rack,
     Row,
     _plates_must_fit,
+    open_sealed_pockets,
     air_density,
     cage_k,
     check_mesh_alignment,
@@ -751,5 +752,8 @@ def build(spec: dict) -> Model:
         ))
     model = snap_to_mesh(model)
     _plates_must_fit(model)
+    # A drawn room can close a volume the air never reaches -- a drywall cage
+    # round an empty corner -- and the solver cannot solve one (ADR-138).
+    model = open_sealed_pockets(model)
     model.alerts = model.hvac_alerts()
     return model

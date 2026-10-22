@@ -1980,6 +1980,203 @@ def _plates_must_fit(model: "Model") -> None:
         f"{num(2 * asked * depth)} m"
     )
 
+#: The loss coefficient of the leak cut into a sealed volume, on its face
+#: velocity. High enough that the leak passes nothing worth measuring -- a pascal
+#: across it moves about 4 cm/s through 0,01 m2 -- and low enough that the jump
+#: stays a well-conditioned number for the solver (ADR-138).
+LEAK_K = 1000.0
+
+
+def _surfaces(model: "Model"):
+    """Every surface that stops the air, and every one it passes through, as
+    (axis, position, (lo, hi) on the first in-plane axis, (lo, hi) on the
+    second, the panel or None for a dividing wall)."""
+    stops, passes = [], []
+    for p in model.panels:
+        planes = [p.position] + ([p.return_z] if p.kind == "fan" and p.return_z is not None else [])
+        for at in planes:
+            entry = (p.axis, at, p.extent[0], p.extent[1], p)
+            if p.kind == "opening" or (p.kind == "wall" and p.resistance is not None):
+                passes.append(entry)
+            else:
+                stops.append(entry)
+    d = model.domain
+    for x in model.dividers:
+        stops.append((0, x, (d.lo[1], d.hi[1]), (d.lo[2], d.hi[2]), None))
+    return stops, passes
+
+
+def sealed_pockets(model: "Model") -> list[dict]:
+    """The volumes of air nothing reaches: no opening, no unit, no gap.
+
+    The domain is cut at every plane a panel lies in, so each piece is a box
+    no surface crosses, and two pieces that share a face are joined unless a
+    wall covers it and no opening does. The largest connected volume is the
+    room; anything else is a volume the solver cannot fix a pressure in, and
+    `buoyantSimpleFoam` dies on it at the first iteration with a floating point
+    exception -- which says nothing about a drywall cage closing an empty
+    corner of the hall, which is what it was (ADR-138).
+
+    Returns one dict per pocket: its box (lo, hi), its volume and, where one
+    wall stands between it and the room, that wall and the face of it that
+    does (``door``).
+    """
+    from bisect import bisect_left
+    from collections import deque
+
+    stops, passes = _surfaces(model)
+    d = model.domain
+    coords = []
+    for axis in range(3):
+        values = {round(d.lo[axis], 6), round(d.hi[axis], 6)}
+        for a, at, e0, e1, _p in stops + passes:
+            if a == axis:
+                values.add(round(at, 6))
+            others = [k for k in range(3) if k != a]
+            for k, (lo, hi) in zip(others, (e0, e1)):
+                if k == axis:
+                    values.update((round(lo, 6), round(hi, 6)))
+        coords.append(sorted(v for v in values if d.lo[axis] - 1e-6 <= v <= d.hi[axis] + 1e-6))
+    n = [len(c) - 1 for c in coords]
+
+    def index(axis: int, value: float) -> int:
+        return bisect_left(coords[axis], round(value, 6) - 1e-7)
+
+    # blocked[axis][(i, j, k)]: the face at coordinate index i on `axis`, with
+    # the cell indices j, k on the other two axes, in axis order
+    blocked = [set(), set(), set()]
+    for kind, entries in (("stop", stops), ("pass", passes)):
+        for a, at, e0, e1, _p in entries:
+            i = index(a, at)
+            others = [k for k in range(3) if k != a]
+            ranges = [range(index(others[0], e0[0]), index(others[0], e0[1])),
+                      range(index(others[1], e1[0]), index(others[1], e1[1]))]
+            for j in ranges[0]:
+                for k in ranges[1]:
+                    if kind == "stop":
+                        blocked[a].add((i, j, k))
+                    else:
+                        blocked[a].discard((i, j, k))
+
+    def face_key(axis: int, cell: tuple, step: int):
+        i = cell[axis] + (1 if step > 0 else 0)
+        others = tuple(cell[k] for k in range(3) if k != axis)
+        return (i, *others)
+
+    label: dict[tuple, int] = {}
+    groups: list[list[tuple]] = []
+    for start in ((i, j, k) for i in range(n[0]) for j in range(n[1]) for k in range(n[2])):
+        if start in label:
+            continue
+        current = len(groups)
+        label[start] = current
+        members = [start]
+        queue = deque([start])
+        while queue:
+            cell = queue.popleft()
+            for axis in range(3):
+                for step in (-1, 1):
+                    nxt = list(cell)
+                    nxt[axis] += step
+                    if not 0 <= nxt[axis] < n[axis]:
+                        continue
+                    nxt = tuple(nxt)
+                    if nxt in label or face_key(axis, cell, step) in blocked[axis]:
+                        continue
+                    label[nxt] = current
+                    members.append(nxt)
+                    queue.append(nxt)
+        groups.append(members)
+
+    def volume(cell: tuple) -> float:
+        return math.prod(coords[a][cell[a] + 1] - coords[a][cell[a]] for a in range(3))
+
+    sizes = [sum(volume(c) for c in g) for g in groups]
+    room = max(range(len(groups)), key=sizes.__getitem__)
+    pockets = []
+    for g, members in enumerate(groups):
+        if g == room:
+            continue
+        lo = [min(coords[a][c[a]] for c in members) for a in range(3)]
+        hi = [max(coords[a][c[a] + 1] for c in members) for a in range(3)]
+        door = None
+        for cell in members:
+            for axis in range(3):
+                for step in (-1, 1):
+                    nxt = list(cell)
+                    nxt[axis] += step
+                    if not 0 <= nxt[axis] < n[axis] or label[tuple(nxt)] != room:
+                        continue
+                    i = cell[axis] + (1 if step > 0 else 0)
+                    at = coords[axis][i]
+                    others = [k for k in range(3) if k != axis]
+                    face = tuple((coords[k][cell[k]], coords[k][cell[k] + 1]) for k in others)
+                    panel = next((p for a, pos, e0, e1, p in stops
+                                  if p is not None and p.kind == "wall" and a == axis
+                                  and abs(pos - at) < 1e-6
+                                  and e0[0] - 1e-6 <= face[0][0] and face[0][1] <= e0[1] + 1e-6
+                                  and e1[0] - 1e-6 <= face[1][0] and face[1][1] <= e1[1] + 1e-6), None)
+                    if panel is not None:
+                        door = {"panel": panel, "face": face}
+                        break
+                if door:
+                    break
+            if door:
+                break
+        pockets.append({"lo": tuple(lo), "hi": tuple(hi), "volume": sizes[g], "door": door})
+    return pockets
+
+
+def open_sealed_pockets(model: "Model") -> "Model":
+    """Cut a one-cell leak into each sealed volume, through the wall that stands
+    between it and the room, and say so (ADR-138).
+
+    A sealed room is what the drawing says and what the air never enters; the
+    leak keeps it so to within a few cubic metres an hour while giving the
+    solver a pressure there. A volume with no single wall between it and the
+    room is refused by name instead: there is nowhere honest to put the leak.
+    """
+    pockets = sealed_pockets(model)
+    if not pockets:
+        return model
+    panels = list(model.panels)
+    notes = []
+    for n, pocket in enumerate(pockets, start=1):
+        lo, hi = pocket["lo"], pocket["hi"]
+        where = (f"x {lo[0]:.2f}..{hi[0]:.2f}, y {lo[1]:.2f}..{hi[1]:.2f}, "
+                 f"z {lo[2]:.2f}..{hi[2]:.2f} m ({pocket['volume']:.1f} m3)")
+        door = pocket["door"]
+        if door is None:
+            raise ValueError(
+                f"a sealed volume of air at {where} has no opening and no wall of the drawing's own "
+                f"between it and the room; the solver cannot fix a pressure in it. Open it in the "
+                f"drawing -- a door, a grille, a plate -- or close it off as solid")
+        wall = door["panel"]
+        (u0, u1), (v0, v1) = door["face"]
+        a_u, a_v = wall.in_plane_axes
+        cu, cv = model.cell(a_u), model.cell(a_v)
+        hole = ((u0, u0 + cu), (v1 - cv, v1))     # the top corner of that face
+        (w0, w1), (x0, x1) = wall.extent
+        pieces = [((w0, hole[0][0]), (x0, x1)), ((hole[0][1], w1), (x0, x1)),
+                  ((hole[0][0], hole[0][1]), (x0, hole[1][0])),
+                  ((hole[0][0], hole[0][1]), (hole[1][1], x1))]
+        pieces = [pc for pc in pieces if pc[0][1] - pc[0][0] > 1e-6 and pc[1][1] - pc[1][0] > 1e-6]
+        i = panels.index(wall)
+        replaced = [dataclasses.replace(wall, name=f"{wall.name}_{chr(97 + k)}", extent=pc)
+                    for k, pc in enumerate(pieces)]
+        leak = Panel(f"leak{n}", "opening", axis=wall.axis, position=wall.position,
+                     extent=hole, resistance=LEAK_K)
+        panels[i:i + 1] = replaced + [leak]
+        notes.append(
+            f"A sealed volume of air at {where} has no opening: {wall.name} and the walls around it "
+            f"close it. The solver cannot fix a pressure in a volume nothing reaches, so it is meshed "
+            f"with a {cu:.1f} x {cv:.1f} m leak at the top of {wall.name}, at K = {LEAK_K:g} -- it passes "
+            f"nothing worth measuring, and the volume stays what the drawing says it is (ADR-138).")
+    model.panels = panels
+    model.warnings = list(model.warnings) + notes
+    return model
+
+
 def _downflow_units(model: "Model", units: list[Panel], spec: dict,
                     lift: float) -> list[Panel]:
     """Each unit's two horizontal faces, in the place its fan wall stood.

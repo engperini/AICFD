@@ -126,7 +126,9 @@ PLAUSIBLE_SPEED_MARGIN = 5.0
 #: makes the check fail on a hall that is sealed, which is how this list came
 #: to be a named constant instead of a literal buried in the check.
 #:
-PASSES_FLOW = ("grille", "plenum_opening", "supply", "floor_opening", "tile_")
+PASSES_FLOW = ("grille", "plenum_opening", "supply", "floor_opening", "tile_",
+               # the leak into a sealed volume is an opening by design (ADR-138)
+               "leak")
 
 #: A CAGE IS BOTH, under one name. Built in mesh it is a porous surface and
 #: the air is meant to cross it; built in drywall it is a wall, and flow

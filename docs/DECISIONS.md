@@ -5911,3 +5911,39 @@ says so (`equipment/P2100DA104.yaml`) and is not declared.
 along y (A runs along the rows, B across all of them), and the titles say so.
 The Word report cuts one section along a row and one across every row, and
 leaves out the "through a hot aisle" figure that would repeat it.
+
+
+## ADR-138 — A volume the air never reaches gets a leak, and the mesher refuses one that has none
+
+**Decision.** `sealed_pockets(model)` cuts the domain at every plane a panel
+lies in and joins the pieces across every face no wall covers (an opening or a
+porous wall does not stop the air; a wall, a dividing wall and a unit's faces
+do). The largest connected volume is the room; any other is a sealed pocket.
+For a drawn hall, `open_sealed_pockets` cuts a one-cell leak into the wall that
+stands between each pocket and the room -- at the top corner of the face they
+share -- as an opening named `leak<N>` at K = 1000 (`LEAK_K`), and the model
+says so in its warnings, which the page and the report show. A pocket with no
+wall of the drawing's own between it and the room is refused by name. And
+`case.build` refuses any model that still has a pocket, before a single file is
+written.
+
+**Why.** A corrected drawing closed an empty corner of a hall with a drywall
+cage from deck to ceiling: three cage panels, the dividing wall and the side
+panel of an end cold aisle made a 10 m3 room with no plate, no grille and no
+door. `buoyantSimpleFoam` died on it at the first iteration with a floating
+point exception inside the GAMG pressure solver -- a closed volume has no
+pressure the solver can fix, and nothing in the message says where it is. The
+earlier version of the same drawing had a mesh cage, which the air crosses,
+and ran.
+
+**Why a leak and not something else.** The drawing is right: a drywall room is
+closed, and opening it or turning it into mesh would put air where there is
+none. Removing its cells would end the single structured block every reader of
+the result relies on (ADR-008). A 0,1 x 0,1 m opening at K = 1000 passes about
+4 cm/s for each pascal across it -- a few cubic metres an hour -- which leaves
+the volume closed for every quantity the report quotes and gives the solver a
+pressure there. `sealed_envelope` treats `leak` as a surface the air may cross.
+
+**Cost accepted.** The search runs on every drawn model, and costs 0,2 s on a
+hall of 270 solids. The leak is a modelling device, so the warning names where
+it is and why.

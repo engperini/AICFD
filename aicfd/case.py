@@ -112,6 +112,18 @@ def build(model: Model, destination: str | Path, max_iterations: int = 400,
           residual_tolerance: float = 1.0e-4, sensor_interval: int = 100,
           warm_start_field: bool = True, processors: int = 1) -> Path:
     """Write a complete OpenFOAM case for ``model`` into ``destination``."""
+    from aicfd.model import sealed_pockets
+
+    # Refused here rather than at the first iteration, where the solver says
+    # only "Floating point exception" (ADR-138).
+    pockets = sealed_pockets(model)
+    if pockets:
+        lo, hi = pockets[0]["lo"], pockets[0]["hi"]
+        raise ValueError(
+            f"{len(pockets)} sealed volume(s) of air the room does not reach, the first at x "
+            f"{lo[0]:.2f}..{hi[0]:.2f}, y {lo[1]:.2f}..{hi[1]:.2f}, z {lo[2]:.2f}..{hi[2]:.2f} m: the "
+            f"solver cannot fix a pressure in a volume nothing opens into. Open it -- a door, a "
+            f"grille, a plate -- or build the walls that close it as mesh")
     case = Path(destination)
     if case.exists():
         shutil.rmtree(case)
@@ -468,7 +480,7 @@ def porous(model: Model) -> list[Panel]:
     return [p for p in model.panels
             if p.resistance is not None
             and p.name.startswith(("grille", "plenum_opening", "supply",
-                                   "floor_opening", "tile_", "cage_"))]
+                                   "floor_opening", "tile_", "cage_", "leak"))]
 
 
 def _porous_baffle(grille: Panel, p0: float) -> str:

@@ -403,6 +403,58 @@ class RowsParallelToTheWallsTest(ReaderTest):
         self.assertAlmostEqual(at(9.5, 6.0, 2.0), supply, places=1)
 
 
+class ASealedVolumeTest(ReaderTest):
+    """A drywall enclosure round an empty corner closes a volume the air never
+    reaches, and the solver died on it at the first iteration with a floating
+    point exception (ADR-138)."""
+
+    BOX = "\n".join([
+        _panel("wall:k_w", "x", 10.0, (6.0, 1.0, 7.0, 4.0)),
+        _panel("wall:k_e", "x", 11.0, (6.0, 1.0, 7.0, 4.0)),
+        _panel("wall:k_s", "y", 6.0, (10.0, 1.0, 11.0, 4.0)),
+        _panel("wall:k_n", "y", 7.0, (10.0, 1.0, 11.0, 4.0)),
+    ]) + "\n"
+
+    def test_it_is_found_and_given_a_leak_through_one_of_its_walls(self):
+        model, _spec = self.build(parallel_rows_hall() + self.BOX)
+        leaks = [p for p in model.panels if p.name.startswith("leak")]
+        self.assertEqual(len(leaks), 1)
+        self.assertEqual(leaks[0].resistance, M.LEAK_K)
+        self.assertAlmostEqual(leaks[0].area, CELL * CELL, places=6)
+        self.assertEqual(M.sealed_pockets(model), [], "the leak has to join it to the room")
+        note = next(w for w in model.warnings if w.startswith("A sealed volume"))
+        self.assertIn("x 10.00..11.00, y 6.00..7.00, z 1.00..4.00", note)
+
+    def test_the_wall_with_the_leak_keeps_the_rest_of_its_area(self):
+        model, _spec = self.build(parallel_rows_hall() + self.BOX)
+        leak = next(p for p in model.panels if p.name.startswith("leak"))
+        pieces = [p for p in model.panels if p.axis == leak.axis
+                  and abs(p.position - leak.position) < 1e-6 and p.kind == "wall"
+                  and p.name.startswith("containment")]
+        self.assertAlmostEqual(sum(p.area for p in pieces) + leak.area, 3.0, places=6)
+
+    def test_a_room_with_no_sealed_volume_gets_no_leak(self):
+        self.assertFalse([p for p in self.build(parallel_rows_hall())[0].panels
+                          if p.name.startswith("leak")])
+
+    def test_the_mesher_refuses_a_sealed_volume_rather_than_the_solver_dying_on_it(self):
+        from aicfd import case
+
+        model, _spec = self.build(parallel_rows_hall() + self.BOX)
+        model.panels = [p for p in model.panels if not p.name.startswith("leak")]
+        model.panels.append(M.Panel("plug", "wall", axis=0, position=10.0, extent=((6.0, 7.0), (1.0, 4.0))))
+        with self.assertRaises(ValueError) as caught:
+            case.build(model, self.dir / "run")
+        self.assertIn("sealed volume", str(caught.exception))
+
+    def test_the_leak_is_a_surface_the_air_may_cross(self):
+        from aicfd import case, post
+
+        model, _spec = self.build(parallel_rows_hall() + self.BOX)
+        self.assertIn("leak1", {p.name for p in case.porous(model)})
+        self.assertTrue("leak1_below".startswith(post.PASSES_FLOW))
+
+
 class TheAislesAreMeasuredWhereTheyAreTest(unittest.TestCase):
     """The post-processing picks cells by the aisle bands, and the bands are on
     x for a row that runs along y (ADR-137)."""
