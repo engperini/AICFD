@@ -436,10 +436,25 @@ def build(spec: dict) -> Model:
     cfm = float(R.get("airflow_cfm_per_kw", CFM_PER_KW))
     racks: list[Rack] = []
     fronts: dict[str, int] = {}
+    # WHICH WAY THE ROWS RUN. A front of `+y` or `-y` is a row that runs along
+    # x -- toward the galleries, the way every parametric layout runs; `+x` or
+    # `-x` is a row that runs along y, parallel to the dividing walls, as in a
+    # long hall with a gallery at each end. One hall has one (ADR-137).
+    letters = [s.attr[-1] for s in by.get("rack", []) if s.attr in ("+x", "-x", "+y", "-y")]
+    fronts_on = set(letters)
+    if len(fronts_on) > 1:
+        majority = max(sorted(fronts_on), key=letters.count)
+        odd = next(s for s in by["rack"] if s.attr in ("+x", "-x", "+y", "-y") and s.attr[-1] != majority)
+        raise ValueError(f"{path.name}: {odd.name}: its front is on {odd.attr[-1]} and the other cabinets' are "
+                         f"on {majority}; every row of a hall runs the same way (rows along x have fronts "
+                         f"`+y`/`-y`, rows along y have `+x`/`-x`)")
+    along = 1 if fronts_on == {"x"} else 0
+    across = 1 - along
+    letter = "xy"[across]
     for s in by.get("rack", []):
-        if s.attr not in ("+y", "-y"):
-            raise ValueError(f"{path.name}: {s.name}: a cabinet's front is `+y` or `-y` (rows run along x); "
-                             f"{s.attr!r} is not supported")
+        if s.attr not in (f"+{letter}", f"-{letter}"):
+            raise ValueError(f"{path.name}: {s.name}: a cabinet's front is `+{letter}` or `-{letter}` "
+                             f"(rows run along {'xy'[along]}); {s.attr!r} is not supported")
         if s.flat_axis is not None:
             raise ValueError(f"{path.name}: {s.name} is flat; a cabinet is a box")
         kw = loads.get(s.id, default_kw)
@@ -449,9 +464,9 @@ def build(spec: dict) -> Model:
         # coefficient for the row, and a cabinet calibrated at its own 20 kW
         # would make the field and the form disagree by the square of the
         # flow ratio (ADR-054).
-        racks.append(Rack(s.id, s.box, kw, airflow_axis=1, airflow_sign=-1 if s.attr == "+y" else 1,
+        racks.append(Rack(s.id, s.box, kw, airflow_axis=across, airflow_sign=-1 if s.attr[0] == "+" else 1,
                           cfm_per_kw=cfm, resistance_kw=default_kw, rho=rho))
-        fronts[s.id] = -1 if s.attr == "+y" else 1
+        fronts[s.id] = -1 if s.attr[0] == "+" else 1
     if not racks:
         raise ValueError(f"{path.name}: no `rack:` solid; nothing to cool")
     # A ROW IS WHAT THE CONVERTER NAMED: the cabinets sharing a band, a front
@@ -460,38 +475,40 @@ def build(spec: dict) -> Model:
     # a walkway.
     groups: dict[tuple, list[Rack]] = {}
     for r in racks:
-        groups.setdefault((round(r.box.lo[1], 6), round(r.box.hi[1], 6), fronts[r.id], _row_id(r.id)), []).append(r)
+        groups.setdefault((round(r.box.lo[across], 6), round(r.box.hi[across], 6), fronts[r.id], _row_id(r.id)), []).append(r)
     rows: list[Row] = []
     used_ids: dict[str, int] = {}
-    for (y0, y1, sign, rid), members in sorted(groups.items(), key=lambda kv: (kv[0][0], min(r.box.lo[0] for r in kv[1]))):
-        members.sort(key=lambda r: r.box.lo[0])
+    for (y0, y1, sign, rid), members in sorted(groups.items(), key=lambda kv: (kv[0][0], min(r.box.lo[along] for r in kv[1]))):
+        members.sort(key=lambda r: r.box.lo[along])
         blocks: list[list[Rack]] = [[members[0]]]
         for r in members[1:]:
-            if rid == r.id and r.box.lo[0] - blocks[-1][-1].box.hi[0] > ROW_SPLIT_GAP + 1e-6:
+            if rid == r.id and r.box.lo[along] - blocks[-1][-1].box.hi[along] > ROW_SPLIT_GAP + 1e-6:
                 blocks.append([r])
             else:
                 blocks[-1].append(r)
         for block in blocks:
             n = used_ids.get(rid, 0) + 1
             used_ids[rid] = n
-            rows.append(Row(rid if n == 1 else f"{rid}b{n}", (y0, y1), sign, block))
+            rows.append(Row(rid if n == 1 else f"{rid}b{n}", (y0, y1), sign, block, along))
     rack_top = max(r.box.hi[2] for r in racks)
     # each contiguous run of cabinets is a closed porous box: a lid over it and
     # a wall at each end, exactly as the parametric rows are closed
     for row in rows:
         runs: list[list[Rack]] = [[row.racks[0]]]
         for r in row.racks[1:]:
-            if r.box.lo[0] - runs[-1][-1].box.hi[0] > 1e-6:
+            if r.box.lo[along] - runs[-1][-1].box.hi[along] > 1e-6:
                 runs.append([r])
             else:
                 runs[-1].append(r)
         for k, run in enumerate(runs, start=1):
-            x0, x1 = run[0].box.lo[0], run[-1].box.hi[0]
+            x0, x1 = run[0].box.lo[along], run[-1].box.hi[along]
             z1 = max(r.box.hi[2] for r in run)
             tag = f"_{row.id}_{k}".replace("-", "_")
-            panels.append(Panel(f"rack_top{tag}", "wall", axis=2, position=z1, extent=((x0, x1), row.band), of_rack=True))
+            # a panel's extent is listed in the order of the axes it lies in
+            top = ((x0, x1), row.band) if along == 0 else (row.band, (x0, x1))
+            panels.append(Panel(f"rack_top{tag}", "wall", axis=2, position=z1, extent=top, of_rack=True))
             for edge in (x0, x1):
-                panels.append(Panel(f"rack_end{tag}_{edge:g}".replace(".", "_"), "wall", axis=0, position=edge,
+                panels.append(Panel(f"rack_end{tag}_{edge:g}".replace(".", "_"), "wall", axis=along, position=edge,
                                     extent=(row.band, (floor_z, z1)), of_rack=True))
 
     # ---- the aisles: read off the fronts, band by band ------------------------
@@ -499,15 +516,15 @@ def build(spec: dict) -> Model:
     cold_aisles: list[tuple[float, float]] = []
     hot_aisles: list[tuple[float, float]] = []
 
-    def faces_up(band) -> bool:   # the rows in this band draw from higher y
+    def faces_up(band) -> bool:   # the rows in this band draw from higher y (x, for rows along y)
         return all(row.front_sign < 0 for row in rows if row.band == band)
 
     def faces_down(band) -> bool:
         return all(row.front_sign > 0 for row in rows if row.band == band)
 
     first, last = bands[0], bands[-1]
-    if first[0] > hall.lo[1] + 1e-6:
-        (cold_aisles if faces_down(first) else hot_aisles).append((hall.lo[1], first[0]))
+    if first[0] > hall.lo[across] + 1e-6:
+        (cold_aisles if faces_down(first) else hot_aisles).append((hall.lo[across], first[0]))
     for a, b in zip(bands, bands[1:]):
         if b[0] <= a[1] + 1e-6:
             continue
@@ -521,11 +538,29 @@ def build(spec: dict) -> Model:
             # for the one and a hot band for the other; the band is counted
             # by what the air in it is, which the facing row decides
             (cold_aisles if faces_up(a) or faces_down(b) else hot_aisles).append(gap)
-    if last[1] < hall.hi[1] - 1e-6:
-        (cold_aisles if faces_up(last) else hot_aisles).append((last[1], hall.hi[1]))
+    if last[1] < hall.hi[across] - 1e-6:
+        (cold_aisles if faces_up(last) else hot_aisles).append((last[1], hall.hi[across]))
     if not cold_aisles or not hot_aisles:
         raise ValueError(f"{path.name}: the cabinets' fronts leave no {'cold' if not cold_aisles else 'hot'} aisle; "
-                         f"check the `:+y` / `:-y` attributes")
+                         f"check the `:+{letter}` / `:-{letter}` attributes")
+
+    # ---- an aisle a row faces that nothing feeds ---------------------------------
+    # On a raised floor the supply reaches a cabinet through the plates in the
+    # aisle it faces. A row that faces an aisle with no plate in it -- the end
+    # row of a hall, facing the walkway to the wall -- breathes room air, and the
+    # run shows it as cabinets above the recommended inlet that no setpoint
+    # cures. The drawing may be right and the cabinets are starved all the same,
+    # so the note is made where the reader can still see the aisle (ADR-137).
+    starved: list[str] = []
+    if deck is not None:
+        plates = [s for s in by.get("tile", [])]
+        for lo_a, hi_a in cold_aisles:
+            fed = any(t.lo[across] < hi_a - 1e-6 and t.hi[across] > lo_a + 1e-6 for t in plates)
+            facing = [row.id for row in rows
+                      if abs(row.front_y - lo_a) < 1e-6 or abs(row.front_y - hi_a) < 1e-6]
+            if facing and not fed:
+                starved.append(f"{', '.join(sorted(set(facing)))} face the {hi_a - lo_a:.2f} m aisle at "
+                               f"{'xy'[across]} = {lo_a:.2f}..{hi_a:.2f} m, which has no floor plate")
 
     # ---- the containment, the blanks, the cage --------------------------------
     contained = None
@@ -702,6 +737,12 @@ def build(spec: dict) -> Model:
         f"{len(fans)} units, {len(by.get('grille', []))} return grilles, {len(by.get('tile', []))} floor plates, "
         f"{len(supplies)} supply grilles, {len(cage_solids)} cage panels (ADR-131)."
     ))
+    if starved:
+        model.warnings.insert(1, (
+            "Cabinets facing an aisle nothing feeds: " + "; ".join(starved)
+            + ". With a raised floor the supply comes through the plates in the aisle a row faces, so these "
+            "cabinets breathe room air. Add plates to the drawing, or turn the row to face a fed aisle."
+        ))
     if resized:
         model.warnings.insert(1, resized)
     if fans_off:

@@ -244,9 +244,22 @@ class Row:
     band: tuple[float, float]
     front_sign: int
     racks: list[Rack]
+    axis: int = 0
+    """The axis the row RUNS along: 0 for a row that runs toward the galleries
+    (every parametric layout), 1 for a row that runs parallel to the dividing
+    walls, as in a hall whose galleries lie at the ends of a long room. The
+    band, the front and the aisles are on the OTHER axis, ``1 - axis``
+    (ADR-137)."""
+
+    @property
+    def across(self) -> int:
+        """The axis the band, the fronts and the aisles are measured on."""
+        return 1 - self.axis
 
     @property
     def front_y(self) -> float:
+        """The coordinate of the cabinets' fronts, along ``across`` (``y`` for
+        a row that runs along x, which is the name it kept)."""
         return self.band[0] if self.front_sign > 0 else self.band[1]
 
     @property
@@ -256,8 +269,8 @@ class Row:
     @property
     def span(self) -> tuple[float, float]:
         return (
-            min(r.box.lo[0] for r in self.racks),
-            max(r.box.hi[0] for r in self.racks),
+            min(r.box.lo[self.axis] for r in self.racks),
+            max(r.box.hi[self.axis] for r in self.racks),
         )
 
 
@@ -389,6 +402,17 @@ class Model:
         """
         walls = [self.hall.lo[0], self.hall.hi[0]]
         return walls[: len(self.galleries)]
+
+    @property
+    def row_axis(self) -> int:
+        """The axis the rows run along: 0 toward the galleries, 1 parallel to
+        the dividing walls (ADR-137). Every row of a hall shares it."""
+        return self.rows[0].axis if self.rows else 0
+
+    @property
+    def across(self) -> int:
+        """The axis the rows are stacked along, and the aisles measured on."""
+        return 1 - self.row_axis
 
     @property
     def rack_blocks(self) -> list[tuple[float, float]]:
@@ -927,9 +951,10 @@ class Model:
         return sum(rack.rated_airflow_m3s for rack in self.racks)
 
     def rack_span(self) -> tuple[float, float]:
+        axis = self.row_axis
         return (
-            min(rack.box.lo[0] for rack in self.racks),
-            max(rack.box.hi[0] for rack in self.racks),
+            min(rack.box.lo[axis] for rack in self.racks),
+            max(rack.box.hi[axis] for rack in self.racks),
         )
 
 
@@ -3661,8 +3686,10 @@ def snap_to_mesh(model: Model) -> Model:
             tuple(snap(v, a) for a, v in enumerate(box.hi)),  # type: ignore[arg-type]
         )
 
+    across = model.across
+
     def snap_band(band: tuple[float, float]) -> tuple[float, float]:
-        return (snap(band[0], 1), snap(band[1], 1))
+        return (snap(band[0], across), snap(band[1], across))
 
     def snap_rack(r: Rack) -> Rack:
         # `replace` rather than a positional rebuild, for the same reason the
@@ -3673,7 +3700,7 @@ def snap_to_mesh(model: Model) -> Model:
         return dataclasses.replace(r, box=snap_box(r.box))
 
     model.rows = [
-        Row(row.id, snap_band(row.band), row.front_sign, [snap_rack(r) for r in row.racks])
+        Row(row.id, snap_band(row.band), row.front_sign, [snap_rack(r) for r in row.racks], row.axis)
         for row in model.rows
     ]
     model.racks = [rack for row in model.rows for rack in row.racks]
@@ -3716,7 +3743,8 @@ def snap_to_mesh(model: Model) -> Model:
     # `chimney_area` measured a contained aisle that long too. Every row in a
     # block shares a span, so the rows are the answer (ADR-085).
     spans = sorted({row.span for row in model.rows if row.racks})
-    model.blocks = spans or [(snap(lo, 0), snap(hi, 0)) for lo, hi in model.blocks]
+    model.blocks = spans or [(snap(lo, model.row_axis), snap(hi, model.row_axis))
+                             for lo, hi in model.blocks]
     model.ceiling_z = snap(model.ceiling_z, 2)
     return model
 
@@ -3738,11 +3766,11 @@ def check_mesh_alignment(model: Model) -> list[str]:
 
     checked: list[tuple[str, float, int]] = [("ceiling height", model.ceiling_z, 2)]
     for band in model.cold_aisles:
-        checked.append(("cold aisle", band[1], 1))
+        checked.append(("cold aisle", band[1], model.across))
     for band in model.hot_aisles:
-        checked.append(("hot aisle", band[1], 1))
+        checked.append(("hot aisle", band[1], model.across))
     for row in model.rows:
-        checked.append((f"rack depth (row {row.id})", row.band[1], 1))
+        checked.append((f"rack depth (row {row.id})", row.band[1], model.across))
     for axis, label in enumerate(("length", "width", "height")):
         checked.append((f"domain {label}", model.domain.size[axis], axis))
     # Racks share a size, so one warning stands for all of them; a hall has
@@ -4122,11 +4150,17 @@ def to_dict(model: Model, spec: dict) -> dict:
         },
         "cold_aisles": [list(band) for band in model.cold_aisles],
         "hot_aisles": [list(band) for band in model.hot_aisles],
+        # Which way the rows run: 0 toward the galleries, 1 parallel to the
+        # dividing walls. The bands and the aisles are on the other axis, and
+        # a drawing that reads them as y on a hall whose rows run along y puts
+        # every aisle in the wrong place (ADR-137).
+        "row_axis": model.row_axis,
         "rows": [
             {
                 "id": row.id,
                 "band": list(row.band),
                 "front_sign": row.front_sign,
+                "axis": row.axis,
                 "racks": [r.id for r in row.racks],
             }
             for row in model.rows

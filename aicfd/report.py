@@ -448,6 +448,29 @@ def _draw(export: Export, figures: Path, ramp: str | None = None) -> dict:
     hot = model["hot_aisles"][len(model["hot_aisles"]) // 2]
     cold = model["cold_aisles"][len(model["cold_aisles"]) // 2]
     block = blocks[len(blocks) // 2]
+    # WHERE THE SECTIONS ARE CUT. A row that runs toward the galleries is cut
+    # across the rack block (x) and along a cold and a hot aisle (y). A row
+    # that runs parallel to the dividing walls has its aisles on x, so the cut
+    # that shows the aisles is along the hall at y -- through every row at once
+    # -- and the one across it follows a single row from end to end (ADR-137).
+    along_x = model.get("row_axis", 0) == 0
+    if along_x:
+        cross_at = (block[0] + block[1]) / 2
+        cross_name = f"Section across the hall at x = {cross_at:.2f} m"
+        cross_label = "y — across the hall (m)"
+        long_cold_at, long_cold_name = (
+            (cold[0] + cold[1]) / 2, "through a cold aisle")
+        long_hot_at, long_hot_name = (
+            (hot[0] + hot[1]) / 2, "through a contained hot aisle")
+    else:
+        rows_ = model.get("rows") or []
+        middle = rows_[len(rows_) // 2]["band"] if rows_ else block
+        cross_at = (middle[0] + middle[1]) / 2
+        cross_name = f"Section along a rack row at x = {cross_at:.2f} m"
+        cross_label = "y — along the rows (m)"
+        long_cold_at = (block[0] + block[1]) / 2
+        long_cold_name = "through every row, across the aisles"
+        long_hot_at, long_hot_name = None, None
     return {
         # The room in detail: which cabinet is which, and what it carries.
         # The three dimensioned drawings that used to stand beside it were
@@ -469,21 +492,19 @@ def _draw(export: Export, figures: Path, ramp: str | None = None) -> dict:
         "plan_plenum": plan(export, figures / "plan-plenum.png",
                             (model["ceiling_z"] + export.size[2]) / 2,
                             "Temperature inside the return plenum", ramp),
-        "cross": section(export, figures / "section-across.png", 0,
-                         (block[0] + block[1]) / 2,
-                         f"Section across the hall at x = {(block[0] + block[1]) / 2:.2f} m",
-                         "y — across the hall (m)", ramp),
+        "cross": section(export, figures / "section-across.png", 0, cross_at,
+                         cross_name, cross_label, ramp),
         "long_cold": section(export, figures / "section-along-cold.png", 1,
-                             (cold[0] + cold[1]) / 2,
+                             long_cold_at,
                              f"Section along the hall at y = "
-                             f"{(cold[0] + cold[1]) / 2:.2f} m — through a cold aisle",
+                             f"{long_cold_at:.2f} m — {long_cold_name}",
                              "x — along the hall (m)", ramp),
-        "long_hot": section(export, figures / "section-along-hot.png", 1,
-                            (hot[0] + hot[1]) / 2,
-                            f"Section along the hall at y = "
-                            f"{(hot[0] + hot[1]) / 2:.2f} m — through a contained "
-                            "hot aisle",
-                            "x — along the hall (m)", ramp),
+        "long_hot": (section(export, figures / "section-along-hot.png", 1,
+                             long_hot_at,
+                             f"Section along the hall at y = "
+                             f"{long_hot_at:.2f} m — {long_hot_name}",
+                             "x — along the hall (m)", ramp)
+                     if long_hot_at is not None else None),
         # WHERE THE AIR GOES AND WHAT IT COSTS. A study is read for three
         # fields and only the first was ever drawn (ADR-116). The speed maps
         # answer "is the aisle fed"; the pressure maps show the plenum, the
@@ -491,20 +512,17 @@ def _draw(export: Export, figures: Path, ramp: str | None = None) -> dict:
         "plan_speed": plan(export, figures / "plan-speed.png", rack_top / 2,
                            f"Air speed at z = {rack_top / 2:.2f} m — rack "
                            f"mid-height", ramp, field="speed"),
-        "cross_speed": section(export, figures / "section-speed.png", 0,
-                               (block[0] + block[1]) / 2,
-                               f"Air speed across the hall at x = "
-                               f"{(block[0] + block[1]) / 2:.2f} m",
-                               "y — across the hall (m)", ramp, field="speed"),
+        "cross_speed": section(export, figures / "section-speed.png", 0, cross_at,
+                               cross_name.replace("Section", "Air speed", 1),
+                               cross_label, ramp, field="speed"),
         "plan_pressure": plan(export, figures / "plan-pressure.png",
                               rack_top / 2,
                               f"Static pressure at z = {rack_top / 2:.2f} m — "
                               f"rack mid-height", ramp, field="P"),
         "cross_pressure": section(export, figures / "section-pressure.png", 0,
-                                  (block[0] + block[1]) / 2,
-                                  f"Static pressure across the hall at x = "
-                                  f"{(block[0] + block[1]) / 2:.2f} m",
-                                  "y — across the hall (m)", ramp, field="P"),
+                                  cross_at,
+                                  cross_name.replace("Section", "Static pressure", 1),
+                                  cross_label, ramp, field="P"),
         "racks": rack_map(export, figures / "rack-intake.png", ramp=ramp),
         "units": units(export, figures / "units.png"),
         "ashrae": ashrae(export, figures / "ashrae.png"),
@@ -1952,28 +1970,40 @@ def _results(doc, export: Export, drawn: dict) -> None:
             + ("One volume across the whole hall, feeding every gallery."
                if len(model.get("galleries") or [1]) > 1
                else "Collecting from every hot aisle on its way to the gallery."))
+    rows_along_walls = model.get("row_axis", 0) == 1
+    where_cut = "along a rack row" if rows_along_walls else "across the hall"
     _figure(doc, drawn["cross"],
-            "Section across the hall, through a rack block: "
-            + ("cold aisle, rack row, contained hot aisle and the chimney up "
-               "to the false ceiling." if which == "hot" else
-               "contained cold aisle under its lid, rack row, and the open hot "
-               "aisle rising to the ceiling grilles." if which == "cold" else
-               "cold aisle, rack row and hot aisle."))
+            ("Section along one rack row, from end to end: the cabinets, the "
+             "raised floor under them and the ceiling above."
+             if rows_along_walls else
+             "Section across the hall, through a rack block: "
+             + ("cold aisle, rack row, contained hot aisle and the chimney up "
+                "to the false ceiling." if which == "hot" else
+                "contained cold aisle under its lid, rack row, and the open hot "
+                "aisle rising to the ceiling grilles." if which == "cold" else
+                "cold aisle, rack row and hot aisle.")))
     _figure(doc, drawn["long_cold"],
-            "Section along the hall, through a cold aisle: the supply air "
-            "leaving the units, the length it has to travel, and the mechanical "
-            "gallery behind each dividing wall.")
-    _figure(doc, drawn["long_hot"],
-            "The same section through a contained hot aisle. The containment is "
-            "doing its job when this plane is hot from floor to ceiling. A "
-            "containment leak shows first in the cold plane above."
-            if which == "hot" else
-            "The same section through a hot aisle, which in this hall is the "
-            "open room: it is hot from the rack tops to the ceiling grilles, "
-            "and the contained cold aisle in the section above stays cold "
-            "under its lid. A containment leak shows first as warm air in "
-            "that cold plane." if which == "cold" else
-            "The same section through a hot aisle.")
+            ("Section along the hall, across every row: the cold and hot aisles "
+             "side by side, the supply air leaving the units under the floor and "
+             "the length it has to travel from each gallery."
+             if rows_along_walls else
+             "Section along the hall, through a cold aisle: the supply air "
+             "leaving the units, the length it has to travel, and the mechanical "
+             "gallery behind each dividing wall."))
+    if drawn["long_hot"] is not None:
+        _figure(doc, drawn["long_hot"],
+                "The same section through a contained hot aisle. The "
+                "containment is doing its job when this plane is hot from floor "
+                "to ceiling. A containment leak shows first in the cold plane "
+                "above."
+                if which == "hot" else
+                "The same section through a hot aisle, which in this hall is "
+                "the open room: it is hot from the rack tops to the ceiling "
+                "grilles, and the contained cold aisle in the section above "
+                "stays cold under its lid. A containment leak shows first as "
+                "warm air in that cold plane."
+                if which == "cold" else
+                "The same section through a hot aisle.")
 
     _heading(doc, "4.4  Air speed and static pressure", 2)
     _para(doc,
@@ -1987,17 +2017,19 @@ def _results(doc, export: Export, drawn: dict) -> None:
             "cabinets breathe from: an aisle starved of supply shows "
             "here as still air in front of a row.")
     _figure(doc, drawn["cross_speed"],
-            "Air speed across the hall. The supply leaves the plenum through "
-            "the floor plates, crosses the cabinets and rises out of the "
-            "aisle — the three places a velocity is worth reading.")
+            ("Air speed along a rack row, from end to end."
+             if rows_along_walls else
+             "Air speed across the hall. The supply leaves the plenum through "
+             "the floor plates, crosses the cabinets and rises out of the "
+             "aisle — the three places a velocity is worth reading."))
     _figure(doc, drawn["plan_pressure"],
             "Static pressure in plan at rack mid-height, relative to the "
             "reference cell. A contained aisle stands above the room it sits "
             "in, and the difference is what drives air through the cabinets.")
     _figure(doc, drawn["cross_pressure"],
-            ("Static pressure across the hall. The supply plenum is the "
+            (f"Static pressure {where_cut}. The supply plenum is the "
              if model.get("floor_height") else
-             "Static pressure across the hall. The gallery side of the "
+             f"Static pressure {where_cut}. The gallery side of the "
              "dividing wall is the ")
             + "highest pressure in the room and the gradient across each rack "
             "row is the drop the porous zone delivers — the same number "

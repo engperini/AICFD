@@ -114,6 +114,33 @@ def downflow_hall() -> str:
     return "\n".join(parts) + "\n"
 
 
+def parallel_rows_hall() -> str:
+    """A hall on a 1,0 m raised floor whose rows run PARALLEL to the dividing
+    wall: a gallery at x 0..3 with a downflow unit on the deck, and two rows of
+    two cabinets stood end to end along y, facing each other across a contained
+    COLD aisle that runs along y -- fronts `+x` and `-x`, bands on x (ADR-137)."""
+    W, L, deck, slab, ceil, top = 12.0, 8.0, 1.0, 6.0, 4.0, 3.2
+    parts = [_box("hall", (0, 0, 0), (W, L, slab)),
+             _panel("deck", "z", deck, (0.0, 0.0, W, L)),
+             _panel("ceiling", "z", ceil, (3.0, 0.0, W, L)),
+             _panel("wall:gallery_w", "x", 3.0, (0.0, 0.0, L, slab)),
+             _panel("mesh:gallery_w_plenum", "x", 3.0, (0.0, 0.0, L, deck)),
+             _panel("mesh:gallery_w_return", "x", 3.0, (0.0, ceil, L, slab)),
+             _box("unit:UE-01", (1.6, 3.0, deck), (2.4, 5.0, 3.0))]
+    for i in range(2):
+        y0 = 2.0 + 0.6 * i
+        parts.append(_box(f"rack:A{i + 1:02d}:+x", (5.0, y0, deck), (6.2, y0 + 0.6, top)))
+        parts.append(_box(f"rack:B{i + 1:02d}:-x", (7.4, y0, deck), (8.6, y0 + 0.6, top)))
+        for j in range(2):
+            x0 = 6.2 + 0.6 * j
+            parts.append(_panel(f"tile:c1-{i + 1}-{j + 1}", "z", deck, (x0, y0, x0 + 0.6, y0 + 0.6)))
+    parts += [_panel("lid:c1", "z", top, (6.2, 2.0, 7.4, 3.2)),
+              _panel("door:c1_s", "y", 2.0, (6.2, deck, 7.4, top)),
+              _panel("door:c1_n", "y", 3.2, (6.2, deck, 7.4, top)),
+              _panel("grille:h1-01", "z", ceil, (9.0, 2.0, 9.6, 2.6))]
+    return "\n".join(parts) + "\n"
+
+
 def sidecar(stl: str, **extra) -> dict:
     spec = {
         "name": "drawn",
@@ -267,6 +294,154 @@ class DownflowHallTest(ReaderTest):
             "model": "P3100DA", "airflow_m3h": 27500, "capacity_kw": 100.5, "supply_temp_c": 22.0})
         model = M.build_model(spec)
         self.assertEqual(model.equipment.model, "P3100DA")
+
+
+class RowsParallelToTheWallsTest(ReaderTest):
+    """A hall whose rows run along the dividing wall rather than toward it
+    (ADR-137): the gallery is at the end of a long room and the aisles are
+    stacked along the room's length. The reader used to refuse it for a front
+    of `+x`."""
+
+    def setUp(self):
+        super().setUp()
+        self.model, self.spec = self.build(parallel_rows_hall())
+
+    def test_the_rows_run_along_y_and_are_stacked_along_x(self):
+        self.assertEqual(self.model.row_axis, 1)
+        self.assertEqual(self.model.across, 0)
+        rows = {row.id: row for row in self.model.rows}
+        self.assertEqual(set(rows), {"A", "B"})
+        self.assertEqual(_r([rows["A"].band, rows["B"].band]), [(5.0, 6.2), (7.4, 8.6)])
+        self.assertEqual(_r([rows["A"].span]), [(2.0, 3.2)])
+        self.assertEqual([row.axis for row in self.model.rows], [1, 1])
+
+    def test_the_air_goes_through_the_cabinets_along_x(self):
+        a = next(r for r in self.model.racks if r.id == "A01")
+        b = next(r for r in self.model.racks if r.id == "B01")
+        self.assertEqual((a.airflow_axis, a.airflow_sign), (0, -1))   # front +x: the air travels toward -x
+        self.assertEqual((b.airflow_axis, b.airflow_sign), (0, 1))
+
+    def test_the_aisles_are_read_off_the_fronts_on_x(self):
+        self.assertEqual(_r(self.model.cold_aisles), [(6.2, 7.4)])
+        self.assertEqual(_r(self.model.hot_aisles), [(3.0, 5.0), (8.6, 12.0)])
+        self.assertEqual(self.model.contained, "cold")
+
+    def test_a_cabinets_lid_and_ends_close_it_on_the_axes_it_runs_along(self):
+        top = self.model.panel("rack_top_A_1")
+        self.assertEqual((top.axis, _r(top.extent)), (2, [(5.0, 6.2), (2.0, 3.2)]))
+        ends = sorted((p.position for p in self.model.panels if p.name.startswith("rack_end_A_1_")))
+        self.assertEqual(ends, [2.0, 3.2])
+        end = next(p for p in self.model.panels if p.name.startswith("rack_end_A_1_"))
+        self.assertEqual((end.axis, _r(end.extent)), (1, [(5.0, 6.2), (1.0, 3.2)]))
+
+    def test_the_plates_and_the_lid_are_read_where_the_drawing_put_them(self):
+        tiles = [p for p in self.model.panels if p.name.startswith("tile_")]
+        self.assertEqual(len(tiles), 4)
+        self.assertIn("containment_lid_c1", {p.name for p in self.model.panels})
+        self.assertEqual(_r(self.model.panel("containment_door_c1_s").extent), [(6.2, 7.4), (1.0, 3.2)])
+
+    def test_the_export_says_which_way_the_rows_run(self):
+        out = M.to_dict(self.model, self.spec)
+        self.assertEqual(out["row_axis"], 1)
+        self.assertEqual({row["axis"] for row in out["rows"]}, {1})
+
+    def test_rows_along_x_are_unchanged(self):
+        model, _spec = self.build(downflow_hall())
+        self.assertEqual((model.row_axis, model.across), (0, 1))
+        self.assertEqual({row.axis for row in model.rows}, {0})
+
+    def test_fronts_on_both_axes_are_refused(self):
+        bad = parallel_rows_hall().replace("rack:B02:-x", "rack:B02:-y")
+        with self.assertRaises(ValueError) as caught:
+            self.build(bad)
+        self.assertIn("rack:B02", str(caught.exception))
+        self.assertIn("runs the same way", str(caught.exception))
+
+    def test_a_front_along_the_rows_is_refused_by_name(self):
+        """A `+y` front among cabinets that face on x is named, not guessed at."""
+        bad = parallel_rows_hall().replace("rack:A01:+x", "rack:A01:+y")
+        with self.assertRaises(ValueError) as caught:
+            self.build(bad)
+        self.assertIn("rack:A01", str(caught.exception))
+
+    def test_a_row_facing_an_aisle_with_no_plate_is_named(self):
+        """The end row of a hall faces the walkway to the wall; on a raised
+        floor nothing feeds it, and the cabinets breathe room air."""
+        text = parallel_rows_hall()
+        # turn row B round: it now faces the open end of the hall at x 8.6..12
+        text = text.replace("rack:B01:-x", "rack:B01:+x").replace("rack:B02:-x", "rack:B02:+x")
+        model, _spec = self.build(text)
+        note = next((w for w in model.warnings if w.startswith("Cabinets facing an aisle nothing feeds")), "")
+        self.assertIn("B face the", note)
+        self.assertIn("x = 8.60..12.00", note)
+        self.assertNotIn("A face", note)
+
+    def test_a_fed_aisle_says_nothing(self):
+        self.assertFalse([w for w in self.model.warnings if "nothing feeds" in w])
+
+    def test_the_mesher_builds_the_case_and_warms_the_hot_aisles_on_x(self):
+        from aicfd import case
+
+        target = self.dir / "run"
+        case.build(self.model, target)
+        self.assertTrue((target / "system" / "blockMeshDict").is_file())
+        values = [float(v) for v in case.warm_start(self.model).splitlines()[3:-1]]
+        nx, ny, nz = self.model.divisions
+        cx, cy, cz = self.model.cell_size
+
+        def at(x, y, z):
+            i, j, k = int(x / cx), int(y / cy), int(z / cz)
+            return values[(k * ny + j) * nx + i]
+
+        supply = self.model.supply_temp_c + 273.15
+        # in a hot band, level with the racks: warm
+        self.assertGreater(at(9.5, 2.5, 2.0), supply + 0.5)
+        # in a rack's own place, and in the cold aisle: not seeded warm
+        self.assertAlmostEqual(at(5.5, 2.5, 2.0), supply, places=1)
+        self.assertAlmostEqual(at(6.5, 2.5, 2.0), supply, places=1)
+        # past the end of the rows (y > 3.2) a hot band is not seeded: no rows to be between
+        self.assertAlmostEqual(at(9.5, 6.0, 2.0), supply, places=1)
+
+
+class TheAislesAreMeasuredWhereTheyAreTest(unittest.TestCase):
+    """The post-processing picks cells by the aisle bands, and the bands are on
+    x for a row that runs along y (ADR-137)."""
+
+    STEP = 0.5
+
+    def grid(self, nx=24, ny=16, nz=4):
+        import numpy as np
+
+        return {"x": (np.arange(nx) + 0.5) * self.STEP, "y": (np.arange(ny) + 0.5) * self.STEP,
+                "z": (np.arange(nz) + 0.5) * self.STEP}
+
+    def model(self, along: int):
+        from types import SimpleNamespace
+
+        hall = SimpleNamespace(lo=(3.0, 0.0, 1.0), hi=(12.0, 8.0, 6.0))
+        # the band is on the axis the rows are stacked along
+        band = (4.0, 5.0) if along == 0 else (9.0, 10.0)
+        return SimpleNamespace(row_axis=along, across=1 - along, hot_aisles=[band], hall=hall)
+
+    def coordinates(self, picks):
+        j, i = picks
+        return ({(jj + 0.5) * self.STEP for jj in set(j.ravel().tolist())},
+                {(ii + 0.5) * self.STEP for ii in set(i.ravel().tolist())})
+
+    def test_rows_along_x_pick_a_y_band_inside_the_halls_x_range(self):
+        from aicfd import post
+
+        ys, xs = self.coordinates(post._hot_aisle_cells(self.model(0), self.grid()))
+        self.assertTrue(ys and all(4.0 <= y <= 5.0 for y in ys))
+        self.assertTrue(xs and all(3.0 <= x <= 12.0 for x in xs))
+
+    def test_rows_along_y_pick_an_x_band_inside_the_halls_y_range(self):
+        from aicfd import post
+
+        ys, xs = self.coordinates(post._hot_aisle_cells(self.model(1), self.grid()))
+        self.assertTrue(xs and all(9.0 <= x <= 10.0 for x in xs))
+        self.assertTrue(ys and all(0.0 <= y <= 8.0 for y in ys))
+        self.assertEqual(len(ys), 16, "every y inside the hall, not one band of them")
 
 
 class RefusalTest(ReaderTest):

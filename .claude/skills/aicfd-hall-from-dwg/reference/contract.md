@@ -122,6 +122,12 @@ Notes on the types:
   stands in the row and the air has to get round it — with load 0 in the
   sidecar. A position with **no cabinet** is either nothing (air) or a
   `blank` panel; never an empty rack box.
+  **Which way the rows run is read off the fronts, once for the hall.** Fronts
+  on `y` (`+y`/`-y`) are rows that run along x, toward the galleries; fronts on
+  `x` (`+x`/`-x`) are rows that run along y, **parallel to the dividing
+  walls** -- a long hall with a gallery at each end, the rows stacked along its
+  length. The dividing walls are x planes either way. A hall whose cabinets
+  face on both axes is refused by the first cabinet that disagrees.
 - **A supply plenum (fan walls behind a double wall).** Where the units are
   mounted in an outer leaf and blow into a cavity, the cavity is the supply
   plenum (AICFD `plenum.enabled`, ADR-058): the dividing `wall:gallery_*`

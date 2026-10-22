@@ -1207,15 +1207,20 @@ def rack_pressure_drop(model: Model, grid: dict) -> tuple[float | None, list[dic
     rack_low = model.racks[0].box.lo[2]
     rack_top = model.racks[0].box.hi[2]
 
+    # The row runs along one horizontal axis and its two faces are on the
+    # other: x and y for a row that runs toward the galleries, the other way
+    # round for one that runs parallel to the dividing walls (ADR-137).
+    along, across = model.row_axis, model.across
+
     def plane(position: float, span: tuple[float, float]) -> float:
-        picks = [
-            np.where((coords[0] >= span[0]) & (coords[0] <= span[1]))[0],
-            [int(np.argmin(abs(coords[1] - position)))],
-            np.where((coords[2] >= rack_low) & (coords[2] <= rack_top))[0],
-        ]
+        picks = {
+            along: np.where((coords[along] >= span[0]) & (coords[along] <= span[1]))[0],
+            across: [int(np.argmin(abs(coords[across] - position)))],
+            2: np.where((coords[2] >= rack_low) & (coords[2] <= rack_top))[0],
+        }
         return float(grid["p_rgh"][np.ix_(picks[2], picks[1], picks[0])].mean())
 
-    half = model.cell(1) / 2
+    half = model.cell(across) / 2
     rows = []
     for row in model.rows:
         front = plane(row.front_y - row.front_sign * half, row.span)
@@ -1271,6 +1276,25 @@ def backflow(step: str | Path, patch: str) -> float:
     return float(abs(wrong_way.sum()))
 
 
+def _hot_aisle_cells(model: Model, grid: dict):
+    """The plan cells ``[j, i]`` of the hot aisles inside the hall, for
+    ``np.ix_``-style indexing, or None when there are none.
+
+    The aisles are intervals on the axis the rows are stacked along; they are
+    cut to the hall on the axis the rows run along, so a gallery with no false
+    ceiling is not counted (ADR-137)."""
+    coords = (grid["x"], grid["y"])
+    across, along = model.across, model.row_axis
+    aisle = np.concatenate(
+        [np.where((coords[across] >= lo) & (coords[across] <= hi))[0] for lo, hi in model.hot_aisles]
+    )
+    inside = np.where((coords[along] >= model.hall.lo[along]) & (coords[along] <= model.hall.hi[along]))[0]
+    if aisle.size == 0 or inside.size == 0:
+        return None
+    picks = {across: aisle, along: inside}
+    return np.ix_(picks[1], picks[0])
+
+
 def aisle_exit_temperature(model: Model, grid: dict) -> float | None:
     """Mixing-cup temperature of the air leaving the contained aisles, in degC.
 
@@ -1289,15 +1313,11 @@ def aisle_exit_temperature(model: Model, grid: dict) -> float | None:
     """
     if not model.hot_aisles:
         return None
-    x, y, z = grid["x"], grid["y"], grid["z"]
+    z = grid["z"]
     layer = int(np.argmin(abs(z - (model.ceiling_z - model.cell_size[2] / 2))))
-    aisle = np.concatenate(
-        [np.where((y >= lo) & (y <= hi))[0] for lo, hi in model.hot_aisles]
-    )
-    inside = np.where((x >= model.hall.lo[0]) & (x <= model.hall.hi[0]))[0]
-    if aisle.size == 0 or inside.size == 0:
+    picks = _hot_aisle_cells(model, grid)
+    if picks is None:
         return None
-    picks = np.ix_(aisle, inside)
     temperature = grid["T"][layer][picks]
     # rho u, not u: the mixing cup weights by mass, and at 20 kelvin of spread
     # the hot cells are 6% lighter than the cold ones.
@@ -2120,15 +2140,11 @@ def _aisle_exit_range(model: Model, grid: dict) -> tuple[float | None, float | N
     """
     if not model.hot_aisles:
         return None, None
-    x, y, z = grid["x"], grid["y"], grid["z"]
+    z = grid["z"]
     layer = int(np.argmin(abs(z - (model.ceiling_z - model.cell_size[2] / 2))))
-    aisle = np.concatenate(
-        [np.where((y >= lo) & (y <= hi))[0] for lo, hi in model.hot_aisles]
-    )
-    inside = np.where((x >= model.hall.lo[0]) & (x <= model.hall.hi[0]))[0]
-    if aisle.size == 0 or inside.size == 0:
+    picks = _hot_aisle_cells(model, grid)
+    if picks is None:
         return None, None
-    picks = np.ix_(aisle, inside)
     leaving = grid["U"][2][layer][picks] > 0
     if not leaving.any():
         return None, None

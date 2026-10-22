@@ -712,8 +712,8 @@ class RaisedFloorDrawingTest(unittest.TestCase):
 
     def test_the_cold_aisle_caption_is_in_the_room(self):
         js = self.drawing()
-        section = js[js.index("if (view.id === 'section-a')"):]
-        section = section[:section.index("if (view.id === 'section-b')")]
+        section = js[js.index("if (view.v === 2 && view.h === ac)"):]
+        section = section[:section.index("if (view.v === 2 && view.h === 0)")]
         self.assertIn("deck + 0.45", section,
                       "the caption is placed from absolute zero again")
         self.assertIn("underfloor supply plenum", section,
@@ -731,8 +731,8 @@ class SectionNamesTheAisleItContainsTest(unittest.TestCase):
 
     def section_a(self) -> str:
         js = (WEB / "drawing.js").read_text()
-        block = js[js.index("if (view.id === 'section-a')"):]
-        return block[:block.index("if (view.id === 'section-b')")]
+        block = js[js.index("if (view.v === 2 && view.h === ac)"):]
+        return block[:block.index("if (view.v === 2 && view.h === 0)")]
 
     def test_the_caption_follows_what_the_model_actually_built(self):
         section = self.section_a()
@@ -817,3 +817,26 @@ class TheImportIsInReachTest(unittest.TestCase):
         script = (WEB / "app.js").read_text()
         self.assertIn("import-top", script, "the button has to be wired")
 
+
+
+class TheDrawingKnowsWhichWayTheRowsRunTest(unittest.TestCase):
+    """The aisle bands are on the axis the rows are stacked along, and the page
+    used to read them as y (ADR-137)."""
+
+    def drawing(self) -> str:
+        return (WEB / "drawing.js").read_text()
+
+    def test_the_row_axis_comes_from_the_model_and_defaults_to_x(self):
+        js = self.drawing()
+        self.assertIn("model.row_axis ?? 0", js)
+
+    def test_the_sections_and_the_shading_follow_it(self):
+        js = self.drawing()
+        self.assertIn("view.normal === rowAxis(model)", js)
+        self.assertIn("view.h === ac || view.v === ac", js)
+        self.assertIn("lo[ra] = x0; hi[ra] = x1;", js)
+
+    def test_rows_along_y_name_the_sections_for_what_they_show(self):
+        js = self.drawing()
+        self.assertIn("A · Section along the rows", js)
+        self.assertIn("B · Section across the rows", js)

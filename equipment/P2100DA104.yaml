@@ -1,0 +1,85 @@
+# Vertiv PEX3 P2100DA104 -- DOWNFLOW DX CRAC, indoor unit.
+#
+# NOT DECLARED IN `equipment.SHIPPED`: a PROJECT unit, entered from the
+# manufacturer's unit data sheet (one page, "AC Rating System V5.10.1") for the
+# project that named it. Every figure below is the sheet's own; the comments
+# say which line.
+#
+# DIRECT EXPANSION, and MODELLED. Two fixed-speed compressors on R410A with an
+# electronic expansion valve and a remote air-cooled condenser. Its evaporator
+# is fitted like a chilled-water coil with one side boiling, from the apparatus
+# dew point the selection implies (`cooling: dx`, ADR-103). The sheet states the
+# return and supply wet bulbs and the gross total beside the gross sensible,
+# which is what makes that possible. The SHR is 1,0: the coil is dry at this
+# selection, so the apparatus dew point is read off the sensible duty alone.
+#
+# What is NOT modelled is the condensing side. The capacity is at the sheet's
+# own 38,1 degC outdoor air; a cooler day gives more, a hotter one less.
+#
+# NOT A FAN WALL. It stands on the raised floor and discharges downward into the
+# plenum, so a case naming it needs a deck (`arrangement: downflow`, ADR-072).
+#
+# THE SHEET'S RATING is GB/T 19413-2010, tolerance +-5 %, with a footnote
+# "Sea level: 661m". Net = gross less the indoor fans' 5,78 kW (115,7 -> 109,9 kW).
+#
+# THE SHEET'S AIR SIDE DOES NOT CLOSE AT THE SITE'S DENSITY, which is why this
+# stays a project unit and is not in `SHIPPED`. 29 600 m3/h carrying air from
+# 28,0 to 17,1 degC is 98 kW at 661 m (density 1,09 kg/m3 at the return) against
+# the 109,9 kW the sheet states: 11 % short. It closes to 1,5 % at STANDARD air
+# (1,2 kg/m3), so the airflow is most likely rated at standard conditions, as
+# GB/T 19413 does -- which would make the unit move about 7 % more MASS of air
+# (9,87 kg/s) than a case that enters 29 600 m3/h as an actual volume at the
+# supply's density (9,24 kg/s) gives it. Whoever holds the
+# manufacturer should confirm the basis; until then a case with this unit is
+# solved with the sheet's 29 600 as stated, and the coil, fitted to the sheet's
+# own figures, delivers a supply 1,4 K colder than the sheet prints at the
+# selection's return.
+#
+# THE SIZE DISAGREES WITH A DRAWING THAT CARRIED IT. The sheet gives
+# 2230 x 995 x 1975 mm; the layout it was entered for draws the unit 2,50 x 0,89 m.
+# The model uses what is DRAWN for the room and this file for the machine, so
+# the two have to be reconciled by whoever holds both; the height agrees.
+model: P2100DA104
+family: Vertiv PEX3 (downflow DX)
+arrangement: downflow
+cooling: dx
+
+# Width x depth x height, metres, indoor unit only. "Width 2230, Depth 995,
+# Height 1975". The condenser (LSF85-R3, 2384 x 1273 x 695 mm, 230 kg, two of
+# them) is outdoors.
+size: [2.23, 0.995, 1.975]
+weight_kg: 780
+
+fans:
+  count: 2                    # "Indoor Fan, Quantity"
+  type: fan, PP plastic       # "Fan Material"; the sheet does not say EC
+
+selection:
+  elevation_m: 661            # "Sea level: 661m"
+  entering_air_rh: 40         # %, at 28 degC return ("Return Air RH")
+  outside_air_c: 38.1         # "Ambient Temp", the condenser's air
+  esp_pa: 50                  # "ESP"
+  test_method: GB/T 19413-2010
+  capacity_tolerance_pct: 5   # "Performance tolerance is +-5%"
+  refrigerant: R410A
+  filter: G4
+  power_supply: 460V/3ph/60Hz
+
+design:
+  return_c: 28.0              # "Return Air DB"
+  return_wb_c: 18.47          # "Return Air WB"
+  supply_c: 17.1              # "Supply Air DB"
+  airflow_m3h: 29600          # "Total Air Flow", CMH
+  nscc_kw: 109.9              # "Net Sens Cap"
+  net_total_kw: 109.9         # "Net Total Cap"
+  gross_sensible_kw: 115.7    # "Grs Sens Cap"
+  gross_total_kw: 115.7       # "Grs Total Cap"; equal to the sensible: SHR 1,0
+  heat_rejection_kw: 139.43   # the condenser's "Cond Heat"
+  power_kw: 5.78              # "Indoor Fan, Total Power"; 115,7 - 109,9 = 5,8
+  compressor_kw: 23.73        # "Compressor, Total Power" (fixed speed)
+  condenser_kw: 2.86          # "Cond Fan Power", outdoors
+                              # The unit also offers a 12 kW PTC heater and a
+                              # 7,6 kW infrared humidifier, neither of which is
+                              # modelled or wanted in a data hall.
+
+# NO CURVE. The sheet states one external static pressure and no P-Q curve.

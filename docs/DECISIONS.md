@@ -5680,7 +5680,8 @@ and two ends exactly as a parametric row is.
 **Cost accepted.** A single gallery must lie at low x, as the layouts keep
 it; a hall drawn the other way round is mirrored by the converter. Rows run
 along x and fronts are `+y` / `-y`; the other orientation is transposed
-there too.
+there too. *(Rows parallel to the dividing walls cannot be transposed away --
+the walls have to be x planes -- and are read as they are by ADR-137.)*
 
 ---
 
@@ -5855,3 +5856,58 @@ been fixed.
 **Cost accepted.** Two constants in `post.py` (1e5 Pa and 5 %). A face left at
 a plausible non-zero number would pass; with one in 1 584 it moves the
 flow-weighted mean by under a tenth of a per cent.
+
+
+## ADR-137 — A hall's rows may run parallel to its dividing walls
+
+**Decision.** The rows of a drawn hall run along x (toward the galleries) or
+along y (parallel to the dividing walls), and which is read off the cabinets'
+fronts, once for the hall: `+y`/`-y` is rows along x, as before; `+x`/`-x` is
+rows along y. A hall whose cabinets face on both axes is refused by the first
+one that disagrees with the rest. The dividing walls are x planes either way.
+
+`Row` carries `axis` (the axis it runs along); the band, the front and the
+aisles are on the other axis, `1 - axis`. `Model.row_axis` and `Model.across`
+say it once for the hall, and everything that picked cells, planes or caption
+positions by "y" now picks them by `across`: the reader's rows, aisles, lids
+and ends; `snap_to_mesh` and the alignment check; the warm start; the rack
+pressure planes and the hot-aisle cells in `post`; the report's section cuts
+and captions; the page's sections, shading, captions and dimension chains. The
+export carries `row_axis` (and each row its `axis`); an export without it is a
+hall whose rows run along x.
+
+**Why.** A long hall with a gallery at each end of its length -- 6,6 m wide,
+25 m between the walls, ten rows of nine cabinets stood across the width and
+stacked along the length -- has its rows parallel to the walls. The skill's
+contract had always allowed fronts on x, and the reader refused them
+("a cabinet's front is `+y` or `-y` (rows run along x)"), so the package the
+skill wrote for that hall could not be imported. The solver had no stake in it:
+a rack is a porous box with an airflow axis, and every surface of the room is a
+box from the STL. Only what the model *infers* from the fronts -- rows, bands,
+aisles, blocks -- had the axis written in.
+
+**What stays.** One axis per hall. Galleries on the x faces. The raised floor
+runs under the galleries too, as before: the units stand on the deck in each
+gallery and discharge down into the one plenum.
+
+**Verified on** the hall that showed it: imported, meshed (1,48 M cells, every
+panel on the grid), solved coupled on 4 cores to iteration 1 400 (the room was
+still filling, 94 % of the load in the return air), post-processed with the
+twelve checks, drawn on the page and written up as a Word report. The unit it
+names, a downflow DX CRAC, joined the library as a project unit from its
+manufacturer's sheet and its coil is fitted.
+
+**What the run found, and the reader now says.** The outer rows of that hall
+face the walkway to the gallery wall, where there is no floor plate: nothing
+feeds them on a raised floor, they breathe room air, and 18 cabinets read 48 °C
+at the inlet while the rest read 20 °C -- which also drags `rack_resistance`
+and `fan_capacity` with it, because the starved rows pass no air. The reader
+names a row that faces an aisle with no plate in it, when the model is built,
+rather than leaving it to a run. And the unit's sheet does not close at the
+site's density (its airflow looks like a standard-air rating): the unit file
+says so (`equipment/P2100DA104.yaml`) and is not declared.
+
+**Cost accepted.** On the page, the two sections swap their meaning for rows
+along y (A runs along the rows, B across all of them), and the titles say so.
+The Word report cuts one section along a row and one across every row, and
+leaves out the "through a hot aisle" figure that would repeat it.

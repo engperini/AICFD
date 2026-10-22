@@ -99,7 +99,16 @@ export const VIEWS = [
 export function viewsFor(model) {
   const d = model.domain;
   const long = isLong(model);
-  return VIEWS.map((view) => {
+  const along = rowAxis(model) === 1;
+  return VIEWS.map((raw) => {
+    // With the rows along y the section that cuts x runs along the rows and the
+    // one that cuts y runs across all of them -- the titles say which.
+    const view = !along ? raw
+      : raw.id === 'section-a'
+        ? { ...raw, title: 'A · Section along the rows', subtitle: 'through a hot aisle' }
+        : raw.id === 'section-b'
+          ? { ...raw, title: 'B · Section across the rows', subtitle: 'through the middle of the rack block' }
+          : raw;
     if (view.id !== 'plan' || !long) return { ...view, long };
     return {
       ...view,
@@ -197,6 +206,16 @@ const rackBlocks = (model) =>
 const coldAisles = (model) => model.cold_aisles || [model.aisles.cold];
 const hotAisles = (model) => model.hot_aisles || [model.aisles.hot];
 
+/**
+ * The axis the rows RUN along: 0 for a row that runs toward the galleries
+ * (every parametric hall), 1 for a row that runs parallel to the dividing
+ * walls, as in a long hall with a gallery at each end (ADR-137). The bands and
+ * the aisles are on the other axis, `across`. An export written before the
+ * key existed has rows along x.
+ */
+const rowAxis = (model) => model.row_axis ?? 0;
+const acrossAxis = (model) => 1 - rowAxis(model);
+
 /** Colour class for a panel, by what it is. */
 const klass = (panel, model) =>
   // The plenum's inner leaf is the building, not containment. Every `wall`
@@ -232,14 +251,14 @@ function el(tag, attrs = {}, text) {
 
 /** The plane each section is taken on, chosen to cut the informative thing. */
 function sectionAt(model, view) {
-  if (view.normal === 0) {
+  if (view.normal === rowAxis(model)) {
     // Through the middle of a rack block -- not of the whole row, which on a
     // hall with two blocks is the transverse aisle between them.
     const blocks = model.blocks?.length ? model.blocks : [rackSpan(model)];
     const [lo, hi] = blocks[Math.floor(blocks.length / 2)];
     return (lo + hi) / 2;
   }
-  if (view.normal === 1) {
+  if (view.normal === acrossAxis(model)) {
     const hot = hotAisles(model);
     const aisle = hot[Math.floor(hot.length / 2)]; // a hot aisle, the middle one
     return (aisle[0] + aisle[1]) / 2;
@@ -249,9 +268,10 @@ function sectionAt(model, view) {
 
 function rackSpan(model) {
   if (!model.racks.length) return [0, 0];
+  const a = rowAxis(model);
   return [
-    Math.min(...model.racks.map((r) => r.lo[0])),
-    Math.max(...model.racks.map((r) => r.hi[0])),
+    Math.min(...model.racks.map((r) => r.lo[a])),
+    Math.max(...model.racks.map((r) => r.hi[a])),
   ];
 }
 
@@ -435,14 +455,19 @@ export function drawView(model, view, scale, options = {}) {
   // where the rack rows stop: an aisle is the space between two rows, and
   // beyond the last rack there are no rows to be between. And they stop at
   // the deck, for the reason above.
-  if (view.h === 1 || view.v === 1) {
+  const ra = rowAxis(model);
+  const ac = acrossAxis(model);
+  if (view.h === ac || view.v === ac) {
+    const top = view.v === 2 ? model.ceiling_z : model.domain.hi[2];
     for (const band of hotAisles(model)) {
       for (const [x0, x1] of rackBlocks(model)) {
-        paint(
-          [x0, band[0], deck],
-          [x1, band[1], view.v === 2 ? model.ceiling_z : model.domain.hi[2]],
-          'dw-hot',
-        );
+        // the band is on the axis the rows are stacked along, the block on the
+        // axis they run along
+        const lo = [0, 0, deck];
+        const hi = [0, 0, top];
+        lo[ra] = x0; hi[ra] = x1;
+        lo[ac] = band[0]; hi[ac] = band[1];
+        paint(lo, hi, 'dw-hot');
       }
     }
   }
@@ -702,6 +727,8 @@ export function drawView(model, view, scale, options = {}) {
 }
 
 function annotate(svg, model, view, X, Y, bounds) {
+  const ra = rowAxis(model);
+  const ac = acrossAxis(model);
   // Notes are placed in room coordinates and mapped through the view, so a
   // plan turned on its side keeps its captions where they belong. Anchored
   // at the centre, so keep half the string inside the drawing.
@@ -717,10 +744,11 @@ function annotate(svg, model, view, X, Y, bounds) {
   const cold = coldAisles(model)[0];
   const hot = hotAisles(model)[0];
   const hallMidX = mid([model.hall.lo[0], model.hall.hi[0]]);
+  const hallMidAlong = mid([model.hall.lo[ra], model.hall.hi[ra]]);
   const galleries = model.galleries ?? [model.gallery];
   const galleryMids = galleries.map((box) => mid([box.lo[0], box.hi[0]]));
 
-  if (view.id === 'section-a') {
+  if (view.v === 2 && view.h === ac) {
     // IN THE ROOM, which stands on the deck. At 0,45 m absolute the caption
     // sat inside the under-floor plenum on every raised-floor case, naming
     // the supply plenum `cold aisle` (ADR-107).
@@ -731,16 +759,25 @@ function annotate(svg, model, view, X, Y, bounds) {
     // other arrangement (ADR-100, ADR-110).
     const lidded = model.panels.some((p) => p.name.startsWith('containment_lid'));
     const walled = model.panels.some((p) => p.name.startsWith('containment_wall'));
-    put([hallMidX, mid(cold), deck + 0.45],
+    // The point of a caption is placed on the axis the rows are stacked along
+    // (that is the horizontal axis of the section that shows the aisles side
+    // by side) and ignores the other (ADR-137).
+    const aisleAt = (c, z) => {
+      const point = [0, 0, z];
+      point[ac] = c;
+      point[ra] = hallMidAlong;
+      return point;
+    };
+    put(aisleAt(mid(cold), deck + 0.45),
       lidded ? 'contained cold aisle' : 'cold aisle', 'dw-note dw-cold-t');
-    put([hallMidX, mid(hot), model.ceiling_z - 1.1],
+    put(aisleAt(mid(hot), model.ceiling_z - 1.1),
       walled ? 'chimney' : 'hot aisle', 'dw-note dw-hot-t');
     if (model.floor_height) {
-      put([hallMidX, mid(cold), model.floor_height / 2],
+      put(aisleAt(mid(cold), model.floor_height / 2),
         'underfloor supply plenum', 'dw-note dw-cold-t');
     }
   }
-  if (view.id === 'section-b') {
+  if (view.v === 2 && view.h === 0) {
     for (const x of galleryMids) {
       put([x, 0, model.domain.hi[2] - 0.55], 'mechanical gallery');
     }
@@ -756,7 +793,10 @@ function annotate(svg, model, view, X, Y, bounds) {
   }
   if (view.id === 'plan') {
     for (const x of galleryMids) put([x, model.domain.hi[1] - 0.35, 0], 'gallery');
-    put([hallMidX, mid(cold), 0], 'cold aisle', 'dw-note dw-cold-t');
+    const coldAt = [0, 0, 0];
+    coldAt[ac] = mid(cold);
+    coldAt[ra] = hallMidAlong;
+    put(coldAt, 'cold aisle', 'dw-note dw-cold-t');
   }
 }
 
@@ -784,6 +824,8 @@ function planBands(model, axis) {
   // used to be the modelled DOMAIN -- galleries plus hall, one number that is
   // neither room -- and the hall's own length and width were nowhere (ADR-105).
   if (model.hall) add(model.hall.lo[axis], model.hall.hi[axis], 'data hall');
+  const ra = rowAxis(model);
+  const ac = acrossAxis(model);
   if (axis === 0) {
     for (const g of model.galleries) add(g.lo[0], g.hi[0], 'gallery');
     const supply = model.panels.filter((p) => p.name.startsWith('supply_mesh'));
@@ -798,12 +840,15 @@ function planBands(model, axis) {
     // and 10,00 down the same margin with the cabinets visibly stopping
     // before the longer one. The racks are drawn; this measures them, once
     // per distinct length (ADR-105).
+  }
+  if (axis === ra) {
     const blocks = model.blocks || [];
     for (const [lo, hi] of blocks) add(lo, hi, 'racks');
     for (let i = 1; i < blocks.length; i += 1) {
       add(blocks[i - 1][1], blocks[i][0], 'cross aisle');
     }
-  } else {
+  }
+  if (axis === ac) {
     const rows = model.rows || [];
     for (const r of rows) add(r.band[0], r.band[1], 'row depth');
     for (const [lo, hi] of model.hot_aisles || []) add(lo, hi, 'hot aisle');
@@ -814,12 +859,14 @@ function planBands(model, axis) {
     // across the middle of the plan (ADR-116). The cage's own fields say
     // where the wall is and what it keeps clear.
     const cageWalls = (model.panels || [])
-      .filter((q) => q.name.startsWith('cage_') && q.axis === 1)
+      .filter((q) => q.name.startsWith('cage_') && q.axis === ac)
       .map((q) => q.position);
     for (const [lo, hi] of model.cold_aisles || []) {
       if (cageWalls.some((at) => lo < at && at < hi)) continue;
       add(lo, hi, 'cold aisle');
     }
+  }
+  if (axis === 1) {
     const fan = (model.panels || []).find((q) => q.kind === 'fan');
     if (fan) add(fan.extent[0][0], fan.extent[0][1], unitNaming(model).noun);
   }
@@ -929,7 +976,7 @@ function dimensions(svg, model, view, X, Y, width, height, hSpan) {
           [model.ceiling_z, 'ceiling'],
           ...(model.racks.length ? [[model.racks[0].hi[2], 'rack top']] : []),
         ]
-      : view.v === 1
+      : view.v === acrossAxis(model)
         ? [
             [model.aisles.cold[1], 'front'],
             [model.aisles.racks[1], 'back'],

@@ -1153,7 +1153,14 @@ def warm_start(model: Model) -> str:
     def over_racks(x: float) -> bool:
         return any(lo <= x <= hi for lo, hi in blocks)
 
-    hot_rows = [in_hot_aisle((j + 0.5) * cy) for j in range(ny)]
+    # The aisles are intervals on the axis the rows are stacked along, and the
+    # blocks on the axis they run along: y and x for a row that runs toward
+    # the galleries, the other way round for one that runs parallel to the
+    # dividing walls (ADR-137).
+    across, along = model.across, model.row_axis
+    spacing = (cx, cy)
+    hot_across = [in_hot_aisle((n + 0.5) * spacing[across]) for n in range((nx, ny)[across])]
+    over_along = [over_racks((n + 0.5) * spacing[along]) for n in range((nx, ny)[along])]
     values = []
     for k in range(nz):
         z = (k + 0.5) * cz
@@ -1163,7 +1170,7 @@ def warm_start(model: Model) -> str:
                 downstream = (
                     in_gallery(x)  # every gallery carries return air
                     or z > model.ceiling_z  # the plenum above the false ceiling
-                    or (hot_rows[j] and over_racks(x))
+                    or (hot_across[(i, j)[across]] and over_along[(i, j)[along]])
                 )
                 values.append(warm_k if downstream else supply_k)
 

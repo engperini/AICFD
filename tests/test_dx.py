@@ -243,6 +243,28 @@ class ShippedProjectUnitTest(unittest.TestCase):
         self.assertEqual(built.equipment.model, "ZZ-DX-DRAFT")
         self.assertEqual(built.supply_temp_c, 20.0, "it runs off its own sheet")
 
+class ASecondProjectUnitTest(unittest.TestCase):
+    """P2100DA104 joined the library from its manufacturer's sheet when a drawn
+    hall named it (ADR-137). It states an external static pressure and a full
+    performance table, so its coil is fitted; it stays out of `SHIPPED` because
+    its air side does not close at the site's density, and the file says so."""
+
+    def test_it_is_a_downflow_dx_unit_whose_coil_is_fitted_to_the_sheet(self):
+        unit = equipment.load("P2100DA104")
+        self.assertEqual((unit.arrangement, unit.cooling), ("downflow", "dx"))
+        coil = unit.coil
+        self.assertIsNotNone(coil)
+        self.assertAlmostEqual(coil.rated_capacity_kw, 109.9, places=1)
+        self.assertAlmostEqual(coil.capacity_ceiling_kw, 115.7, places=1)
+        self.assertEqual(coil.refrigerant, "R410A")
+        self.assertAlmostEqual(coil.rated_ambient_c, 38.1, places=1)
+
+    def test_it_is_not_declared_and_says_why(self):
+        self.assertNotIn("P2100DA104", equipment.SHIPPED)
+        text = (equipment.LIBRARY / "P2100DA104.yaml").read_text()
+        self.assertIn("DOES NOT CLOSE AT THE SITE'S DENSITY", text)
+
+
 
 if __name__ == "__main__":
     unittest.main()
