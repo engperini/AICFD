@@ -528,6 +528,9 @@ def plan(export: Export, out: Path, z: float, title: str,
                                "containment_door", "containment_lid",
                                "containment_side"):
         _containment_mark(ax, panel, h, v, color=INK, linewidth=0.7)
+    # The wall between two halls, heavier: it is the building (ADR-140).
+    for panel in export.panels("partition"):
+        _containment_mark(ax, panel, h, v, color=INK, linewidth=1.6)
     _cage(ax, export, h, v, width=1.1)
     _row_labels(ax, export, h, v)
     fans = export.panels("fan")

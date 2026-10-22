@@ -5983,3 +5983,21 @@ air enters.
 **Cost accepted.** No equipment file for a mixed plant yet, so no coil model
 and no supply temperature solved from it: the supply is imposed at the
 setpoint, as for any unit named by its figures alone.
+
+## ADR-140 — A wall between two halls is a wall of the room, named `partition`
+
+**Decision.** A `wall:partition<...>` solid in a drawn hall becomes a wall
+panel under its own name (`partition_dh`), meshed as a zone of its own the way
+a drywall cage wall is, one zone per piece -- a door left open in it makes it
+several pieces in one plane. It stands where the drawing puts it, from and to
+the heights the drawing gives it; the air crosses it only where nothing is
+drawn: under the deck and over the false ceiling when it runs deck to ceiling,
+which is the case of two halls sharing a gallery, a raised floor and a ceiling
+void. The plans of the result draw it heavier than the containment.
+
+**Why.** A drawn site had two data halls in one room -- 2,6 MW at 16 kW a
+cabinet and 300 kW at 3,5 kW -- divided by a masonry wall up to the false
+ceiling, with one technical corridor for both. Read as `containment_side` it
+would have been meshed, but called a containment surface in every drawing and
+table, which is the wrong thing to tell a reader looking for the wall between
+two customers' rooms.

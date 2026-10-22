@@ -582,6 +582,12 @@ def build(spec: dict) -> Model:
             continue   # a dividing wall: the mesher builds it from the hall's x face
         if s in plenum_walls:
             continue
+        if s.id.startswith("partition"):
+            # A WALL BETWEEN TWO HALLS that share a gallery, a plenum and a
+            # ceiling void: a solid wall in the room, named for what it is so
+            # the report and the drawings can say so (ADR-140).
+            panels.append(s.panel(s.id, "wall"))
+            continue
         if s.flat_axis == 1 and s.lo[2] >= rack_top - 1e-6 and s.hi[2] >= ceiling_z - 1e-6:
             contained = contained or "hot"
             panels.append(s.panel("containment_wall_" + s.id, "wall"))

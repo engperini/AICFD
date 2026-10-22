@@ -100,7 +100,7 @@ Rules for the triangles:
 | `hall` | box | — | the whole air volume: hall, galleries, underfloor plenum, return plenum | the mesh block; exactly one, mandatory |
 | `rack:<id>:<front>` | box | `+x` `-x` `+y` `-y`: the direction the **intake face** looks | a cabinet position, loaded or empty | porous cell zone with the load the sidecar gives it; rows, cold and hot aisles are inferred from fronts |
 | `unit:<id>[:<dir>]` | box | for a fan wall: the direction it blows into the hall; downflow units take none | a cooling unit's body | intake and supply faces; downflow (top = return, bottom = supply into the plenum) or fan wall (the face towards the hall), from the equipment catalogue's `arrangement` |
-| `wall:<id>` | panel | — | a solid internal partition: the gallery dividing walls, row-end closures, containment side walls | adiabatic wall baffle |
+| `wall:<id>` | panel | — | a solid internal partition: the gallery dividing walls, row-end closures, containment side walls; `wall:partition_<id>` is a wall between two halls in one room, named so in AICFD (ADR-140) | adiabatic wall baffle |
 | `lid:<id>` | horizontal panel | — | a containment roof over an aisle, at rack-top height | adiabatic wall baffle; which aisle is contained is read from where the lids are |
 | `door:<id>` | vertical panel | — | a containment end door | adiabatic wall baffle |
 | `deck` | horizontal panel | — | the raised floor, spanning the hall | wall baffle; the plenum is below it; exactly one or none |

@@ -619,6 +619,33 @@ class APlantOfTwoSizesTest(ReaderTest):
         self.refused("fanwall.curve", curve=[[0, 300], [30000, 0]])
 
 
+class AWallBetweenTwoHallsTest(ReaderTest):
+    """Two halls sharing a gallery, a raised floor and a ceiling void, with a
+    solid wall between them from the deck to the false ceiling (ADR-140)."""
+
+    def hall(self) -> str:
+        return (downflow_hall()
+                + _panel("wall:partition_dh", "y", 6.8, (3.0, 1.0, 12.0, 4.0)) + "\n"
+                + _panel("grille:h2-01", "z", 4.0, (5.0, 7.2, 5.6, 7.8)) + "\n")
+
+    def test_it_is_a_wall_named_for_what_it_is(self):
+        model, _ = self.build(self.hall())
+        wall = model.panel("partition_dh")
+        self.assertEqual((wall.kind, wall.axis, round(wall.position, 3)), ("wall", 1, 6.8))
+        self.assertEqual(_r(wall.extent), [(3.0, 12.0), (1.0, 4.0)])
+
+    def test_the_mesher_builds_it(self):
+        from aicfd import case
+
+        model, _ = self.build(self.hall())
+        zones = {name for name, _panels, _holes in case.wall_plan(model)}
+        self.assertIn("partition_dh", zones)
+
+    def test_open_below_the_deck_and_above_the_ceiling_it_seals_nothing(self):
+        model, _ = self.build(self.hall())
+        self.assertFalse([p for p in model.panels if p.name.startswith("leak")])
+
+
 class AParametricPlantOfTwoSizesTest(unittest.TestCase):
     def test_the_units_are_named_by_their_number(self):
         from tests import support

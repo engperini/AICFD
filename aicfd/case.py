@@ -315,6 +315,12 @@ def wall_plan(model: Model) -> list[tuple[str, list[Panel], list[Panel]]]:
                  if p.name.startswith("cage_") and p.resistance is None]:
         plan.append((wall.name, [wall], []))
 
+    # A WALL BETWEEN TWO HALLS, in pieces where a door stands open in it: one
+    # zone per piece, as the drywall cage has, since a hall can have one
+    # across the rows and one along them (ADR-140).
+    for wall in [p for p in model.panels if p.name.startswith("partition")]:
+        plan.append((wall.name, [wall], []))
+
     for zone in dict.fromkeys(group for group, _prefix in WALL_GROUPS):
         prefixes = tuple(prefix for group, prefix in WALL_GROUPS if group == zone)
         # A panel that RESISTS the air is not a member of a wall zone: it is
