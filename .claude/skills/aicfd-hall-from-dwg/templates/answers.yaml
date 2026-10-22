@@ -41,6 +41,10 @@ heights:                       # THE ELEVATIONS, one per element -- asked of the
 # fanwall:                     # the plant, where it differs from the reference
 #   supply_temp_c: 22.0
 #   out_of_service: [UE-47]    # the failure scenario, by the drawing's tag
+#   model: null                # no datasheet: null drops the reference's model (and power_kw: null its power)
+#   sizes:                     # a plant of more than one size, by the capacity WRITTEN ON EACH UNIT
+#     402: {airflow_m3h: 77690}     # ("402kW(S)"): each unit is solved at its size's airflow
+#     211: {airflow_m3h: 40800}     # (AICFD ADR-139)
 # mesh:
 #   cell_size: [0.2, 0.2, 0.2]
 # solver:
@@ -49,3 +53,13 @@ heights:                       # THE ELEVATIONS, one per element -- asked of the
 
 # galleries:                   # only if the drawing has no gallery contour and no wall rectangles
 #   - [67.48, 21.16, 71.64, 55.91]
+
+# partitions:                  # a wall between two halls in one room (AICFD ADR-140); the pipeline
+#   - id: dh                   # never builds one from a shape alone -- it asks
+#     rect: [x0, y0, x1, y1]   # the masonry, in the drawing's coordinates
+#     top: ceiling             # ceiling | slab
+#     below_deck: false        # true: it also splits the raised floor
+#     door:                    # optional: where the door is, and whether it stands open
+#       rect: [x0, y0, x1, y1]
+#       height: 2.1
+#       open: false

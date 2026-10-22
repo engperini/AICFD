@@ -92,6 +92,8 @@ def groups(m: dict) -> dict[str, list[str]]:
     for p in m["cage"]["panels"]:
         b = _plate_y(p["at"], p["lo"], p["hi"], p["z"][0], p["z"][1]) if p["axis"] == "y" else _plate_x(p["at"], p["lo"], p["hi"], p["z"][0], p["z"][1])
         add("cage", stl.box(f"cage:{p['id']}", b))
+    for p in m.get("partitions", []):
+        add("walls", stl.box(f"wall:partition_{p['id']}", _plate_y(p["at"], p["lo"], p["hi"], p["z"][0], p["z"][1])))
     return out
 
 
@@ -157,6 +159,8 @@ def preview(m: dict, path: str, title: str) -> None:
     for p in m["cage"]["panels"]:
         b = _plate_y(p["at"], p["lo"], p["hi"], p["z"][0], p["z"][1]) if p["axis"] == "y" else _plate_x(p["at"], p["lo"], p["hi"], p["z"][0], p["z"][1])
         box(b, "#7b2cbf", alpha=0.3)
+    for p in m.get("partitions", []):
+        box(_plate_y(p["at"], p["lo"], p["hi"], p["z"][0], p["z"][1]), "#555555", alpha=0.55)
     for bl in m.get("blanks", []):
         b = _plate_y(bl["at"], bl["lo"], bl["hi"], bl["z"][0], bl["z"][1]) if bl["axis"] == "y" else _plate_x(bl["at"], bl["lo"], bl["hi"], bl["z"][0], bl["z"][1])
         box(b, "#4d4d4d", "#222", alpha=0.9)

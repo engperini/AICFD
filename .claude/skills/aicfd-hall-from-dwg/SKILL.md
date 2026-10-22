@@ -161,6 +161,16 @@ format) is the safer input when the user can make one.
   `loads:` in answers; else `racks.load_kw`. A future position takes
   `racks.future_kw`. The total is printed for the user to check against
   the hall's rating.
+- **A wall between two halls is an answer, never a guess.** A thin shape crossing
+  the hall from wall to wall is asked about (`partitions:`); named, it is a
+  `wall:partition_<id>` panel on its mid-plane, from the deck to the false
+  ceiling (or the slab), open under the deck unless `below_deck`, running to
+  the hall's walls, its door closed unless `door.open`. It bounds the hot
+  bands, and the self-check refuses a tile, grille or cabinet across it.
+- **A plant of more than one size** is read off the capacity written on each
+  unit (`402kW(S)`); `fanwall.sizes` gives each size its airflow and the
+  sidecar names the units that differ from the commonest one in
+  `fanwall.units` (AICFD ADR-139).
 - **Left out, on the record**: PDUs, RPPs, panels, columns, furniture --
   every closed rectangle inside the envelope that nothing claimed is
   listed under LEFT OUT.

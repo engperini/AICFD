@@ -478,6 +478,73 @@ def build(ex: Extracted, ref: dict, answers: dict) -> dict:
                     raise SystemExit(f"cage panel {p['id']} at x = {p['at']} crosses rack {r['id']}")
     cage_lines_y = sorted(p["at"] for p in cage_panels if p["axis"] == "y")
 
+    # ---- walls between two halls in one room -----------------------------------
+    # THE ENGINEER POINTS AT THE MASONRY; the model carries it on its mid-plane,
+    # from the deck to the false ceiling (or the slab), open under the deck
+    # unless told otherwise -- two halls sharing a raised floor, a gallery and
+    # a ceiling void. A door in it is closed unless answers.yaml opens it. It
+    # bounds the bands like a cage line: no return grille straddles it.
+    partitions = []
+    for pt in ex.partitions:
+        r = loc(pt["rect"])
+        pid = re.sub(r"[^A-Za-z0-9]", "_", pt["id"])
+        if geom.height(r) >= geom.width(r):
+            raise SystemExit(f"partition {pid}: it runs across the rows (normal to x in the model); only a wall along "
+                             f"the rows, between two bands of them, is built")
+        thick = geom.height(r)
+        at = Q.q((r[1] + r[3]) / 2, 1, f"partition {pid} (mid-plane)")
+        lo, hi = max(hall[0], Q.q(r[0], 0)), min(hall[2], Q.q(r[2], 0))
+        # A WALL DRAWN TO THE HALL'S WALL RUNS TO IT: a few centimetres of
+        # drafting or of rounding must not leave a slot the air goes round.
+        reach = float(cfg.get("partition_wall_snap_m", 0.3))
+        for end, wall in ((0, hall[0]), (2, hall[2])):
+            if abs(r[end] - wall) <= reach and abs((lo if end == 0 else hi) - wall) > 1e-6:
+                log.corrections.append(f"partition {pid}: drawn {abs(r[end] - wall) * 1000:.0f} mm from the hall's wall at "
+                                       f"x = {wall:.2f}; it runs to the wall")
+                lo, hi = (wall, hi) if end == 0 else (lo, wall)
+        top = slab if pt["top"] == "slab" else ceiling
+        bottom = 0.0 if pt["below_deck"] else floor
+        for row in rows:
+            for k in row["racks"]:
+                q = k["q"]
+                if q[1] < at < q[3] and q[0] < hi and q[2] > lo:
+                    raise SystemExit(f"partition {pid} at y = {at:.2f} crosses rack {k['id']}")
+        door = pt["door"] or {}
+        parts = [(lo, hi, bottom, top)]
+        opening = None
+        if door.get("rect"):
+            d = loc(door["rect"])
+            d0, d1 = Q.q(d[0], 0, f"partition {pid} door"), Q.q(d[2], 0, f"partition {pid} door")
+            dz = Q.q(floor + float(door.get("height", 2.1)), 2, f"partition {pid} door head")
+            opening = {"lo": d0, "hi": d1, "head": dz, "open": bool(door.get("open"))}
+            if door.get("open"):
+                parts = [p for p in ((lo, d0, bottom, top), (d1, hi, bottom, top), (d0, d1, dz, top)) if p[1] - p[0] > 1e-6 and p[3] - p[2] > 1e-6]
+        for n, (a, b, z0, z1) in enumerate(parts, start=1):
+            partitions.append({"id": pid if len(parts) == 1 else f"{pid}_{n}", "wall": pid, "axis": "y", "at": at,
+                               "lo": a, "hi": b, "z": (z0, z1), "door": opening})
+        log.corrections.append(
+            f"partition {pid}: {thick * 1000:.0f} mm wall in the drawing between two halls, carried as a panel on its mid-plane at "
+            f"y = {at:.2f}, x {lo:.2f}..{hi:.2f}, from {'the slab' if pt['below_deck'] else 'the deck'} to "
+            f"{'the slab' if pt['top'] == 'slab' else 'the false ceiling'}"
+            + ("" if pt["below_deck"] else "; the raised floor runs under it")
+            + ("" if pt["top"] == "slab" else " and the ceiling void over it"))
+        if not door:
+            log.notes.append(f"partition {pid}: no door given; the wall is continuous")
+        elif "open" not in door:
+            log.questions.append(f"partition {pid}: its door is taken CLOSED -- open or closed in this scenario? "
+                                 f"(`partitions[].door.open`)")
+        elif door.get("open"):
+            log.corrections.append(f"partition {pid}: its door is open, {float(door.get('height', 2.1)):.1f} m high")
+        else:
+            log.notes.append(f"partition {pid}: its door is closed (answers.yaml)")
+    for r, lay in ex.partition_candidates:
+        q = loc(r)
+        log.questions.append(
+            f"a thin shape ({min(geom.width(q), geom.height(q)) * 1000:.0f} mm x {max(geom.width(q), geom.height(q)):.1f} m, layer "
+            f"{lay[-40:]}) crosses the hall at ({q[0]:.1f}, {q[1]:.1f})..({q[2]:.1f}, {q[3]:.1f}): a wall between two halls? "
+            f"Name it in `partitions:` or leave it out")
+    cage_lines_y = sorted(cage_lines_y + [p["at"] for p in partitions if p["z"][1] >= ceiling - 1e-6])
+
     # ---- the contained aisles and the open bands -------------------------------
     # With boxes, every contained aisle is one box: the rows against it, its
     # band between their faces. Without boxes (no drawing of the containment
@@ -753,7 +820,8 @@ def build(ex: Extracted, ref: dict, answers: dict) -> dict:
         z0 = floor if unit_kind == "downflow" else 0.0
         units.append({"id": uid, "gallery": u["gallery"], "kind": unit_kind,
                       "dir": None if unit_kind == "downflow" else ("+x" if u["gallery"] == "W" else "-x"),
-                      "box": (x0, y0, z0, round(x0 + w, 6), round(y0 + d, 6), round(z0 + (unit_top - floor), 6))})
+                      "box": (x0, y0, z0, round(x0 + w, 6), round(y0 + d, 6), round(z0 + (unit_top - floor), 6)),
+                      "capacity_kw": u.get("capacity_kw"), "label": u.get("label", "")})
         if not u["tag"]:
             log.corrections.append(f"unit at ({r[0]:.2f}, {r[1]:.2f}) has no tag in the drawing: named {uid}")
     for u in units:
@@ -767,6 +835,27 @@ def build(ex: Extracted, ref: dict, answers: dict) -> dict:
     if not units:
         log.questions.append("no cooling unit of a known footprint found in the galleries / technical rooms: give the units' "
                              "plan size (`unit_plan_sizes_m: [[w, d]]`) or their positions, and the model (`fanwall.model`)")
+    # A PLANT OF MORE THAN ONE SIZE: each unit is the size written on it in the
+    # drawing ("402kW(S)"), and `fanwall.sizes` gives each size its airflow --
+    # AICFD then solves each unit at its own (ADR-139).
+    sizes = {float(k): v for k, v in ((cfg.get("fanwall") or {}).get("sizes") or {}).items()}
+    written = sorted({u["capacity_kw"] for u in units if u.get("capacity_kw")})
+    if sizes:
+        for u in units:
+            cap = u.get("capacity_kw")
+            if cap is None:
+                raise SystemExit(f"unit {u['id']}: no capacity written on it in the drawing, and `fanwall.sizes` rates the units "
+                                 f"by the capacity on each -- give the unit's size")
+            if cap not in sizes:
+                raise SystemExit(f"unit {u['id']}: {cap:g} kW written on it, and `fanwall.sizes` has "
+                                 f"{', '.join(f'{k:g}' for k in sizes)} kW only")
+            u["rating"] = {"capacity_kw": cap, **{k: float(v) for k, v in sizes[cap].items() if v is not None}}
+        mix = sorted({(u["rating"]["capacity_kw"], u["rating"].get("airflow_m3h")) for u in units}, reverse=True)
+        log.notes.append("cooling units by the capacity written on each: " + "; ".join(
+            f"{sum(1 for u in units if u['rating']['capacity_kw'] == c)} x {c:g} kW at {a:,.0f} m3/h" for c, a in mix))
+    elif len(written) > 1:
+        log.questions.append(f"the units carry {len(written)} capacities in the drawing ({', '.join(f'{c:g}' for c in written)} kW): "
+                             f"give each size its airflow in `fanwall.sizes: {{{written[0]:g}: {{airflow_m3h: ...}}}}`")
 
     # ---- the supply plenum: a double wall between the technical room and the hall ----
     # THE UNITS ARE MOUNTED IN THE OUTER LEAF AND BLOW INTO THE CAVITY; the inner
@@ -969,6 +1058,7 @@ def build(ex: Extracted, ref: dict, answers: dict) -> dict:
         "lids": lids, "doors": doors, "closures": closures, "blanks": blanks, "chimneys": chimneys, "tiles": tiles, "grilles": grilles,
         "cage": {"panels": cage_panels, "construction": cfg["cage"]["construction"]},
         "units": units,
+        "partitions": partitions,
         "plenums": plenums,
         "supplies": supplies,
         "ceiling_rect": ceiling_rect,

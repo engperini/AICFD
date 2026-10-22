@@ -108,6 +108,9 @@ def write(m: dict, path: str) -> dict:
         add(panel(f"door:{d['id']}", d["axis"], d["at"], (d["lo"], d["z"][0], d["hi"], d["z"][1])), "door")
     for c in m["closures"]:
         add(panel(f"wall:{c['id']}", c["axis"], c["at"], (c["lo"], c["z"][0], c["hi"], c["z"][1])), "wall")
+    for p in m.get("partitions", []):
+        # a wall between two halls: AICFD names it `partition_<id>` (ADR-140)
+        add(panel(f"wall:partition_{p['id']}", p["axis"], p["at"], (p["lo"], p["z"][0], p["hi"], p["z"][1])), "wall")
     for b in m.get("blanks", []):
         add(panel(f"blank:{b['id']}", b["axis"], b["at"], (b["lo"], b["z"][0], b["hi"], b["z"][1])), "blank")
     for t in m["tiles"]:

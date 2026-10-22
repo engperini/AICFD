@@ -81,6 +81,12 @@ def longitudinal(ax, m, x_cut):
     for p in m["cage"]["panels"]:
         if p["axis"] == "y" and p["lo"] <= x_cut <= p["hi"]:
             ax.plot([p["at"], p["at"]], [p["z"][0], p["z"][1]], color=C["cage"], lw=2.5, zorder=5)
+    for p in m.get("partitions", []):
+        # the wall between two halls: solid from where it starts to where it
+        # stops, the raised floor and the ceiling void open past it
+        if p["lo"] <= x_cut <= p["hi"]:
+            ax.plot([p["at"], p["at"]], [p["z"][0], p["z"][1]], color=C["wall"], lw=4, zorder=5, solid_capstyle="butt")
+            ax.text(p["at"], H["slab"] + 0.08, f"partition {p['wall']}", fontsize=5.5, ha="center", color="#333", zorder=6)
     for ca in m["cold_aisles"]:
         b = ca["band"]
         ax.text((b[0] + b[1]) / 2, H.get("floor", H["deck"]) + 0.55, f"{ca['id']}\ncold", fontsize=5.5, ha="center", color=C["lid"])

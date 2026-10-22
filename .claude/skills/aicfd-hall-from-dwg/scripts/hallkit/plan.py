@@ -51,6 +51,20 @@ def draw(m: dict, path: str, title: str) -> None:
         ax.plot([sg["at"], sg["at"]], [sg["lo"], sg["hi"]], color="#2e86de", lw=5.0, zorder=6, solid_capstyle="butt")
         ax.text(sg["at"] + (0.25 if sg["side"] == "W" else -0.25), (sg["lo"] + sg["hi"]) / 2, f"{sg['id']} {sg['hi'] - sg['lo']:.1f} x {sg['z'][1] - sg['z'][0]:.1f} m",
                 rotation=90, ha="center", va="center", fontsize=4.8, color="#1d4ed8", zorder=7)
+    # walls between two halls
+    for p in m.get("partitions", []):
+        ax.plot([p["lo"], p["hi"]], [p["at"], p["at"]], color="#222", lw=4.0, zorder=11, solid_capstyle="butt",
+                alpha=1.0 if p["z"][0] <= H.get("floor", H["deck"]) + 1e-6 else 0.45)
+        dr = p.get("door")
+        if dr and (p["id"] == p["wall"] or p["id"].endswith("_1")):
+            # where the door is, open or shut: a reader checks it against the drawing
+            ax.plot([dr["lo"], dr["hi"]], [p["at"], p["at"]], color="#f5f5f5" if dr["open"] else "#c77d1a", lw=4.0, zorder=12,
+                    solid_capstyle="butt", ls="-" if dr["open"] else (0, (2, 1)))
+            ax.text((dr["lo"] + dr["hi"]) / 2, p["at"] - 0.3, f"door {dr['hi'] - dr['lo']:.1f} m, {'OPEN' if dr['open'] else 'closed'}",
+                    ha="center", va="top", fontsize=5.5, color="#8a5300", zorder=12, bbox=dict(fc="white", ec="none", alpha=0.85, pad=1.0))
+        if p["id"] == p["wall"] or p["id"].endswith("_1"):
+            ax.text(p["hi"] - 0.2, p["at"] + 0.25, f"partition {p['wall']}: deck to {'ceiling' if p['z'][1] <= H['ceiling'] + 1e-6 else 'slab'}",
+                    ha="right", va="bottom", fontsize=6, color="#222", zorder=11, bbox=dict(fc="white", ec="none", alpha=0.85, pad=1.0))
     # cage
     for p in m["cage"]["panels"]:
         if p["axis"] == "y":
@@ -136,7 +150,12 @@ def draw(m: dict, path: str, title: str) -> None:
     for u in m["units"]:
         b = u["box"]
         ax.add_patch(Rectangle((b[0], b[1]), b[3] - b[0], b[4] - b[1], fc="#cfe3ff", ec="#2e6da4", lw=1.2, zorder=8))
-        ax.text((b[0] + b[3]) / 2, (b[1] + b[4]) / 2, u["id"], ha="center", va="center", fontsize=5.5, rotation=90, color="#1a4d80", zorder=9)
+        rated = u.get("rating") or {}
+        label = u["id"] + (f"  {rated['capacity_kw']:g} kW" if rated.get("capacity_kw") else
+                           f"  {u['capacity_kw']:g} kW" if u.get("capacity_kw") else "") \
+            + (f"\n{rated['airflow_m3h']:,.0f} m³/h" if rated.get("airflow_m3h") else "")
+        ax.text((b[0] + b[3]) / 2, (b[1] + b[4]) / 2, label, ha="center", va="center", fontsize=5.0, rotation=90, color="#1a4d80",
+                zorder=9, linespacing=1.1)
         if u.get("dir"):
             sx = 1 if u["dir"] == "+x" else -1
             ax.annotate("", xy=((b[3] if sx > 0 else b[0]) + sx * 0.7, (b[1] + b[4]) / 2), xytext=((b[3] if sx > 0 else b[0]), (b[1] + b[4]) / 2),
@@ -166,6 +185,8 @@ def draw(m: dict, path: str, title: str) -> None:
         Patch(fc="#cfe3ff", ec="#2e6da4", label=f"cooling unit ({m.get('unit_kind', 'downflow')})"),
         Line2D([0], [0], color="#d0d0d0", lw=0.6, label=f"raised floor: {tile * 1000:.0f} mm plates at {H['deck']:.1f} m" if m.get("has_deck", True) else "no raised floor: cabinets on the slab"),
     ]
+    if m.get("partitions"):
+        handles.append(Line2D([0], [0], color="#222", lw=4.0, label="wall between two halls (open under the deck and over the ceiling)"))
     if m.get("plenums"):
         handles.append(Patch(fc="#dbeafe", ec="none", label="supply plenum: the cavity between the units' leaf and the hall's wall"))
         handles.append(Line2D([0], [0], color="#2e86de", lw=5.0, label="supply grille in the hall's wall (floor to cabinet height)"))

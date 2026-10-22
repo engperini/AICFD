@@ -88,8 +88,12 @@ def write(m: dict, path: str) -> None:
             line((p["lo"], p["at"]), (p["hi"], p["at"]), "CFD_CAGE")
         else:
             line((p["at"], p["lo"]), (p["at"], p["hi"]), "CFD_CAGE")
+    for p in m.get("partitions", []):
+        line((p["lo"], p["at"]), (p["hi"], p["at"]), "CFD_PARTITION")
     for u in m["units"]:
         b = u["box"]
         rect((b[0], b[1], b[3], b[4]), "CFD_UNITS")
-        text(u["id"], (b[0] + b[3]) / 2, (b[1] + b[4]) / 2, "CFD_UNITS_TAG", 0.15, 90)
+        rated = u.get("rating") or {}
+        text(u["id"] + (f" {rated['capacity_kw']:g} kW" if rated.get("capacity_kw") else ""),
+             (b[0] + b[3]) / 2, (b[1] + b[4]) / 2, "CFD_UNITS_TAG", 0.15, 90)
     doc.saveas(path)

@@ -66,6 +66,8 @@ class Extracted:
     leftovers: list[str] = field(default_factory=list)
     notes: list[str] = field(default_factory=list)
     transposed: bool = False
+    partitions: list[dict] = field(default_factory=list)   # {"id","rect","top","below_deck","door"}: walls between two halls
+    partition_candidates: list[tuple] = field(default_factory=list)   # (rect, layer): thin shapes crossing the hall
 
 
 def _anchor(dwg: Drawing, hall_name: str | None, anchor_xy) -> tuple[float, float]:
@@ -203,6 +205,32 @@ def extract(dwg: Drawing, ref: dict, answers: dict) -> Extracted:
     if transposed:
         ex.notes.append("drawing transposed: the galleries lie along y in the file, x in the model")
 
+    # WALLS BETWEEN TWO HALLS IN ONE ROOM. Given in answers.yaml in the
+    # drawing's coordinates -- the masonry the engineer points at -- with how
+    # high it runs and the door in it; the model decides the rest. A thin shape
+    # crossing the hall from wall to wall that no answer names is a question,
+    # never a wall: it may as well be a cable tray.
+    for k, pt in enumerate(answers.get("partitions") or [], start=1):
+        r = tuple(float(v) for v in pt["rect"])
+        door = dict(pt.get("door") or {}) or None
+        if door and door.get("rect"):
+            door["rect"] = tuple(float(v) for v in door["rect"])
+        if transposed:
+            r = geom.transpose(r)
+            if door and door.get("rect"):
+                door["rect"] = geom.transpose(door["rect"])
+        ex.partitions.append({"id": str(pt.get("id") or f"p{k}"), "rect": r, "top": str(pt.get("top", "ceiling")),
+                              "below_deck": bool(pt.get("below_deck", False)), "door": door})
+    for r, lay in [(rr, ll) for rr, ll in dwg.rects if rr not in claimed] + [(geom.rect_of(pts), ll) for pts, ll in dwg.outlines]:
+        if not geom.contains(hall, r, 0.3):
+            continue
+        thin_y = geom.height(r) < geom.width(r)
+        thick, long_ = (geom.height(r), geom.width(r)) if thin_y else (geom.width(r), geom.height(r))
+        across = geom.width(hall) if thin_y else geom.height(hall)
+        if 0.08 <= thick <= 0.5 and long_ >= 0.8 * across and not any(geom.overlap(r, p["rect"]) for p in ex.partitions) \
+                and not any(geom.overlap(r, c) for c, _ in ex.partition_candidates):
+            ex.partition_candidates.append((r, lay))
+
     # THE LEAVES OF A DOUBLE WALL. A fan-wall hall is often built with two
     # walls between the technical room and the hall: the units are mounted in
     # the outer one and blow into the cavity, and the inner one -- the hall's
@@ -304,6 +332,7 @@ def extract(dwg: Drawing, ref: dict, answers: dict) -> Extracted:
     _assign_unique(ex.racks, rack_tags, 1.0)
     unit_tags = [t for t in inside if UNIT_TAG_RE.match(t[0].replace(" ", ""))]
     _assign_unique(ex.units, unit_tags, 2.0)
+    _unit_capacities(ex.units, inside)
     _fronts(ex.racks, inside)
     _loads(ex.racks, inside, ex)
 
@@ -316,6 +345,21 @@ def extract(dwg: Drawing, ref: dict, answers: dict) -> Extracted:
     for (w, h, layer), n in sorted(left.items(), key=lambda kv: -kv[1]):
         ex.leftovers.append(f"{n} x rectangle {w:.1f} x {h:.1f} m on layer {layer}")
     return ex
+
+
+def _unit_capacities(units: list[dict], texts) -> None:
+    """The capacity written on a unit ("402kW(S)"): the kW text inside its
+    footprint (or within 0,3 m of it) nearest its centre. A plant of two sizes
+    is told apart by it, and the engineer's answers give each size its
+    airflow."""
+    labelled = [(t, float(m.group(1).replace(",", "."))) for t in texts for m in [KW_RE.search(t[0])] if m]
+    for u in units:
+        cx, cy = geom.centre(u["rect"])
+        hits = [(abs(t[1] - cx) + abs(t[2] - cy), kw, t[0]) for t, kw in labelled
+                if geom.contains_point(u["rect"], t[1], t[2], 0.3)]
+        if hits:
+            _, kw, text = min(hits)
+            u["capacity_kw"], u["label"] = kw, text.strip()
 
 
 def _assign_unique(items: list[dict], texts, radius: float) -> None:

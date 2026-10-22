@@ -46,7 +46,17 @@ def write(m: dict, counts: dict, path: str, source_file: str, fails: list[str]) 
         f"{h['id']} {h['band'][1] - h['band'][0]:.1f} m {'between ' + '/'.join(h['rows']) if h['paired'] else 'behind ' + h['rows'][0]}, "
         + f"{h['grilles'].get('count', 0)} grilles (as cold aisle {h['grilles'].get('from')}) against {h['grilles'].get('against')}"
         for h in m["hot_bands"]))
-    A(f"  {len(m['units'])} cooling units: " + ", ".join(f"{u['id']} ({u['gallery']})" for u in m["units"]))
+    A(f"  {len(m['units'])} cooling units: " + ", ".join(
+        f"{u['id']} ({u['gallery']}" + (f", {u['rating']['capacity_kw']:g} kW, {u['rating'].get('airflow_m3h', 0):,.0f} m3/h" if u.get("rating") else "") + ")"
+        for u in m["units"]))
+    rated = [u["rating"] for u in m["units"] if u.get("rating")]
+    if rated and len(rated) == len(m["units"]):
+        sizes = sorted({(r["capacity_kw"], r.get("airflow_m3h", 0)) for r in rated}, reverse=True)
+        A("  plant by size (the capacity written on each unit): " + " + ".join(
+            f"{sum(1 for r in rated if r['capacity_kw'] == c)} x {c:g} kW ({a:,.0f} m3/h)" for c, a in sizes)
+          + f" = {sum(r['capacity_kw'] for r in rated):,.0f} kW, {sum(r.get('airflow_m3h', 0) for r in rated):,.0f} m3/h")
+    for p in m.get("partitions", []):
+        A(f"  partition {p['id']}: wall between two halls at y = {p['at']:.2f}, x {p['lo']:.1f}..{p['hi']:.1f}, z {p['z'][0]:.1f}..{p['z'][1]:.1f}")
     for p in m.get("plenums", []):
         A(f"  supply plenum {p['side']}: {p['depth']:.1f} m between the units' leaf at x = {p['divider_at']:.1f} and the hall's wall at "
           f"x = {p['wall_at']:.1f}; {p.get('grilles', 0)} supply grilles {p.get('grille_size', (0, 0))[0]:g} x {p.get('grille_size', (0, 0))[1]:g} m in the wall ({p.get('how', '')})")

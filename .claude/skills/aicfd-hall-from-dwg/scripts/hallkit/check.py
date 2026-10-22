@@ -238,6 +238,18 @@ def run(stl_path: str, sidecar_path: str, cell) -> list[str]:
         pb = p["bbox"]
         if not any(abs(w["bbox"][0] - pb[0]) < 1e-6 and abs(w["bbox"][3] - pb[3]) < 1e-6 and _inside2d_yz(pb, w["bbox"]) for w in walls):
             fails.append(f"{p['name']}: not in the plane and extent of a wall")
+    # a wall between two halls: no plate, grille or cabinet straddles it
+    for w in [w for w in walls if w["name"].startswith("wall:partition")]:
+        wb = w["bbox"]
+        y = wb[1]
+        for t in ("tile", "grille", "rack", "lid"):
+            for p in by[t]:
+                pb = p["bbox"]
+                across = pb[1] + 1e-6 < y < pb[4] - 1e-6
+                along = min(pb[3], wb[3]) - max(pb[0], wb[0]) > 1e-6
+                level = max(pb[2], wb[2]) <= min(pb[5], wb[5]) + 1e-6
+                if across and along and level:
+                    fails.append(f"{p['name']} straddles {w['name']} at y = {y:g}")
     # panels of one type do not overlap in area
     for t in ("tile", "grille", "lid"):
         ps = by[t]
@@ -259,6 +271,9 @@ def run(stl_path: str, sidecar_path: str, cell) -> list[str]:
         if str(rid) not in rack_ids:
             fails.append(f"sidecar names rack {rid}, which is not in the STL")
     unit_ids = {u["id"] for u in units}
+    for uid in (doc.get("fanwall", {}).get("units") or {}):
+        if str(uid) not in unit_ids:
+            fails.append(f"sidecar rates unit {uid}, which is not in the STL")
     for uid in (doc.get("fanwall", {}).get("out_of_service") or []):
         if not (isinstance(uid, int) or str(uid) in unit_ids):
             fails.append(f"sidecar takes {uid} out of service, which is not in the STL")
