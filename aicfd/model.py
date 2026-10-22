@@ -95,6 +95,19 @@ FLOW_AXIS_D = 20.0
 
 
 @dataclass(frozen=True)
+class UnitRating:
+    """One machine's datasheet figures, in a plant of more than one size.
+
+    The airflow is what the unit is given in the solve; the capacity and the
+    power are what its share of the sizing checks and the unit-by-unit table
+    are measured against (ADR-139)."""
+
+    airflow_m3h: float
+    capacity_kw: float | None = None
+    power_kw: float | None = None
+
+
+@dataclass(frozen=True)
 class Panel:
     """A flat internal wall or opening: a box that is flat on ``axis``."""
 
@@ -130,6 +143,10 @@ class Panel:
     out of its sides. They lie exactly on the rack box, which the drawings
     already show, so they are the rack there rather than a wall of their own
     (ADR-045). The solver does not read this."""
+    rating: "UnitRating | None" = None
+    """A unit's OWN datasheet figures, where the plant mixes machines of
+    different sizes -- a 402 kW unit beside a 211 kW one in the same gallery.
+    None is the plant's one unit, the figures in `fanwall` (ADR-139)."""
 
     @property
     def area(self) -> float:
@@ -451,14 +468,58 @@ class Model:
 
     @property
     def unit_airflow_m3h(self) -> float:
-        """What each fan wall moves. The datasheet speaks per unit."""
+        """What each fan wall moves. The datasheet speaks per unit. In a plant
+        of more than one size this is the MEAN, and what a given unit moves
+        is `flow_of` it (ADR-139)."""
         return self.airflow_m3h / self.fan_count
+
+    @property
+    def mixed_plant(self) -> bool:
+        """Units of more than one size in the hall: each carries its own
+        rating, and no single per-unit figure describes the plant (ADR-139)."""
+        return any(p.rating is not None for p in self.fans)
+
+    def flow_of(self, fan: Panel) -> float:
+        """What THIS unit moves, m3/h: its own rating in a mixed plant, the
+        plant's one per-unit figure otherwise."""
+        return fan.rating.airflow_m3h if fan.rating is not None else self.unit_airflow_m3h
+
+    def capacity_of(self, fan: Panel) -> float | None:
+        """This unit's catalogue net sensible capacity, kW."""
+        return fan.rating.capacity_kw if fan.rating is not None else self.unit_capacity_kw
+
+    def power_of(self, fan: Panel) -> float | None:
+        """This unit's electrical input, kW."""
+        return fan.rating.power_kw if fan.rating is not None else self.unit_power_kw
+
+    def plant_mix(self) -> list[tuple[int, UnitRating]]:
+        """The units in service, grouped by rating, the largest first.
+
+        `[(5, 402 kW), (8, 211 kW)]` is how a plant of two sizes is written
+        down -- five of one and eight of the other -- and every line that
+        would print "13 x" for a uniform plant prints this instead."""
+        groups: dict[UnitRating, int] = {}
+        for p in self.fans_on:
+            rating = p.rating or UnitRating(self.unit_airflow_m3h, self.unit_capacity_kw,
+                                            self.unit_power_kw)
+            groups[rating] = groups.get(rating, 0) + 1
+        ordered = sorted(groups.items(), key=lambda g: (-g[0].airflow_m3h, -(g[0].capacity_kw or 0)))
+        return [(n, r) for r, n in ordered]
+
+    def plant_text(self, figure: str, unit: str, digits: int = 0) -> str:
+        """`5 x 402 + 8 x 211 kW` -- one figure of the plant, written out by
+        size. `figure` is a UnitRating field."""
+        parts = [f"{n} x {num(getattr(r, figure), digits)}" for n, r in self.plant_mix()]
+        return " + ".join(parts) + f" {unit}"
 
     @property
     def fan_face_velocity_ms(self) -> float:
         fans = self.fans
         if not fans or fans[0].area <= 0:
             return float("inf")
+        if self.mixed_plant:
+            # The fastest face: the one a reader checks a velocity limit on.
+            return max(self.flow_of(p) / 3600.0 / p.area for p in self.fans_on if p.area > 0)
         return self.unit_airflow_m3h / 3600.0 / fans[0].area
 
     # --- derived quantities ---------------------------------------------------
@@ -491,17 +552,48 @@ class Model:
         draw at their CFM/kW. Both are reported; neither stops a run.
         """
         load_kw = self.total_load_w / 1000.0
+        demand = self.rack_demand_m3h
+        if self.mixed_plant:
+            # Summed unit by unit: there is no one figure to multiply, and no
+            # one unit to count how many more of would be needed (ADR-139).
+            mix = self.plant_mix()
+            capacity_kw = (sum(n * r.capacity_kw for n, r in mix)
+                           if all(r.capacity_kw for _, r in mix) else None)
+            power_kw = (sum(n * r.power_kw for n, r in mix)
+                        if all(r.power_kw for _, r in mix) else None)
+            return {
+                "units": self.fan_count,
+                "units_installed": len(self.fans),
+                "units_off": list(self.fans_off),
+                "plant": [{"units": n, "airflow_m3h": r.airflow_m3h,
+                           "capacity_kw": r.capacity_kw, "power_kw": r.power_kw}
+                          for n, r in mix],
+                "unit_capacity_kw": None,
+                "unit_airflow_m3h": self.unit_airflow_m3h,
+                "unit_power_kw": None,
+                "power_kw": round(power_kw, 1) if power_kw else None,
+                "load_kw": round(load_kw, 1),
+                "capacity_kw": round(capacity_kw, 1) if capacity_kw else None,
+                "capacity_ratio": round(capacity_kw / load_kw, 3) if capacity_kw and load_kw else None,
+                "airflow_m3h": round(self.airflow_m3h),
+                "airflow_needed_m3h": round(demand),
+                "airflow_ratio": round(self.airflow_m3h / demand, 3) if demand else None,
+                "cfm_per_kw": self.racks[0].cfm_per_kw if self.racks else CFM_PER_KW,
+                "units_needed": None,
+            }
         capacity_kw = (
             self.unit_capacity_kw * self.fan_count if self.unit_capacity_kw else None
         )
-        demand = self.rack_demand_m3h
         return {
             "units": self.fan_count,
             "units_installed": len(self.fans),
             "units_off": list(self.fans_off),
+            "plant": None,
             "unit_capacity_kw": self.unit_capacity_kw,
             "unit_airflow_m3h": self.unit_airflow_m3h,
             "unit_power_kw": self.unit_power_kw,
+            "power_kw": (round(self.unit_power_kw * self.fan_count, 1)
+                         if self.unit_power_kw else None),
             "load_kw": round(load_kw, 1),
             "capacity_kw": round(capacity_kw, 1) if capacity_kw else None,
             "capacity_ratio": round(capacity_kw / load_kw, 3) if capacity_kw and load_kw else None,
@@ -520,18 +612,22 @@ class Model:
     def hvac_alerts(self) -> list[str]:
         h = self.hvac()
         alerts = []
+        needed = (f" {h['units_needed']} units would be needed."
+                  if h["units_needed"] is not None else "")
         if h["capacity_ratio"] is not None and h["capacity_ratio"] < 1.0:
+            installed = (self.plant_text("capacity_kw", "kW") if self.mixed_plant
+                         else f"{h['units']} x {num(h['unit_capacity_kw'], 1)} kW")
             alerts.append(
-                f"Cooling capacity is below the load: {h['units']} x "
-                f"{num(h['unit_capacity_kw'], 1)} kW = {num(h['capacity_kw'], 0)} kW for "
-                f"{num(h['load_kw'], 0)} kW of IT ({num(h['capacity_ratio'] * 100, 0)}%). "
-                f"{h['units_needed']} units would be needed."
+                f"Cooling capacity is below the load: {installed} = "
+                f"{num(h['capacity_kw'], 0)} kW for "
+                f"{num(h['load_kw'], 0)} kW of IT ({num(h['capacity_ratio'] * 100, 0)}%)."
+                + needed
             )
         if h["airflow_ratio"] is not None and h["airflow_ratio"] < 1.0:
             alerts.append(
                 f"Airflow is below what the racks draw: {num(h['airflow_m3h'], 0)} m3/h "
                 f"against {num(h['airflow_needed_m3h'], 0)} m3/h at {h['cfm_per_kw']:g} CFM/kW "
-                f"({num(h['airflow_ratio'] * 100, 0)}%). {h['units_needed']} units would be needed."
+                f"({num(h['airflow_ratio'] * 100, 0)}%)." + needed
             )
         alerts += self.plenum_alerts()
         return alerts
@@ -562,7 +658,9 @@ class Model:
                 f"The units do not have the pressure for this loop: the "
                 f"surfaces alone cost {num(cost, 0)} Pa and the unit's curve "
                 f"offers {num(available, 0)} Pa at "
-                f"{num(self.unit_airflow_m3h, 0)} m3/h. That total is a LOWER "
+                + ("each unit's rated airflow" if self.mixed_plant
+                   else f"{num(self.unit_airflow_m3h, 0)} m3/h")
+                + ". That total is a LOWER "
                 f"bound -- the aisles and the turns are not in it -- so the "
                 f"real duty is higher still. Where it goes: "
                 + ", ".join(f"{what} {num(pa, 0)} Pa"
@@ -660,7 +758,7 @@ class Model:
         panel = self.panel(panel_name)
         if not panel.area:
             return float("inf")
-        flow = self.unit_airflow_m3h / 3600.0 if panel.kind == "fan" else self.airflow_m3s
+        flow = self.flow_of(panel) / 3600.0 if panel.kind == "fan" else self.airflow_m3s
         return flow / panel.area
 
     @property
@@ -1146,6 +1244,100 @@ def out_of_service(fan: dict, fans) -> tuple[str, ...]:
         )
     return tuple(out)
 
+
+RATING_KEYS = ("airflow_m3h", "capacity_kw", "power_kw")
+
+
+def unit_ratings(fan: dict, fans, tags: dict | None = None,
+                 equipment=None) -> dict[str, UnitRating]:
+    """Each unit's own figures, where the plant has more than one size.
+
+    `fanwall` describes THE unit; `fanwall.units` names the ones that differ
+    from it and gives what differs -- `U07: {airflow_m3h: 40800,
+    capacity_kw: 211}` -- the way `racks.loads` names the cabinets that
+    differ from `racks.load_kw`. A unit is named by the drawing's id (`U07`),
+    the number the report gives it (`7`) or its panel name (`fan7`).
+
+    Returns {panel name: rating} for EVERY unit when the sizes differ, so no
+    unit falls back on a mean, and {} when they are all the `fanwall` one
+    (ADR-139).
+    """
+    asked = fan.get("units")
+    if asked in (None, "", {}, []):
+        return {}
+    if not isinstance(asked, dict):
+        raise ValueError(
+            "fanwall.units: give a mapping of unit to its own figures, such as "
+            "`U07: {airflow_m3h: 40800, capacity_kw: 211}`"
+        )
+    names = [p.name for p in fans]
+    tags = tags or {}
+
+    def figure(where: str, key: str, value) -> float | None:
+        if value is None:
+            return None
+        try:
+            v = float(value)
+        except (TypeError, ValueError):
+            raise ValueError(f"{where}.{key}: {value!r} is not a number") from None
+        if v <= 0:
+            raise ValueError(f"{where}.{key}: {v:g} -- a unit's figure is positive")
+        return v
+
+    base = {k: figure("fanwall", k, fan.get(k)) for k in RATING_KEYS}
+    ratings: dict[str, UnitRating] = {}
+    for key, figures in asked.items():
+        text = str(key).strip()
+        if text in tags:
+            name = tags[text]
+        elif text in names:
+            name = text
+        elif re.fullmatch(r"\d+", text) and 1 <= int(text) <= len(names):
+            name = names[int(text) - 1]
+        else:
+            known = ", ".join(sorted(tags)) if tags else f"1 to {len(names)}"
+            raise ValueError(f"fanwall.units: {key!r} names no unit; the units are {known}")
+        if not isinstance(figures, dict) or not figures:
+            raise ValueError(
+                f"fanwall.units.{key}: give the figures that differ, such as "
+                f"`{{airflow_m3h: 40800, capacity_kw: 211}}`"
+            )
+        unknown = sorted(set(map(str, figures)) - set(RATING_KEYS))
+        if unknown:
+            raise ValueError(
+                f"fanwall.units.{key}: {', '.join(unknown)} is not a unit's figure; "
+                f"a unit takes {', '.join(RATING_KEYS)}"
+            )
+        own = {**base, **{k: figure(f"fanwall.units.{key}", k, v) for k, v in figures.items()}}
+        if own["airflow_m3h"] is None:
+            raise ValueError(f"fanwall.units.{key}: no airflow_m3h, here or in fanwall")
+        ratings[name] = UnitRating(own["airflow_m3h"], own["capacity_kw"], own["power_kw"])
+    if base["airflow_m3h"] is None and len(ratings) < len(names):
+        raise ValueError(
+            "fanwall.airflow_m3h: the units fanwall.units does not name take "
+            "the plant's own figures, and there is no airflow for them"
+        )
+    plant = UnitRating(base["airflow_m3h"] or 0.0, base["capacity_kw"], base["power_kw"])
+    every = {n: ratings.get(n, plant) for n in names}
+    if len(set(every.values())) == 1:
+        return {}  # one size after all: the plant's own figures describe it
+    # ONE MACHINE'S FILE CANNOT DESCRIBE TWO. A coil is fitted from a
+    # selection, and a curve is one fan's: applied to a unit of another size
+    # either is a number about a machine the room does not have.
+    if equipment is not None:
+        raise ValueError(
+            f"fanwall.units gives units of more than one size and fanwall.model "
+            f"names one machine ({equipment.model}): its coil and its selection "
+            f"would be applied to units it does not describe. Give each size its "
+            f"airflow and capacity and leave fanwall.model out"
+        )
+    if fan.get("curve"):
+        raise ValueError(
+            "fanwall.units gives units of more than one size and fanwall.curve "
+            "is one fan's P-Q curve; give fanwall.static_pressure_pa instead"
+        )
+    return every
+
 def wanted_arrangement(spec: dict) -> str:
     """Which kind of machine THIS ROOM is fed by.
 
@@ -1406,7 +1598,10 @@ def build_model(spec: dict) -> Model:
     )
     racks = [rack for row in layout.rows for rack in row.racks]
 
-    panels: list[Panel] = list(layout.fans)
+    # A plant of more than one size names its units by number (ADR-139).
+    ratings = unit_ratings(fan, layout.fans, equipment=unit)
+    panels: list[Panel] = [dataclasses.replace(p, rating=ratings[p.name]) if ratings else p
+                           for p in layout.fans]
     # Each wall between a gallery and the hall is pierced by that gallery's fan
     # walls and, above the false ceiling, by the return opening along the whole
     # width. With a gallery at each end there are two openings and still one
@@ -1458,13 +1653,18 @@ def build_model(spec: dict) -> Model:
         # The spec's airflow is per unit, as the datasheet gives it, and the
         # total is what the units IN SERVICE move: a unit out of service moves
         # nothing and the rest keep their own rated airflow (ADR-129).
-        airflow_m3h=float(fan["airflow_m3h"])
-        * max(1, len(layout.fans) - len(out_of_service(fan, layout.fans))),
+        airflow_m3h=(
+            sum(ratings[p.name].airflow_m3h for p in layout.fans
+                if p.name not in out_of_service(fan, layout.fans))
+            if ratings else
+            float(fan["airflow_m3h"])
+            * max(1, len(layout.fans) - len(out_of_service(fan, layout.fans)))
+        ),
         fans_off=out_of_service(fan, layout.fans),
         supply_temp_c=supply_c,
         cell_size=cell,
-        unit_capacity_kw=float(fan["capacity_kw"]) if "capacity_kw" in fan else None,
-        unit_power_kw=float(fan["power_kw"]) if "power_kw" in fan else None,
+        unit_capacity_kw=(float(fan["capacity_kw"]) if "capacity_kw" in fan and not ratings else None),
+        unit_power_kw=(float(fan["power_kw"]) if "power_kw" in fan and not ratings else None),
         altitude_m=altitude,
         equipment=unit,
         blocks=layout.blocks,
@@ -4157,7 +4357,8 @@ def summary_rows(model: Model) -> list[tuple[str, str, str]]:
         (
             "Supply airflow",
             (
-                f"{len(fans)} x {num(model.unit_airflow_m3h, 0)} = "
+                model.plant_text("airflow_m3h", "= ") if model.mixed_plant
+                else f"{len(fans)} x {num(model.unit_airflow_m3h, 0)} = "
                 if len(fans) > 1
                 else ""
             )
@@ -4245,7 +4446,8 @@ def summary_rows(model: Model) -> list[tuple[str, str, str]]:
             + " pressure",
             (
                 f"{num(model.fan_available_pa() or 0, 0)} Pa available at "
-                f"{num(model.unit_airflow_m3h, 0)} m3/h per unit"
+                + ("each unit's rated airflow" if model.mixed_plant
+                   else f"{num(model.unit_airflow_m3h, 0)} m3/h per unit")
                 + (" (curve)" if model.fan_curve else " (datasheet)")
             )
             if model.fan_available_pa()
@@ -4285,18 +4487,22 @@ def hvac_rows(model: Model) -> list[tuple[str, str, str]]:
         rows.append(
             (
                 "Cooling capacity",
-                f"{h['units']} x {num(h['unit_capacity_kw'], 1)} kW = {num(h['capacity_kw'], 0)} kW",
+                (model.plant_text("capacity_kw", "kW") if model.mixed_plant
+                 else f"{h['units']} x {num(h['unit_capacity_kw'], 1)} kW")
+                + f" = {num(h['capacity_kw'], 0)} kW",
                 f"IT load {num(h['load_kw'], 0)} kW ({num(h['capacity_ratio'] * 100, 0)}%)",
             )
         )
     else:
         rows.append(("Cooling capacity", "not given (fanwall.capacity_kw)", "-"))
-    if h["unit_power_kw"]:
+    if h["power_kw"]:
         rows.append(
             (
                 "Cooling power input",
-                f"{h['units']} x {num(h['unit_power_kw'], 1)} kW = {num(h['unit_power_kw'] * h['units'], 0)} kW",
-                f"{num(h['unit_power_kw'] * h['units'] / h['load_kw'] * 100, 1)}% of the IT load",
+                (model.plant_text("power_kw", "kW", 1) if model.mixed_plant
+                 else f"{h['units']} x {num(h['unit_power_kw'], 1)} kW")
+                + f" = {num(h['power_kw'], 0)} kW",
+                f"{num(h['power_kw'] / h['load_kw'] * 100, 1)}% of the IT load",
             )
         )
     return rows
@@ -4457,6 +4663,14 @@ def to_dict(model: Model, spec: dict) -> dict:
             # the machine was rated at.
             "unit_capacity_kw": model.unit_capacity_kw,
             "unit_power_kw": model.unit_power_kw,
+            # A plant of more than one size: each unit's own figures, by
+            # panel name, which every per-unit column is read against
+            # (ADR-139). None where one figure describes every unit.
+            "unit_ratings": ({p.name: {"airflow_m3h": model.flow_of(p),
+                                       "capacity_kw": model.capacity_of(p),
+                                       "power_kw": model.power_of(p)}
+                              for p in model.fans}
+                             if model.mixed_plant else None),
             "fan_static_pa": model.fan_static_pa,
             "fan_curve": [list(p) for p in model.fan_curve] if model.fan_curve else None,
         },

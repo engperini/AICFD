@@ -798,6 +798,10 @@ def units(export: Export, out: Path) -> Path:
     names = [export.unit_tag(i) for i in range(len(fans))]
     index = np.arange(len(fans))
     rating = (export.model.get("operating") or {}).get("unit_capacity_kw")
+    # A plant of more than one size: each bar against its own unit's rating
+    # (ADR-139).
+    own = (export.model.get("operating") or {}).get("unit_ratings") or {}
+    ratings = [(own.get(f.get("name")) or {}).get("capacity_kw") for f in fans] if own else []
     sides = export.model.get("fan_sides") or []
     fig, axes = plt.subplots(2, 1, figsize=(7.2, 4.6), sharex=True)
 
@@ -810,9 +814,18 @@ def units(export: Export, out: Path) -> Path:
         axes[0].set_ylim(min(finite) - 1.0, max(finite) + 1.0)
 
     heat = [f.get("heat_kw") or 0.0 for f in fans]
-    axes[1].bar(index, heat, width=0.68,
-                color=[BAD if rating and v > rating else "#2f6f6a" for v in heat])
-    if rating:
+    if ratings:
+        axes[1].bar(index, heat, width=0.68,
+                    color=[BAD if r and v > r else "#2f6f6a" for v, r in zip(heat, ratings)])
+        # A tick at each unit's own rating, where a single dashed line would
+        # be wrong for every unit of the other size.
+        axes[1].scatter(index, [r if r else np.nan for r in ratings], marker="_", s=180,
+                        linewidths=1.4, color=INK, zorder=3, label="unit's rating")
+        axes[1].legend(loc="upper right", fontsize=6.5, frameon=False)
+    else:
+        axes[1].bar(index, heat, width=0.68,
+                    color=[BAD if rating and v > rating else "#2f6f6a" for v in heat])
+    if rating and not ratings:
         axes[1].axhline(rating, color=INK, linewidth=1.0, linestyle="--")
         axes[1].annotate(f"{rating:g} kW rating", xy=(len(fans) - 0.5, rating),
                          xytext=(0, 3), textcoords="offset points",

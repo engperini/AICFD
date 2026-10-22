@@ -59,6 +59,7 @@ from aicfd.model import (
     parse_fan_curve,
     site_pressure,
     snap_to_mesh,
+    unit_ratings,
 )
 
 #: The solid types the contract defines. Anything else in the file is refused
@@ -695,6 +696,12 @@ def build(spec: dict) -> Model:
         items = asked_off if isinstance(asked_off, (list, tuple)) else [asked_off]
         fan["out_of_service"] = [tags.get(str(item).strip(), item) for item in items]
     fans_off = out_of_service(fan, fans)
+    # A plant of more than one size: each unit carries its own figures, and
+    # the sum of them is the plant's (ADR-139).
+    ratings = unit_ratings(fan, fans, tags, unit)
+    if ratings:
+        panels = [dataclasses.replace(p, rating=ratings[p.name]) if p.kind == "fan" else p
+                  for p in panels]
 
     model = Model(
         name=name,
@@ -707,12 +714,14 @@ def build(spec: dict) -> Model:
         rows=rows,
         racks=[r for row in rows for r in row.racks],
         panels=panels,
-        airflow_m3h=float(fan["airflow_m3h"]) * max(1, len(fans) - len(fans_off)),
+        airflow_m3h=(sum(ratings[p.name].airflow_m3h for p in fans if p.name not in fans_off)
+                     if ratings else float(fan["airflow_m3h"]) * max(1, len(fans) - len(fans_off))),
         fans_off=fans_off,
         supply_temp_c=supply_c,
         cell_size=cell,
-        unit_capacity_kw=float(fan["capacity_kw"]) if "capacity_kw" in fan else None,
-        unit_power_kw=float(fan["power_kw"]) if "power_kw" in fan else None,
+        # No one figure where the sizes differ: each unit carries its own.
+        unit_capacity_kw=(float(fan["capacity_kw"]) if "capacity_kw" in fan and not ratings else None),
+        unit_power_kw=(float(fan["power_kw"]) if "power_kw" in fan and not ratings else None),
         altitude_m=altitude,
         equipment=unit,
         blocks=sorted({row.span for row in rows}),

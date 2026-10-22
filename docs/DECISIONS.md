@@ -5947,3 +5947,39 @@ pressure there. `sealed_envelope` treats `leak` as a surface the air may cross.
 **Cost accepted.** The search runs on every drawn model, and costs 0,2 s on a
 hall of 270 solids. The leak is a modelling device, so the warning names where
 it is and why.
+
+## ADR-139 — A plant of more than one size: each unit carries its own rating
+
+**Decision.** `fanwall` describes THE unit, and `fanwall.units` names the ones
+that differ from it with the figures that differ -- `U07: {airflow_m3h: 40800,
+capacity_kw: 211}` -- the way `racks.loads` names the cabinets that differ from
+`racks.load_kw`. A unit is named by the drawing's id, the number the report
+gives it, or its panel name. When the sizes differ, `unit_ratings` gives EVERY
+unit a `UnitRating` (airflow, capacity, power), carried on its fan panel as
+`Panel.rating`, and:
+
+* each unit's boundary condition imposes its own mass flow (`Model.flow_of`);
+* the plant's airflow, capacity and power are the sums over the units in
+  service, and every line that prints `13 x 55,000` for a plant of one size
+  prints `5 x 77,690 + 8 x 40,800` instead (`Model.plant_text`);
+* `unit_capacity_kw` and `unit_power_kw` are None, so a reader that has not
+  learnt about two sizes shows "not given" rather than one size's figure for
+  both; `units_needed` is None, because there is no one unit to count more of;
+* the export carries `operating.unit_ratings`, and the report's unit table, its
+  conclusions and the unit-by-unit figure judge each unit against its own
+  rating.
+
+A mixed plant with `fanwall.model` or `fanwall.curve` is refused: a coil fitted
+from one machine's selection, or one fan's P-Q curve, applied to a unit of
+another size is a number about a machine the room does not have. Each size is
+then given by its airflow, its capacity and the static pressure.
+
+**Why.** A drawn hall had thirteen downflow units of two sizes in one technical
+corridor, 402 kW at 77.690 m3/h and 211 kW at 40.800 m3/h. One figure per unit
+either starves the large ones or overfeeds the small ones by a factor of two,
+and the floor's pressure field -- which plates get the air -- follows where the
+air enters.
+
+**Cost accepted.** No equipment file for a mixed plant yet, so no coil model
+and no supply temperature solved from it: the supply is imposed at the
+setpoint, as for any unit named by its figures alone.

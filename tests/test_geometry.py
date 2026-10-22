@@ -529,6 +529,110 @@ class RefusalTest(ReaderTest):
         self.assertEqual(model.airflow_m3h, 20000)
 
 
+def two_size_hall() -> str:
+    """The raised-floor hall with a second, smaller downflow unit beside the
+    first in the same gallery (ADR-139)."""
+    return downflow_hall() + _box("unit:UE-02", (1.6, 5.6, 1.0), (2.4, 7.6, 3.0)) + "\n"
+
+
+class APlantOfTwoSizesTest(ReaderTest):
+    """`fanwall` is THE unit; `fanwall.units` names the ones that differ and
+    each carries its own rating, in the solve and in every sum (ADR-139)."""
+
+    PLANT = {"airflow_m3h": 20000, "capacity_kw": 100, "power_kw": 4.0, "supply_temp_c": 20.0,
+             "static_pressure_pa": 100, "units": {"UE-02": {"airflow_m3h": 10000, "capacity_kw": 50,
+                                                           "power_kw": 2.0}}}
+
+    def setUp(self):
+        super().setUp()
+        self.model, self.spec = self.build(two_size_hall(), fanwall=dict(self.PLANT))
+        self.big, self.small = self.model.fans
+
+    def test_each_unit_moves_its_own_airflow_and_the_plant_moves_the_sum(self):
+        self.assertTrue(self.model.mixed_plant)
+        self.assertEqual(self.model.flow_of(self.big), 20000)
+        self.assertEqual(self.model.flow_of(self.small), 10000)
+        self.assertEqual(self.model.airflow_m3h, 30000)
+
+    def test_capacity_and_power_are_summed_unit_by_unit(self):
+        h = self.model.hvac()
+        self.assertEqual(h["capacity_kw"], 150)
+        self.assertEqual(h["power_kw"], 6.0)
+        self.assertIsNone(h["unit_capacity_kw"])
+        self.assertIsNone(h["units_needed"])
+        self.assertEqual([(g["units"], g["capacity_kw"]) for g in h["plant"]], [(1, 100), (1, 50)])
+
+    def test_no_single_per_unit_figure_is_left_for_a_reader_to_misquote(self):
+        self.assertIsNone(self.model.unit_capacity_kw)
+        self.assertIsNone(self.model.unit_power_kw)
+
+    def test_the_summary_writes_the_plant_out_by_size(self):
+        rows = {row[0]: row[1] for row in M.summary_rows(self.model)}
+        self.assertIn("1 x 20,000 + 1 x 10,000 = 30,000 m3/h", rows["Supply airflow"])
+        self.assertIn("1 x 100 + 1 x 50 kW = 150 kW", rows["Cooling capacity"])
+
+    def test_each_units_boundary_imposes_its_own_mass(self):
+        from aicfd import case
+
+        rho = case.supply_density(self.model)
+        for fan, flow in ((self.big, 20000), (self.small, 10000)):
+            text = "\n".join(case._downflow_baffles(self.model, fan, 0.01, 0.01))
+            self.assertIn(f"massFlowRate {flow / 3600 * rho:.6g};", text)
+
+    def test_the_export_carries_every_units_rating(self):
+        ratings = M.to_dict(self.model, self.spec)["operating"]["unit_ratings"]
+        self.assertEqual(ratings["fan1"], {"airflow_m3h": 20000, "capacity_kw": 100, "power_kw": 4.0})
+        self.assertEqual(ratings["fan2"], {"airflow_m3h": 10000, "capacity_kw": 50, "power_kw": 2.0})
+
+    def test_a_unit_out_of_service_takes_its_own_airflow_with_it(self):
+        model, _ = self.build(two_size_hall(), fanwall={**self.PLANT, "out_of_service": ["UE-02"]})
+        self.assertEqual(model.airflow_m3h, 20000)
+        self.assertEqual(model.hvac()["capacity_kw"], 100)
+
+    def test_a_unit_given_the_plants_own_figures_is_one_size_after_all(self):
+        model, _ = self.build(two_size_hall(), fanwall={**self.PLANT, "units": {"UE-02": {"airflow_m3h": 20000,
+                                                                                          "capacity_kw": 100}}})
+        self.assertFalse(model.mixed_plant)
+        self.assertEqual(model.unit_capacity_kw, 100)
+        self.assertEqual(model.airflow_m3h, 40000)
+
+    def test_a_unit_is_named_by_its_number_or_its_panel_too(self):
+        for key in ("2", "fan2"):
+            model, _ = self.build(two_size_hall(), fanwall={**self.PLANT, "units": {key: {"airflow_m3h": 10000}}})
+            self.assertEqual(model.flow_of(model.fans[1]), 10000)
+
+    def refused(self, fragment: str, **fanwall):
+        with self.assertRaises(ValueError) as caught:
+            self.build(two_size_hall(), fanwall={**self.PLANT, **fanwall})
+        self.assertIn(fragment, str(caught.exception))
+
+    def test_a_unit_the_drawing_does_not_have_is_refused_by_name(self):
+        self.refused("names no unit", units={"UE-09": {"airflow_m3h": 10000}})
+
+    def test_a_figure_a_unit_does_not_take_is_refused(self):
+        self.refused("not a unit's figure", units={"UE-02": {"airflow": 10000}})
+
+    def test_one_machines_file_is_refused_for_a_plant_of_two(self):
+        self.refused("fanwall.model", model="P3100DA", airflow_m3h=27500, capacity_kw=100.5)
+
+    def test_one_fans_curve_is_refused_for_a_plant_of_two(self):
+        self.refused("fanwall.curve", curve=[[0, 300], [30000, 0]])
+
+
+class AParametricPlantOfTwoSizesTest(unittest.TestCase):
+    def test_the_units_are_named_by_their_number(self):
+        from tests import support
+
+        spec = support.spec("hall")
+        fan = {k: v for k, v in spec["fanwall"].items() if k not in ("model", "curve")}
+        fan["units"] = {1: {"airflow_m3h": 50000, "capacity_kw": 200}}
+        spec["fanwall"] = fan
+        model = M.build_model(spec)
+        self.assertTrue(model.mixed_plant)
+        self.assertEqual(model.flow_of(model.fans[0]), 50000)
+        self.assertEqual(model.airflow_m3h, 50000 + 104181 * (len(model.fans) - 1))
+
+
 class ParametricCasesAreUntouchedTest(unittest.TestCase):
     def test_a_case_without_geometry_takes_the_parametric_path(self):
         from tests import support

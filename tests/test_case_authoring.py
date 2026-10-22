@@ -40,6 +40,9 @@ BEYOND_THE_FORM = {
     "racks.widths",
     "racks.blanks",
     "fanwall.curve",
+    # A plant of more than one size: a map of unit to its own figures, which
+    # the page's scalar fields cannot hold -- a YAML edit (ADR-139).
+    "fanwall.units",
     "cage.loss_coefficient",
     # WHERE the cage stands. Both are lists -- a run of pod numbers and a set
     # of side names -- and the page's field casters take scalars, so these are

@@ -1046,6 +1046,47 @@ class TheReportDescribesThePlantItHasTest(unittest.TestCase):
         self.assertIn("the water side", said)
 
 
+class APlantOfTwoSizesIsWrittenBySizeTest(unittest.TestCase):
+    """Every per-unit line of the report reads each unit's own rating where
+    the plant has more than one size (ADR-139)."""
+
+    MODEL = {
+        "fans": ["fan1", "fan2", "fan3"],
+        "fans_off": [],
+        "operating": {
+            "unit_capacity_kw": None,
+            "unit_ratings": {
+                "fan1": {"airflow_m3h": 77690, "capacity_kw": 402, "power_kw": None},
+                "fan2": {"airflow_m3h": 40800, "capacity_kw": 211, "power_kw": None},
+                "fan3": {"airflow_m3h": 40800, "capacity_kw": 211, "power_kw": None},
+            },
+        },
+    }
+
+    def test_the_plant_is_written_out_by_size_largest_first(self):
+        from aicfd import report
+
+        self.assertEqual(report._plant_mix(self.MODEL, "capacity_kw", "kW"), "1 × 402 + 2 × 211 kW")
+
+    def test_a_figure_no_unit_was_given_says_so(self):
+        from aicfd import report
+
+        self.assertEqual(report._plant_mix(self.MODEL, "power_kw", "kW"), "not given")
+
+    def test_each_unit_is_measured_against_its_own_rating(self):
+        from aicfd import report
+
+        self.assertEqual(report._rating_of(self.MODEL, "fan1"), 402)
+        self.assertEqual(report._rating_of(self.MODEL, "fan2"), 211)
+
+    def test_a_plant_of_one_size_keeps_its_single_figure(self):
+        from aicfd import report
+
+        one = {"fans": ["fan1"], "operating": {"unit_capacity_kw": 100.5, "unit_ratings": None}}
+        self.assertIsNone(report._plant_mix(one, "capacity_kw", "kW"))
+        self.assertEqual(report._rating_of(one, "fan1"), 100.5)
+
+
 class TheConclusionsAgreeWithTheChecksTest(unittest.TestCase):
     """Section 5 restates section 4.1 in words. When the two disagree the
     reader has no way to tell which to believe (ADR-115)."""

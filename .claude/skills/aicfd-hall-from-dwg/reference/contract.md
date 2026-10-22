@@ -265,6 +265,8 @@ fanwall:                       # the cooling units, whatever they are called
   control: team                # or independent
   static_pressure_pa: 50       # only where the sheet does not carry it
   out_of_service: []           # the failure scenario: [1] or [CRAC-01, CRAC-08]
+  units:                       # a plant of more than one size: the units that differ
+    U07: {airflow_m3h: 40800, capacity_kw: 211}   # from the figures above (ADR-139)
   # no count, width, height, depth, offset, pitch: they are in the STL
 
 components:                    # the porous surfaces' loss coefficients

@@ -595,13 +595,15 @@ def _downflow_baffles(model: Model, fan: Panel, k: float,
     """
     supply_k = model.supply_temp_c + KELVIN
     p0 = model.pressure_pa
-    mass_flow = model.unit_airflow_m3h / 3600.0 * supply_density(model)
+    # This unit's own airflow: in a plant of two sizes they differ (ADR-139).
+    flow_m3h = model.flow_of(fan)
+    mass_flow = flow_m3h / 3600.0 * supply_density(model)
     intake, supply = f"{fan.name}Intake", f"{fan.name}Supply"
     wall = _wall_patch_fields(k, epsilon, p0)
 
     intake_fields = f"""                patchFields
                 {{
-                    // {model.unit_airflow_m3h:,.0f} m3/h out of the gallery, through the
+                    // {flow_m3h:,.0f} m3/h out of the gallery, through the
                     // top of the unit: {mass_flow:.4g} kg/s over {fan.area:.2f} m2.
                     U       {{ type flowRateOutletVelocity;
                               massFlowRate {mass_flow:.6g};
@@ -684,8 +686,10 @@ def _downflow_baffles(model: Model, fan: Panel, k: float,
 def _fan_baffle(model: Model, fan: Panel, k: float, epsilon: float) -> str:
     supply_k = model.supply_temp_c + KELVIN
     p0 = model.pressure_pa
-    # Each unit moves its share of the total, set by mass (see below).
-    mass_flow = model.unit_airflow_m3h / 3600.0 * supply_density(model)
+    # Each unit moves its own rated airflow, set by mass (see below); in a
+    # plant of two sizes the two differ (ADR-139).
+    flow_m3h = model.flow_of(fan)
+    mass_flow = flow_m3h / 3600.0 * supply_density(model)
     intake, supply = f"{fan.name}Intake", f"{fan.name}Supply"
 
     intake_fields = f"""                patchFields
@@ -720,7 +724,7 @@ def _fan_baffle(model: Model, fan: Panel, k: float, epsilon: float) -> str:
 
     supply_fields = f"""                patchFields
                 {{
-                    // {model.unit_airflow_m3h:,.0f} m3/h at {model.supply_temp_c:g} degC is
+                    // {flow_m3h:,.0f} m3/h at {model.supply_temp_c:g} degC is
                     // {mass_flow:.4g} kg/s through {fan.area:.2f} m2,
                     // blowing into the cold aisle along the patch normal.
                     U       {{ type flowRateInletVelocity;
@@ -1303,8 +1307,10 @@ def _hvac_lines(model: Model) -> list[str]:
     lines = []
     if h["capacity_kw"] is not None:
         lines.append(
-            f"  HVAC capacity   {h['units']} x {h['unit_capacity_kw']:.1f} kW = "
-            f"{h['capacity_kw']:,.0f} kW for {h['load_kw']:,.0f} kW of IT "
+            f"  HVAC capacity   "
+            + (model.plant_text("capacity_kw", "kW") if model.mixed_plant
+               else f"{h['units']} x {h['unit_capacity_kw']:.1f} kW")
+            + f" = {h['capacity_kw']:,.0f} kW for {h['load_kw']:,.0f} kW of IT "
             f"({h['capacity_ratio'] * 100:.0f}%)"
         )
     if h["airflow_ratio"] is not None:
@@ -1369,11 +1375,14 @@ def summary(model: Model) -> str:
         # and CRAHs that stand in it. The column stays put either way
         # (ADR-102).
         f"  {_unit_label(model):<15} "
-        + (f"{model.fan_count} x " if model.fan_count > 1 else "")
-        + f"{model.unit_airflow_m3h:,.0f} m3/h at "
-        f"{model.supply_temp_c:.1f} degC, "
-        f"{model.fan_face_velocity_ms:.2f} m/s through "
-        f"{model.fans[0].area:.2f} m2" + (" each" if model.fan_count > 1 else ""),
+        + (model.plant_text("airflow_m3h", "m3/h") + f" at {model.supply_temp_c:.1f} degC, "
+           f"at most {model.fan_face_velocity_ms:.2f} m/s through a face"
+           if model.mixed_plant else
+           (f"{model.fan_count} x " if model.fan_count > 1 else "")
+           + f"{model.unit_airflow_m3h:,.0f} m3/h at "
+           f"{model.supply_temp_c:.1f} degC, "
+           f"{model.fan_face_velocity_ms:.2f} m/s through "
+           f"{model.fans[0].area:.2f} m2" + (" each" if model.fan_count > 1 else "")),
         f"  Rack demand     {model.rack_demand_m3s * 3600:,.0f} m3/h "
         f"({model.rack_demand_m3s * 3600 / model.airflow_m3h * 100:.0f}% of supply)",
         f"  Design bulk dT  {model.design_delta_t_k:.1f} K",

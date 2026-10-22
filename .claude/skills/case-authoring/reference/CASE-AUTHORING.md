@@ -196,6 +196,8 @@ share. This is the N-of-N+1 scenario a plant is sized on; run the normal
 case first, take out the most loaded unit the report names, and read the
 room the rest leave (ADR-129). Every unit out is refused.
 
+**A plant of more than one size.** `fanwall` describes THE unit; `fanwall.units` names the ones that differ and gives what differs — `U07: {airflow_m3h: 40800, capacity_kw: 211}`, by the drawing's id, the report's number or the panel name, with `airflow_m3h`, `capacity_kw` and `power_kw`. Each unit is then solved at its own airflow, the plant's airflow, capacity and power are the sums, and the report writes the plant out by size and judges each unit against its own rating. `fanwall.model` and `fanwall.curve` describe one machine and are refused for a plant of two sizes (ADR-139).
+
 **Whether the units run independently or as a team.** `fanwall.control: team`
 runs the units as one networked plant, and what the network shares depends on
 the machine. A chilled-water plant (CRAH, fan wall) shares the **valve
@@ -278,6 +280,7 @@ or three.
 | `fanwall.offset` | float | 0 to 20 | from the start of the gallery wall to the FACE of the first unit. With `pitch`, the row is laid exactly there; on its own, the row ends the same distance from the far end and shares what is between (ADR-121) |
 | `fanwall.pitch` | float | 0.1 to 30 | centre to centre between units. On its own the row is centred on the wall. At least the unit's width, or the build refuses it by name |
 | `fanwall.out_of_service` | list of unit numbers or tags | 1 … count, never all | the failure scenario; §4 |
+| `fanwall.units` | map of unit to `{airflow_m3h, capacity_kw, power_kw}` | positive | the units that differ from `fanwall`, in a plant of more than one size; §4 |
 | `fanwall.static_pressure_pa` | float | 0 to 2000 | external static pressure the unit was selected at |
 | `fanwall.control` | `team` or `independent` | | §4 |
 | `fanwall.curve` | list of `[m3h, Pa]` | | the unit's P-Q curve. Anchor it on the selection point |

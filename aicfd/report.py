@@ -358,6 +358,39 @@ def _units(count: int) -> str:
     return "unit" if count == 1 else "units"
 
 
+def _unit_ratings(model: dict) -> dict:
+    """Each unit's own figures, by panel name, in a plant of more than one
+    size; {} where one figure describes every unit (ADR-139)."""
+    return (model.get("operating") or {}).get("unit_ratings") or {}
+
+
+def _rating_of(model: dict, name: str) -> float | None:
+    """The catalogue capacity THIS unit is measured against."""
+    own = _unit_ratings(model).get(name)
+    if own is not None:
+        return own.get("capacity_kw")
+    return (model.get("operating") or {}).get("unit_capacity_kw")
+
+
+def _plant_mix(model: dict, key: str, unit: str, decimals: int = 0) -> str | None:
+    """`5 × 402 + 8 × 211 kW`: one figure of a plant of more than one size,
+    over the units in service, largest first. None for a plant of one size,
+    whose rows keep their single figure (ADR-139)."""
+    ratings = _unit_ratings(model)
+    if not ratings:
+        return None
+    off = set(model.get("fans_off") or [])
+    values = [r.get(key) for name, r in ratings.items() if name not in off]
+    if any(v is None for v in values):
+        return "not given"
+    counts: dict[float, int] = {}
+    for v in values:
+        counts[v] = counts.get(v, 0) + 1
+    return (" + ".join(f"{n} × {_num(v, decimals)}"
+                       for v, n in sorted(counts.items(), key=lambda c: -c[0]))
+            + f" {unit}")
+
+
 def _grouped_warnings(warnings) -> list[str]:
     """One line per distinct snap, naming every plane that took it.
 
@@ -852,7 +885,8 @@ def _summary(doc, export: Export, drawn: dict) -> None:
             f"{', '.join(_off_units(export))} out of service"),)
           if model.get("fans_off") else ()),
         ("Airflow per unit",
-         f"{_num(kpis['supply_flow_m3h'] / max(1, len(model['fans']) - len(model.get('fans_off') or [])), 0)} m³/h"),
+         _plant_mix(model, "airflow_m3h", "m³/h")
+         or f"{_num(kpis['supply_flow_m3h'] / max(1, len(model['fans']) - len(model.get('fans_off') or [])), 0)} m³/h"),
         ("Total airflow to the room", f"{_num(kpis['supply_flow_m3h'], 0)} m³/h"),
         # TWO DIFFERENT TEMPERATURES, and this table used to print the solved
         # one under a heading that says "the machine's own manufacturer
@@ -866,11 +900,13 @@ def _summary(doc, export: Export, drawn: dict) -> None:
          + (" (solved)"
             if unit and (unit.design or {}).get("supply_c") is not None else "")),
         ("Net sensible capacity per unit",
-         f"{_num(fan.get('unit_capacity_kw'), 1)} kW"
-         if fan.get("unit_capacity_kw") else "not given"),
+         _plant_mix(model, "capacity_kw", "kW", 1)
+         or (f"{_num(fan.get('unit_capacity_kw'), 1)} kW"
+             if fan.get("unit_capacity_kw") else "not given")),
         ("Electrical input per unit",
-         f"{_num(fan.get('unit_power_kw'), 1)} kW"
-         if fan.get("unit_power_kw") else "not given"),
+         _plant_mix(model, "power_kw", "kW", 1)
+         or (f"{_num(fan.get('unit_power_kw'), 1)} kW"
+             if fan.get("unit_power_kw") else "not given")),
         ("External static pressure, at the rated airflow",
          f"{_num(fan.get('fan_static_pa'), 0)} Pa"
          if fan.get("fan_static_pa") else "not given"),
@@ -1249,16 +1285,40 @@ def _methodology(doc, export: Export, drawn: dict) -> None:
                         if mass_share is not None
                         and abs(mass_share - per_unit / selected * 100) > 1
                         else ""))
+    rho = (model.get("site") or {}).get("rho")
+    mix = _plant_mix(model, "airflow_m3h", "m³/h")
+    if mix:
+        # TWO SIZES, TWO DUTIES. Each unit is given its own rated airflow,
+        # and the table multiplies out by size (ADR-139).
+        flows = sorted({r["airflow_m3h"] for n, r in _unit_ratings(model).items()
+                        if n not in set(model.get("fans_off") or [])}, reverse=True)
+        total = sum(r["airflow_m3h"] for n, r in _unit_ratings(model).items()
+                    if n not in set(model.get("fans_off") or []))
+        _table(doc, ["Step", "Value"], [
+            ("1 — each unit's airflow, from its datasheet, by size", mix),
+            ("2 — units in operation" if off else "2 — units installed",
+             f"{units}" + (f" of {units + off} installed" if off else "")),
+            ("3 — total delivered to the room", f"{_num(total, 0)} m³/h"),
+            ("4 — at the supply density", f"{_num(rho, 3)} kg/m³"),
+            ("5 — mass flow imposed at each unit",
+             " and ".join(f"{_num(q / 3600 * rho, 2)} kg/s" for q in flows)
+             if rho else "—"),
+        ], widths=[9.0, 7.0],
+            note="Each unit is given its own rated airflow: the plant has "
+                 "units of more than one size. Section 6 covers a plant whose "
+                 "units sit on a pressure boundary and share the flow "
+                 "unevenly.")
+        return
     _table(doc, ["Step", "Value"], [
         (step_one, f"{_num(per_unit, 0)} m³/h"),
         ("2 — units in operation" if off else "2 — units installed",
          f"{units}" + (f" of {units + off} installed" if off else "")),
         ("3 — total delivered to the room", f"{_num(per_unit * units, 0)} m³/h"),
         ("4 — at the supply density",
-         f"{_num((model.get('site') or {}).get('rho'), 3)} kg/m³"),
+         f"{_num(rho, 3)} kg/m³"),
         ("5 — mass flow imposed at each unit",
-         f"{_num(per_unit / 3600 * (model.get('site') or {}).get('rho'), 2)} kg/s"
-         if (model.get("site") or {}).get("rho") else "—"),
+         f"{_num(per_unit / 3600 * rho, 2)} kg/s"
+         if rho else "—"),
     ], widths=[9.0, 7.0],
         note="Every unit is given the same duty. Section 6 covers a plant "
              "whose units sit on a pressure boundary and share the flow "
@@ -2126,7 +2186,8 @@ def _results(doc, export: Export, drawn: dict) -> None:
                 f"{_num(f.get('return_temp_c'), 2)} °C",
                 f"{_num(f.get('intake_kg_s'), 1)} kg/s",
                 f"{_num(f.get('heat_kw'), 0)} kW",
-                f"{_num((f.get('heat_kw') or 0) / rating * 100, 0)} %" if rating else "—",
+                f"{_num((f.get('heat_kw') or 0) / _rating_of(model, f['name']) * 100, 0)} %"
+                if _rating_of(model, f["name"]) else "—",
                 *((f"{_num(f.get('available_kw'), 0)} kW",
                    f"{_num(f.get('of_available_pct'), 0)} %") if available else ()),
                 f"{_num(f.get('rise_pa'), 1)} Pa")
@@ -2260,7 +2321,22 @@ def _conclusions(doc, export: Export) -> None:
                 f"recirculation at its intake instead. Either way it is the "
                 f"cabinet to look at first."
             )
-    if heats and rating:
+    if heats and _unit_ratings(model) and all(_rating_of(model, f["name"]) for f in fans):
+        # A PLANT OF TWO SIZES is measured unit by unit against each unit's
+        # own rating: a 211 kW unit at 300 kW is over, a 402 kW one is not
+        # (ADR-139).
+        share = [((f.get("heat_kw") or 0) / _rating_of(model, f["name"]), f) for f in fans]
+        over = [f for s, f in share if s > 1]
+        worst = max(s for s, _ in share)
+        findings.append(
+            f"The plant removes {_num(sum(heats), 0)} kW. "
+            + (f"No unit exceeds its own catalogue rating; the most loaded is "
+               f"at {_num(worst * 100, 0)} % of it."
+               if not over else
+               f"{len(over)} {_units(len(over))} exceed their own catalogue "
+               f"rating, the worst at {_num(worst * 100, 0)} %.")
+        )
+    elif heats and rating:
         over = [f for f in fans if (f.get("heat_kw") or 0) > rating]
         findings.append(
             f"The plant removes {_num(sum(heats), 0)} kW. "
