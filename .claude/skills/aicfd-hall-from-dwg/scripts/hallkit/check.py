@@ -185,12 +185,16 @@ def run(stl_path: str, sidecar_path: str, cell) -> list[str]:
             and not any(w["bbox"][0] - 1e-6 < (b[0] + b[3]) / 2 < w["bbox"][3] + 1e-6 for w in [by["ceiling"][0]] if ceil)
         if ceil and not in_gallery:
             fails.append(f"{u['name']}: stands under the ceiling, not in a gallery")
-    # lids rest on rack faces; doors close lids
+    # lids rest on rack faces; doors close lids. THE HALL'S OWN WALLS COUNT:
+    # a lone row facing the end wall rests its lid on it, and an aisle that runs
+    # to the hall's side wall is closed by it (no door is written there).
+    hall_b = by["hall"][0]["bbox"] if by.get("hall") else None
     for lid in by["lid"]:
         lb = lid["bbox"]
         for edge in (lb[1], lb[4]):
             on_face = any(abs(r["bbox"][1] - edge) < 1e-6 or abs(r["bbox"][4] - edge) < 1e-6 for r in racks) \
-                or any(abs(w["bbox"][1] - edge) < 1e-6 and abs(w["bbox"][4] - w["bbox"][1]) < 1e-9 for w in walls)
+                or any(abs(w["bbox"][1] - edge) < 1e-6 and abs(w["bbox"][4] - w["bbox"][1]) < 1e-9 for w in walls) \
+                or (hall_b is not None and (abs(hall_b[1] - edge) < 1e-6 or abs(hall_b[4] - edge) < 1e-6))
             if not on_face:
                 fails.append(f"{lid['name']}: edge y = {edge} rests on nothing")
         tops = {round(r["bbox"][5], 6) for r in racks}
@@ -199,7 +203,8 @@ def run(stl_path: str, sidecar_path: str, cell) -> list[str]:
         doors = [d for d in by["door"] if abs(d["bbox"][1] - lb[1]) < 1e-6 and abs(d["bbox"][4] - lb[4]) < 1e-6
                  and (abs(d["bbox"][0] - lb[0]) < 1e-6 or abs(d["bbox"][0] - lb[3]) < 1e-6)]
         at_wall = sum(1 for x in (lb[0], lb[3]) if any(abs(w["bbox"][0] - x) < 1e-6 and abs(w["bbox"][3] - w["bbox"][0]) < 1e-9
-                                                      and w["bbox"][1] <= lb[1] + 1e-6 and w["bbox"][4] >= lb[4] - 1e-6 for w in walls))
+                                                      and w["bbox"][1] <= lb[1] + 1e-6 and w["bbox"][4] >= lb[4] - 1e-6 for w in walls)
+                      or (hall_b is not None and (abs(hall_b[0] - x) < 1e-6 or abs(hall_b[3] - x) < 1e-6)))
         if len(doors) + at_wall != 2:
             fails.append(f"{lid['name']}: {len(doors)} door(s) and {at_wall} wall(s) close its ends, 2 expected")
         for d in doors:

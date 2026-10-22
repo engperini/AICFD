@@ -439,6 +439,13 @@ def build(ex: Extracted, ref: dict, answers: dict) -> dict:
 
     # ---- the cage: panels from a rectangle or from segments ------------------
     cage_panels = []
+    if (answers or {}).get("ignore", {}).get("cage"):
+        # what the drawing has on its CAGE layer is not a cage (an entrance lock,
+        # a demarcation): left out by the engineer's say-so, on the record
+        n = (1 if ex.cage_rect is not None else 0) + len(ex.cage_segments)
+        if n:
+            log.omissions.append(f"{n} shape(s) on the drawing's CAGE layer left out (ignore.cage in answers.yaml)")
+        ex.cage_rect, ex.cage_segments = None, []
     if ex.cage_rect is not None:
         c = loc(ex.cage_rect)
         for side, axis, at, lo, hi, hall_face in (("w", "x", c[0], c[1], c[3], hall[0]), ("e", "x", c[2], c[1], c[3], hall[2]),
@@ -566,7 +573,21 @@ def build(ex: Extracted, ref: dict, answers: dict) -> dict:
         else:
             span = (Q.q(union[0], 0), Q.q(union[1], 0))
             z_top = ceiling
-        if ca["lone"]:
+        at_wall = False
+        if ca["lone"] and ca["kind"] == "cold":
+            # A LONE ROW FACING THE HALL'S WALL: the drafter's tile band may run
+            # to (or a little past) the wall. The band stops at the wall, the
+            # plates are what fit in it, and the wall is the closure.
+            wall_at = hall[3] if ca["far"] == "n" else hall[1]
+            if (ca["far"] == "n" and band[1] >= wall_at - 1e-6) or (ca["far"] == "s" and band[0] <= wall_at + 1e-6):
+                band = (band[0], wall_at) if ca["far"] == "n" else (wall_at, band[1])
+                ca["band"] = band
+                at_wall = True
+                log.corrections.append(
+                    f"cold aisle {ca['id']}: row {ca['rows'][0]['id']} faces the hall's wall at y = {wall_at:.1f}; the "
+                    f"band is cut at the wall ({band[1] - band[0]:.2f} m, {int((band[1] - band[0]) / tile + 1e-9)} row(s) of plate), "
+                    f"and the wall closes it")
+        if ca["lone"] and not at_wall:
             far = band[1] if ca["far"] == "n" else band[0]
             closures.append({"id": f"{ca['id']}_{ca['far']}", "axis": "y", "at": far, "lo": span[0], "hi": span[1], "z": (floor, z_top)})
             log.corrections.append(
@@ -866,8 +887,14 @@ def build(ex: Extracted, ref: dict, answers: dict) -> dict:
     for row in rows:
         for r in row["racks"]:
             it = None
-            if r["id"] in overrides or (r["tag"] and r["tag"] in overrides):
-                v = overrides.get(r["id"], overrides.get(r["tag"]))
+            # a cabinet's own entry, else its tag's, else its ROW's (`F1: 3.5`
+            # loads every cabinet of row F1 that has no entry of its own)
+            v = overrides.get(r["id"])
+            if v is None and r["tag"]:
+                v = overrides.get(r["tag"])
+            if v is None:
+                v = overrides.get(str(row["id"]).upper().replace(" ", ""))
+            if v is not None:
                 word = str(v).strip().upper()
                 if word in ("ODF", "0", "0.0"):
                     it, r["kind"] = 0.0, "ODF"

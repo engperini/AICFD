@@ -92,7 +92,9 @@ def main() -> int:
         dwg = dxfread.read(dxf, unit_override=scale, tol=float(ref.get("tolerance_m", 0.02)))
         with open(cache, "wb") as f:
             pickle.dump(dwg, f)
-    ex = extract.extract(dwg, ref, answers)
+    # answers override the reference for the classifier too: a site whose
+    # cabinets or units have other footprints says so in answers.yaml
+    ex = extract.extract(dwg, model._merge(ref, answers), answers)
     m = model.build(ex, ref, answers)
     name = m["name"]
     sha = hashlib.sha256(open(src, "rb").read()).hexdigest()[:16]

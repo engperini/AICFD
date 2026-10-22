@@ -143,6 +143,24 @@ def read(path: str, unit_override: float | None = None, tol: float = 0.02) -> Dr
             elif kind == "LINE":
                 p, q = e.dxf.start, e.dxf.end
                 dwg.segments.append(((p.x * s, p.y * s), (q.x * s, q.y * s), layer))
+            elif kind == "HATCH":
+                # A unit or a cabinet drawn as a filled rectangle with no outline:
+                # the fill's boundary is the object. Each closed boundary path that
+                # is an axis-aligned rectangle is a rect.
+                for path in e.paths:
+                    pts = []
+                    if hasattr(path, "vertices"):
+                        pts = [(v[0] * s, v[1] * s) for v in path.vertices]
+                    else:
+                        for ed in getattr(path, "edges", []):
+                            for attr in ("start", "end"):
+                                v = getattr(ed, attr, None)
+                                if v is not None:
+                                    pts.append((v[0] * s, v[1] * s))
+                    if len(pts) >= 4 and geom.is_axis_rect(pts, tol):
+                        r = geom.rect_of(pts)
+                        if geom.width(r) > tol and geom.height(r) > tol:
+                            dwg.rects.append((r, layer))
             elif kind == "TEXT":
                 x, y = e.dxf.insert.x * s, e.dxf.insert.y * s
                 try:  # aligned text keeps its position in the alignment point

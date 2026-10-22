@@ -94,7 +94,18 @@ def _pick_hall(dwg: Drawing, ax: float, ay: float):
 def extract(dwg: Drawing, ref: dict, answers: dict) -> Extracted:
     tol = float(ref.get("tolerance_m", 0.02))
     ax, ay = _anchor(dwg, answers.get("hall"), answers.get("anchor_xy"))
-    hall = _pick_hall(dwg, ax, ay)
+    # A HALL WITH NO CLOSED CONTOUR: an architect who drew the walls as lines
+    # and dimensioned the room leaves no rectangle to pick. `hall_rect` in
+    # answers.yaml is the room as dimensioned, in the drawing's coordinates;
+    # the report says it came from there and not from the drawing.
+    hall_hint = answers.get("hall_rect")
+    hint_notes = []
+    if hall_hint:
+        hall = tuple(float(v) for v in hall_hint)
+        hint_notes.append(f"hall contour from answers.yaml (hall_rect): x {hall[0]:.2f}..{hall[2]:.2f}, "
+                          f"y {hall[1]:.2f}..{hall[3]:.2f} -- the drawing has no closed contour round the hall")
+    else:
+        hall = _pick_hall(dwg, ax, ay)
     gal_w = tuple(ref["gallery_width_range_m"])
 
     # A drafter who drew the DIVIDING WALLS as thin rectangles inside one
@@ -149,12 +160,25 @@ def extract(dwg: Drawing, ref: dict, answers: dict) -> Extracted:
         if cands:
             galleries.append(min(cands, key=lambda r: abs((r[2] if side == "W" else r[0]) - (hall[0] if side == "W" else hall[2]))))
     galleries.sort(key=lambda r: r[0])
-    if not galleries:
-        gal_hint = answers.get("galleries")
-        if gal_hint:
-            galleries = [tuple(map(float, g)) for g in gal_hint]
-        else:
-            raise SystemExit("no mechanical gallery / technical room found against the hall; give `galleries: [[x0,y0,x1,y1], ...]` in answers.yaml")
+    gal_hint = answers.get("galleries")
+    if gal_hint:
+        # AN EXPLICIT ANSWER WINS: the drafter's corridor contour may run past
+        # the hall or hold another hall's units, and the engineer says which
+        # part of it is this hall's gallery.
+        hinted = [tuple(map(float, g)) for g in gal_hint]
+        hint_notes.append("galleries from answers.yaml (galleries), in place of the drawing's contours: " + "; ".join(
+            f"x {g[0]:.2f}..{g[2]:.2f}, y {g[1]:.2f}..{g[3]:.2f}" for g in hinted))
+        if transposed:
+            hinted = [geom.transpose(g) for g in hinted]
+        elif all(g[3] <= hall[1] + 0.5 or g[1] >= hall[3] - 0.5 for g in hinted):
+            # the hinted gallery lies along the hall's y side: the transposed case
+            dwg.transpose()
+            hall = geom.transpose(hall)
+            hinted = [geom.transpose(g) for g in hinted]
+            transposed = True
+        galleries = sorted(hinted, key=lambda r: r[0])
+    elif not galleries:
+        raise SystemExit("no mechanical gallery / technical room found against the hall; give `galleries: [[x0,y0,x1,y1], ...]` in answers.yaml")
 
     walls = []
     for g in galleries:
@@ -175,6 +199,7 @@ def extract(dwg: Drawing, ref: dict, answers: dict) -> Extracted:
         claimed.add(outer)
 
     ex = Extracted(hall=hall, galleries=galleries, walls=walls, envelope=envelope, transposed=transposed)
+    ex.notes.extend(hint_notes)
     if transposed:
         ex.notes.append("drawing transposed: the galleries lie along y in the file, x in the model")
 
@@ -228,6 +253,14 @@ def extract(dwg: Drawing, ref: dict, answers: dict) -> Extracted:
                    for u in ex.units):
                 continue
             ex.units.append({"rect": r, "tag": None, "gallery": "W" if r[2] <= hall[0] + tol else "E", "block": name})
+    # de-duplicate units drawn twice (a hatch and its outline, a block and its outline)
+    uniq_units = []
+    for u in ex.units:
+        if not any(geom.overlap(u["rect"], v["rect"]) and
+                   geom.area(geom.intersection(u["rect"], v["rect"]) or (0, 0, 0, 0)) > 0.5 * min(geom.area(u["rect"]), geom.area(v["rect"]))
+                   for v in uniq_units):
+            uniq_units.append(u)
+    ex.units = uniq_units
     # de-duplicate racks drawn twice (a block and its outline); keep the one with the tighter layer name
     uniq = []
     for rk in ex.racks:
