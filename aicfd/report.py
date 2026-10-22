@@ -154,13 +154,37 @@ def _table(doc, headers, rows, widths=None, note=None) -> None:
         _para(doc, space_after=6)
 
 
+#: The page, A4, and the tallest a figure may stand on it with its caption
+#: under the margins `build` sets (29,7 cm less 2 x 2,2 cm, less room for the
+#: caption). A figure was only ever given a width, so the plan a drawing
+#: converter writes -- a hall 34,5 m long drawn upright, three times taller
+#: than it is wide -- came out 51 cm tall and ran off the page.
+PAGE_CM = (21.0, 29.7)
+MAX_FIGURE_HEIGHT_CM = 22.0
+
+
+def _fitted_width(path: Path, width_cm: float) -> float:
+    """The width that keeps the figure on the page: ``width_cm``, or narrower
+    when that would make it taller than `MAX_FIGURE_HEIGHT_CM`."""
+    try:
+        from PIL import Image
+
+        with Image.open(path) as image:
+            w, h = image.size
+    except Exception:  # noqa: BLE001 -- a figure we cannot measure keeps its width
+        return width_cm
+    if not w or not h:
+        return width_cm
+    return min(width_cm, MAX_FIGURE_HEIGHT_CM * w / h)
+
+
 def _figure(doc, path: Path, caption: str, width_cm: float = 16.0) -> None:
     from docx.enum.text import WD_ALIGN_PARAGRAPH
     from docx.shared import Cm
 
     paragraph = doc.add_paragraph()
     paragraph.alignment = WD_ALIGN_PARAGRAPH.CENTER
-    paragraph.add_run().add_picture(str(path), width=Cm(width_cm))
+    paragraph.add_run().add_picture(str(path), width=Cm(_fitted_width(path, width_cm)))
     _para(doc, caption, size=8, colour=MUTED, align=WD_ALIGN_PARAGRAPH.CENTER,
           space_after=12)
 
@@ -232,6 +256,9 @@ def build(results_dir: str | Path, out_path: str | Path,
     style.font.size = Pt(10)
     style.paragraph_format.space_after = Pt(6)
     for section_ in doc.sections:
+        # A4, not the library's default US Letter: the 16 cm figures and the
+        # tables are laid out for it, and it is the paper the report is read on.
+        section_.page_width, section_.page_height = Cm(PAGE_CM[0]), Cm(PAGE_CM[1])
         section_.top_margin = Cm(2.2)
         section_.bottom_margin = Cm(2.2)
         section_.left_margin = Cm(2.4)

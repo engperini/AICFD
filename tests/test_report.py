@@ -83,6 +83,21 @@ class DocumentTest(unittest.TestCase):
     def tearDownClass(cls):
         cls.tmp.cleanup()
 
+    def test_the_page_is_a4(self):
+        from docx.shared import Cm
+
+        section = self.doc.sections[0]
+        self.assertAlmostEqual(section.page_width / Cm(1), 21.0, places=1)
+        self.assertAlmostEqual(section.page_height / Cm(1), 29.7, places=1)
+
+    def test_no_figure_is_taller_than_the_page_holds(self):
+        from docx.shared import Cm
+
+        from aicfd.report import MAX_FIGURE_HEIGHT_CM
+
+        tallest = max(shape.height for shape in self.doc.inline_shapes) / Cm(1)
+        self.assertLessEqual(tallest, MAX_FIGURE_HEIGHT_CM + 0.01)
+
     def test_it_writes_a_document_with_the_sections_a_reviewer_reads(self):
         for heading in ("1  Introduction", "2  Summary", "3  Methodology",
                         "4  Results", "5  Conclusions", "6  Limitations"):
@@ -1595,3 +1610,31 @@ class DrawingsTest(unittest.TestCase):
     def test_a_result_without_drawings_has_no_such_section(self):
         plain = "\n".join(p.text for p in self.plain.paragraphs)
         self.assertNotIn("the drawings the model was built from", plain)
+
+
+class AFigureStaysOnThePageTest(unittest.TestCase):
+    """A converter's plan of a long hall is drawn upright, three times taller
+    than wide, and at the report's 16 cm it ran 51 cm down an A4 page."""
+
+    def picture(self, width: int, height: int) -> Path:
+        from PIL import Image
+
+        tmp = tempfile.TemporaryDirectory()
+        self.addCleanup(tmp.cleanup)
+        path = Path(tmp.name) / "figure.png"
+        Image.new("RGB", (width, height), "white").save(path)
+        return path
+
+    @unittest.skipUnless(HAVE_EXTRAS, "matplotlib (and so Pillow) is not installed")
+    def test_a_tall_plan_is_narrowed_until_it_fits(self):
+        from aicfd.report import MAX_FIGURE_HEIGHT_CM, _fitted_width
+
+        width = _fitted_width(self.picture(1744, 5599), 16.0)
+        self.assertLess(width, 16.0)
+        self.assertAlmostEqual(width * 5599 / 1744, MAX_FIGURE_HEIGHT_CM, places=3)
+
+    @unittest.skipUnless(HAVE_EXTRAS, "matplotlib (and so Pillow) is not installed")
+    def test_a_wide_figure_keeps_its_width(self):
+        from aicfd.report import _fitted_width
+
+        self.assertEqual(_fitted_width(self.picture(2000, 600), 16.0), 16.0)
