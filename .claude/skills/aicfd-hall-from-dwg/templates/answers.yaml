@@ -51,6 +51,9 @@ heights:                       # THE ELEVATIONS, one per element -- asked of the
 #   max_iterations: 2000
 #   processors: 16
 
+# units:
+#   within: [[x0, y0, x1, y1]] # one corridor holding two halls' plant: the part whose units are this
+#                              # hall's (drawing coordinates); the others are left out, on the record
 # galleries:                   # only if the drawing has no gallery contour and no wall rectangles
 #   - [67.48, 21.16, 71.64, 55.91]
 

@@ -289,6 +289,19 @@ def extract(dwg: Drawing, ref: dict, answers: dict) -> Extracted:
                    for v in uniq_units):
             uniq_units.append(u)
     ex.units = uniq_units
+    # ONE CORRIDOR, TWO HALLS' UNITS: where the gallery also holds another
+    # hall's plant, `units.within` is the part of it whose units are this
+    # hall's (drawing coordinates). The others are left out, on the record.
+    within = (answers.get("units") or {}).get("within")
+    if within:
+        areas = [tuple(float(v) for v in a) for a in within]
+        if transposed:
+            areas = [geom.transpose(a) for a in areas]
+        keep = [u for u in ex.units if any(geom.contains(a, u["rect"], 0.1) for a in areas)]
+        if len(keep) < len(ex.units):
+            ex.leftovers.append(f"{len(ex.units) - len(keep)} cooling unit(s) in the gallery outside `units.within`: "
+                                f"another hall's plant, left out")
+        ex.units = keep
     # de-duplicate racks drawn twice (a block and its outline); keep the one with the tighter layer name
     uniq = []
     for rk in ex.racks:
