@@ -41,6 +41,10 @@ SECOND = "52514E"
 MUTED = "898781"
 BAD = "D03B3B"
 GOOD = "0CA30C"
+#: Magenta: a decision agreed with the client for this scenario. One colour
+#: that nothing else in the report uses, so a reader finds every one of them
+#: on the cover, in section 2 and on the layout drawing (ADR-141).
+DECIDED = "C2187F"
 
 
 def _docx():
@@ -122,14 +126,16 @@ def _bullets(doc, items) -> None:
         _run(paragraph, item, size=10)
 
 
-def _table(doc, headers, rows, widths=None, note=None) -> None:
-    """A table with a dark header band, the way a datasheet prints one."""
+def _table(doc, headers, rows, widths=None, note=None, *, band=ACCENT,
+           emphasise=None) -> None:
+    """A table with a dark header band, the way a datasheet prints one.
+    ``band`` colours the header; ``emphasise`` is a column printed bold in it."""
     from docx.shared import Pt, Cm
 
     table = doc.add_table(rows=1, cols=len(headers))
     table.style = "Table Grid"
     for cell, text in zip(table.rows[0].cells, headers):
-        _shade(cell, ACCENT)
+        _shade(cell, band)
         cell.paragraphs[0].paragraph_format.space_after = Pt(2)
         _run(cell.paragraphs[0], str(text), bold=True, size=8.5, colour="FFFFFF")
     for values in rows:
@@ -142,6 +148,9 @@ def _table(doc, headers, rows, widths=None, note=None) -> None:
                 colour = BAD
             elif text.startswith("PASS"):
                 colour = GOOD
+            if emphasise is not None and i == emphasise:
+                _run(cell.paragraphs[0], text, size=8.5, colour=band, bold=True)
+                continue
             _run(cell.paragraphs[0], text, size=8.5, colour=colour,
                  bold=(i == 0 and len(headers) == 2))
     if widths:
@@ -618,12 +627,63 @@ def _cover(doc, export: Export, client, author, title_text: str) -> None:
               (f"Cooling plant · {len(export.model['fans'])} × "
                f"{unit.family} {unit.model}").strip() + _plant_line(export),
               size=9, colour=SECOND, space_after=4)
+    decided = _decisions(export.model)
+    if decided:
+        _para(doc,
+              f"{len(decided)} decision{'s' if len(decided) != 1 else ''} agreed "
+              f"for this scenario, in magenta in section 2",
+              size=9, bold=True, colour=DECIDED, space_after=4)
     _para(doc,
           f"Case {export.payload['case']} · solved to iteration "
           f"{export.payload['time']} · "
           f"{export.kpis['cells']:,} cells · "
           f"{'all checks passed' if export.payload['valid'] else 'CHECKS FAILED'}",
           size=8, colour=MUTED)
+
+
+DECISION_FIELDS = ("item", "before", "adopted", "why", "agreed")
+
+
+def _decisions(model: dict) -> list[dict]:
+    """The decisions the case records as agreed for this scenario, in the
+    order written: `decisions:` in the case file, one mapping each with
+    `item`, `before`, `adopted`, `why` and `agreed` (ADR-141)."""
+    raw = (model.get("spec") or {}).get("decisions") or []
+    if not isinstance(raw, list):
+        return []
+    return [{k: str(d.get(k) or "").strip() for k in DECISION_FIELDS}
+            for d in raw if isinstance(d, dict) and d.get("item")]
+
+
+def _decisions_section(doc, model: dict) -> None:
+    """What was agreed for this scenario, set apart in magenta.
+
+    A study run as a sequence of scenarios changes its premises between
+    runs, and a report that prints only the premises it ran on leaves the
+    reader to work out which of them were decisions and which were always so.
+    The case says which, and the report shows them first (ADR-141)."""
+    from docx.shared import Pt
+
+    items = _decisions(model)
+    if not items:
+        return
+    paragraph = doc.add_paragraph()
+    paragraph.paragraph_format.space_before = Pt(12)
+    paragraph.paragraph_format.space_after = Pt(4)
+    run = _run(paragraph, "Decisions agreed for this scenario", bold=True,
+               size=11.5, colour=DECIDED)
+    run.font.name = "DejaVu Sans"
+    _para(doc,
+          f"{len(items)} premise{'s' if len(items) != 1 else ''} of this run "
+          f"{'were' if len(items) != 1 else 'was'} decided with the client for "
+          f"this scenario, and every result in this report rests on "
+          f"{'them' if len(items) != 1 else 'it'}. Each is set against what "
+          f"the case had before, with the reason and who agreed it. They are "
+          f"in magenta here, on the cover and on the layout drawing.",
+          size=9.5, colour=SECOND)
+    _table(doc, ["Item", "Before", "Adopted", "Why", "Agreed"],
+           [tuple(d[k] for k in DECISION_FIELDS) for d in items],
+           widths=[2.8, 3.2, 3.6, 4.6, 2.2], band=DECIDED, emphasise=2)
 
 
 def _contents(doc) -> None:
@@ -849,6 +909,7 @@ def _summary(doc, export: Export, drawn: dict) -> None:
         f"against an "
         f"installed IT load of {_num(kpis['total_load_w'] / 1000, 0)} kW.",
     ])
+    _decisions_section(doc, model)
 
     _heading(doc, "Objectives", 2)
     _bullets(doc, [

@@ -280,6 +280,7 @@ or three.
 | `fanwall.offset` | float | 0 to 20 | from the start of the gallery wall to the FACE of the first unit. With `pitch`, the row is laid exactly there; on its own, the row ends the same distance from the far end and shares what is between (ADR-121) |
 | `fanwall.pitch` | float | 0.1 to 30 | centre to centre between units. On its own the row is centred on the wall. At least the unit's width, or the build refuses it by name |
 | `fanwall.out_of_service` | list of unit numbers or tags | 1 … count, never all | the failure scenario; §4 |
+| `decisions` | list of `{item, before, adopted, why, agreed}` | | what was agreed with the client for this scenario; the report prints it first, in magenta, and names it on the cover (ADR-141) |
 | `fanwall.units` | map of unit to `{airflow_m3h, capacity_kw, power_kw}` | positive | the units that differ from `fanwall`, in a plant of more than one size; §4 |
 | `fanwall.static_pressure_pa` | float | 0 to 2000 | external static pressure the unit was selected at |
 | `fanwall.control` | `team` or `independent` | | §4 |

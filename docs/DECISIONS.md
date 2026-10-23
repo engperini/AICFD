@@ -6001,3 +6001,20 @@ ceiling, with one technical corridor for both. Read as `containment_side` it
 would have been meshed, but called a containment surface in every drawing and
 table, which is the wrong thing to tell a reader looking for the wall between
 two customers' rooms.
+
+## ADR-141 — The decisions agreed for a scenario are printed first, in magenta
+
+**Decision.** A case may carry `decisions:`, a list of mappings with `item`,
+`before`, `adopted`, `why` and `agreed`. The report prints them in section 2,
+right after the overview, as a table under a magenta band with the adopted
+value in magenta, and says on the cover how many there are. Magenta
+(`DECIDED`) is used for nothing else in the report; the drawing converter
+uses the same colour for the blind floor plates a balancing decision makes,
+so the reader finds the decision on the layout as well.
+
+**Why.** A study run scenario by scenario changes its premises between runs:
+a design return temperature, the plates left open in an aisle. The report
+printed the premises it ran on and nothing about which of them had just been
+decided and why, so the engineer handing it to a team had to write that
+record separately. The case file is where the decision is made, so it is
+where the record lives, and the report shows it before any result.

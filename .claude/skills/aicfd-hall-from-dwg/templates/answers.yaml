@@ -70,3 +70,10 @@ heights:                       # THE ELEVATIONS, one per element -- asked of the
 #       rect: [x0, y0, x1, y1]
 #       height: 2.1
 #       open: false
+
+# decisions:                   # what was agreed for this scenario, carried into the case file;
+#   - item: Return air         # AICFD prints them first in the report, in magenta (ADR-141)
+#     before: 29 degC
+#     adopted: 31.4 degC
+#     why: the plant's own energy balance
+#     agreed: client, 2026-10-23

@@ -43,6 +43,9 @@ BEYOND_THE_FORM = {
     # A plant of more than one size: a map of unit to its own figures, which
     # the page's scalar fields cannot hold -- a YAML edit (ADR-139).
     "fanwall.units",
+    # What was agreed for a scenario: a list of mappings the report prints in
+    # magenta, which no scalar field holds (ADR-141).
+    "decisions",
     "cage.loss_coefficient",
     # WHERE the cage stands. Both are lists -- a run of pod numbers and a set
     # of side names -- and the page's field casters take scalars, so these are
@@ -128,7 +131,9 @@ class KeysTest(unittest.TestCase):
         source = "\n".join(
             (REPO / "aicfd" / name).read_text()
             for name in ("model.py", "cli.py", "server.py", "case.py",
-                         "post.py", "components.py", "racklib.py", "geometry.py")
+                         "post.py", "components.py", "racklib.py", "geometry.py",
+                         # the report reads a key of its own (`decisions`)
+                         "report.py")
         )
         for key in sorted(BEYOND_THE_FORM):
             leaf = key.rsplit(".", 1)[-1]

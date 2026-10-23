@@ -1087,6 +1087,50 @@ class APlantOfTwoSizesIsWrittenBySizeTest(unittest.TestCase):
         self.assertEqual(report._rating_of(one, "fan1"), 100.5)
 
 
+class TheDecisionsAgreedAreSetApartTest(unittest.TestCase):
+    """A scenario's agreed premises are printed first, in magenta (ADR-141)."""
+
+    MODEL = {"spec": {"decisions": [
+        {"item": "Return air", "before": "29 degC", "adopted": "31.4 degC",
+         "why": "the plant's own balance", "agreed": "client, 2026-10-23"},
+        {"item": "Floor plates", "before": "110", "adopted": "28 perforated",
+         "why": "air in proportion to load", "agreed": "client"},
+        "not a mapping", {"before": "no item"},
+    ]}}
+
+    def doc(self, model):
+        import docx
+
+        from aicfd import report
+
+        document = docx.Document()
+        report._decisions_section(document, model)
+        return document
+
+    def test_each_decision_is_a_row_under_a_magenta_band(self):
+        from aicfd import report
+
+        document = self.doc(self.MODEL)
+        table = document.tables[0]
+        self.assertEqual([c.text for c in table.rows[0].cells],
+                         ["Item", "Before", "Adopted", "Why", "Agreed"])
+        self.assertEqual(len(table.rows), 3, "two decisions; the malformed entries are left out")
+        self.assertIn(f'w:fill="{report.DECIDED}"', table.rows[0].cells[0]._tc.xml)
+        adopted = table.rows[1].cells[2].paragraphs[0].runs[0]
+        self.assertEqual(str(adopted.font.color.rgb), report.DECIDED)
+        self.assertTrue(adopted.bold)
+
+    def test_the_heading_says_what_it_is(self):
+        text = "\n".join(p.text for p in self.doc(self.MODEL).paragraphs)
+        self.assertIn("Decisions agreed for this scenario", text)
+        self.assertIn("2 premises of this run were decided", text)
+
+    def test_a_case_without_decisions_prints_nothing(self):
+        document = self.doc({"spec": {}})
+        self.assertFalse(document.tables)
+        self.assertFalse([p for p in document.paragraphs if p.text])
+
+
 class TheConclusionsAgreeWithTheChecksTest(unittest.TestCase):
     """Section 5 restates section 4.1 in words. When the two disagree the
     reader has no way to tell which to believe (ADR-115)."""
