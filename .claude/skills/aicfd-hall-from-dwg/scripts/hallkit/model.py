@@ -720,7 +720,20 @@ def build(ex: Extracted, ref: dict, answers: dict) -> dict:
             # are spread evenly along the aisle, alternating across it.
             keep_n = perforated.get(ca["id"])
             if keep_n is not None and 0 <= keep_n < len(strip):
-                picks = {int((k + 0.5) * len(strip) / keep_n) for k in range(keep_n)} if keep_n else set()
+                # THE OPEN PLATES FACE THE CABINETS. A lone row gets them all in the
+                # strip against its face; two rows get them alternately, so each
+                # row has one every so many cabinets along its whole length. An
+                # even spread over the strip index alone put every plate of a lone
+                # row's aisle against the wall, in front of no cabinet.
+                faces = ([0] if ca["_below"] else []) + ([across - 1] if ca["_above"] else []) or [0]
+                faces = sorted(set(faces))
+                order = [(i, j) for i in range(n_along) for j in faces] + \
+                        [(i, j) for i in range(n_along) for j in range(across) if j not in faces]
+                if keep_n <= n_along:
+                    cells = [(int((k + 0.5) * n_along / keep_n), faces[k % len(faces)]) for k in range(keep_n)]
+                else:
+                    cells = [order[int((k + 0.5) * len(order) / keep_n)] for k in range(keep_n)]
+                picks = {i * across + j for i, j in cells}
                 blind += [t for n, t in enumerate(strip) if n not in picks]
                 strip = [t for n, t in enumerate(strip) if n in picks]
                 log.corrections.append(f"cold aisle {ca['id']}: {keep_n} perforated plate(s) of {across * n_along}, the other "
