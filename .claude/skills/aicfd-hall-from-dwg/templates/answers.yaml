@@ -72,7 +72,7 @@ heights:                       # THE ELEVATIONS, one per element -- asked of the
 #       open: false
 
 # decisions:                   # what was agreed for this scenario, carried into the case file;
-#   - item: Return air         # AICFD prints them first in the report, in magenta (ADR-141)
+#   - item: Return air         # AICFD prints them first in the report (ADR-141)
 #     before: 29 degC
 #     adopted: 31.4 degC
 #     why: the plant's own energy balance

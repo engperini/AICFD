@@ -43,7 +43,7 @@ import numpy as np
 from aicfd.case import FAN_INTAKE, FAN_SUPPLY, KELVIN
 from aicfd.foam.fields import (patch_names, read_field, read_patch_entry,
                                read_patch_field, to_grid)
-from aicfd.model import CP_AIR, Model, num
+from aicfd.model import CP_AIR, RACK_PRESSURE_DROP, Model, num
 
 # ASHRAE TC 9.9 rack *inlet* envelopes, degrees C dry bulb. The recommended
 # band is what a design is held to; the allowable classes say how far outside
@@ -336,6 +336,7 @@ def _analyse(model: Model, case_dir: str | Path, time: str | None = None) -> Pod
     kpis["racks"] = rack_temperatures(model, grid)
 
     kpis["rack_drop_pa"], kpis["rows"] = rack_pressure_drop(model, grid)
+    kpis["rack_curve"] = rack_curve_agreement(model, grid)
     for key, prefix in (("grille", "grille"), ("supply", "supply"), ("floor", "tile_")):
         drop, bad, total, worst = _measure(step, prefix)
         kpis[f"{key}_drop_pa"] = drop
@@ -1232,6 +1233,63 @@ def rack_pressure_drop(model: Model, grid: dict) -> tuple[float | None, list[dic
     return round(mean, 3), rows
 
 
+def rack_curve_agreement(model: Model, grid: dict) -> dict | None:
+    """The drop across each cabinet against ITS OWN curve at the air it passes.
+
+    Measured where `rack_pressure_drop` measures, half a cell either side of
+    the row in free cells, but cabinet by cabinet, with the flow through the
+    same two planes. Each cabinet's curve at that flow is the drop it should
+    show; the field and the curve are compared flow-weighted over the hall,
+    and per row.
+
+    The hall-wide closed form puts every row on one drop, which is exact when
+    every row takes its share of the air and wrong when they do not: a hall
+    of 16 kW and 3,5 kW rows on one plenum gave rows from 4,8 to 30,2 Pa, each
+    on its own curve, and a mean 34% above the form (ADR-142). A cabinet that
+    does not resist as built -- a hole, a wrong coefficient -- still shows:
+    its drop leaves its own curve whatever share of the air it takes.
+    """
+    if not model.rows:
+        return None
+    coords = (grid["x"], grid["y"], grid["z"])
+    along, across = model.row_axis, model.across
+    low, top = model.racks[0].box.lo[2], model.racks[0].box.hi[2]
+    half = model.cell(across) / 2
+    face = model.cell(along) * model.cell(2)
+    levels = np.where((coords[2] >= low) & (coords[2] <= top))[0]
+
+    def cells(position: float, span: tuple[float, float]):
+        runs = np.where((coords[along] > span[0] + 1e-6) & (coords[along] < span[1] - 1e-6))[0]
+        picks = {along: runs, across: [int(np.argmin(abs(coords[across] - position)))], 2: levels}
+        return np.ix_(picks[2], picks[1], picks[0]), runs.size
+
+    field_sum = asked_sum = weight = 0.0
+    rows = []
+    for row in model.rows:
+        row_field = row_asked = 0.0
+        for rack in row.racks:
+            span = (rack.box.lo[along], rack.box.hi[along])
+            front, n = cells(row.front_y - row.front_sign * half, span)
+            back, _ = cells(row.back_y + row.front_sign * half, span)
+            if not n or rack.resistance_airflow_m3s <= 0:
+                continue
+            drop = float(grid["p_rgh"][front].mean() - grid["p_rgh"][back].mean())
+            flow = row.front_sign * 0.5 * (float(grid["U"][across][front].sum())
+                                           + float(grid["U"][across][back].sum())) * face
+            asked = RACK_PRESSURE_DROP * (flow / rack.resistance_airflow_m3s) ** 2 * np.sign(flow)
+            row_field += drop * abs(flow)
+            row_asked += asked * abs(flow)
+            weight += abs(flow)
+        if row_asked:
+            rows.append({"id": row.id, "ratio": round(float(row_field / row_asked), 3)})
+        field_sum += row_field
+        asked_sum += row_asked
+    if not asked_sum or not weight:
+        return None
+    return {"field_pa": round(float(field_sum / weight), 3), "asked_pa": round(float(asked_sum / weight), 3),
+            "ratio": round(float(field_sum / asked_sum), 4), "rows": rows}
+
+
 def drift(case_dir: str | Path) -> float | None:
     """The largest move any instrumented place made between the last two samples.
 
@@ -1615,7 +1673,39 @@ def _checks(model: Model, step: Path, kpis: dict, grid: dict) -> list[Check]:
 
     delivered = kpis.get("rack_drop_pa")
     asked = model.rack_pressure_drop_pa
-    if delivered is not None and asked > 0:
+    curve = kpis.get("rack_curve")
+    if curve and curve.get("asked_pa"):
+        # EACH CABINET ON ITS OWN CURVE, at the air it passes (ADR-142). The
+        # hall-wide form is quoted beside it: where the rows take unequal
+        # shares the two differ, and the reader is told why.
+        ratio = curve["ratio"]
+        rows = curve.get("rows") or []
+        spread = (f" (rows {min(r['ratio'] for r in rows) * 100:.0f}% to "
+                  f"{max(r['ratio'] for r in rows) * 100:.0f}% of their own curves)"
+                  if len(rows) > 1 else "")
+        drops = kpis.get("rows") or []
+        uneven = (len(drops) > 1 and asked > 0
+                  and abs((delivered or 0) / asked - 1.0) > RESISTANCE_TOLERANCE)
+        checks.append(
+            Check(
+                "rack_resistance",
+                abs(ratio - 1.0) <= RESISTANCE_TOLERANCE,
+                f"the field drops {curve['field_pa']:.1f} Pa across the cabinets, flow-weighted, "
+                f"where each cabinet's own curve at the air it passes asks for "
+                f"{curve['asked_pa']:.1f} Pa ({ratio * 100:.0f}%){spread}"
+                + (f"; the rows take unequal shares of the air -- "
+                   f"{min(r['drop_pa'] for r in drops):.1f} to {max(r['drop_pa'] for r in drops):.1f} Pa -- "
+                   f"so the hall-wide form, which puts every row on one drop "
+                   f"({asked:.1f} Pa at {model.airflow_m3h:,.0f} m3/h), does not apply"
+                   if uneven else "")
+                + (
+                    ""
+                    if abs(ratio - 1.0) <= RESISTANCE_TOLERANCE
+                    else " -- any fan pressure taken from this field is wrong"
+                ),
+            )
+        )
+    elif delivered is not None and asked > 0:
         ratio = delivered / asked
         rows = kpis.get("rows") or []
         spread = (

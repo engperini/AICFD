@@ -1088,7 +1088,7 @@ class APlantOfTwoSizesIsWrittenBySizeTest(unittest.TestCase):
 
 
 class TheDecisionsAgreedAreSetApartTest(unittest.TestCase):
-    """A scenario's agreed premises are printed first, in magenta (ADR-141)."""
+    """A scenario's agreed premises are printed first, in section 2 (ADR-141)."""
 
     MODEL = {"spec": {"decisions": [
         {"item": "Return air", "before": "29 degC", "adopted": "31.4 degC",
@@ -1107,7 +1107,7 @@ class TheDecisionsAgreedAreSetApartTest(unittest.TestCase):
         report._decisions_section(document, model)
         return document
 
-    def test_each_decision_is_a_row_under_a_magenta_band(self):
+    def test_each_decision_is_a_row_with_the_adopted_value_set_off(self):
         from aicfd import report
 
         document = self.doc(self.MODEL)
@@ -1115,9 +1115,9 @@ class TheDecisionsAgreedAreSetApartTest(unittest.TestCase):
         self.assertEqual([c.text for c in table.rows[0].cells],
                          ["Item", "Before", "Adopted", "Why", "Agreed"])
         self.assertEqual(len(table.rows), 3, "two decisions; the malformed entries are left out")
-        self.assertIn(f'w:fill="{report.DECIDED}"', table.rows[0].cells[0]._tc.xml)
+        self.assertIn(f'w:fill="{report.ACCENT}"', table.rows[0].cells[0]._tc.xml,
+                      "the report's own band, nothing set apart in another colour")
         adopted = table.rows[1].cells[2].paragraphs[0].runs[0]
-        self.assertEqual(str(adopted.font.color.rgb), report.DECIDED)
         self.assertTrue(adopted.bold)
 
     def test_the_heading_says_what_it_is(self):

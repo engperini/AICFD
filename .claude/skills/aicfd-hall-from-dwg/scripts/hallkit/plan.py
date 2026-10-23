@@ -13,7 +13,7 @@ import matplotlib.pyplot as plt  # noqa: E402
 from matplotlib.lines import Line2D  # noqa: E402
 from matplotlib.patches import Patch, Rectangle  # noqa: E402
 
-BLIND_FC, BLIND_EC = "#e0249a", "#8f1263"   # magenta: a blind plate must stand out from the open ones
+BLIND_FC, BLIND_EC = "#bdbdbd", "#8c8c8c"   # a blind plate: solid deck, grey beside the open ones
 RACK_FC = "#f5e6c8"      # every cabinet the same colour: the load is written in it
 RACK_EC = "#8b5a2b"
 RETURN_FC = "#fbe9e7"    # return grilles: the hot side, in a faded red -- they are

@@ -6002,15 +6002,15 @@ would have been meshed, but called a containment surface in every drawing and
 table, which is the wrong thing to tell a reader looking for the wall between
 two customers' rooms.
 
-## ADR-141 — The decisions agreed for a scenario are printed first, in magenta
+## ADR-141 — The decisions agreed for a scenario are printed first
 
 **Decision.** A case may carry `decisions:`, a list of mappings with `item`,
 `before`, `adopted`, `why` and `agreed`. The report prints them in section 2,
-right after the overview, as a table under a magenta band with the adopted
-value in magenta, and says on the cover how many there are. Magenta
-(`DECIDED`) is used for nothing else in the report; the drawing converter
-uses the same colour for the blind floor plates a balancing decision makes,
-so the reader finds the decision on the layout as well.
+right after the overview, as a table in the report's own style with the
+adopted value in bold, and says on the cover how many there are. (A first
+version set them apart in magenta, and the blind plates on the layout with
+them; the client asked for the report's ordinary look, and the record is the
+table, not the colour.)
 
 **Why.** A study run scenario by scenario changes its premises between runs:
 a design return temperature, the plates left open in an aisle. The report
@@ -6018,3 +6018,30 @@ printed the premises it ran on and nothing about which of them had just been
 decided and why, so the engineer handing it to a team had to write that
 record separately. The case file is where the decision is made, so it is
 where the record lives, and the report shows it before any result.
+
+## ADR-142 — The rack check holds each cabinet to its own curve, at the air it passes
+
+**Decision.** `rack_curve_agreement` measures, cabinet by cabinet, the drop
+across the row between the same two free planes `rack_pressure_drop` uses
+and the flow through them, and asks each cabinet's own curve -- calibrated
+at the hall's standard load -- what drop that flow should show. The field
+and the curves are compared flow-weighted over the hall; `rack_resistance`
+passes when they agree to `RESISTANCE_TOLERANCE`, and names each row's ratio.
+The hall-wide closed form (every row on one drop at the plant's airflow) is
+quoted beside it where the rows' drops differ by more than the tolerance,
+with the reason it does not apply.
+
+**Why.** A drawn hall of two densities on one raised floor -- 16 kW rows and
+3,5 kW rows -- split the air unequally between the rows, as such a hall
+does: rows from 4,8 to 30,2 Pa, each on its own curve to a few per cent. The
+closed form put all of them on one drop, the mean came out 34% above it, and
+the check called the field wrong. Cabinet by cabinet the same field agreed
+to 4%. The form is exact only when every row takes its share; the check's
+purpose -- that every porous cabinet resists as built -- is answered cabinet
+by cabinet whatever the shares, and a cabinet that does not resist as built
+leaves its own curve whatever share it takes.
+
+**Cost accepted.** The flow is read on the two free planes beside the
+cabinet, half a cell off its faces, where the velocity is trustworthy; the
+two planes agree to a few per cent, and the mean of them is used. Exports
+written before this read `rack_curve` as absent and keep the closed form.

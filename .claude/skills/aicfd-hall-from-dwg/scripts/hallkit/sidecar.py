@@ -50,8 +50,8 @@ def build(m: dict, stl_name: str) -> dict:
         "mesh": {"cell_size": list(m["cell"])},
         "solver": dict(cfg["solver"]),
     }
-    # what was agreed for this scenario: AICFD prints it first in the report,
-    # in magenta (ADR-141)
+    # what was agreed for this scenario: AICFD prints it first in the report
+    # (ADR-141)
     if cfg.get("decisions"):
         out["decisions"] = [dict(d) for d in cfg["decisions"] if isinstance(d, dict)]
     return out

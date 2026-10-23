@@ -41,10 +41,6 @@ SECOND = "52514E"
 MUTED = "898781"
 BAD = "D03B3B"
 GOOD = "0CA30C"
-#: Magenta: a decision agreed with the client for this scenario. One colour
-#: that nothing else in the report uses, so a reader finds every one of them
-#: on the cover, in section 2 and on the layout drawing (ADR-141).
-DECIDED = "C2187F"
 
 
 def _docx():
@@ -631,8 +627,8 @@ def _cover(doc, export: Export, client, author, title_text: str) -> None:
     if decided:
         _para(doc,
               f"{len(decided)} decision{'s' if len(decided) != 1 else ''} agreed "
-              f"for this scenario, in magenta in section 2",
-              size=9, bold=True, colour=DECIDED, space_after=4)
+              f"for this scenario, in section 2",
+              size=9, colour=SECOND, space_after=4)
     _para(doc,
           f"Case {export.payload['case']} · solved to iteration "
           f"{export.payload['time']} · "
@@ -656,7 +652,7 @@ def _decisions(model: dict) -> list[dict]:
 
 
 def _decisions_section(doc, model: dict) -> None:
-    """What was agreed for this scenario, set apart in magenta.
+    """What was agreed for this scenario, in the report's own style.
 
     A study run as a sequence of scenarios changes its premises between
     runs, and a report that prints only the premises it ran on leaves the
@@ -667,23 +663,17 @@ def _decisions_section(doc, model: dict) -> None:
     items = _decisions(model)
     if not items:
         return
-    paragraph = doc.add_paragraph()
-    paragraph.paragraph_format.space_before = Pt(12)
-    paragraph.paragraph_format.space_after = Pt(4)
-    run = _run(paragraph, "Decisions agreed for this scenario", bold=True,
-               size=11.5, colour=DECIDED)
-    run.font.name = "DejaVu Sans"
+    _heading(doc, "Decisions agreed for this scenario", 2)
     _para(doc,
           f"{len(items)} premise{'s' if len(items) != 1 else ''} of this run "
           f"{'were' if len(items) != 1 else 'was'} decided with the client for "
           f"this scenario, and every result in this report rests on "
           f"{'them' if len(items) != 1 else 'it'}. Each is set against what "
-          f"the case had before, with the reason and who agreed it. They are "
-          f"in magenta here, on the cover and on the layout drawing.",
+          f"the case had before, with the reason and who agreed it.",
           size=9.5, colour=SECOND)
     _table(doc, ["Item", "Before", "Adopted", "Why", "Agreed"],
            [tuple(d[k] for k in DECISION_FIELDS) for d in items],
-           widths=[2.8, 3.2, 3.6, 4.6, 2.2], band=DECIDED, emphasise=2)
+           widths=[2.8, 3.2, 3.6, 4.6, 2.2], emphasise=2)
 
 
 def _contents(doc) -> None:

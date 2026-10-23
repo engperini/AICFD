@@ -1572,3 +1572,73 @@ class FiguresTest(unittest.TestCase):
         self.assertEqual(post.collect_figures({}, self.root / "case", self.root / "out"), ([], []))
         self.assertEqual(post.collect_figures(None, None, self.root / "out"), ([], []))
         self.assertFalse((self.root / "out" / "figures").exists())
+
+
+class EachCabinetOnItsOwnCurveTest(unittest.TestCase):
+    """The rack check compares every cabinet with its own curve at the air it
+    passes, flow-weighted (ADR-142): a hall whose rows take unequal shares
+    passes, and a cabinet that does not resist as built still fails it."""
+
+    def setUp(self):
+        import tempfile
+
+        import numpy as np
+
+        from aicfd import model as M
+        from tests.test_geometry import downflow_hall, sidecar
+
+        self.tmp = tempfile.TemporaryDirectory()
+        self.addCleanup(self.tmp.cleanup)
+        path = f"{self.tmp.name}/hall.stl"
+        with open(path, "w") as stl:
+            stl.write(downflow_hall())
+        self.model = M.build_model(sidecar(path))
+        nx, ny, nz = self.model.divisions
+        cx, cy, cz = self.model.cell_size
+        self.grid = {"x": (np.arange(nx) + 0.5) * cx, "y": (np.arange(ny) + 0.5) * cy,
+                     "z": (np.arange(nz) + 0.5) * cz,
+                     "p_rgh": np.zeros((nz, ny, nx)), "U": np.zeros((3, nz, ny, nx))}
+
+    def put(self, rack, row, share, scale=1.0):
+        """Give one cabinet `share` of its calibration flow and the drop its
+        curve asks for at it, times `scale`."""
+        import numpy as np
+
+        from aicfd import model as M
+
+        g, m = self.grid, self.model
+        along, across = m.row_axis, m.across
+        coords = (g["x"], g["y"], g["z"])
+        half = m.cell(across) / 2
+        low, top = rack.box.lo[2], rack.box.hi[2]
+        runs = np.where((coords[along] > rack.box.lo[along]) & (coords[along] < rack.box.hi[along]))[0]
+        levels = np.where((coords[2] >= low) & (coords[2] <= top))[0]
+        flow = share * rack.resistance_airflow_m3s
+        speed = flow / (runs.size * levels.size * m.cell(along) * m.cell(2))
+        drop = M.RACK_PRESSURE_DROP * share ** 2 * scale
+        for position, pressure in ((row.front_y - row.front_sign * half, drop),
+                                   (row.back_y + row.front_sign * half, 0.0)):
+            j = int(np.argmin(abs(coords[across] - position)))
+            picks = {along: runs, across: [j], 2: levels}
+            index = np.ix_(picks[2], picks[1], picks[0])
+            g["p_rgh"][index] = pressure
+            g["U"][across][index] = row.front_sign * speed
+
+    def test_rows_on_unequal_shares_agree_with_their_own_curves(self):
+        from aicfd import post
+
+        for row, share in zip(self.model.rows, (1.0, 0.4)):
+            for rack in row.racks:
+                self.put(rack, row, share)
+        result = post.rack_curve_agreement(self.model, self.grid)
+        self.assertAlmostEqual(result["ratio"], 1.0, places=3)
+        self.assertEqual([round(r["ratio"], 3) for r in result["rows"]], [1.0, 1.0])
+
+    def test_a_cabinet_off_its_curve_still_shows(self):
+        from aicfd import post
+
+        for row in self.model.rows:
+            for rack in row.racks:
+                self.put(rack, row, 0.8, scale=0.3 if rack.id == "A01" else 1.0)
+        result = post.rack_curve_agreement(self.model, self.grid)
+        self.assertLess(result["ratio"], 1.0 - 0.1)
