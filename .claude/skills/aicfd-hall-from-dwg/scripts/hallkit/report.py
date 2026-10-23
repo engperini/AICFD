@@ -37,6 +37,8 @@ def write(m: dict, counts: dict, path: str, source_file: str, fails: list[str]) 
           f"{sum(k['load_kw'] for k in r['racks']):.1f} kW")
     A(f"  {len(m['cold_aisles'])} contained cold aisles: " + "; ".join(
         f"{c['id']} {c['band'][1] - c['band'][0]:.1f} m between {'/'.join(c['rows'])}{' (alone)' if c['lone'] else ''}, {c['tiles_across']}x{c['tiles_along']} tiles"
+        + (f" ({c['tiles_open']} perforated, {c['tiles_across'] * c['tiles_along'] - c['tiles_open']} blind)"
+           if c.get("tiles_open", c['tiles_across'] * c['tiles_along']) < c['tiles_across'] * c['tiles_along'] else "")
         for c in m["cold_aisles"]))
     if m.get("hot_aisles"):
         A(f"  {len(m['hot_aisles'])} contained hot aisles: " + "; ".join(

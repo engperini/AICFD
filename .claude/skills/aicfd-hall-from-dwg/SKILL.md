@@ -167,6 +167,10 @@ format) is the safer input when the user can make one.
   ceiling (or the slab), open under the deck unless `below_deck`, running to
   the hall's walls, its door closed unless `door.open`. It bounds the hot
   bands, and the self-check refuses a tile, grille or cabinet across it.
+- **An aisle that takes more than its share is balanced down on the answer**
+  `tiles.perforated: {c7: 11}`: N plates stay perforated, spread along the
+  aisle, the rest are blind (solid deck) and drawn grey on the plan. The
+  return grilles keep the count of the full strip.
 - **A plant of more than one size** is read off the capacity written on each
   unit (`402kW(S)`); `fanwall.sizes` gives each size its airflow and the
   sidecar names the units that differ from the commonest one in

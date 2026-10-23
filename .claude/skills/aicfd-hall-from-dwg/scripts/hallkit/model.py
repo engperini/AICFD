@@ -621,6 +621,11 @@ def build(ex: Extracted, ref: dict, answers: dict) -> dict:
     T = cfg["tiles"]
     tile = float(T["size"])
     lids, doors, closures, tiles, blanks, chimneys, grilles = [], [], [], [], [], [], []
+    blind = []
+    perforated = {str(k): int(v) for k, v in (((answers or {}).get("tiles") or {}).get("perforated") or {}).items()}
+    unknown = sorted(set(perforated) - {f"c{k}" for k in range(1, len(contained) + 1)})
+    if unknown:
+        raise SystemExit(f"tiles.perforated names {', '.join(unknown)}, which is no cold aisle of this hall")
     G = cfg["return_grilles"]
     gsize = float(G["size"])
     for k, ca in enumerate(contained, start=1):
@@ -703,11 +708,27 @@ def build(ex: Extracted, ref: dict, answers: dict) -> dict:
         if ca["kind"] == "cold":
             across = int(T["across"]) if str(T["across"]).isdigit() else min(3, max(1, int(w / tile + 1e-9)))
             start = min(max(Q.q(band[0] + (w - across * tile) / 2, 1), band[0]), band[1] - across * tile)
+            strip = []
             for i in range(n_along):
                 for j in range(across):
                     x0 = round(span[0] + i * tile, 6)
                     y0 = round(start + j * tile, 6)
-                    tiles.append({"id": f"{ca['id']}-{i + 1:02d}-{j + 1}", "aisle": ca["id"], "rect": (x0, y0, round(x0 + tile, 6), round(y0 + tile, 6))})
+                    strip.append({"id": f"{ca['id']}-{i + 1:02d}-{j + 1}", "aisle": ca["id"], "rect": (x0, y0, round(x0 + tile, 6), round(y0 + tile, 6))})
+            # BALANCING: `tiles.perforated` keeps N plates of this aisle open and
+            # makes the rest blind (solid deck) -- how an aisle that takes more
+            # than its share of the plenum is turned down on site. The open ones
+            # are spread evenly along the aisle, alternating across it.
+            keep_n = perforated.get(ca["id"])
+            if keep_n is not None and 0 <= keep_n < len(strip):
+                picks = {int((k + 0.5) * len(strip) / keep_n) for k in range(keep_n)} if keep_n else set()
+                blind += [t for n, t in enumerate(strip) if n not in picks]
+                strip = [t for n, t in enumerate(strip) if n in picks]
+                log.corrections.append(f"cold aisle {ca['id']}: {keep_n} perforated plate(s) of {across * n_along}, the other "
+                                       f"{across * n_along - keep_n} blind (`tiles.perforated`): the aisle is balanced down")
+            elif keep_n is not None:
+                raise SystemExit(f"tiles.perforated.{ca['id']}: {keep_n} plates asked, the aisle has {len(strip)}")
+            tiles += strip
+            ca["tiles_open"] = len(strip)
             ca["tiles_across"], ca["tiles_along"] = across, n_along
             for row in ca["rows"]:
                 row["cold_aisle"], row["cold_tiles"] = ca["id"], across * n_along
@@ -1049,13 +1070,15 @@ def build(ex: Extracted, ref: dict, answers: dict) -> dict:
                              "kind": k["kind"], "liquid": bool(k.get("liquid")), "label": k.get("label", ""), "drawing": k["rect"]}
                             for k in r["racks"]]} for r in rows],
         "cold_aisles": [{"id": c["id"], "band": c["band"], "span": c["span"], "rows": [r["id"] for r in c["rows"]],
-                         "lone": c["lone"], "tiles_across": c["tiles_across"], "tiles_along": c["tiles_along"]}
+                         "lone": c["lone"], "tiles_across": c["tiles_across"], "tiles_along": c["tiles_along"],
+                         "tiles_open": c.get("tiles_open", c["tiles_across"] * c["tiles_along"])}
                         for c in contained if c["kind"] == "cold"],
         "hot_aisles": [{"id": c["id"], "band": c["band"], "span": c["span"], "rows": [r["id"] for r in c["rows"]],
                         "lone": c["lone"], "grilles": c["grilles"]} for c in contained if c["kind"] == "hot"],
         "hot_bands": [{"id": h["id"], "band": h["band"], "span": h["span"], "rows": [r["id"] for r in h["rows"]],
                        "paired": h["paired"], "grilles": h["grilles"]} for h in hot_bands],
         "lids": lids, "doors": doors, "closures": closures, "blanks": blanks, "chimneys": chimneys, "tiles": tiles, "grilles": grilles,
+        "blind_tiles": blind,
         "cage": {"panels": cage_panels, "construction": cfg["cage"]["construction"]},
         "units": units,
         "partitions": partitions,

@@ -57,6 +57,10 @@ heights:                       # THE ELEVATIONS, one per element -- asked of the
 # galleries:                   # only if the drawing has no gallery contour and no wall rectangles
 #   - [67.48, 21.16, 71.64, 55.91]
 
+# tiles:
+#   perforated: {c7: 11, c8: 11, c9: 6}   # balancing: keep N perforated plates in these cold aisles
+#                              # (ids as the plan names them), the rest blind; spread along the aisle
+
 # partitions:                  # a wall between two halls in one room (AICFD ADR-140); the pipeline
 #   - id: dh                   # never builds one from a shape alone -- it asks
 #     rect: [x0, y0, x1, y1]   # the masonry, in the drawing's coordinates
