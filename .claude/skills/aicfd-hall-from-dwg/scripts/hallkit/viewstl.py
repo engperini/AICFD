@@ -87,6 +87,8 @@ def groups(m: dict) -> dict[str, list[str]]:
         add("containment", stl.box(f"blank:{b['id']}", bb))   # a blank panel is part of the sealed containment set
     for t in m["tiles"]:
         add("tiles", stl.box(f"tile:{t['id']}", _plate_z(H["deck"], t["rect"], above=True)))
+    for t in m.get("blind_tiles", []):
+        add("blind_tiles", stl.box(f"blind:{t['id']}", _plate_z(H["deck"], t["rect"], above=True)))
     for g in m["grilles"]:
         add("grilles", stl.box(f"grille:{g['id']}", _plate_z(H["ceiling"], g["rect"], above=False)))
     for p in m["cage"]["panels"]:

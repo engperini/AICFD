@@ -19,7 +19,7 @@ COLOURS = {  # per view group, RGB 0..1
     "blank": (0.12, 0.24, 0.45), "tiles": (0.48, 0.61, 0.78), "grilles": (0.93, 0.64, 0.60),
     "cage": (0.62, 0.42, 0.85), "walls": (0.62, 0.62, 0.62), "mesh": (0.80, 0.80, 0.80),
     "deck": (0.91, 0.91, 0.91), "slab": (0.80, 0.80, 0.80), "ceiling": (0.85, 0.85, 0.85),
-    "supplies": (0.35, 0.62, 0.90), "partition": (0.36, 0.36, 0.36),
+    "supplies": (0.35, 0.62, 0.90), "partition": (0.36, 0.36, 0.36), "blind": (0.88, 0.14, 0.60),
 }
 LIGHT = np.array([-0.4, -0.5, 0.75])
 LIGHT = LIGHT / np.linalg.norm(LIGHT)
@@ -73,6 +73,8 @@ def _boxes(m: dict, drop=("ceiling",)):
         out.append((viewstl._plate_y(p["at"], p["lo"], p["hi"], p["z"][0], p["z"][1]), "partition"))
     for t in m["tiles"]:
         out.append((viewstl._plate_z(H["deck"], t["rect"], above=True), "tiles"))
+    for t in m.get("blind_tiles", []):
+        out.append((viewstl._plate_z(H["deck"], t["rect"], above=True), "blind"))
     for g in m["grilles"]:
         out.append((viewstl._plate_z(H["ceiling"], g["rect"], above=False), "grilles"))
     for p in m["cage"]["panels"]:
@@ -187,8 +189,8 @@ def preview(m: dict, path: str, title: str) -> None:
         ("racks", "cabinets"), ("containment", "containment: lids, doors, end panels"), ("blank", "blank panels (row line)"),
         ("tiles", "floor tiles (on the deck)"), ("grilles", "return grilles (under the ceiling, drawn floating)"),
         ("cage", "cage panels"), ("units", "cooling units"), ("walls", "dividing walls (mesh below deck, lighter)"),
-        ("supplies", "supply grilles in the plenum wall"), ("partition", "wall between two halls"))
-        if k != "partition" or m.get("partitions")]
+        ("supplies", "supply grilles in the plenum wall"), ("partition", "wall between two halls"), ("blind", "blind floor plates (solid deck)"))
+        if (k != "partition" or m.get("partitions")) and (k != "blind" or m.get("blind_tiles"))]
     fig.legend(handles=handles, loc="lower center", ncol=4, fontsize=7, frameon=False)
     fig.suptitle(title, fontsize=9, x=0.01, ha="left")
     plt.tight_layout(rect=(0, 0.04, 1, 0.98))

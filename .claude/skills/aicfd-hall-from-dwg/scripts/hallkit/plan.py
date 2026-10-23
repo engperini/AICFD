@@ -13,6 +13,7 @@ import matplotlib.pyplot as plt  # noqa: E402
 from matplotlib.lines import Line2D  # noqa: E402
 from matplotlib.patches import Patch, Rectangle  # noqa: E402
 
+BLIND_FC, BLIND_EC = "#e0249a", "#8f1263"   # magenta: a blind plate must stand out from the open ones
 RACK_FC = "#f5e6c8"      # every cabinet the same colour: the load is written in it
 RACK_EC = "#8b5a2b"
 RETURN_FC = "#fbe9e7"    # return grilles: the hot side, in a faded red -- they are
@@ -101,7 +102,7 @@ def draw(m: dict, path: str, title: str) -> None:
     for t in m.get("blind_tiles", []):
         # a blind plate: solid deck where the strip had a perforated one
         r = t["rect"]
-        ax.add_patch(Rectangle((r[0], r[1]), r[2] - r[0], r[3] - r[1], fc="#cfcfcf", ec="#9a9a9a", lw=0.45, zorder=2))
+        ax.add_patch(Rectangle((r[0], r[1]), r[2] - r[0], r[3] - r[1], fc=BLIND_FC, ec=BLIND_EC, lw=0.5, zorder=2))
     # lids, doors, closures
     for lid in m["lids"]:
         r = lid["rect"]
@@ -181,7 +182,7 @@ def draw(m: dict, path: str, title: str) -> None:
         Patch(fc=RACK_FC, ec=RACK_EC, label="cabinet: name and load (kW) inside; ODF = no load, fut = future"),
         Line2D([0], [0], color="#111", lw=1.6, label="cabinet front (intake)"),
         Patch(fc="#ffffff", ec="#7a9cc6", label="floor tile 600 (deck) -- cold aisle"),
-        *([Patch(fc="#cfcfcf", ec="#9a9a9a", label="blind plate (solid deck): the aisle balanced down")] if m.get("blind_tiles") else []),
+        *([Patch(fc=BLIND_FC, ec=BLIND_EC, label="blind plate (solid deck): the aisle balanced down")] if m.get("blind_tiles") else []),
         Patch(fc="#4a90d9", alpha=0.15, ec="#1f5fa8", ls="--", label=f"cold-aisle lid at {H['rack_top']:.1f} m") if m.get("containment", "cold") == "cold"
         else Patch(fc="#e07b39", alpha=0.15, ec="#b3541e", ls="--", label=f"hot-aisle containment: chimney {H['rack_top']:.1f} -> {H['ceiling']:.1f} m, doors to the ceiling"),
         Line2D([0], [0], color="#1f5fa8", lw=2.4, label="containment door (row end) / end panel"),
